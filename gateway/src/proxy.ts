@@ -4,6 +4,8 @@
 import { TokenRecord, canWrite, readableScopes } from "./auth";
 import { scopeClient } from "./scopes";
 import { audit } from "./audit";
+import { SECRET_TOOL_DEFS, callSecretTool } from "./tools/secrets";
+import { PROMOTE_TOOL_DEF, promoteTool } from "./tools/promote";
 
 const ALLOWED_READS = new Set(["search", "get_page", "list_pages", "recall"]);
 const ALLOWED_WRITES = new Set(["put_page", "remember", "add_tag", "add_link", "add_timeline_entry"]);
@@ -35,6 +37,8 @@ export async function listTools(token: TokenRecord): Promise<any[]> {
   }
   return [
     ...cachedToolDefs,
+    ...(token.secrets ? SECRET_TOOL_DEFS : []),
+    ...(Object.keys(token.scopes).some(s => canWrite(token, s)) ? [PROMOTE_TOOL_DEF] : []),
     {
       name: "whoami",
       description: "Show this token's identity: name, readable/writable scopes, secrets access.",
@@ -61,6 +65,14 @@ export async function callTool(
         text: JSON.stringify({ token: token.name, scopes: token.scopes, secrets: token.secrets }, null, 2),
       }],
     };
+  }
+
+  if (name === "secret_get" || name === "secret_list") {
+    return callSecretTool(token, name, args ?? {});
+  }
+
+  if (name === "promote") {
+    return promoteTool(token, args ?? {});
   }
 
   const readable = readableScopes(token);

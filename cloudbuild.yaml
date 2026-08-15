@@ -24,7 +24,7 @@ steps:
       - '--service-account=engram-runtime@$PROJECT_ID.iam.gserviceaccount.com'
       - '--add-cloudsql-instances=$PROJECT_ID:${_REGION}:engram-pg'
       - '--set-secrets=ENGRAM_DB_URL_TEMPLATE=engram-db-url-template:latest'
-      - '--set-env-vars=ENGRAM_SCOPES=shared,GBRAIN_HOMES_DIR=/tmp/gbrain-homes'
+      - '--set-env-vars=ENGRAM_SCOPES=shared,GBRAIN_HOMES_DIR=/tmp/gbrain-homes,ENGRAM_CLOUDSQL_INSTANCE=$PROJECT_ID:${_REGION}:engram-pg'
       - '--min-instances=0'
       - '--max-instances=1'
       - '--memory=2Gi'

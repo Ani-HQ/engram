@@ -45,7 +45,9 @@ gcloud projects add-iam-policy-binding "$PROJECT" \
   --member="serviceAccount:$SA" --role="roles/cloudsql.client" --condition=None >/dev/null
 log "granted cloudsql.client to $SA"
 
-TEMPLATE="postgresql://postgres:${ENGRAM_DB_PASSWORD}@/__DB__?host=/cloudsql/${PROJECT}:${REGION}:${INSTANCE}"
+# Plain TCP URL: in-container cloud-sql-proxy (see deploy/entrypoint.sh) listens
+# on 127.0.0.1:5432. postgres.js cannot express unix-socket paths in URL form.
+TEMPLATE="postgresql://postgres:${ENGRAM_DB_PASSWORD}@127.0.0.1:5432/__DB__"
 if ! gcloud secrets describe engram-db-url-template --project "$PROJECT" >/dev/null 2>&1; then
   printf '%s' "$TEMPLATE" | gcloud secrets create engram-db-url-template \
     --project "$PROJECT" --data-file=-
