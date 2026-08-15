@@ -48,6 +48,37 @@ REPLACEMENTS = [
             RETURN;
           END IF;""",
     ),
+    # v31: the BYPASSRLS gate sits BEFORE the CREATE TABLEs, so a plain skip
+    # would drop the tables. Create unconditionally; gate only the RLS ALTERs.
+    (
+        """          IF NOT has_bypass THEN
+            RAISE EXCEPTION 'v31 eval_capture_tables: role % does not have BYPASSRLS privilege — cannot enable RLS safely. Re-run as postgres (or another BYPASSRLS role). The migration will retry automatically on the next initSchema call.', current_user;
+          END IF;""",
+        """          IF NOT has_bypass THEN
+            -- engram: tables still created below; only RLS is skipped.
+            RAISE NOTICE 'v31: skipping RLS — role % lacks BYPASSRLS', current_user;
+          END IF;""",
+    ),
+    (
+        """          CREATE INDEX IF NOT EXISTS idx_eval_candidates_created_at ON eval_candidates (created_at DESC);
+          ALTER TABLE eval_candidates ENABLE ROW LEVEL SECURITY;""",
+        """          CREATE INDEX IF NOT EXISTS idx_eval_candidates_created_at ON eval_candidates (created_at DESC);
+          IF has_bypass THEN
+            ALTER TABLE eval_candidates ENABLE ROW LEVEL SECURITY;
+          END IF;""",
+    ),
+    (
+        """          CREATE INDEX IF NOT EXISTS idx_eval_capture_failures_ts ON eval_capture_failures (ts DESC);
+          ALTER TABLE eval_capture_failures ENABLE ROW LEVEL SECURITY;
+
+          RAISE NOTICE 'v31: eval_capture tables ready (role % has BYPASSRLS)', current_user;""",
+        """          CREATE INDEX IF NOT EXISTS idx_eval_capture_failures_ts ON eval_capture_failures (ts DESC);
+          IF has_bypass THEN
+            ALTER TABLE eval_capture_failures ENABLE ROW LEVEL SECURITY;
+          END IF;
+
+          RAISE NOTICE 'v31: eval_capture tables ready', current_user;""",
+    ),
     # v35 backfill DO block: same skip pattern.
     (
         """          IF NOT has_bypass THEN
