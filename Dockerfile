@@ -1,14 +1,16 @@
 # engram: gateway + pinned gbrain in one image.
 FROM oven/bun:1-debian
 
-RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates python3 \
   && rm -rf /var/lib/apt/lists/*
 
 # gbrain, from our mirror, pinned. Bump GBRAIN_COMMIT deliberately — never build from HEAD.
 ARG GBRAIN_REPO=https://github.com/Ani-HQ/gbrain.git
 ARG GBRAIN_COMMIT=4922905fb970d7014625a0190136fbfc8a4f36b0
+COPY deploy/patch-gbrain.py /tmp/patch-gbrain.py
 RUN git clone ${GBRAIN_REPO} /opt/gbrain \
   && git -C /opt/gbrain checkout ${GBRAIN_COMMIT} \
+  && python3 /tmp/patch-gbrain.py /opt/gbrain/src/core/migrate.ts \
   && cd /opt/gbrain && bun install --frozen-lockfile \
   && printf '#!/bin/sh\nexec bun /opt/gbrain/src/cli.ts "$@"\n' > /usr/local/bin/gbrain \
   && chmod +x /usr/local/bin/gbrain
