@@ -77,7 +77,7 @@ REPLACEMENTS = [
             ALTER TABLE eval_capture_failures ENABLE ROW LEVEL SECURITY;
           END IF;
 
-          RAISE NOTICE 'v31: eval_capture tables ready', current_user;""",
+          RAISE NOTICE 'v31: eval_capture tables ready (role %)', current_user;""",
     ),
     # v35 backfill DO block: same skip pattern.
     (
