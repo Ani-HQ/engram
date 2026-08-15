@@ -76,7 +76,9 @@ Bun.serve({
   idleTimeout: 120,
   async fetch(req) {
     const url = new URL(req.url);
-    if (url.pathname === "/healthz") {
+    // /health, not /healthz: Google's frontend reserves /healthz on run.app
+    // domains and answers 404 before the request reaches the container.
+    if (url.pathname === "/health" || url.pathname === "/healthz") {
       return Response.json({ status: "ok", scopes: await scopesHealth() });
     }
     if (url.pathname === "/mcp") {
