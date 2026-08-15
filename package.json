@@ -1,0 +1,15 @@
+{
+  "name": "engram",
+  "version": "0.1.0",
+  "description": "Portable personal context layer: scoped MCP gateway over gbrain + secrets vault",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun gateway/src/index.ts",
+    "admin": "bun cli/engram-admin.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "postgres": "^3.4.0"
+  }
+}

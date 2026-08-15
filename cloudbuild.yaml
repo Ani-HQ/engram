@@ -1,0 +1,40 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/engram:$BUILD_ID'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/engram:latest'
+      - '.'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '--all-tags', 'gcr.io/$PROJECT_ID/engram']
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'engram'
+      - '--image=gcr.io/$PROJECT_ID/engram:$BUILD_ID'
+      - '--region=${_REGION}'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--service-account=engram-runtime@$PROJECT_ID.iam.gserviceaccount.com'
+      - '--add-cloudsql-instances=$PROJECT_ID:${_REGION}:engram-pg'
+      - '--set-secrets=ENGRAM_DB_URL_TEMPLATE=engram-db-url-template:latest'
+      - '--set-env-vars=ENGRAM_SCOPES=shared,GBRAIN_HOMES_DIR=/tmp/gbrain-homes'
+      - '--min-instances=1'
+      - '--max-instances=1'
+      - '--memory=2Gi'
+      - '--cpu=1'
+      - '--timeout=900'
+      - '--execution-environment=gen2'
+
+substitutions:
+  _REGION: us-central1
+
+images:
+  - 'gcr.io/$PROJECT_ID/engram:$BUILD_ID'
+  - 'gcr.io/$PROJECT_ID/engram:latest'
