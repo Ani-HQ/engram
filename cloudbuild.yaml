@@ -25,7 +25,7 @@ steps:
       - '--add-cloudsql-instances=$PROJECT_ID:${_REGION}:engram-pg'
       - '--set-secrets=ENGRAM_DB_URL_TEMPLATE=engram-db-url-template:latest'
       - '--set-env-vars=ENGRAM_SCOPES=shared,GBRAIN_HOMES_DIR=/tmp/gbrain-homes'
-      - '--min-instances=1'
+      - '--min-instances=0'
       - '--max-instances=1'
       - '--memory=2Gi'
       - '--cpu=1'

@@ -18,7 +18,7 @@ if ! gcloud sql instances describe "$INSTANCE" --project "$PROJECT" >/dev/null 2
   log "creating Cloud SQL instance $INSTANCE (smallest tier, pg16)..."
   gcloud sql instances create "$INSTANCE" \
     --project "$PROJECT" --region "$REGION" \
-    --database-version=POSTGRES_16 --tier=db-g1-small \
+    --database-version=POSTGRES_16 --tier=db-f1-micro \
     --storage-size=10GB --storage-auto-increase
 else
   log "instance $INSTANCE exists"
