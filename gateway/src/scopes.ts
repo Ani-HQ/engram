@@ -33,7 +33,11 @@ function initScope(scope: string) {
     encoding: "utf8",
   });
   if (r.status !== 0) {
-    throw new Error(`gbrain init failed for scope ${scope}: ${r.stderr?.slice(-500)}`);
+    throw new Error(
+      `gbrain init failed for scope ${scope} (status=${r.status}, ` +
+      `error=${r.error ? String(r.error) : "none"}): ` +
+      `stderr=${r.stderr?.slice(-400) ?? "none"} stdout=${r.stdout?.slice(-200) ?? "none"}`,
+    );
   }
 }
 

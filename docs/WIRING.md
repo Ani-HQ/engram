@@ -42,12 +42,33 @@ Same user-scope `claude mcp add` under the bot's VM user — spawned
 
 ## ChatGPT / Grok custom connectors
 Point the connector at `https://<engram-url>/mcp`. Use a **read-only, no-secrets**
-token. If the connector UI can't set an Authorization header, ask for the
-path-token route (v1 fallback, `/t/<token>/mcp`).
+token. If the connector UI can't set an Authorization header, use the path-token
+route:
+
+```text
+https://<engram-url>/t/<url-encoded-token>/mcp
+```
+
+The path-token route authenticates the same token value, then rejects any token
+with `rw` scope access or `--secrets`.
 
 ## Anything stdio-only
-The `@ani-hq/engram-mcp` shim (v1) proxies stdio→HTTP via `ENGRAM_HOST` +
-`ENGRAM_TOKEN` env vars.
+The `@ani-hq/engram-mcp` shim proxies stdio→HTTP via `ENGRAM_HOST` +
+`ENGRAM_TOKEN` env vars:
+
+```json
+{
+  "mcpServers": {
+    "engram": {
+      "command": "engram-mcp",
+      "env": {
+        "ENGRAM_HOST": "https://<engram-url>",
+        "ENGRAM_TOKEN": "<token>"
+      }
+    }
+  }
+}
+```
 
 ## Smoke test any wiring
 Ask the agent: “call engram's whoami tool” — it should report the token name and

@@ -1,0 +1,11 @@
+{
+  "name": "@ani-hq/engram-mcp",
+  "version": "0.1.0",
+  "description": "stdio MCP proxy for the engram HTTP gateway",
+  "bin": {
+    "engram-mcp": "./index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}

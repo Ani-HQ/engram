@@ -3,9 +3,10 @@
 // server-side session state, so Cloud Run can recycle instances freely.
 import { config } from "./config";
 import { migrate } from "./db";
-import { authenticate } from "./auth";
+import { authenticate, type TokenRecord } from "./auth";
 import { startScopes, scopesHealth } from "./scopes";
 import { listTools, callTool } from "./proxy";
+import { isPathTokenAllowed } from "./tools/pathtoken";
 
 const PROTOCOL_VERSIONS = new Set(["2024-11-05", "2025-03-26", "2025-06-18"]);
 
@@ -16,8 +17,8 @@ function rpcError(id: unknown, code: number, message: string, status = 200) {
   return Response.json({ jsonrpc: "2.0", id, error: { code, message } }, { status });
 }
 
-async function handleMcp(req: Request): Promise<Response> {
-  const token = await authenticate(req.headers.get("authorization"));
+async function handleMcp(req: Request, authenticatedToken?: TokenRecord): Promise<Response> {
+  const token = authenticatedToken ?? await authenticate(req.headers.get("authorization"));
   if (!token) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -75,13 +76,29 @@ Bun.serve({
   idleTimeout: 120,
   async fetch(req) {
     const url = new URL(req.url);
-    if (url.pathname === "/healthz") {
+    // /health, not /healthz: Google's frontend reserves /healthz on run.app
+    // domains and answers 404 before the request reaches the container.
+    if (url.pathname === "/health" || url.pathname === "/healthz") {
       return Response.json({ status: "ok", scopes: await scopesHealth() });
     }
     if (url.pathname === "/mcp") {
       if (req.method === "POST") return handleMcp(req);
       // No SSE stream support in stateless mode.
       return new Response("Method Not Allowed", { status: 405 });
+    }
+    const pathToken = url.pathname.match(/^\/t\/([^/]+)\/mcp$/);
+    if (pathToken) {
+      if (req.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
+      let rawToken: string;
+      try {
+        rawToken = decodeURIComponent(pathToken[1]);
+      } catch {
+        return Response.json({ error: "bad path token" }, { status: 400 });
+      }
+      const token = await authenticate(`Bearer ${rawToken}`);
+      if (!token) return Response.json({ error: "unauthorized" }, { status: 401 });
+      if (!isPathTokenAllowed(token)) return Response.json({ error: "forbidden" }, { status: 403 });
+      return handleMcp(req, token);
     }
     return new Response("Not Found", { status: 404 });
   },
