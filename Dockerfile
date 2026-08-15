@@ -9,8 +9,10 @@ ARG GBRAIN_REPO=https://github.com/Ani-HQ/gbrain.git
 ARG GBRAIN_COMMIT=4922905fb970d7014625a0190136fbfc8a4f36b0
 RUN git clone ${GBRAIN_REPO} /opt/gbrain \
   && git -C /opt/gbrain checkout ${GBRAIN_COMMIT} \
-  && cd /opt/gbrain && bun install --frozen-lockfile && bun link
-ENV GBRAIN_BIN=/root/.bun/bin/gbrain
+  && cd /opt/gbrain && bun install --frozen-lockfile \
+  && printf '#!/bin/sh\nexec bun /opt/gbrain/src/cli.ts "$@"\n' > /usr/local/bin/gbrain \
+  && chmod +x /usr/local/bin/gbrain
+ENV GBRAIN_BIN=/usr/local/bin/gbrain
 
 ADD https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.14.2/cloud-sql-proxy.linux.amd64 /usr/local/bin/cloud-sql-proxy
 RUN chmod +x /usr/local/bin/cloud-sql-proxy
