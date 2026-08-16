@@ -5,10 +5,15 @@ import { config } from "./config";
 import { migrate } from "./db";
 import { authenticate, type TokenRecord } from "./auth";
 import { startScopes, scopesHealth } from "./scopes";
-import { listTools, callTool } from "./proxy";
+import {
+  listTools,
+  callTool,
+  negotiateProtocolVersion,
+  resolveMcpRouting,
+  readClientMeta,
+  toolsListCacheHints,
+} from "./proxy";
 import { isPathTokenAllowed } from "./tools/pathtoken";
-
-const PROTOCOL_VERSIONS = new Set(["2024-11-05", "2025-03-26", "2025-06-18"]);
 
 function rpcResult(id: unknown, result: unknown) {
   return Response.json({ jsonrpc: "2.0", id, result });
@@ -33,17 +38,25 @@ async function handleMcp(req: Request, authenticatedToken?: TokenRecord): Promis
     return rpcError(null, -32600, "Batching not supported", 400);
   }
 
+  // 2026-07-28: protocol version / client identity / capabilities travel in
+  // params._meta so a tools/call needs no prior initialize. Older clients omit it.
+  const clientMeta = readClientMeta(msg.params);
+  const { method, name, conflict } = resolveMcpRouting(req.headers, msg);
+
   // Notifications and responses get 202 with no body per streamable HTTP spec.
   if (msg.id === undefined || msg.id === null) {
     return new Response(null, { status: 202 });
   }
 
+  // Routing headers that contradict the body are malformed, not a routing hint.
+  if (conflict) return rpcError(msg.id, -32600, conflict, 400);
+
   try {
-    switch (msg.method) {
+    switch (method) {
       case "initialize": {
         const requested = msg.params?.protocolVersion;
         return rpcResult(msg.id, {
-          protocolVersion: PROTOCOL_VERSIONS.has(requested) ? requested : "2025-06-18",
+          protocolVersion: negotiateProtocolVersion(requested),
           capabilities: { tools: {} },
           serverInfo: { name: "engram", version: "0.1.0" },
         });
@@ -51,14 +64,17 @@ async function handleMcp(req: Request, authenticatedToken?: TokenRecord): Promis
       case "ping":
         return rpcResult(msg.id, {});
       case "tools/list":
-        return rpcResult(msg.id, { tools: await listTools(token) });
+        return rpcResult(msg.id, {
+          tools: await listTools(token),
+          ...toolsListCacheHints(token, clientMeta.protocolVersion),
+        });
       case "tools/call": {
-        const { name, arguments: args } = msg.params ?? {};
+        const args = msg.params?.arguments ?? {};
         if (typeof name !== "string") return rpcError(msg.id, -32602, "missing tool name");
         return rpcResult(msg.id, await callTool(token, name, args ?? {}));
       }
       default:
-        return rpcError(msg.id, -32601, `Method not found: ${msg.method}`);
+        return rpcError(msg.id, -32601, `Method not found: ${method}`);
     }
   } catch (e) {
     console.error("[mcp] handler error:", e);
