@@ -2,6 +2,7 @@
   "name": "engram",
   "version": "0.1.0",
   "description": "Portable personal context layer: scoped MCP gateway over gbrain + secrets vault",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {

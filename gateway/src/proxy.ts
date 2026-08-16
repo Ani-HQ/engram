@@ -10,6 +10,61 @@ import { PROMOTE_TOOL_DEF, promoteTool } from "./tools/promote";
 const ALLOWED_READS = new Set(["search", "get_page", "list_pages", "recall"]);
 const ALLOWED_WRITES = new Set(["put_page", "remember", "add_tag", "add_link", "add_timeline_entry"]);
 
+const PROTOCOL_VERSIONS = new Set(["2024-11-05", "2025-03-26", "2025-06-18", "2026-07-28"]);
+const DEFAULT_PROTOCOL_VERSION = "2025-06-18";
+
+export function negotiateProtocolVersion(requested: unknown): string {
+  return typeof requested === "string" && PROTOCOL_VERSIONS.has(requested)
+    ? requested
+    : DEFAULT_PROTOCOL_VERSION;
+}
+
+// 2026-07-28 requires Mcp-Method/Mcp-Name so upstream gateways can route without
+// parsing bodies. engram parses the body regardless (it needs id + params), so the
+// headers buy no parse savings here — they are assertions to VALIDATE, not authority
+// to obey. Obeying a header that disagrees with the body would make engram execute
+// something other than what the JSON-RPC message says, and would silently diverge
+// from any upstream WAF or rate-limiter that inspects bodies instead. So: the body
+// is authoritative, a header may fill in what the body omits, and disagreement is a
+// malformed request. Headers stay optional for 2025-06-18 and older clients.
+export function resolveMcpRouting(
+  headers: { get(name: string): string | null },
+  msg: { method?: unknown; params?: { name?: unknown } },
+): { method: unknown; name: unknown; conflict: string | null } {
+  const headerMethod = headers.get("mcp-method")?.trim();
+  const headerName = headers.get("mcp-name")?.trim();
+  const bodyMethod = msg.method;
+  const bodyName = msg.params?.name;
+
+  const conflict =
+    headerMethod && bodyMethod !== undefined && headerMethod !== bodyMethod
+      ? `Mcp-Method '${headerMethod}' disagrees with body method '${String(bodyMethod)}'`
+      : headerName && bodyName !== undefined && headerName !== bodyName
+        ? `Mcp-Name '${headerName}' disagrees with body tool name '${String(bodyName)}'`
+        : null;
+
+  return {
+    method: bodyMethod ?? headerMethod,
+    name: bodyName ?? headerName,
+    conflict,
+  };
+}
+
+// 2026-07-28 retired initialize; each request carries version, identity,
+// and capabilities in params._meta. Older clients omit _meta entirely.
+export function readClientMeta(params: any): {
+  protocolVersion: string;
+  clientInfo: unknown;
+  clientCapabilities: unknown;
+} {
+  const meta = params?._meta;
+  return {
+    protocolVersion: negotiateProtocolVersion(meta?.["io.modelcontextprotocol/protocolVersion"]),
+    clientInfo: meta?.["io.modelcontextprotocol/clientInfo"],
+    clientCapabilities: meta?.["io.modelcontextprotocol/clientCapabilities"],
+  };
+}
+
 // Extra args engram adds to every proxied tool schema.
 const SCOPE_ARG = {
   scope: {
@@ -19,6 +74,20 @@ const SCOPE_ARG = {
 };
 
 let cachedToolDefs: any[] | null = null;
+
+// SEP-2549 (new in 2026-07-28) cacheScope is "public" | "private", and tools/list
+// is token-dependent: reads/writes are filtered by scope, secret_get/secret_list
+// need token.secrets, promote needs an "rw" scope. "public" would let a shared
+// cache serve a secrets-capable list to a different token, so "private" — per
+// credential, never shared — is the only safe value here. Emitted only to clients
+// that declared 2026-07-28, so older ones aren't handed fields they can't read.
+export function toolsListCacheHints(
+  _token: TokenRecord,
+  protocolVersion: string,
+): { ttlMs: number; cacheScope: "private" } | Record<string, never> {
+  if (protocolVersion !== "2026-07-28") return {};
+  return { ttlMs: 300_000, cacheScope: "private" };
+}
 
 export async function listTools(token: TokenRecord): Promise<any[]> {
   if (!cachedToolDefs) {
@@ -35,10 +104,15 @@ export async function listTools(token: TokenRecord): Promise<any[]> {
         },
       }));
   }
+  // Only advertise what this token can actually invoke. Listing write tools to a
+  // read-only token just invites a call that callTool() will deny anyway.
+  const canReadAny = readableScopes(token).length > 0;
+  const canWriteAny = Object.keys(token.scopes).some(s => canWrite(token, s));
   return [
-    ...cachedToolDefs,
+    ...cachedToolDefs.filter(t =>
+      ALLOWED_WRITES.has(t.name) ? canWriteAny : canReadAny),
     ...(token.secrets ? SECRET_TOOL_DEFS : []),
-    ...(Object.keys(token.scopes).some(s => canWrite(token, s)) ? [PROMOTE_TOOL_DEF] : []),
+    ...(canWriteAny ? [PROMOTE_TOOL_DEF] : []),
     {
       name: "whoami",
       description: "Show this token's identity: name, readable/writable scopes, secrets access.",

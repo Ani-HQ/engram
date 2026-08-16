@@ -37,12 +37,18 @@ async function engramRpc(method, params) {
   };
   if (params !== undefined) body.params = params;
 
+  const headers = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${TOKEN}`,
+    'Mcp-Method': method,
+  };
+  if (params && typeof params.name === 'string') {
+    headers['Mcp-Name'] = params.name;
+  }
+
   const res = await fetch(`${HOST}/mcp`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${TOKEN}`,
-    },
+    headers,
     body: JSON.stringify(body),
   });
 

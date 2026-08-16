@@ -41,6 +41,17 @@ Wire a client: see `docs/WIRING.md`.
 
 ## Status
 
-v0: shared scope, token auth, audit, GCP deploy. Planned: per-scope tokens with
-private/product scopes (v1), Secret Manager-backed secrets vault (v1), promote
-flow + context seeding + nightly pg_dump backups (v2).
+v0: shared scope, token auth, audit, GCP deploy. v1: secrets vault, promote,
+path-token route, stdio shim. Planned: private/product scopes, context seeding,
+nightly pg_dump backups.
+
+## Credits
+
+The memory engine is [gbrain](https://github.com/garrytan/gbrain) by Garry Tan
+(MIT). engram builds it from a pinned fork (`Ani-HQ/gbrain`) so the deployment
+is reproducible and survives upstream drift — see `Dockerfile` for the pin and
+`deploy/patch-gbrain.py` for the Cloud SQL compatibility patches.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
