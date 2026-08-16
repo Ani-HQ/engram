@@ -75,15 +75,12 @@ const SCOPE_ARG = {
 
 let cachedToolDefs: any[] | null = null;
 
-// SEP-2549 cacheScope is "public" | "private". tools/list is token-dependent:
-// secret_get/secret_list are appended only when token.secrets, promote only
-// when some scope is "rw". "public" would let a shared cache serve a
-// secrets-capable list to a different token. "private" is the most
-// restrictive spec value: per authorization context (this credential),
-// never shared across tokens. cachedToolDefs holds only the gbrain-derived
-// subset; per-token additions are appended below per call.
-// ttlMs/cacheScope are SEP-2549, new in 2026-07-28 — only emit them to clients that
-// declared that version, so older clients aren't handed fields they can't interpret.
+// SEP-2549 (new in 2026-07-28) cacheScope is "public" | "private", and tools/list
+// is token-dependent: reads/writes are filtered by scope, secret_get/secret_list
+// need token.secrets, promote needs an "rw" scope. "public" would let a shared
+// cache serve a secrets-capable list to a different token, so "private" — per
+// credential, never shared — is the only safe value here. Emitted only to clients
+// that declared 2026-07-28, so older ones aren't handed fields they can't read.
 export function toolsListCacheHints(
   _token: TokenRecord,
   protocolVersion: string,
@@ -107,10 +104,15 @@ export async function listTools(token: TokenRecord): Promise<any[]> {
         },
       }));
   }
+  // Only advertise what this token can actually invoke. Listing write tools to a
+  // read-only token just invites a call that callTool() will deny anyway.
+  const canReadAny = readableScopes(token).length > 0;
+  const canWriteAny = Object.keys(token.scopes).some(s => canWrite(token, s));
   return [
-    ...cachedToolDefs,
+    ...cachedToolDefs.filter(t =>
+      ALLOWED_WRITES.has(t.name) ? canWriteAny : canReadAny),
     ...(token.secrets ? SECRET_TOOL_DEFS : []),
-    ...(Object.keys(token.scopes).some(s => canWrite(token, s)) ? [PROMOTE_TOOL_DEF] : []),
+    ...(canWriteAny ? [PROMOTE_TOOL_DEF] : []),
     {
       name: "whoami",
       description: "Show this token's identity: name, readable/writable scopes, secrets access.",
