@@ -24,6 +24,7 @@ COPY package.json bun.lock* ./
 RUN bun install
 COPY gateway ./gateway
 COPY cli ./cli
+COPY web ./web
 COPY deploy/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 

@@ -14,6 +14,7 @@ import {
   toolsListCacheHints,
 } from "./proxy";
 import { isPathTokenAllowed } from "./tools/pathtoken";
+import { handleWeb } from "./web";
 
 function rpcResult(id: unknown, result: unknown) {
   return Response.json({ jsonrpc: "2.0", id, result });
@@ -116,7 +117,7 @@ Bun.serve({
       if (!isPathTokenAllowed(token)) return Response.json({ error: "forbidden" }, { status: 403 });
       return handleMcp(req, token);
     }
-    return new Response("Not Found", { status: 404 });
+    return handleWeb(req);
   },
 });
 console.error(`[engram] listening on :${config.port}`);
