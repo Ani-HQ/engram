@@ -1,0 +1,361 @@
+:root {
+  --gofun: #F7F4EC;
+  --kinari: #EFE9DC;
+  --sumi: #1C1A17;
+  --usuzumi: #6E6A62;
+  --nezumi: #A8A29A;
+  --shu: #C7402E;
+  --kin: #B08D2E;
+  --ai: #2C4B66;
+  --mincho: "Hiragino Mincho ProN", "Yu Mincho", YuMincho, "Songti SC", "Noto Serif JP", "Iowan Old Style", Georgia, serif;
+  --ui: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Helvetica Neue", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='table' tableValues='0 .035'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --gofun: #14130F;
+    --kinari: #1D1B17;
+    --sumi: #EDE7DA;
+    --usuzumi: #A39C90;
+    --nezumi: #55514A;
+    --shu: #D85A46;
+    --kin: #C9A44C;
+    --ai: #7FA3C2;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  color: var(--sumi);
+  background: var(--gofun);
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  overflow-x: hidden;
+  color: var(--sumi);
+  background-color: var(--gofun);
+  background-image:
+    radial-gradient(circle at 34% 18%, color-mix(in oklab, var(--kinari) 62%, transparent) 0, transparent 48vw),
+    radial-gradient(circle at 84% 88%, color-mix(in oklab, var(--nezumi) 13%, transparent) 0, transparent 58vw),
+    var(--grain);
+  font-family: var(--ui);
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
+  outline: 1px solid var(--shu);
+  outline-offset: 5px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.login-screen {
+  min-height: 100vh;
+}
+
+.login-scroll {
+  width: min(66ch, calc(100vw - 48px));
+  margin-left: clamp(2rem, 18vw, 15rem);
+  padding-top: 18vh;
+}
+
+.login-form {
+  display: grid;
+  justify-items: start;
+  gap: 1.2rem;
+}
+
+.login-form h1 {
+  margin: 0 0 1.4rem;
+  font-family: var(--mincho);
+  font-size: clamp(2rem, 7vw, 4.5rem);
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.login-form label {
+  width: min(28rem, 100%);
+}
+
+.login-form input,
+.search-field input {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--nezumi);
+  border-radius: 0;
+  padding: 0.72rem 0;
+  color: var(--sumi);
+  background: transparent;
+}
+
+.login-submit,
+.text-button,
+.pane-close,
+.seam-link,
+.tanzaku-tab,
+.ink-row {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.login-submit {
+  padding: 0.64rem 1.1rem;
+  border: 1px solid var(--shu);
+  color: var(--shu);
+  cursor: pointer;
+}
+
+.login-error,
+.capture-error {
+  min-height: 1.4em;
+  margin: 0;
+  color: var(--shu);
+}
+
+.console-shell {
+  display: grid;
+  grid-template-columns: minmax(88px, 10vw) minmax(0, 66ch) 1fr;
+  column-gap: clamp(2.4rem, 6vw, 6.5rem);
+  min-height: 100vh;
+}
+
+.left-rail {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  padding: clamp(1.5rem, 4vw, 3rem) 0 2rem clamp(1rem, 2vw, 1.8rem);
+  display: grid;
+  grid-template-rows: auto auto repeat(3, min-content) 1fr;
+  gap: 1.8rem;
+  color: var(--usuzumi);
+}
+
+.seal {
+  display: block;
+}
+
+.rail-title {
+  margin: 0;
+  color: color-mix(in oklab, var(--usuzumi) 48%, transparent);
+  font-family: var(--mincho);
+  font-size: clamp(2.2rem, 4vw, 4rem);
+  font-weight: 400;
+  letter-spacing: 0.35em;
+  line-height: 1;
+  writing-mode: vertical-rl;
+}
+
+.rail-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.rail-kanji {
+  color: color-mix(in oklab, var(--usuzumi) 58%, transparent);
+  font-family: var(--mincho);
+  font-size: clamp(1.4rem, 2.4vw, 2.2rem);
+  letter-spacing: 0.42em;
+  writing-mode: vertical-rl;
+}
+
+.rail-roman,
+.rail-foot,
+.result-count,
+.row-meta,
+.key-legend,
+.pane-kicker {
+  font-size: 0.74rem;
+  letter-spacing: 0.05em;
+  text-transform: lowercase;
+}
+
+.rail-roman {
+  padding-top: 0.2rem;
+}
+
+.rail-foot {
+  align-self: end;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.text-button,
+.pane-close {
+  width: fit-content;
+  padding: 0;
+  color: var(--usuzumi);
+  border-bottom: 1px solid var(--nezumi);
+  cursor: pointer;
+}
+
+.scroll-column {
+  position: relative;
+  max-width: 66ch;
+  padding: clamp(4.8rem, 12vh, 8rem) 0 7rem;
+}
+
+.search-field {
+  display: grid;
+  grid-template-columns: min-content minmax(0, 1fr);
+  align-items: end;
+  gap: 1.2rem;
+  width: min(40rem, 100%);
+}
+
+.search-field label {
+  color: color-mix(in oklab, var(--usuzumi) 70%, transparent);
+  font-family: var(--mincho);
+  font-size: 1.45rem;
+  letter-spacing: 0.32em;
+  writing-mode: vertical-rl;
+}
+
+.result-count {
+  min-height: 1.5rem;
+  margin: 2.1rem 0 0;
+  color: var(--usuzumi);
+}
+
+.ink-list {
+  display: grid;
+  gap: 1.24rem;
+  margin-top: clamp(2.8rem, 8vh, 5.5rem);
+}
+
+.ink-row {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0.2rem 0 0.42rem 1rem;
+  text-align: left;
+  cursor: pointer;
+  animation: ink-bleed 420ms var(--ease) both;
+  animation-delay: var(--row-delay);
+}
+
+.ink-row::before {
+  position: absolute;
+  top: 0.18rem;
+  bottom: 0.45rem;
+  left: 0;
+  width: 1px;
+  background: transparent;
+  content: "";
+}
+
+.ink-row.is-selected::before {
+  background: var(--shu);
+}
+
+.ink-row.is-selected .row-title {
+  font-weight: 700;
+}
+
+.row-title {
+  display: block;
+  font-family: var(--mincho);
+  font-size: clamp(1.22rem, 2vw, 1.46rem);
+  line-height: 1.35;
+  text-wrap: pretty;
+}
+
+.row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.35rem;
+  color: var(--usuzumi);
+}
+
+.scope-tag {
+  color: var(--ai);
+}
+
+.slug,
+.ink-age,
+.seam-link {
+  font-family: var(--mono);
+  letter-spacing: -0.035em;
+}
+
+.snippet {
+  display: block;
+  margin-top: 0.58rem;
+  color: var(--usuzumi);
+  font-family: var(--mincho);
+  font-size: 0.96rem;
+  line-height: 1.7;
+}
+
+@keyframes ink-bleed {
+  from {
+    filter: blur(6px);
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    filter: blur(0);
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.inline-loading,
+.pane-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 1rem;
+  color: var(--usuzumi);
+}
+
+.seigaiha {
+  width: 7.5rem;
+  height: 3.75rem;
+  color: var(--usuzumi);
+  animation: breathe 1.8s var(--ease) infinite;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.985);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.015);
+  }
+}

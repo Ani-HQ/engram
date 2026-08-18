@@ -1,0 +1,339 @@
+.pane-host {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+}
+
+.shoji-pane {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: min(44rem, 48vw);
+  height: 100%;
+  overflow-y: auto;
+  padding: clamp(2rem, 5vw, 4.5rem) clamp(1.4rem, 4vw, 3.8rem) 5rem clamp(2.2rem, 4vw, 4rem);
+  border-left: 1px solid var(--nezumi);
+  background: color-mix(in oklab, var(--gofun) 78%, transparent);
+  backdrop-filter: blur(20px) saturate(0.9);
+  -webkit-backdrop-filter: blur(20px) saturate(0.9);
+  pointer-events: auto;
+  transform: translateX(100%);
+  transition: transform 440ms var(--ease);
+}
+
+.shoji-pane::before {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2rem;
+  background-image:
+    linear-gradient(to right, var(--nezumi) 0 1px, transparent 1px),
+    repeating-linear-gradient(to bottom, transparent 0 3rem, color-mix(in oklab, var(--nezumi) 58%, transparent) 3rem calc(3rem + 1px));
+  content: "";
+  pointer-events: none;
+}
+
+.shoji-pane.is-open {
+  transform: translateX(0);
+}
+
+.shoji-pane.is-closing {
+  transform: translateX(100%);
+}
+
+.pane-close {
+  margin-bottom: clamp(2rem, 6vh, 4rem);
+}
+
+.pane-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.9rem;
+  margin-bottom: clamp(2.5rem, 7vh, 4.8rem);
+}
+
+.pane-kicker {
+  margin: 0 0 0.45rem;
+  color: var(--usuzumi);
+}
+
+.pane-head h2 {
+  margin: 0;
+  font-family: var(--mincho);
+  font-size: clamp(1.8rem, 4vw, 3.4rem);
+  font-weight: 400;
+  line-height: 1.16;
+  text-wrap: pretty;
+}
+
+.reader-body {
+  margin-top: clamp(2.2rem, 6vh, 4.5rem);
+  font-family: var(--mincho);
+  font-size: 17px;
+  line-height: 1.85;
+  text-wrap: pretty;
+}
+
+.reader-body h2,
+.reader-body h3,
+.reader-body h4,
+.reader-body h5,
+.reader-body h6 {
+  margin: 2.4em 0 0.75em;
+  font-weight: 500;
+}
+
+.reader-body p,
+.reader-body ul,
+.reader-body pre {
+  margin: 0 0 1.4em;
+}
+
+.reader-body a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--kin);
+  text-underline-offset: 0.18em;
+}
+
+.reader-body code,
+.reader-body pre {
+  font-family: var(--mono);
+  letter-spacing: -0.035em;
+}
+
+.reader-body pre {
+  overflow-x: auto;
+  padding: 1rem 0;
+  border-top: 1px solid var(--nezumi);
+  border-bottom: 1px solid var(--nezumi);
+}
+
+.kintsugi {
+  position: relative;
+  height: 180px;
+  margin: 0 0 1rem;
+  color: var(--usuzumi);
+}
+
+.kintsugi svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.kintsugi-source {
+  position: absolute;
+  top: 0.3rem;
+  left: 0;
+  max-width: 15ch;
+  margin: 0;
+  font-family: var(--mincho);
+  line-height: 1.4;
+}
+
+.kintsugi-targets {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 15rem;
+}
+
+.seam-link {
+  position: absolute;
+  right: 0;
+  padding: 0 0 0.14rem;
+  border-bottom: 1px solid var(--kin);
+  color: var(--sumi);
+  cursor: pointer;
+}
+
+.emaki {
+  margin-top: clamp(3rem, 8vh, 6rem);
+}
+
+.emaki h3 {
+  margin: 0 0 1rem;
+  color: var(--usuzumi);
+  font-family: var(--mincho);
+  font-weight: 400;
+  letter-spacing: 0.32em;
+}
+
+.emaki-strip {
+  direction: rtl;
+  overflow-x: auto;
+  padding: 1.8rem 0 1.2rem;
+  cursor: grab;
+  scroll-snap-type: x proximity;
+}
+
+.emaki-strip:active {
+  cursor: grabbing;
+}
+
+.emaki-inner {
+  position: relative;
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: space-between;
+  gap: 4rem;
+  min-width: 940px;
+}
+
+.emaki-inner::before {
+  position: absolute;
+  top: 0.66rem;
+  right: -12vw;
+  left: -12vw;
+  border-top: 1px solid var(--nezumi);
+  content: "";
+}
+
+.emaki-node {
+  position: relative;
+  width: 9.5rem;
+  scroll-snap-align: center;
+}
+
+.node-dot {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 0.48rem;
+  height: 0.48rem;
+  margin: 0.45rem auto 0.8rem;
+  border-radius: 50%;
+  background: var(--sumi);
+}
+
+.emaki-node time {
+  display: block;
+  color: var(--usuzumi);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: -0.035em;
+}
+
+.emaki-node p {
+  margin: 0.42rem 0 0;
+  font-family: var(--mincho);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.yohaku {
+  position: relative;
+  min-height: 48vh;
+}
+
+.yohaku .seal {
+  position: absolute;
+  top: 22%;
+  left: 38%;
+  transform: rotate(-4deg);
+}
+
+.empty-kanji {
+  position: absolute;
+  top: 13%;
+  left: 17%;
+  margin: 0;
+  color: color-mix(in oklab, var(--usuzumi) 56%, transparent);
+  font-family: var(--mincho);
+  font-size: clamp(2.3rem, 8vw, 5rem);
+  letter-spacing: 0.68em;
+  writing-mode: vertical-rl;
+}
+
+.empty-hint {
+  position: absolute;
+  top: 68%;
+  left: 25%;
+  margin: 0;
+  color: var(--usuzumi);
+  font-size: 0.86rem;
+}
+
+.key-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem 1.1rem;
+  margin-top: 1.2rem;
+  color: var(--usuzumi);
+}
+
+@media (max-width: 720px) {
+  .console-shell {
+    display: block;
+  }
+
+  .left-rail {
+    position: relative;
+    height: auto;
+    grid-template-columns: auto auto 1fr auto;
+    grid-template-rows: auto;
+    align-items: center;
+    padding: 1rem;
+  }
+
+  .rail-title {
+    font-size: 2rem;
+    letter-spacing: 0.12em;
+    writing-mode: horizontal-tb;
+  }
+
+  .rail-label {
+    display: none;
+  }
+
+  .rail-foot {
+    justify-items: end;
+  }
+
+  .scroll-column {
+    max-width: none;
+    padding: 3.5rem 1rem 6rem;
+  }
+
+  .capture-host {
+    position: fixed;
+    top: 5rem;
+    right: 1rem;
+  }
+
+  .shoji-pane {
+    width: 100%;
+    padding-left: 3.5rem;
+  }
+
+  .kintsugi-targets {
+    width: 11rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+
+  .ink-row,
+  .seigaiha,
+  .tanzaku-panel.is-folding,
+  .shoji-pane,
+  .shoji-pane.is-open,
+  .shoji-pane.is-closing {
+    filter: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    animation: none !important;
+  }
+}

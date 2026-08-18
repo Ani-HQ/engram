@@ -1,0 +1,32 @@
+{
+  "results": [
+    {
+      "slug": "ink-density-recency",
+      "title": "Ink density follows recency",
+      "scope": "shared",
+      "updated_at": "2026-08-18T07:30:00Z",
+      "snippet": "Fresh pages carry full sumi, while older pages fade only within a contrast-safe range."
+    },
+    {
+      "slug": "search-bleed",
+      "title": "Search rows bleed in",
+      "scope": "shared",
+      "updated_at": "2026-01-15T22:10:00Z",
+      "snippet": "Rows arrive with a slight blur, a small upward drift, and a damp-paper stagger."
+    },
+    {
+      "slug": "kintsugi-links",
+      "title": "Kintsugi seams for linked memory",
+      "scope": "shared",
+      "updated_at": "2026-06-01T09:00:00Z",
+      "snippet": "Gold paths should feel like repair seams, not a graph."
+    },
+    {
+      "slug": "hanko-identity",
+      "title": "Hanko identity marks",
+      "scope": "shared",
+      "updated_at": "2025-11-30T13:30:00Z",
+      "snippet": "Each source gets a deterministic vermillion seal built from blocky pseudo-glyphs."
+    }
+  ]
+}

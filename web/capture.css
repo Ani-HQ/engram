@@ -1,0 +1,83 @@
+.capture-host {
+  position: absolute;
+  top: clamp(3rem, 6vh, 4.8rem);
+  right: clamp(-6.4rem, -8vw, -4.2rem);
+  z-index: 20;
+  perspective: 900px;
+}
+
+.tanzaku-tab {
+  min-height: 9.2rem;
+  padding: 0.65rem 0.35rem;
+  color: var(--sumi);
+  border-left: 1px solid var(--nezumi);
+  border-right: 1px solid color-mix(in oklab, var(--nezumi) 45%, transparent);
+  font-family: var(--mincho);
+  font-size: 1.15rem;
+  letter-spacing: 0.42em;
+  writing-mode: vertical-rl;
+  cursor: pointer;
+}
+
+.tanzaku-panel {
+  width: min(27rem, calc(100vw - 2rem));
+  padding: 1rem 1.1rem 0.8rem;
+  border-left: 1px solid var(--nezumi);
+  /* Opaque: a strip of paper laid on the desk. Translucent let the row text
+     underneath bleed through the writing surface, which read as a broken modal. */
+  background: var(--kinari);
+  transform-origin: top;
+}
+
+/* Wide viewports have a whole empty mounting margin to the right, so the strip
+   unrolls INTO it rather than over the collection. The tab itself stays put —
+   it is the affordance, and it belongs beside the content, not at the far edge. */
+@media (min-width: 1200px) {
+  .tanzaku-panel {
+    position: absolute;
+    top: 0;
+    left: 100%;
+  }
+}
+
+.tanzaku-panel.is-folding {
+  animation: tanzaku-fold 320ms var(--ease) both;
+}
+
+@keyframes tanzaku-fold {
+  to {
+    opacity: 0;
+    transform: rotateX(82deg);
+  }
+}
+
+.tanzaku-panel textarea {
+  width: 100%;
+  min-height: 13rem;
+  resize: vertical;
+  border: 0;
+  border-radius: 0;
+  color: var(--sumi);
+  background:
+    repeating-linear-gradient(to bottom, transparent 0 2rem, color-mix(in oklab, var(--nezumi) 42%, transparent) calc(2rem + 1px));
+  font-family: var(--mincho);
+  font-size: 1.05rem;
+  line-height: 2rem;
+}
+
+.capture-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 0.8rem;
+}
+
+.primary-action {
+  padding: 0.6rem 0.95rem;
+  border: 1px solid var(--shu);
+  border-radius: 0;
+  color: var(--gofun);
+  background: var(--shu);
+  cursor: pointer;
+}

@@ -4,3 +4,6 @@ node_modules
 .env.local
 docs
 *.md
+web/fixtures
+web/dev-server.ts
+web/*.test.ts

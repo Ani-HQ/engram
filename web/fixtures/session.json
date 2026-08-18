@@ -1,0 +1,8 @@
+{
+  "name": "dev-console",
+  "scopes": {
+    "shared": "rw",
+    "private": "r"
+  },
+  "secrets": false
+}
