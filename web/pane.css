@@ -196,6 +196,11 @@
   position: relative;
   width: 9.5rem;
   scroll-snap-align: center;
+  /* The scroller is rtl so the roll opens right-to-left, but the entries are
+     Latin prose — without this the bidi algorithm throws sentence-final
+     punctuation to the wrong end ("*.title darkness"). */
+  direction: ltr;
+  text-align: left;
 }
 
 .node-dot {

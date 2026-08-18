@@ -237,7 +237,11 @@ function renderPane() {
     );
   }
   refs.paneHost.append(pane);
-  requestAnimationFrame(() => pane.classList.add("is-open"));
+  // Reading layout flushes the closed state so the transition still runs, without
+  // depending on rAF — a backgrounded tab throttles rAF and the pane would open
+  // stuck off-screen, with its content unreachable.
+  pane.getBoundingClientRect();
+  pane.classList.add("is-open");
 }
 
 function closePane() {
