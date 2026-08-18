@@ -71,7 +71,13 @@ function showLogin(message = "") {
   },
     sealImg("engram bunko", 82, "engram hanko"),
     h("h1", {}, "engram 文庫"),
-    h("label", {}, h("span", { class: "sr-only" }, "Access token"), input),
+    // Restraint is the aesthetic, but a screen that does not say what it wants
+    // is not restrained, it is unusable. These three lines are the floor.
+    h("p", { class: "login-blurb" }, "The reading room for your brain — the memory your agents share."),
+    h("label", { class: "field-label" },
+      h("span", {}, "paste an engram token"),
+      input),
+    h("p", { class: "login-hint" }, "Mint one with: engram-admin token issue --name <agent> --scopes shared:rw"),
     h("button", { type: "submit", class: "login-submit" }, "enter"),
     h("p", { class: "login-error", role: "status" }, message),
   );
@@ -95,6 +101,11 @@ function showConsole() {
     },
   });
   refs.count = h("p", { class: "result-count", "aria-live": "polite" });
+  // The ink fade is meaningless to anyone who was not told what it encodes.
+  refs.legend = h("p", { class: "collection-legend" },
+    h("span", {}, "ink darkens with recency"),
+    h("span", { class: "legend-keys" }, "/ search · j k move · enter open · c write · ? keys"),
+  );
   refs.list = h("section", { class: "ink-list", role: "listbox", "aria-label": "Memory pages" });
   refs.capture = h("div", { class: "capture-host" });
   refs.keyHelp = h("div", { class: "key-help-host" });
@@ -119,6 +130,7 @@ function showConsole() {
       refs.search,
     ),
     refs.count,
+    refs.legend,
     refs.keyHelp,
     refs.list,
   );
@@ -259,7 +271,9 @@ function renderCapture() {
   refs.capture.replaceChildren();
   if (!canWrite()) return;
   if (!state.captureOpen) {
-    refs.capture.append(h("button", { type: "button", class: "tanzaku-tab", "aria-expanded": "false", onclick: openCapture }, "記す"));
+    refs.capture.append(h("button", { type: "button", class: "tanzaku-tab", "aria-expanded": "false", title: "Write a note (c)", onclick: openCapture },
+      h("span", { class: "tab-kanji" }, "記す"),
+      h("span", { class: "tab-roman" }, "write")));
     return;
   }
   const textarea = h("textarea", {

@@ -359,3 +359,60 @@ a:focus-visible,
     transform: scale(1.015);
   }
 }
+
+/* Legibility floor: the aesthetic may be quiet, but the screen still has to say
+   what it is, what the ink means, and which keys do anything. */
+.login-blurb {
+  max-width: 34ch;
+  margin: 0.4rem 0 2.4rem;
+  color: var(--usuzumi);
+  font-family: var(--mincho);
+  font-size: 1.02rem;
+  line-height: 1.7;
+}
+
+.field-label {
+  display: block;
+}
+
+.field-label > span {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--usuzumi);
+  font-size: 0.78rem;
+  letter-spacing: 0.09em;
+  text-transform: lowercase;
+}
+
+.login-hint {
+  margin-top: 1.5rem;
+  color: color-mix(in oklab, var(--usuzumi) 78%, transparent);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: -0.02em;
+}
+
+.collection-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.4rem;
+  margin-top: 0.35rem;
+  color: color-mix(in oklab, var(--usuzumi) 80%, transparent);
+  font-size: 0.74rem;
+  letter-spacing: 0.02em;
+}
+
+.legend-keys {
+  font-family: var(--mono);
+  letter-spacing: -0.03em;
+}
+
+.tab-roman {
+  margin-top: 0.7rem;
+  color: var(--usuzumi);
+  font-family: var(--ui);
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  writing-mode: horizontal-tb;
+  text-orientation: mixed;
+}
