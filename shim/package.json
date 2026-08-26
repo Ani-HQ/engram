@@ -1,10 +1,25 @@
 {
   "name": "@ani-hq/engram-mcp",
   "version": "0.1.0",
-  "description": "stdio MCP proxy for the engram HTTP gateway",
+  "description": "One-command MCP harness connector and stdio proxy for engram",
   "license": "MIT",
   "bin": {
     "engram-mcp": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ani-HQ/os-engram.git",
+    "directory": "shim"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0"

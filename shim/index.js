@@ -10,59 +10,544 @@
 
 'use strict';
 
-const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
-const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
-const {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} = require('@modelcontextprotocol/sdk/types.js');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 
-const HOST = (process.env.ENGRAM_HOST || '').replace(/\/$/, '');
-const TOKEN = process.env.ENGRAM_TOKEN || '';
+const SUPPORTED_HARNESSES = ['claude', 'codex', 'cursor', 'vscode', 'windsurf'];
 
-if (!HOST || !TOKEN) {
-  console.error(
-    '@ani-hq/engram-mcp requires ENGRAM_HOST and ENGRAM_TOKEN environment variables'
-  );
-  process.exit(1);
-}
+function dispatch() {
+  const [subcommand, ...args] = process.argv.slice(2);
 
-let rpcId = 1;
-
-async function engramRpc(method, params) {
-  const body = {
-    jsonrpc: '2.0',
-    id: rpcId++,
-    method,
-  };
-  if (params !== undefined) body.params = params;
-
-  const headers = {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${TOKEN}`,
-    'Mcp-Method': method,
-  };
-  if (params && typeof params.name === 'string') {
-    headers['Mcp-Name'] = params.name;
+  if (subcommand === 'connect') {
+    try {
+      process.exit(runConnect(args));
+    } catch (err) {
+      console.error(err.message || err);
+      process.exit(1);
+    }
   }
 
-  const res = await fetch(`${HOST}/mcp`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
+  if (subcommand === '--help' || subcommand === '-h') {
+    printRootHelp();
+    process.exit(0);
+  }
+
+  if (subcommand) {
+    console.error(`Unknown subcommand: ${subcommand}`);
+    printRootHelp();
+    process.exit(1);
+  }
+
+  runProxy().catch((err) => {
+    console.error(err);
+    process.exit(1);
   });
-
-  const json = await res.json();
-  if (!res.ok) {
-    throw new Error(json.error?.message || json.error || `engram MCP HTTP ${res.status}`);
-  }
-  if (json.error) {
-    throw new Error(json.error.message || `engram MCP error ${json.error.code}`);
-  }
-  return json.result;
 }
 
-async function main() {
+function printRootHelp() {
+  console.log(`Usage:
+  engram-mcp
+  engram-mcp connect [harness] [--host <url>] [--token <token>]
+  engram-mcp connect --list`);
+}
+
+function runConnect(args) {
+  const parsed = parseConnectArgs(args);
+  if (parsed.error) {
+    console.error(parsed.error);
+    printConnectList();
+    return 1;
+  }
+
+  if (parsed.list || !parsed.harness) {
+    printConnectList();
+    return 0;
+  }
+
+  const harness = parsed.harness.toLowerCase();
+  if (!SUPPORTED_HARNESSES.includes(harness)) {
+    console.error(`Unsupported harness: ${parsed.harness}`);
+    printConnectList();
+    return 1;
+  }
+
+  const host = normalizeRequiredValue(parsed.host ?? process.env.ENGRAM_HOST);
+  const token = normalizeRequiredValue(parsed.token ?? process.env.ENGRAM_TOKEN);
+  const missing = [];
+
+  if (!host) missing.push('host (--host or ENGRAM_HOST)');
+  if (!token) missing.push('token (--token or ENGRAM_TOKEN)');
+
+  if (missing.length) {
+    console.error(`Missing ${missing.join(' and ')}.`);
+    return 1;
+  }
+
+  const endpoint = toMcpEndpoint(host);
+
+  if (harness === 'claude') {
+    return connectClaude(endpoint, token);
+  }
+
+  if (harness === 'codex') {
+    return connectCodex(endpoint, token);
+  }
+
+  if (harness === 'cursor') {
+    return connectJsonHarness('cursor', cursorConfigPath(), 'mcpServers', cursorServer(endpoint, token));
+  }
+
+  if (harness === 'vscode') {
+    return connectJsonHarness('vscode', vscodeConfigPath(), 'servers', vscodeServer(endpoint, token));
+  }
+
+  if (harness === 'windsurf') {
+    return connectJsonHarness(
+      'windsurf',
+      windsurfConfigPath(),
+      'mcpServers',
+      cursorServer(endpoint, token)
+    );
+  }
+
+  return 1;
+}
+
+function parseConnectArgs(args) {
+  const parsed = {
+    harness: '',
+    host: undefined,
+    token: undefined,
+    list: false,
+  };
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+
+    if (arg === '--list') {
+      parsed.list = true;
+      continue;
+    }
+
+    if (arg === '--host' || arg === '--token') {
+      const next = args[i + 1];
+      if (next === undefined || next.startsWith('--')) {
+        return { error: `${arg} requires a value` };
+      }
+      parsed[arg.slice(2)] = next;
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--host=')) {
+      parsed.host = arg.slice('--host='.length);
+      continue;
+    }
+
+    if (arg.startsWith('--token=')) {
+      parsed.token = arg.slice('--token='.length);
+      continue;
+    }
+
+    if (arg.startsWith('--')) {
+      return { error: `Unknown option: ${arg}` };
+    }
+
+    if (parsed.harness) {
+      return { error: `Unexpected argument: ${arg}` };
+    }
+    parsed.harness = arg;
+  }
+
+  return parsed;
+}
+
+function printConnectList() {
+  console.log('Supported harnesses:');
+  for (const harness of SUPPORTED_HARNESSES) {
+    console.log(`  ${harness.padEnd(9)} ${configPathForList(harness)}`);
+  }
+}
+
+function configPathForList(harness) {
+  if (harness === 'claude') return path.join(os.homedir(), '.claude.json');
+  if (harness === 'codex') return codexConfigPath();
+  if (harness === 'cursor') return cursorConfigPath();
+  if (harness === 'vscode') return vscodeConfigPath();
+  if (harness === 'windsurf') return windsurfConfigPath();
+  return '';
+}
+
+function normalizeRequiredValue(value) {
+  if (value === undefined || value === null) return '';
+  return String(value).trim();
+}
+
+function toMcpEndpoint(host) {
+  const trimmed = host.replace(/\/+$/, '');
+  return trimmed.endsWith('/mcp') ? trimmed : `${trimmed}/mcp`;
+}
+
+function connectClaude(endpoint, token) {
+  if (!hasExecutable('claude')) {
+    console.error('Missing claude binary. Run this command by hand after installing Claude Code:');
+    console.error(formatClaudeCommand(endpoint, token));
+    return 1;
+  }
+
+  backupExistingFile(configPathForList('claude'), 'claude will create or update it');
+
+  const args = [
+    'mcp',
+    'add',
+    '--scope',
+    'user',
+    '--transport',
+    'http',
+    'engram',
+    endpoint,
+    '--header',
+    `Authorization: Bearer ${token}`,
+  ];
+  const result = spawnSync('claude', args, { stdio: 'inherit' });
+
+  if (result.error) {
+    console.error(result.error.message);
+    return 1;
+  }
+
+  return result.status ?? 0;
+}
+
+function hasExecutable(name) {
+  const pathValue = process.env.PATH || '';
+  const dirs = pathValue.split(path.delimiter).filter(Boolean);
+  const extensions = process.platform === 'win32'
+    ? (process.env.PATHEXT || '.EXE;.CMD;.BAT;.COM').split(';')
+    : [''];
+
+  for (const dir of dirs) {
+    for (const extension of extensions) {
+      const candidate = path.join(dir, `${name}${extension}`);
+      try {
+        fs.accessSync(candidate, fs.constants.X_OK);
+        return true;
+      } catch {
+        // Keep searching PATH.
+      }
+    }
+  }
+
+  return false;
+}
+
+function formatClaudeCommand(endpoint, token) {
+  const safeHeader = `Authorization: Bearer ${token}`.replace(/(["\\$`])/g, '\\$1');
+  return `claude mcp add --scope user --transport http engram ${shellToken(endpoint)} --header "${safeHeader}"`;
+}
+
+function shellToken(value) {
+  if (/^[A-Za-z0-9_/:@%+=.,-]+$/.test(value)) return value;
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function connectCodex(endpoint, token) {
+  const file = codexConfigPath();
+  const raw = readTextIfExists(file);
+  const next = replaceTomlTable(raw, 'mcp_servers.engram', codexTomlEntry(endpoint, token));
+
+  backupAndWrite(file, next);
+  console.log(`Configured engram for codex at ${file}`);
+  return 0;
+}
+
+function codexConfigPath() {
+  return path.join(os.homedir(), '.codex', 'config.toml');
+}
+
+function codexTomlEntry(endpoint, token) {
+  return [
+    '[mcp_servers.engram]',
+    `url = ${tomlString(endpoint)}`,
+    `http_headers = { Authorization = ${tomlString(`Bearer ${token}`)} }`,
+    '',
+  ].join('\n');
+}
+
+function tomlString(value) {
+  return JSON.stringify(String(value));
+}
+
+function replaceTomlTable(raw, tablePath, replacement) {
+  const lines = splitLines(raw);
+  const target = tablePath.split('.');
+  const remove = new Array(lines.length).fill(false);
+  let firstRemoved = -1;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const header = parseTomlHeader(lines[i].text);
+    if (!header || !isSameOrChildPath(header.path, target)) continue;
+
+    if (firstRemoved === -1) firstRemoved = i;
+
+    let end = i + 1;
+    while (end < lines.length && !parseTomlHeader(lines[end].text)) {
+      end += 1;
+    }
+
+    for (let j = i; j < end; j += 1) {
+      remove[j] = true;
+    }
+    i = end - 1;
+  }
+
+  const replacementLines = splitLines(ensureSingleTrailingNewline(replacement));
+
+  if (firstRemoved !== -1) {
+    const out = [];
+    let inserted = false;
+    for (let i = 0; i < lines.length; i += 1) {
+      if (i === firstRemoved) {
+        out.push(...replacementLines);
+        inserted = true;
+      }
+      if (!remove[i]) out.push(lines[i]);
+    }
+    if (!inserted) out.push(...replacementLines);
+    return joinLines(out);
+  }
+
+  if (!raw) return ensureSingleTrailingNewline(replacement);
+  const separator = raw.endsWith('\n') ? (raw.endsWith('\n\n') ? '' : '\n') : '\n\n';
+  return `${raw}${separator}${ensureSingleTrailingNewline(replacement)}`;
+}
+
+function splitLines(raw) {
+  if (!raw) return [];
+  const matches = raw.match(/[^\r\n]*(?:\r\n|\n|\r|$)/g) || [];
+  return matches
+    .filter((line) => line.length > 0)
+    .map((line) => {
+      const match = line.match(/^(.*?)(\r\n|\n|\r)?$/);
+      return { text: match[1], eol: match[2] || '' };
+    });
+}
+
+function joinLines(lines) {
+  return lines.map((line) => `${line.text}${line.eol}`).join('');
+}
+
+function ensureSingleTrailingNewline(raw) {
+  return `${raw.replace(/\s*$/, '')}\n`;
+}
+
+function parseTomlHeader(line) {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('[')) return null;
+  const match = trimmed.match(/^\[(?!\[)(.+)\]\s*(?:#.*)?$/);
+  if (!match) return null;
+  const pathParts = parseTomlPath(match[1].trim());
+  return pathParts.length ? { path: pathParts } : null;
+}
+
+function parseTomlPath(raw) {
+  const parts = [];
+  let current = '';
+  let quote = '';
+  let escaping = false;
+
+  for (let i = 0; i < raw.length; i += 1) {
+    const char = raw[i];
+
+    if (quote) {
+      if (escaping) {
+        current += char;
+        escaping = false;
+      } else if (char === '\\') {
+        escaping = true;
+      } else if (char === quote) {
+        quote = '';
+      } else {
+        current += char;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+
+    if (char === '.') {
+      parts.push(current.trim());
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  parts.push(current.trim());
+  return parts.filter(Boolean);
+}
+
+function isSameOrChildPath(pathParts, targetParts) {
+  if (pathParts.length < targetParts.length) return false;
+  for (let i = 0; i < targetParts.length; i += 1) {
+    if (pathParts[i] !== targetParts[i]) return false;
+  }
+  return true;
+}
+
+function connectJsonHarness(name, file, serverRootKey, serverConfig) {
+  const config = readJsonObject(file);
+  const servers = config[serverRootKey];
+
+  if (!servers || typeof servers !== 'object' || Array.isArray(servers)) {
+    config[serverRootKey] = {};
+  }
+
+  config[serverRootKey].engram = serverConfig;
+  backupAndWrite(file, `${JSON.stringify(config, null, 2)}\n`);
+  console.log(`Configured engram for ${name} at ${file}`);
+  return 0;
+}
+
+function readJsonObject(file) {
+  const raw = readTextIfExists(file);
+  if (!raw.trim()) return {};
+
+  const parsed = JSON.parse(raw);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`${file} must contain a JSON object`);
+  }
+  return parsed;
+}
+
+function cursorServer(endpoint, token) {
+  return {
+    url: endpoint,
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  };
+}
+
+function vscodeServer(endpoint, token) {
+  return {
+    type: 'http',
+    url: endpoint,
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  };
+}
+
+function cursorConfigPath() {
+  return path.join(os.homedir(), '.cursor', 'mcp.json');
+}
+
+function vscodeConfigPath() {
+  if (process.platform === 'win32') {
+    return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'Code', 'User', 'mcp.json');
+  }
+  if (process.platform === 'darwin') {
+    return path.join(os.homedir(), 'Library', 'Application Support', 'Code', 'User', 'mcp.json');
+  }
+  return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'Code', 'User', 'mcp.json');
+}
+
+function windsurfConfigPath() {
+  return path.join(os.homedir(), '.codeium', 'windsurf', 'mcp_config.json');
+}
+
+function readTextIfExists(file) {
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch (err) {
+    if (err.code === 'ENOENT') return '';
+    throw err;
+  }
+}
+
+function backupAndWrite(file, content) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+
+  if (fs.existsSync(file)) {
+    backupExistingFile(file);
+  } else {
+    console.log(`No existing ${file}; creating new file`);
+  }
+
+  fs.writeFileSync(file, content);
+}
+
+function backupExistingFile(file, missingMessage) {
+  if (!fs.existsSync(file)) {
+    if (missingMessage) console.log(`No existing ${file}; ${missingMessage}`);
+    return;
+  }
+
+  const backup = `${file}.engram-backup`;
+  fs.copyFileSync(file, backup);
+  console.log(`Backed up ${file} to ${backup}`);
+}
+
+async function runProxy() {
+  const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
+  const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
+  const {
+    CallToolRequestSchema,
+    ListToolsRequestSchema,
+  } = require('@modelcontextprotocol/sdk/types.js');
+
+  const HOST = (process.env.ENGRAM_HOST || '').replace(/\/$/, '');
+  const TOKEN = process.env.ENGRAM_TOKEN || '';
+
+  if (!HOST || !TOKEN) {
+    console.error(
+      '@ani-hq/engram-mcp requires ENGRAM_HOST and ENGRAM_TOKEN environment variables'
+    );
+    process.exit(1);
+  }
+
+  let rpcId = 1;
+
+  async function engramRpc(method, params) {
+    const body = {
+      jsonrpc: '2.0',
+      id: rpcId++,
+      method,
+    };
+    if (params !== undefined) body.params = params;
+
+    const headers = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${TOKEN}`,
+      'Mcp-Method': method,
+    };
+    if (params && typeof params.name === 'string') {
+      headers['Mcp-Name'] = params.name;
+    }
+
+    const res = await fetch(`${HOST}/mcp`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    const json = await res.json();
+    if (!res.ok) {
+      throw new Error(json.error?.message || json.error || `engram MCP HTTP ${res.status}`);
+    }
+    if (json.error) {
+      throw new Error(json.error.message || `engram MCP error ${json.error.code}`);
+    }
+    return json.result;
+  }
+
   const server = new Server(
     { name: 'engram', version: '0.1.0' },
     { capabilities: { tools: {} } }
@@ -102,7 +587,4 @@ async function main() {
   await server.connect(transport);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+dispatch();
