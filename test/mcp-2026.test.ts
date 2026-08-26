@@ -107,26 +107,21 @@ describe("header vs body method resolution", () => {
 });
 
 describe("tools/list cache-hint derivation", () => {
-  const shareable = new Set(["public", "shared", "global"]);
-
-  test("never produces a cross-token-shareable cacheScope", () => {
+  test("marks tools/list as public because every token gets the same list", () => {
     const tokens = [
-      { name: "ro", scopes: { shared: "r" }, secrets: false },
-      { name: "secrets", scopes: { shared: "r" }, secrets: true },
-      { name: "writer", scopes: { shared: "rw" }, secrets: false },
-      { name: "admin", scopes: { shared: "rw", private: "rw" }, secrets: true },
+      { name: "one" },
+      { name: "two" },
     ];
     for (const token of tokens) {
       const hints = toolsListCacheHints(token, "2026-07-28");
       expect(typeof hints.ttlMs).toBe("number");
       expect(hints.ttlMs).toBeGreaterThanOrEqual(0);
-      expect(shareable.has(hints.cacheScope)).toBe(false);
-      expect(hints.cacheScope).toBe("private");
+      expect(hints.cacheScope).toBe("public");
     }
   });
 
   test("emits no 2026-only fields to older clients", () => {
-    const token = { name: "ro", scopes: { shared: "r" }, secrets: false };
+    const token = { name: "ro" };
     for (const v of ["2025-06-18", "2025-03-26", "2024-11-05"]) {
       expect(toolsListCacheHints(token, v)).toEqual({});
     }

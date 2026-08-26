@@ -120,6 +120,7 @@ a:focus-visible,
 
 .login-submit,
 .text-button,
+.inline-undo,
 .pane-close,
 .seam-link,
 .tanzaku-tab,
@@ -213,12 +214,24 @@ a:focus-visible,
 }
 
 .text-button,
-.pane-close {
+.pane-close,
+.inline-undo {
   width: fit-content;
   padding: 0;
   color: var(--usuzumi);
   border-bottom: 1px solid var(--nezumi);
   cursor: pointer;
+}
+
+.inline-undo {
+  font-size: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+
+.inline-undo:disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 
 .scroll-column {

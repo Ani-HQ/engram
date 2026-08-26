@@ -43,8 +43,15 @@
   transform: translateX(100%);
 }
 
-.pane-close {
+.pane-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem 1.2rem;
   margin-bottom: clamp(2rem, 6vh, 4rem);
+}
+
+.pane-actions .pane-close {
+  margin-bottom: 0;
 }
 
 .pane-head {

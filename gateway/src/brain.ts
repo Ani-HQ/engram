@@ -1,92 +1,80 @@
-// One persistent `gbrain serve` stdio child per scope, supervised.
-// Each child gets its own GBRAIN_HOME (config isolation) and GBRAIN_DATABASE_URL
-// (data isolation — one Postgres database per scope; this is the privacy boundary).
 import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { config, dbUrl, scopeDb } from "./config";
+import { config, dbUrl } from "./config";
 
-interface ScopeChild {
-  scope: string;
+interface BrainChild {
   client: Client;
   restarts: number;
 }
 
-const children = new Map<string, ScopeChild>();
+let running: BrainChild | null = null;
 
-function childEnv(scope: string): Record<string, string> {
-  const home = `${config.gbrainHomesDir}/${scope.replace(/[^a-z0-9]+/g, "_")}`;
+function childEnv(): Record<string, string> {
+  const home = `${config.gbrainHomesDir}/brain`;
   mkdirSync(home, { recursive: true });
   return {
     ...(process.env as Record<string, string>),
     GBRAIN_HOME: home,
-    GBRAIN_DATABASE_URL: dbUrl(scopeDb(scope)),
+    GBRAIN_DATABASE_URL: dbUrl(config.brainDb),
   };
 }
 
-// Idempotent: applies migrations and (re)writes the per-scope config.json.
-function initScope(scope: string) {
+function initBrain() {
   const r = spawnSync(config.gbrainBin, ["init", "--non-interactive", "--force", "--json"], {
-    env: childEnv(scope),
+    env: childEnv(),
     timeout: 120_000,
     encoding: "utf8",
   });
   if (r.status !== 0) {
     throw new Error(
-      `gbrain init failed for scope ${scope} (status=${r.status}, ` +
+      `gbrain init failed for ${config.brainDb} (status=${r.status}, ` +
       `error=${r.error ? String(r.error) : "none"}): ` +
       `stderr=${r.stderr?.slice(-400) ?? "none"} stdout=${r.stdout?.slice(-200) ?? "none"}`,
     );
   }
 }
 
-async function spawnChild(scope: string): Promise<ScopeChild> {
+async function spawnBrain(restarts = running?.restarts ?? 0): Promise<BrainChild> {
   const transport = new StdioClientTransport({
     command: config.gbrainBin,
     args: ["serve"],
-    env: childEnv(scope),
+    env: childEnv(),
     stderr: "pipe",
   });
   const client = new Client({ name: "engram-gateway", version: "0.1.0" });
   await client.connect(transport);
 
-  const child: ScopeChild = { scope, client, restarts: children.get(scope)?.restarts ?? 0 };
+  const child: BrainChild = { client, restarts };
   transport.onclose = () => {
     child.restarts += 1;
     const delay = Math.min(30_000, 1000 * 2 ** Math.min(child.restarts, 5));
-    console.error(`[scopes] gbrain child for '${scope}' exited; respawn in ${delay}ms`);
+    console.error(`[brain] gbrain child exited; respawn in ${delay}ms`);
     setTimeout(() => {
-      spawnChild(scope).then(c => children.set(scope, c)).catch(e =>
-        console.error(`[scopes] respawn failed for '${scope}':`, e));
+      spawnBrain(child.restarts).then(c => running = c).catch(e =>
+        console.error("[brain] respawn failed:", e));
     }, delay);
   };
   return child;
 }
 
-export async function startScopes() {
-  for (const scope of config.scopes) {
-    initScope(scope);
-    children.set(scope, await spawnChild(scope));
-    console.error(`[scopes] '${scope}' ready (db=${scopeDb(scope)})`);
-  }
+export async function startBrain() {
+  initBrain();
+  running = await spawnBrain();
+  console.error(`[brain] ready (db=${config.brainDb})`);
 }
 
-export function scopeClient(scope: string): Client {
-  const c = children.get(scope);
-  if (!c) throw new Error(`unknown scope: ${scope}`);
-  return c.client;
+export function brainClient(): Client {
+  if (!running) throw new Error("brain child is not ready");
+  return running.client;
 }
 
-export async function scopesHealth(): Promise<Record<string, string>> {
-  const out: Record<string, string> = {};
-  for (const [scope, c] of children) {
-    try {
-      await c.client.callTool({ name: "get_health", arguments: {} });
-      out[scope] = "ok";
-    } catch (e) {
-      out[scope] = `error: ${String(e).slice(0, 120)}`;
-    }
+export async function brainHealth(): Promise<string> {
+  try {
+    await brainClient().callTool({ name: "get_health", arguments: {} });
+    return "ok";
+  } catch (e) {
+    return `error: ${String(e).slice(0, 120)}`;
   }
-  return out;
 }

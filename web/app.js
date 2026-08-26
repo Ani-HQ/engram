@@ -18,6 +18,7 @@ const state = {
   captureError: "",
   keyHelp: false,
   message: "",
+  undo: null,
   now: new Date(),
 };
 
@@ -77,7 +78,7 @@ function showLogin(message = "") {
     h("label", { class: "field-label" },
       h("span", {}, "paste an engram token"),
       input),
-    h("p", { class: "login-hint" }, "Mint one with: engram-admin token issue --name <agent> --scopes shared:rw"),
+    h("p", { class: "login-hint" }, "Mint one with: engram-admin token issue --name <agent>"),
     h("button", { type: "submit", class: "login-submit" }, "enter"),
     h("p", { class: "login-error", role: "status" }, message),
   );
@@ -96,6 +97,7 @@ function showConsole() {
     "aria-label": "Search memory",
     oninput: event => {
       state.query = event.currentTarget.value;
+      if (clearUndoNotice()) renderList();
       window.clearTimeout(refs.searchTimer);
       refs.searchTimer = window.setTimeout(loadCollection, 140);
     },
@@ -140,6 +142,7 @@ function showConsole() {
 }
 
 async function loadCollection() {
+  clearUndoNotice();
   state.loading = true;
   renderList();
   try {
@@ -165,7 +168,7 @@ function renderList() {
   if (!refs.list) return;
   refs.list.replaceChildren();
   const noun = state.items.length === 1 ? "page" : "pages";
-  refs.count.textContent = state.loading ? "reading..." : `${state.items.length} ${noun}${state.message ? ` · ${state.message}` : ""}`;
+  renderResultCount(noun);
   if (state.loading) {
     refs.list.append(h("div", { class: "inline-loading", role: "status" }, seigaiha(), h("span", {}, "wet ink settling")));
     return;
@@ -202,7 +205,10 @@ function renderRow(item, index) {
 }
 
 async function openItem(item, invoker) {
-  state.activeRow = invoker ?? document.activeElement;
+  const rerendered = clearUndoNotice();
+  if (rerendered) renderList();
+  const liveIndex = state.items.findIndex(row => row.slug === item.slug);
+  state.activeRow = (rerendered && liveIndex >= 0 ? rowAt(liveIndex) : null) ?? invoker ?? document.activeElement;
   state.pane = { loading: true, item };
   renderPane();
   try {
@@ -224,11 +230,13 @@ function renderPane() {
     "aria-label": "Memory reader",
   });
   const close = h("button", { type: "button", class: "pane-close", onclick: closePane, "aria-label": "Close reader" }, "close");
-  pane.append(close);
+  const actions = h("div", { class: "pane-actions" }, close);
+  pane.append(actions);
   if (state.pane.loading) {
     pane.append(h("div", { class: "pane-loading" }, seigaiha(), h("span", {}, "ink rising")));
   } else {
     const page = state.pane.page;
+    actions.append(h("button", { type: "button", class: "text-button pane-forget", onclick: forgetOpenPage }, "forget"));
     const body = h("article", { class: "reader-body" });
     body.append(renderMarkdown(page.body || ""));
     // A [[wikilink]] in the prose opens the same way a kintsugi seam does.
@@ -267,9 +275,100 @@ function closePane() {
   }, reducedMotion() ? 0 : 440);
 }
 
+function renderResultCount(noun) {
+  refs.count.replaceChildren();
+  if (state.loading) {
+    refs.count.append("reading...");
+    return;
+  }
+
+  refs.count.append(`${state.items.length} ${noun}`);
+  if (state.undo) {
+    refs.count.append(
+      " · forgotten · ",
+      h("button", {
+        type: "button",
+        class: "inline-undo",
+        disabled: state.undo.pending || state.undo.restoring,
+        onclick: undoForget,
+      }, "undo"),
+      " · recoverable for 72 hours",
+    );
+  } else if (state.message) {
+    refs.count.append(` · ${state.message}`);
+  }
+}
+
+async function forgetOpenPage() {
+  const page = state.pane?.page;
+  const slug = page?.slug;
+  if (!slug) return;
+
+  const index = state.items.findIndex(item => item.slug === slug);
+  const item = index >= 0 ? state.items[index] : pageToItem(page);
+  state.items = state.items.filter(row => row.slug !== slug);
+  state.selected = Math.min(state.selected, Math.max(0, state.items.length - 1));
+  state.message = "";
+  state.undo = { slug, item, index: Math.max(0, index), pending: true, restoring: false };
+  renderList();
+  closePane();
+
+  try {
+    await api.forget(slug);
+    if (state.undo?.slug === slug) {
+      state.undo.pending = false;
+      renderList();
+    }
+  } catch (error) {
+    if (state.undo?.slug === slug) state.undo = null;
+    restoreItem(item, index);
+    handleError(error);
+  }
+}
+
+async function undoForget() {
+  const undo = state.undo;
+  if (!undo || undo.pending || undo.restoring) return;
+
+  undo.restoring = true;
+  renderList();
+  try {
+    await api.restore(undo.slug);
+    restoreItem(undo.item, undo.index);
+    state.undo = null;
+    renderList();
+  } catch (error) {
+    undo.restoring = false;
+    handleError(error);
+  }
+}
+
+function restoreItem(item, index) {
+  if (!item?.slug || state.items.some(row => row.slug === item.slug)) return;
+  const safeIndex = Math.max(0, Math.min(index, state.items.length));
+  state.items.splice(safeIndex, 0, item);
+  state.selected = safeIndex;
+}
+
+function pageToItem(page) {
+  return {
+    slug: page.slug,
+    title: page.title || page.slug,
+    type: page.type || "note",
+    source_id: page.source_id || "default",
+    scope: page.scope || "shared",
+    updated_at: page.updated_at || "",
+  };
+}
+
+function clearUndoNotice() {
+  if (!state.undo) return false;
+  state.undo = null;
+  return true;
+}
+
 function renderCapture() {
   refs.capture.replaceChildren();
-  if (!canWrite()) return;
   if (!state.captureOpen) {
     refs.capture.append(h("button", { type: "button", class: "tanzaku-tab", "aria-expanded": "false", title: "Write a note (c)", onclick: openCapture },
       h("span", { class: "tab-kanji" }, "記す"),
@@ -301,7 +400,7 @@ async function submitCapture() {
   const text = state.captureText.trim();
   if (!text) return;
   try {
-    const result = await api.capture({ text, slug: null, title: null, scope: writableScope() });
+    const result = await api.capture({ text, slug: null, title: null });
     const panel = refs.capture.querySelector(".tanzaku-panel");
     panel?.classList.add("is-folding");
     await wait(reducedMotion() ? 0 : 320);
@@ -323,7 +422,7 @@ async function submitCapture() {
 }
 
 function renderYohaku() {
-  const hint = canWrite() ? "Press c to write." : "Press / to search.";
+  const hint = "Press c to write.";
   return h("section", { class: "yohaku", "aria-label": "Empty memory state" },
     sealImg("empty paper", 72, "empty seal"),
     h("p", { class: "empty-kanji" }, "空"),
@@ -355,13 +454,14 @@ function onKeydown(event) {
   if (typing) return;
   if (event.key === "?") return void (event.preventDefault(), toggleKeys());
   if (event.key === "/") return void (event.preventDefault(), refs.search?.focus());
-  if (event.key === "c" && canWrite()) return void (event.preventDefault(), openCapture());
+  if (event.key === "c") return void (event.preventDefault(), openCapture());
   if (event.key === "j" || event.key === "k") return void (event.preventDefault(), moveSelection(event.key === "j" ? 1 : -1));
   if (event.key === "Enter" && state.items[state.selected]) return void openItem(state.items[state.selected], rowAt(state.selected));
 }
 
 function moveSelection(delta) {
   if (!state.items.length) return;
+  clearUndoNotice();
   state.selected = Math.max(0, Math.min(state.items.length - 1, state.selected + delta));
   renderList();
   rowAt(state.selected)?.focus({ preventScroll: true });
@@ -417,14 +517,6 @@ function h(tag, attrs = {}, ...children) {
     node.append(child instanceof Node ? child : document.createTextNode(String(child)));
   });
   return node;
-}
-
-function canWrite() {
-  return Object.values(state.session?.scopes ?? {}).includes("rw");
-}
-
-function writableScope() {
-  return Object.entries(state.session?.scopes ?? {}).find(([, value]) => value === "rw")?.[0] ?? null;
 }
 
 const rowAt = index => refs.list?.querySelector(`[data-index="${index}"]`);

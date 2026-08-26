@@ -18,15 +18,14 @@ export async function migrate() {
       revoked_at  timestamptz,
       last_used_at timestamptz
     )`;
-  await sql`
-    CREATE TABLE IF NOT EXISTS audit_log (
-      id          bigserial PRIMARY KEY,
-      ts          timestamptz NOT NULL DEFAULT now(),
-      token_name  text NOT NULL,
-      tool        text NOT NULL,
-      scope       text,
-      arg_summary text,
-      outcome     text NOT NULL
-    )`;
+	  await sql`
+	    CREATE TABLE IF NOT EXISTS audit_log (
+	      id          bigserial PRIMARY KEY,
+	      ts          timestamptz NOT NULL DEFAULT now(),
+	      token_name  text NOT NULL,
+	      tool        text NOT NULL,
+	      arg_summary text,
+	      outcome     text NOT NULL
+	    )`;
   await sql`CREATE INDEX IF NOT EXISTS audit_log_ts_idx ON audit_log (ts DESC)`;
 }

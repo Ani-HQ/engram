@@ -1,6 +1,40 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 process.env.ENGRAM_DB_URL_TEMPLATE ??= "postgresql://postgres:postgres@localhost:1/__DB__";
+
+const brainCalls: any[] = [];
+const auditCalls: any[] = [];
+let brainResult: any = { status: "soft_deleted", slug: "notes/delete-me" };
+let brainError: unknown = null;
+
+const brain = {
+  async callTool(request: any) {
+    brainCalls.push(request);
+    if (brainError) throw brainError;
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify(brainResult),
+      }],
+    };
+  },
+};
+
+mock.module("../gateway/src/auth", () => ({
+  authenticate: async (authHeader: string | null) => (
+    authHeader === "Bearer valid-token" ? { name: "console" } : null
+  ),
+}));
+
+mock.module("../gateway/src/brain", () => ({
+  brainClient: () => brain,
+}));
+
+mock.module("../gateway/src/audit", () => ({
+  audit: async (...args: any[]) => {
+    auditCalls.push(args);
+  },
+}));
 
 const {
   captureMarkdown,
@@ -23,6 +57,13 @@ const {
   serializeSessionCookie,
   sortPageSummaries,
 } = await import("../gateway/src/web");
+
+beforeEach(() => {
+  brainCalls.length = 0;
+  auditCalls.length = 0;
+  brainResult = { status: "soft_deleted", slug: "notes/delete-me" };
+  brainError = null;
+});
 
 const LIVE_GET_PAGE = {
   id: 1,
@@ -132,6 +173,64 @@ describe("console API edge responses", () => {
     expect(await res.json()).toEqual({ error: "unauthorized" });
   });
 
+  test("rejects delete without the console header", async () => {
+    const res = await handleWeb(new Request("http://engram.local/api/page?slug=notes/delete-me", {
+      method: "DELETE",
+      headers: { Cookie: "engram_session=valid-token" },
+    }));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "forbidden" });
+    expect(brainCalls).toEqual([]);
+    expect(auditCalls).toEqual([]);
+  });
+
+  test("rejects delete without a cookie", async () => {
+    const res = await handleWeb(new Request("http://engram.local/api/page?slug=notes/delete-me", {
+      method: "DELETE",
+      headers: { "X-Engram-Console": "1" },
+    }));
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized" });
+    expect(brainCalls).toEqual([]);
+    expect(auditCalls).toEqual([]);
+  });
+
+  test("maps page_not_found from delete to 404", async () => {
+    brainError = new Error("page_not_found");
+    const res = await handleWeb(new Request("http://engram.local/api/page?slug=notes/missing", {
+      method: "DELETE",
+      headers: {
+        "X-Engram-Console": "1",
+        Cookie: "engram_session=valid-token",
+      },
+    }));
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not found" });
+    expect(brainCalls).toEqual([{ name: "delete_page", arguments: { slug: "notes/missing" } }]);
+    expect(auditCalls).toEqual([["console", "delete_page", "{\"slug\":\"notes/missing\"}", "not_found"]]);
+  });
+
+  test("maps soft delete statuses to the recoverable ok shape", async () => {
+    for (const status of ["soft_deleted", "already_soft_deleted"]) {
+      brainCalls.length = 0;
+      auditCalls.length = 0;
+      brainResult = { status, slug: `notes/${status}` };
+
+      const res = await handleWeb(new Request(`http://engram.local/api/page?slug=notes/${status}`, {
+        method: "DELETE",
+        headers: {
+          "X-Engram-Console": "1",
+          Cookie: "engram_session=valid-token",
+        },
+      }));
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true, slug: `notes/${status}`, recoverable: true });
+      expect(brainCalls).toEqual([{ name: "delete_page", arguments: { slug: `notes/${status}` } }]);
+      expect(auditCalls).toEqual([["console", "delete_page", `{\"slug\":\"notes/${status}\"}`, "ok"]]);
+    }
+  });
+
   test("returns JSON 404 for unknown API routes", async () => {
     const res = await handleWeb(new Request("http://engram.local/api/nope", {
       headers: { "X-Engram-Console": "1" },
@@ -153,12 +252,11 @@ describe("console API edge responses", () => {
 
 describe("live gbrain payload normalizers", () => {
   test("reads page body from compiled_truth and empty timeline as []", () => {
-    expect(normalizePageResult(LIVE_GET_PAGE, "notes/engram-online", "shared")).toEqual({
+    expect(normalizePageResult(LIVE_GET_PAGE, "notes/engram-online")).toEqual({
       page: {
         slug: "notes/engram-online",
         title: "engram online",
         type: "note",
-        scope: "shared",
         updated_at: "2026-08-15T17:29:30.421Z",
         body: LIVE_GET_PAGE.compiled_truth,
       },
@@ -168,22 +266,20 @@ describe("live gbrain payload normalizers", () => {
   });
 
   test("uses chunk_text and effective_date for search results", () => {
-    expect(normalizeSearchResults(LIVE_SEARCH, "shared")).toEqual([{
+    expect(normalizeSearchResults(LIVE_SEARCH)).toEqual([{
       slug: "notes/engram-online",
       title: "engram online",
-      scope: "shared",
       updated_at: "2026-08-15",
       snippet: "# engram online\nengram brain deployed...",
     }]);
   });
 
   test("normalizes list_pages bare arrays", () => {
-    expect(normalizePageSummaries(LIVE_LIST_PAGES, "shared")).toEqual([{
+    expect(normalizePageSummaries(LIVE_LIST_PAGES)).toEqual([{
       slug: "notes/engram-online",
       title: "engram online",
       type: "note",
       source_id: "default",
-      scope: "shared",
       updated_at: "2026-08-15T17:29:30.421Z",
       created_at: "",
     }]);
@@ -208,7 +304,7 @@ describe("live gbrain payload normalizers", () => {
       { slug: "notes/foo", title: "foo", relation: "body" },
       { slug: "notes/bar", title: "bar", relation: "body" },
     ]);
-    expect(normalizePageResult({ ...LIVE_GET_PAGE, compiled_truth: body }, "notes/engram-online", "shared")?.links)
+    expect(normalizePageResult({ ...LIVE_GET_PAGE, compiled_truth: body }, "notes/engram-online")?.links)
       .toEqual([
         { slug: "notes/foo", title: "foo", relation: "body" },
         { slug: "notes/bar", title: "bar", relation: "body" },
@@ -217,8 +313,8 @@ describe("live gbrain payload normalizers", () => {
 
   test("created_desc falls back to updated_at when created_at is missing", () => {
     expect(sortPageSummaries([
-      { slug: "notes/old", title: "old", type: "note", source_id: "default", scope: "shared", updated_at: "2026-08-14T00:00:00.000Z" },
-      { slug: "notes/new", title: "new", type: "note", source_id: "default", scope: "shared", updated_at: "2026-08-16T00:00:00.000Z" },
+      { slug: "notes/old", title: "old", type: "note", source_id: "default", updated_at: "2026-08-14T00:00:00.000Z" },
+      { slug: "notes/new", title: "new", type: "note", source_id: "default", updated_at: "2026-08-16T00:00:00.000Z" },
     ], "created_desc").map(page => page.slug)).toEqual(["notes/new", "notes/old"]);
   });
 });
@@ -291,7 +387,6 @@ describe("console query coercion", () => {
       offset: 0,
       sort: "updated_desc",
       tag: null,
-      scope: null,
     });
     expect(coercePagesQuery(new URLSearchParams("limit=999&offset=-2&sort=slug"))).toMatchObject({
       limit: 100,
@@ -305,7 +400,6 @@ describe("console query coercion", () => {
     expect(coerceSearchQuery(new URLSearchParams("q=hello&limit=999&scope=shared"))).toEqual({
       q: "hello",
       limit: 50,
-      scope: "shared",
     });
     expect(coerceSearchQuery(new URLSearchParams("q=+"))).toBeNull();
   });

@@ -12,6 +12,7 @@ const searchFixture = await readFixture("search.json");
 
 let pages = clone(pagesFixture.pages);
 const details = new Map([[detailFixture.page.slug, detailFixture]]);
+const forgotten = new Map<string, { row: any; detail: any; index: number }>();
 
 if (import.meta.main) {
   Bun.serve({ port: PORT, fetch: devFetch });
@@ -42,7 +43,12 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   }
   if (url.pathname === "/api/pages" && req.method === "GET") return json(listPages(url));
   if (url.pathname === "/api/search" && req.method === "GET") return json(searchPages(url));
-  if (url.pathname === "/api/page" && req.method === "GET") return json(pageDetail(url));
+  if (url.pathname === "/api/page" && req.method === "GET") {
+    const detail = pageDetail(url);
+    return detail ? json(detail) : json({ error: "not found" }, {}, 404);
+  }
+  if (url.pathname === "/api/page" && req.method === "DELETE") return forgetPage(req, url);
+  if (url.pathname === "/api/page/restore" && req.method === "POST") return restorePage(req);
   if (url.pathname === "/api/capture" && req.method === "POST") return capture(req);
   return new Response("Not Found", { status: 404 });
 }
@@ -65,7 +71,7 @@ function searchPages(url: URL) {
   const scope = url.searchParams.get("scope");
   const limit = Number(url.searchParams.get("limit") ?? 48);
   if (!q) return { results: [] };
-  const fixtureHits = searchFixture.results.filter((row: any) => matches(row, q, scope));
+  const fixtureHits = searchFixture.results.filter((row: any) => !forgotten.has(row.slug) && matches(row, q, scope));
   const pageHits = pages
     .filter((row: any) => matches(row, q, scope))
     .map((row: any) => ({
@@ -88,7 +94,8 @@ function searchPages(url: URL) {
 function pageDetail(url: URL) {
   const slug = url.searchParams.get("slug") ?? "ink-density-recency";
   if (details.has(slug)) return clone(details.get(slug));
-  const row = pages.find((page: any) => page.slug === slug) ?? pages[0];
+  const row = pages.find((page: any) => page.slug === slug);
+  if (!row) return null;
   return {
     page: {
       slug: row.slug,
@@ -101,6 +108,39 @@ function pageDetail(url: URL) {
     links: clone(detailFixture.links).slice(0, 2),
     timeline: clone(detailFixture.timeline).slice(0, 3),
   };
+}
+
+function forgetPage(req: Request, url: URL) {
+  if (!hasDevSession(req)) return json({ error: "forbidden" }, {}, 403);
+  const slug = url.searchParams.get("slug")?.trim();
+  if (!slug) return json({ error: "bad request" }, {}, 400);
+
+  const index = pages.findIndex((page: any) => page.slug === slug);
+  if (index >= 0) {
+    const [row] = pages.splice(index, 1);
+    const detail = details.get(slug) ?? null;
+    details.delete(slug);
+    forgotten.set(slug, { row, detail, index });
+    return json({ ok: true, slug, recoverable: true });
+  }
+  if (forgotten.has(slug)) return json({ ok: true, slug, recoverable: true });
+  return json({ error: "not found" }, {}, 404);
+}
+
+async function restorePage(req: Request) {
+  if (!hasDevSession(req)) return json({ error: "forbidden" }, {}, 403);
+  const body = await req.json().catch(() => ({}));
+  const slug = String(body.slug ?? "").trim();
+  if (!slug) return json({ error: "bad request" }, {}, 400);
+
+  const record = forgotten.get(slug);
+  if (!record) return json({ error: "not found" }, {}, 404);
+  if (!pages.some((page: any) => page.slug === slug)) {
+    pages.splice(Math.max(0, Math.min(record.index, pages.length)), 0, record.row);
+  }
+  if (record.detail) details.set(slug, record.detail);
+  forgotten.delete(slug);
+  return json({ ok: true, slug });
 }
 
 async function capture(req: Request) {

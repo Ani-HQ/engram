@@ -77,6 +77,15 @@ export const api = {
   page(params) {
     return request(query("/api/page", params));
   },
+  forget(slug) {
+    return request(query("/api/page", { slug }), { method: "DELETE" });
+  },
+  restore(slug) {
+    return request("/api/page/restore", {
+      method: "POST",
+      body: JSON.stringify({ slug }),
+    });
+  },
   capture(payload) {
     return request("/api/capture", {
       method: "POST",

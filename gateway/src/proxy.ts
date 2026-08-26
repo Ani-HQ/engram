@@ -1,14 +1,18 @@
-// The security boundary: curated allowlist of gbrain tools, scope routing,
-// write guards, and fan-out reads across the token's readable scopes.
-// Nothing outside ALLOWED_READS/ALLOWED_WRITES ever reaches a gbrain child.
-import { TokenRecord, canWrite, readableScopes } from "./auth";
-import { scopeClient } from "./scopes";
+// Nothing outside the curated gbrain allowlist ever reaches the child.
+import type { TokenRecord } from "./auth";
+import { brainClient } from "./brain";
 import { audit } from "./audit";
-import { SECRET_TOOL_DEFS, callSecretTool } from "./tools/secrets";
-import { PROMOTE_TOOL_DEF, promoteTool } from "./tools/promote";
 
-const ALLOWED_READS = new Set(["search", "get_page", "list_pages", "recall"]);
-const ALLOWED_WRITES = new Set(["put_page", "remember", "add_tag", "add_link", "add_timeline_entry"]);
+const FORWARDED_TOOLS = [
+  "search",
+  "get_page",
+  "list_pages",
+  "put_page",
+  "add_tag",
+  "add_link",
+  "add_timeline_entry",
+] as const;
+const ALLOWED_TOOLS = new Set<string>(FORWARDED_TOOLS);
 
 const PROTOCOL_VERSIONS = new Set(["2024-11-05", "2025-03-26", "2025-06-18", "2026-07-28"]);
 const DEFAULT_PROTOCOL_VERSION = "2025-06-18";
@@ -65,60 +69,33 @@ export function readClientMeta(params: any): {
   };
 }
 
-// Extra args engram adds to every proxied tool schema.
-const SCOPE_ARG = {
-  scope: {
-    type: "string",
-    description: "Memory scope to target (e.g. 'shared'). Reads default to all scopes your token can read; writes require one writable scope (defaulted when unambiguous).",
-  },
-};
-
 let cachedToolDefs: any[] | null = null;
 
-// SEP-2549 (new in 2026-07-28) cacheScope is "public" | "private", and tools/list
-// is token-dependent: reads/writes are filtered by scope, secret_get/secret_list
-// need token.secrets, promote needs an "rw" scope. "public" would let a shared
-// cache serve a secrets-capable list to a different token, so "private" — per
-// credential, never shared — is the only safe value here. Emitted only to clients
-// that declared 2026-07-28, so older ones aren't handed fields they can't read.
+// 2026-07-28 clients can share tools/list now: every token sees the same eight tools.
 export function toolsListCacheHints(
   _token: TokenRecord,
   protocolVersion: string,
-): { ttlMs: number; cacheScope: "private" } | Record<string, never> {
+): Record<string, unknown> {
   if (protocolVersion !== "2026-07-28") return {};
-  return { ttlMs: 300_000, cacheScope: "private" };
+  return { ttlMs: 300_000, cacheScope: "public" };
 }
 
-export async function listTools(token: TokenRecord): Promise<any[]> {
+export async function listTools(_token: TokenRecord): Promise<any[]> {
   if (!cachedToolDefs) {
-    // Any scope's child serves the same tool schemas; use the first configured one.
-    const first = readableScopes(token)[0] ?? "shared";
-    const all = await scopeClient(first).listTools();
-    cachedToolDefs = all.tools
-      .filter(t => ALLOWED_READS.has(t.name) || ALLOWED_WRITES.has(t.name))
-      .map(t => ({
-        ...t,
-        inputSchema: {
-          ...t.inputSchema,
-          properties: { ...(t.inputSchema as any).properties, ...SCOPE_ARG },
-        },
-      }));
+    const all = await brainClient().listTools();
+    const byName = new Map(all.tools
+      .filter(t => ALLOWED_TOOLS.has(t.name))
+      .map(t => [t.name, t]));
+    cachedToolDefs = [
+      ...FORWARDED_TOOLS.map(name => byName.get(name)).filter(Boolean),
+      {
+        name: "whoami",
+        description: "Show this token's identity.",
+        inputSchema: { type: "object", properties: {} },
+      },
+    ];
   }
-  // Only advertise what this token can actually invoke. Listing write tools to a
-  // read-only token just invites a call that callTool() will deny anyway.
-  const canReadAny = readableScopes(token).length > 0;
-  const canWriteAny = Object.keys(token.scopes).some(s => canWrite(token, s));
-  return [
-    ...cachedToolDefs.filter(t =>
-      ALLOWED_WRITES.has(t.name) ? canWriteAny : canReadAny),
-    ...(token.secrets ? SECRET_TOOL_DEFS : []),
-    ...(canWriteAny ? [PROMOTE_TOOL_DEF] : []),
-    {
-      name: "whoami",
-      description: "Show this token's identity: name, readable/writable scopes, secrets access.",
-      inputSchema: { type: "object", properties: {} },
-    },
-  ];
+  return cachedToolDefs;
 }
 
 function summarizeArgs(args: Record<string, unknown>): string {
@@ -130,69 +107,31 @@ export async function callTool(
   name: string,
   args: Record<string, unknown>,
 ): Promise<any> {
-  const { scope: requestedScope, ...rest } = (args ?? {}) as Record<string, unknown> & { scope?: string };
+  const forwardedArgs = args ?? {};
 
   if (name === "whoami") {
+    await audit(token.name, name, summarizeArgs(forwardedArgs), "ok");
     return {
       content: [{
         type: "text",
-        text: JSON.stringify({ token: token.name, scopes: token.scopes, secrets: token.secrets }, null, 2),
+        text: JSON.stringify({ token: token.name }),
       }],
     };
   }
 
-  if (name === "secret_get" || name === "secret_list") {
-    return callSecretTool(token, name, args ?? {});
+  if (!ALLOWED_TOOLS.has(name)) {
+    await audit(token.name, name, summarizeArgs(forwardedArgs), "denied");
+    return toolError(`Unknown or disallowed tool: ${name}`);
   }
 
-  if (name === "promote") {
-    return promoteTool(token, args ?? {});
-  }
-
-  const readable = readableScopes(token);
-
-  if (ALLOWED_WRITES.has(name)) {
-    const writable = Object.keys(token.scopes).filter(s => canWrite(token, s));
-    const target = (requestedScope as string) ?? (writable.length === 1 ? writable[0] : undefined);
-    if (!target || !canWrite(token, target)) {
-      await audit(token.name, name, target ?? null, summarizeArgs(rest), "denied");
-      return toolError(
-        `Write denied. Token '${token.name}' can write to: [${writable.join(", ") || "none"}]` +
-        (target ? `, requested scope '${target}'.` : ". Pass an explicit 'scope' argument."),
-      );
-    }
-    const result = await scopeClient(target).callTool({ name, arguments: rest });
-    await audit(token.name, name, target, summarizeArgs(rest), "ok");
+  try {
+    const result = await brainClient().callTool({ name, arguments: forwardedArgs });
+    await audit(token.name, name, summarizeArgs(forwardedArgs), "ok");
     return result;
+  } catch (e) {
+    await audit(token.name, name, summarizeArgs(forwardedArgs), "error");
+    throw e;
   }
-
-  if (ALLOWED_READS.has(name)) {
-    const targets = requestedScope ? [requestedScope as string] : readable;
-    const denied = targets.filter(s => !readable.includes(s));
-    if (denied.length > 0 || targets.length === 0) {
-      await audit(token.name, name, targets.join(","), summarizeArgs(rest), "denied");
-      return toolError(`Read denied. Token '${token.name}' can read: [${readable.join(", ") || "none"}].`);
-    }
-    const results = await Promise.all(targets.map(async scope => {
-      try {
-        const r = await scopeClient(scope).callTool({ name, arguments: rest });
-        return { scope, r };
-      } catch (e) {
-        return { scope, r: toolError(`scope '${scope}' failed: ${String(e).slice(0, 200)}`) };
-      }
-    }));
-    await audit(token.name, name, targets.join(","), summarizeArgs(rest), "ok");
-    if (results.length === 1) return results[0].r;
-    // Fan-out merge: label each scope's content block.
-    return {
-      content: results.flatMap(({ scope, r }) =>
-        (r.content ?? []).map((c: any) =>
-          c.type === "text" ? { ...c, text: `[scope: ${scope}]\n${c.text}` } : c)),
-    };
-  }
-
-  await audit(token.name, name, null, summarizeArgs(rest), "denied_unknown_tool");
-  return toolError(`Unknown or disallowed tool: ${name}`);
 }
 
 function toolError(message: string) {
