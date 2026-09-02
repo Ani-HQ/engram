@@ -1,0 +1,13 @@
+{
+  "pages": [
+    {
+      "slug": "first-brush",
+      "title": "First brush",
+      "type": "note",
+      "source_id": "dev",
+      "scope": "shared",
+      "updated_at": "2026-08-18T07:30:00Z"
+    }
+  ],
+  "scopes": ["shared"]
+}

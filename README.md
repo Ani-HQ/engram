@@ -42,8 +42,21 @@ Wire a client: see `docs/WIRING.md`.
 ## Status
 
 v0: shared scope, token auth, audit, GCP deploy. v1: secrets vault, promote,
-path-token route, stdio shim. Planned: private/product scopes, context seeding,
-nightly pg_dump backups.
+path-token route, stdio shim. v2: 文庫 (bunko), the browser console — read,
+search and capture over the same token auth and the same audited tool path.
+Planned: private/product scopes, context seeding, nightly pg_dump backups.
+
+## The console
+
+`https://<engram-url>/` serves 文庫, a sumi-e reading room for the brain: ink
+density carries recency (today is full sumi, three years is a whisper), links
+show as kintsugi seams, each token gets a generated hanko seal, and capture is a
+tanzaku strip hanging in the margin. Sign in with any engram token — the console
+holds it in an httpOnly cookie and calls the same audited `callTool` path every
+MCP client uses, so it can never reach a tool your token could not.
+
+Develop it without the gateway: `bun web/dev-server.ts` serves the console
+against fixtures on :8099.
 
 ## Credits
 

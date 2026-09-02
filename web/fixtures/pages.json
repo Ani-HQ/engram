@@ -1,0 +1,197 @@
+{
+  "pages": [
+    {
+      "slug": "ink-density-recency",
+      "title": "Ink density follows recency",
+      "type": "note",
+      "source_id": "dev",
+      "scope": "shared",
+      "updated_at": "2026-08-18T07:30:00Z"
+    },
+    {
+      "slug": "tokonoma-console",
+      "title": "Console as tokonoma",
+      "type": "page",
+      "source_id": "design",
+      "scope": "shared",
+      "updated_at": "2026-08-17T10:15:00Z"
+    },
+    {
+      "slug": "capture-strip",
+      "title": "Tanzaku capture strip",
+      "type": "capture",
+      "source_id": "dev",
+      "scope": "shared",
+      "updated_at": "2026-08-14T15:00:00Z"
+    },
+    {
+      "slug": "quiet-keyboard",
+      "title": "Quiet keyboard movement",
+      "type": "note",
+      "source_id": "dev",
+      "scope": "shared",
+      "updated_at": "2026-08-01T12:00:00Z"
+    },
+    {
+      "slug": "shoji-reader",
+      "title": "Shoji reader pane",
+      "type": "page",
+      "source_id": "design",
+      "scope": "shared",
+      "updated_at": "2026-07-10T09:00:00Z"
+    },
+    {
+      "slug": "kintsugi-links",
+      "title": "Kintsugi seams for linked memory",
+      "type": "note",
+      "source_id": "design",
+      "scope": "shared",
+      "updated_at": "2026-06-01T09:00:00Z"
+    },
+    {
+      "slug": "emaki-timeline",
+      "title": "Emaki timeline motion",
+      "type": "note",
+      "source_id": "dev",
+      "scope": "shared",
+      "updated_at": "2026-04-20T18:40:00Z"
+    },
+    {
+      "slug": "markdown-boundary",
+      "title": "Markdown boundary",
+      "type": "page",
+      "source_id": "security",
+      "scope": "shared",
+      "updated_at": "2026-03-02T07:00:00Z"
+    },
+    {
+      "slug": "search-bleed",
+      "title": "Search rows bleed in",
+      "type": "note",
+      "source_id": "design",
+      "scope": "shared",
+      "updated_at": "2026-01-15T22:10:00Z"
+    },
+    {
+      "slug": "hanko-identity",
+      "title": "Hanko identity marks",
+      "type": "note",
+      "source_id": "dev",
+      "scope": "shared",
+      "updated_at": "2025-11-30T13:30:00Z"
+    },
+    {
+      "slug": "scope-tags",
+      "title": "Scope tags remain text",
+      "type": "note",
+      "source_id": "dev",
+      "scope": "private",
+      "updated_at": "2025-09-18T11:00:00Z"
+    },
+    {
+      "slug": "paper-grain",
+      "title": "Washi grain and uneven light",
+      "type": "note",
+      "source_id": "design",
+      "scope": "shared",
+      "updated_at": "2025-07-04T08:30:00Z"
+    },
+    {
+      "slug": "negative-space",
+      "title": "Yohaku as layout",
+      "type": "note",
+      "source_id": "design",
+      "scope": "shared",
+      "updated_at": "2025-04-22T16:20:00Z"
+    },
+    {
+      "slug": "token-gate",
+      "title": "Token gate",
+      "type": "page",
+      "source_id": "gateway",
+      "scope": "shared",
+      "updated_at": "2025-01-05T12:20:00Z"
+    },
+    {
+      "slug": "recall-fanout",
+      "title": "Recall fan-out",
+      "type": "note",
+      "source_id": "gateway",
+      "scope": "private",
+      "updated_at": "2024-10-10T21:00:00Z"
+    },
+    {
+      "slug": "capture-permission",
+      "title": "Capture permission boundary",
+      "type": "note",
+      "source_id": "gateway",
+      "scope": "shared",
+      "updated_at": "2024-07-19T04:10:00Z"
+    },
+    {
+      "slug": "session-drop",
+      "title": "Session drop on unauthorized",
+      "type": "note",
+      "source_id": "gateway",
+      "scope": "shared",
+      "updated_at": "2024-05-02T17:45:00Z"
+    },
+    {
+      "slug": "static-shell",
+      "title": "Static shell served by gateway",
+      "type": "page",
+      "source_id": "gateway",
+      "scope": "shared",
+      "updated_at": "2024-02-14T09:30:00Z"
+    },
+    {
+      "slug": "no-external-references",
+      "title": "No external references",
+      "type": "note",
+      "source_id": "security",
+      "scope": "shared",
+      "updated_at": "2023-12-20T14:00:00Z"
+    },
+    {
+      "slug": "dark-paper",
+      "title": "Ink at night",
+      "type": "note",
+      "source_id": "design",
+      "scope": "shared",
+      "updated_at": "2023-10-03T20:20:00Z"
+    },
+    {
+      "slug": "first-brush",
+      "title": "First brush",
+      "type": "note",
+      "source_id": "dev",
+      "scope": "shared",
+      "updated_at": "2023-08-18T07:30:00Z"
+    },
+    {
+      "slug": "old-agent-note",
+      "title": "Old agent note",
+      "type": "note",
+      "source_id": "agent",
+      "scope": "private",
+      "updated_at": "2023-06-01T06:00:00Z"
+    },
+    {
+      "slug": "archive-routing",
+      "title": "Archive routing",
+      "type": "note",
+      "source_id": "gateway",
+      "scope": "shared",
+      "updated_at": "2023-03-11T19:00:00Z"
+    },
+    {
+      "slug": "three-year-memory",
+      "title": "Three year memory",
+      "type": "note",
+      "source_id": "archive",
+      "scope": "shared",
+      "updated_at": "2023-01-20T10:00:00Z"
+    }
+  ],
+  "scopes": ["shared", "private"]
+}
