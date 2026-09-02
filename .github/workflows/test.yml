@@ -1,0 +1,28 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun test
+      # The console must stay self-contained: it is served from a public URL, so a
+      # remote script or font would be both a privacy leak and a CSP failure.
+      - name: no external references in the console
+        run: |
+          if grep -rnoE 'https?://[a-zA-Z0-9.-]+' web/ --include='*.html' --include='*.css' --include='*.js' \
+             | grep -vE 'localhost|127\.0\.0\.1|www\.w3\.org'; then
+            echo "external reference found in web/" && exit 1
+          fi
+      # connect must run on a bare checkout, with no dependencies installed.
+      - name: shim connect works without node_modules
+        run: node shim/index.js connect --list

@@ -1,3 +1,13 @@
+> **Historical record — not current architecture.**
+> This documents the pre-build spike for engram v0 (2026-08-15). Several things it
+> describes were deliberately deleted later: scopes and database-per-scope routing,
+> the secrets vault, `promote`, the path-token route, and the `remember`/`recall`
+> fact verbs. engram now runs one brain with an eight-tool surface and no access
+> control between tokens — see `README.md` for what exists today.
+>
+> The gbrain findings below are still accurate and still worth reading, especially
+> the hard-excluded slug prefixes.
+
 # Spike findings (2026-08-15, gbrain 0.46.0.0, commit 4922905)
 
 All pre-build unknowns from the plan, resolved against a local pgvector Postgres.

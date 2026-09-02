@@ -1,7 +1,7 @@
 {
   "name": "engram",
   "version": "0.1.0",
-  "description": "Portable personal context layer: scoped MCP gateway over gbrain + secrets vault",
+  "description": "One shared brain for a small trusted team: an audited MCP gateway over gbrain, with a browser console",
   "license": "MIT",
   "private": true,
   "type": "module",
@@ -10,7 +10,6 @@
     "admin": "bun cli/engram-admin.ts"
   },
   "dependencies": {
-    "@google-cloud/secret-manager": "^6.0.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "postgres": "^3.4.0"
   }

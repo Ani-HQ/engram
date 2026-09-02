@@ -13,6 +13,11 @@ same shared brain.
 
 ## Primary Path
 
+> **Not published yet.** `@ani-hq/engram-mcp` is not on npm, so the `npx` form below
+> does not work today. Until it is published, run it from a clone:
+> `node path/to/engram/shim/index.js connect <harness>` — same flags, same behaviour,
+> and it needs no dependencies installed.
+
 Use the shim installer for supported harnesses:
 
 ```bash
