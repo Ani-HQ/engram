@@ -1,59 +1,61 @@
 # engram
 
-A portable personal context layer. One brain, every agent.
+A portable context layer. One brain, every agent on one small trusted team.
 
-engram gives all of your agents — Claude Code, Cursor, an OpenClaw/Hermes fleet,
-Telegram/Discord bots, ChatGPT, Grok, whatever comes next — shared access to the
-same memory over MCP, with real scoping: private stays private, shared is fleet-wide,
-products get their own namespaces. Adding a new agent is minting a token, not
-rebuilding context.
+engram gives Claude Code, Cursor, ChatGPT, bots, and future agents shared access
+to the same memory over MCP. It is deliberately simple: every valid token can use
+the same brain and the same tools. A token answers who made the request; it does
+not limit what that requester may read or write.
 
 ## Architecture
 
 ```
-client ──HTTPS/MCP, bearer token──▶ engram gateway (Bun, stateless /mcp)
-                                       │  auth → scopes → allowlisted proxy
+client ──HTTPS/MCP, bearer token──▶ engram gateway (Bun, stateless)
+                                       │  identity → audit → allowlisted proxy
                                        ▼
-                          one `gbrain serve` stdio child per scope
+                               one `gbrain serve` child
                                        ▼
-                one Postgres instance, one DATABASE per scope
-                (brain_shared, brain_private, brain_product_*, engram_gateway)
+                      Postgres: brain_shared + engram_gateway
 ```
 
 - **Engine:** [gbrain](https://github.com/garrytan/gbrain), pinned from our mirror
   (`Ani-HQ/gbrain`) — plain Postgres, no vendor lock-in.
-- **Privacy boundary:** database-per-scope, enforced structurally by routing, not
-  by filtering. A token without a scope simply has nowhere to send the request.
-- **Tool surface:** 9 curated gbrain tools (search/get/list/recall + put/remember/
-  tag/link/timeline) + `whoami`. Destructive gbrain ops are unreachable.
-- **Audit:** every tool call and denial is a row in `audit_log`.
+- **Brain database:** one shared database named `brain_shared`. The gateway's own
+  database is `engram_gateway`.
+- **Auth model:** bearer tokens identify the person or agent. There is no access
+  control between tokens; this is built for one small trusted team.
+- **Tool surface:** exactly 8 allowlisted tools: `search`, `get_page`,
+  `list_pages`, `put_page`, `add_tag`, `add_link`, `add_timeline_entry`, and
+  `whoami`. The allowlist limits blast radius, not token permissions.
+- **Audit:** every tool call is recorded for attribution: who taught or queried
+  the brain, when, and with which tool.
+- **Routes:** `/health`, `/healthz`, `/mcp` (POST), `/api/*`, and static files.
 
 ## Run it
 
-Self-hosted (any box): `docker compose up` → MCP at `http://localhost:8080/mcp`.
+Self-hosted (any box): `docker compose up` -> MCP at `http://localhost:8080/mcp`.
 
 GCP (Cloud SQL + Cloud Run): `deploy/setup-gcp.sh`, then
 `gcloud builds submit --config cloudbuild.yaml --project ani-hq`.
 
-Mint a token: `bun cli/engram-admin.ts token issue --name mac-claude --scopes shared:rw`
+Mint a token: `bun cli/engram-admin.ts token issue --name mac-claude`
 
 Wire a client: see `docs/WIRING.md`.
 
 ## Status
 
-v0: shared scope, token auth, audit, GCP deploy. v1: secrets vault, promote,
-path-token route, stdio shim. v2: 文庫 (bunko), the browser console — read,
-search and capture over the same token auth and the same audited tool path.
-Planned: private/product scopes, context seeding, nightly pg_dump backups.
+What exists today: one shared brain, bearer-token identity, an audited 8-tool MCP
+surface, a browser console, token revocation, and a one-command stdio shim for
+clients that cannot send HTTP bearer headers.
 
-## The console
+What it is not: a multi-tenant or permissioned memory system. Do not deploy it
+for users or teams that need separation inside the same instance.
 
-`https://<engram-url>/` serves 文庫, a sumi-e reading room for the brain: ink
-density carries recency (today is full sumi, three years is a whisper), links
-show as kintsugi seams, each token gets a generated hanko seal, and capture is a
-tanzaku strip hanging in the margin. Sign in with any engram token — the console
-holds it in an httpOnly cookie and calls the same audited `callTool` path every
-MCP client uses, so it can never reach a tool your token could not.
+## The Console
+
+`https://<engram-url>/` serves 文庫, a reading room for the brain. Sign in with any
+engram token; the console stores it in an httpOnly cookie and uses the same
+audited tool path as MCP clients.
 
 Develop it without the gateway: `bun web/dev-server.ts` serves the console
 against fixtures on :8099.

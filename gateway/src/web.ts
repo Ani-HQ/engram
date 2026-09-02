@@ -1,6 +1,8 @@
 import { stat } from "node:fs/promises";
 import { extname, isAbsolute, relative, resolve } from "node:path";
-import { authenticate, canWrite, readableScopes, type TokenRecord } from "./auth";
+import { audit } from "./audit";
+import { authenticate, type TokenRecord } from "./auth";
+import { brainClient } from "./brain";
 import { callTool } from "./proxy";
 
 export const SESSION_COOKIE_NAME = "engram_session";
@@ -34,13 +36,11 @@ export interface PagesQuery {
   offset: number;
   sort: string;
   tag: string | null;
-  scope: string | null;
 }
 
 export interface SearchQuery {
   q: string;
   limit: number;
-  scope: string | null;
 }
 
 export function serializeSessionCookie(token: string, maxAge = SESSION_COOKIE_MAX_AGE): string {
@@ -110,7 +110,6 @@ export function coercePagesQuery(params: URLSearchParams): PagesQuery | null {
     offset: coerceOffset(params.get("offset")),
     sort,
     tag: textParam(params, "tag"),
-    scope: textParam(params, "scope"),
   };
 }
 
@@ -120,7 +119,6 @@ export function coerceSearchQuery(params: URLSearchParams): SearchQuery | null {
   return {
     q,
     limit: coerceBoundedInt(params.get("limit"), 20, 1, 50),
-    scope: textParam(params, "scope"),
   };
 }
 
@@ -170,6 +168,13 @@ export async function handleWeb(req: Request): Promise<Response> {
   if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
     return handleApi(req, url);
   }
+  // Static files and the SPA shell answer GET/HEAD only. Without this, any method
+  // on any unknown path returned the console HTML with a 200 — so a client still
+  // POSTing to the deleted /t/<token>/mcp route got HTML and a success code
+  // instead of a clear failure.
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    return new Response("Method Not Allowed", { status: 405 });
+  }
   return serveStatic(url.pathname);
 }
 
@@ -188,6 +193,8 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   else if (req.method === "GET" && url.pathname === "/api/pages") route = getPages;
   else if (req.method === "GET" && url.pathname === "/api/search") route = getSearch;
   else if (req.method === "GET" && url.pathname === "/api/page") route = getPage;
+  else if (req.method === "DELETE" && url.pathname === "/api/page") route = deletePage;
+  else if (req.method === "POST" && url.pathname === "/api/page/restore") route = postRestorePage;
   else if (req.method === "POST" && url.pathname === "/api/capture") route = postCapture;
   if (!route) return Response.json({ error: "not found" }, { status: 404 });
 
@@ -223,10 +230,6 @@ async function getPages(_req: Request, url: URL, token: TokenRecord): Promise<Re
   const query = coercePagesQuery(url.searchParams);
   if (!query) return Response.json({ error: "bad request" }, { status: 400 });
 
-  const scopes = readableScopes(token);
-  const targets = requestedScopes(scopes, query.scope);
-  if (!targets) return forbiddenResponse();
-
   const args: Record<string, unknown> = {
     limit: query.limit + query.offset,
     offset: 0,
@@ -234,11 +237,11 @@ async function getPages(_req: Request, url: URL, token: TokenRecord): Promise<Re
   };
   if (query.tag) args.tag = query.tag;
 
-  const pages = (await readAcrossScopes(token, "list_pages", targets, args))
-    .flatMap(({ scope, data }) => normalizePageSummaries(data, scope));
+  const data = await readTool(token, "list_pages", args);
+  const pages = normalizePageSummaries(data);
   return Response.json({
     pages: sortPageSummaries(pages, query.sort).slice(query.offset, query.offset + query.limit),
-    scopes,
+    scopes: ["shared"],
   });
 }
 
@@ -246,14 +249,11 @@ async function getSearch(_req: Request, url: URL, token: TokenRecord): Promise<R
   const query = coerceSearchQuery(url.searchParams);
   if (!query) return Response.json({ error: "bad request" }, { status: 400 });
 
-  const scopes = readableScopes(token);
-  const targets = requestedScopes(scopes, query.scope);
-  if (!targets) return forbiddenResponse();
-
-  const results = (await readAcrossScopes(token, "search", targets, {
+  const data = await readTool(token, "search", {
     query: query.q,
     limit: query.limit,
-  })).flatMap(({ scope, data }) => normalizeSearchResults(data, scope));
+  });
+  const results = normalizeSearchResults(data);
   return Response.json({ results: results.slice(0, query.limit) });
 }
 
@@ -261,15 +261,63 @@ async function getPage(_req: Request, url: URL, token: TokenRecord): Promise<Res
   const slug = textParam(url.searchParams, "slug");
   if (!slug) return Response.json({ error: "bad request" }, { status: 400 });
 
-  const scopes = readableScopes(token);
-  const targets = requestedScopes(scopes, textParam(url.searchParams, "scope"));
-  if (!targets) return forbiddenResponse();
-
-  for (const { scope, data } of await readAcrossScopes(token, "get_page", targets, { slug })) {
-    const normalized = normalizePageResult(data, slug, scope);
-    if (normalized) return Response.json(normalized);
-  }
+  const data = await readTool(token, "get_page", { slug });
+  const normalized = normalizePageResult(data, slug);
+  if (normalized) return Response.json(normalized);
   return Response.json({ error: "not found" }, { status: 404 });
+}
+
+async function deletePage(_req: Request, url: URL, token: TokenRecord): Promise<Response> {
+  const slug = textParam(url.searchParams, "slug");
+  if (!slug) {
+    await auditConsole(token, "delete_page", {}, "bad_request");
+    return Response.json({ error: "bad request" }, { status: 400 });
+  }
+
+  const args = { slug };
+  try {
+    const data = await brainTool("delete_page", args);
+    const status = textField(data, "status");
+    if (status === "soft_deleted" || status === "already_soft_deleted") {
+      await auditConsole(token, "delete_page", args, "ok");
+      return Response.json({
+        ok: true,
+        slug: textField(data, "slug") ?? slug,
+        recoverable: true,
+      });
+    }
+
+    await auditConsole(token, "delete_page", args, "error");
+    return Response.json({ error: "bad request" }, { status: 400 });
+  } catch (e) {
+    const notFound = isPageNotFoundError(e);
+    await auditConsole(token, "delete_page", args, notFound ? "not_found" : "error");
+    if (notFound) return Response.json({ error: "not found" }, { status: 404 });
+    console.error("[web] delete_page failed:", String(e).slice(0, 200));
+    return Response.json({ error: "bad request" }, { status: 400 });
+  }
+}
+
+async function postRestorePage(req: Request, _url: URL, token: TokenRecord): Promise<Response> {
+  const body = await jsonObject(req);
+  const slug = optionalText(body?.slug);
+  if (!slug) {
+    await auditConsole(token, "restore_page", {}, "bad_request");
+    return Response.json({ error: "bad request" }, { status: 400 });
+  }
+
+  const args = { slug };
+  try {
+    await brainTool("restore_page", args);
+    await auditConsole(token, "restore_page", args, "ok");
+    return Response.json({ ok: true, slug });
+  } catch (e) {
+    const notFound = isPageNotFoundError(e);
+    await auditConsole(token, "restore_page", args, notFound ? "not_found" : "error");
+    if (notFound) return Response.json({ error: "not found" }, { status: 404 });
+    console.error("[web] restore_page failed:", String(e).slice(0, 200));
+    return Response.json({ error: "bad request" }, { status: 400 });
+  }
 }
 
 async function postCapture(req: Request, _url: URL, token: TokenRecord): Promise<Response> {
@@ -278,18 +326,15 @@ async function postCapture(req: Request, _url: URL, token: TokenRecord): Promise
   if (!text?.trim()) return Response.json({ error: "bad request" }, { status: 400 });
 
   const title = captureTitle(optionalText(body?.title), text);
-  const scope = optionalText(body?.scope);
   const requestedSlug = optionalText(body?.slug);
   const slug = requestedSlug ?? await availableCaptureSlug(
     token,
     generateCaptureSlug(title, text),
-    scope,
   );
   const reason = rejectedSlugReason(slug);
   if (reason) return Response.json({ error: "bad request", message: reason }, { status: 400 });
 
   const args: Record<string, unknown> = { slug, content: captureMarkdown(title, text) };
-  if (scope) args.scope = scope;
 
   try {
     parseToolText(await callTool(token, "put_page", args));
@@ -325,7 +370,7 @@ async function authenticateCookie(req: Request): Promise<TokenRecord | null> {
 }
 
 function publicToken(token: TokenRecord) {
-  return { name: token.name, scopes: token.scopes, secrets: token.secrets };
+  return { name: token.name };
 }
 
 async function jsonObject(req: Request): Promise<Record<string, unknown> | null> {
@@ -347,45 +392,51 @@ async function isFile(pathname: string): Promise<boolean> {
   }
 }
 
-async function readAcrossScopes(
+async function readTool(
   token: TokenRecord,
   name: string,
-  scopes: string[],
   args: Record<string, unknown>,
-): Promise<Array<{ scope: string; data: any }>> {
-  const results = await Promise.all(scopes.map(async scope => {
-    try {
-      return { scope, data: parseToolText(await callTool(token, name, { ...args, scope })) };
-    } catch (e) {
-      console.error(`[web] ${name} failed for '${scope}':`, String(e).slice(0, 200));
-      return null;
-    }
-  }));
-  return results.filter((r): r is { scope: string; data: any } => r !== null);
+): Promise<any> {
+  try {
+    return parseToolText(await callTool(token, name, args));
+  } catch (e) {
+    console.error(`[web] ${name} failed:`, String(e).slice(0, 200));
+    return null;
+  }
 }
 
-function requestedScopes(scopes: string[], requested: string | null): string[] | null {
-  if (!requested) return scopes;
-  return scopes.includes(requested) ? [requested] : null;
+async function brainTool(name: string, args: Record<string, unknown>): Promise<any> {
+  return parseToolText(await brainClient().callTool({ name, arguments: args }));
 }
 
-export function normalizePageSummaries(data: any, scope: string) {
+async function auditConsole(
+  token: TokenRecord,
+  tool: string,
+  args: Record<string, unknown>,
+  outcome: string,
+): Promise<void> {
+  await audit(token.name, tool, summarizeArgs(args), outcome);
+}
+
+function summarizeArgs(args: Record<string, unknown>): string {
+  return JSON.stringify(args ?? {}).slice(0, 200);
+}
+
+export function normalizePageSummaries(data: any) {
   return arrayFrom(data, ["pages", "results", "items", "data"]).map(row => ({
     slug: textField(row, "slug") ?? "",
     title: textField(row, "title") ?? textField(row, "slug") ?? "",
     type: textField(row, "type") ?? "note",
     source_id: textField(row, "source_id") ?? textField(row, "sourceId") ?? "default",
-    scope,
     updated_at: timestampField(row, "updated_at") ?? timestampField(row, "updatedAt") ?? "",
     created_at: timestampField(row, "created_at") ?? timestampField(row, "createdAt") ?? "",
   })).filter(page => page.slug);
 }
 
-export function normalizeSearchResults(data: any, scope: string) {
+export function normalizeSearchResults(data: any) {
   return arrayFrom(data, ["results", "pages", "items", "matches", "data"]).map(row => ({
     slug: textField(row, "slug") ?? "",
     title: textField(row, "title") ?? textField(row, "slug") ?? "",
-    scope,
     updated_at:
       timestampField(row, "updated_at") ??
       timestampField(row, "updatedAt") ??
@@ -396,7 +447,7 @@ export function normalizeSearchResults(data: any, scope: string) {
   })).filter(result => result.slug);
 }
 
-export function normalizePageResult(data: any, slug: string, scope: string) {
+export function normalizePageResult(data: any, slug: string) {
   if (typeof data?.error === "string" && data.error.toLowerCase().includes("not found")) return null;
 
   const source = data?.page && typeof data.page === "object" ? data.page : data;
@@ -413,7 +464,6 @@ export function normalizePageResult(data: any, slug: string, scope: string) {
       slug: textField(source, "slug") ?? slug,
       title: textField(source, "title") ?? slug,
       type: textField(source, "type") ?? "note",
-      scope,
       updated_at: timestampField(source, "updated_at") ?? timestampField(source, "updatedAt") ?? "",
       body,
     },
@@ -490,6 +540,11 @@ function firstTextBlock(result: any): string | null {
   return typeof result?.content === "string" ? result.content : null;
 }
 
+function isPageNotFoundError(error: unknown): boolean {
+  const text = error instanceof ToolTextError ? error.text : String(error);
+  return text.toLowerCase().includes("page_not_found");
+}
+
 function arrayFrom(data: any, keys: string[]): any[] {
   if (Array.isArray(data)) return data;
   for (const key of keys) {
@@ -512,27 +567,20 @@ function captureTitle(title: string | null, text: string): string {
   return title ?? text.trim().split(/\s+/).slice(0, 6).join(" ");
 }
 
-async function availableCaptureSlug(token: TokenRecord, baseSlug: string, requestedScope: string | null): Promise<string> {
-  const scope = collisionScope(token, requestedScope);
-  if (!scope || !await pageExists(token, baseSlug, scope)) return baseSlug;
+async function availableCaptureSlug(token: TokenRecord, baseSlug: string): Promise<string> {
+  if (!await pageExists(token, baseSlug)) return baseSlug;
 
   for (let i = 0; i < 8; i += 1) {
     const candidate = suffixedSlug(baseSlug, randomSuffix());
-    if (!await pageExists(token, candidate, scope)) return candidate;
+    if (!await pageExists(token, candidate)) return candidate;
   }
   return suffixedSlug(baseSlug, randomSuffix());
 }
 
-function collisionScope(token: TokenRecord, requestedScope: string | null): string | null {
-  if (requestedScope) return requestedScope;
-  const writable = Object.keys(token.scopes).filter(scope => canWrite(token, scope));
-  return writable.length === 1 ? writable[0] : null;
-}
-
-async function pageExists(token: TokenRecord, slug: string, scope: string): Promise<boolean> {
+async function pageExists(token: TokenRecord, slug: string): Promise<boolean> {
   try {
-    const data = parseToolText(await callTool(token, "get_page", { slug, scope }));
-    return normalizePageResult(data, slug, scope) !== null;
+    const data = parseToolText(await callTool(token, "get_page", { slug }));
+    return normalizePageResult(data, slug) !== null;
   } catch {
     return false;
   }

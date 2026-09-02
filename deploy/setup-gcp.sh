@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Idempotent GCP provisioning for engram in project ani-hq.
-# Creates: Cloud SQL instance, scope + gateway databases, runtime SA,
+# Creates: Cloud SQL instance, shared brain + gateway databases, runtime SA,
 # the DB-URL-template secret, and IAM bindings. Run once; re-runs are safe.
 set -euo pipefail
 

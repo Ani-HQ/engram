@@ -1,66 +1,72 @@
-# Wiring a surface to engram
+# Wiring a Surface to engram
 
-Every agent connects to the same endpoint: `https://<engram-url>/mcp` with a
-per-agent bearer token. Mint tokens with:
+Every surface uses the same brain. Mint one token per person, agent, or harness so
+the audit log can attribute writes and reads:
 
 ```bash
 ENGRAM_DB_URL_TEMPLATE='postgresql://...__DB__...' bun cli/engram-admin.ts \
-  token issue --name <agent-name> --scopes shared:rw [--secrets]
+  token issue --name <agent-name>
 ```
 
-New/untrusted agents start with `--scopes shared:r` and no `--secrets`.
+Tokens identify callers only. Any valid token can use the same 8 tools against the
+same shared brain.
 
-## Mac — Claude Code
+## Primary Path
+
+Use the shim installer for supported harnesses:
+
 ```bash
-claude mcp add --scope user --transport http engram \
-  https://<engram-url>/mcp --header "Authorization: Bearer $ENGRAM_TOKEN"
+ENGRAM_HOST='https://<engram-url>' \
+ENGRAM_TOKEN='<token>' \
+npx @ani-hq/engram-mcp connect <harness>
 ```
 
-## Mac — Cursor
-`~/.cursor/mcp.json`:
-```json
-{ "mcpServers": { "engram": {
-  "url": "https://<engram-url>/mcp",
-  "headers": { "Authorization": "Bearer <token>" } } } }
-```
+That command writes the MCP config for the target harness and routes local
+stdio MCP traffic to `https://<engram-url>/mcp` with the bearer token.
 
-## Fleet VM — OpenClaw agents
-OpenClaw agents are Claude Code sessions; one user-scope registration on the VM
-covers the whole fleet:
-```bash
-claude mcp add --scope user --transport http engram \
-  https://<engram-url>/mcp --header "Authorization: Bearer $ENGRAM_TOKEN"
-```
+## Manual Fallback
 
-## Fleet VM — Hermes agents
-Per-agent MCP config in each `HERMES_HOME` (url + Authorization header). If the
-installed Hermes build lacks header support, use the stdio shim (below).
-
-## ai-holdingco Telegram bot
-Same user-scope `claude mcp add` under the bot's VM user — spawned
-`claude --print` sessions inherit it.
-
-## ChatGPT / Grok custom connectors
-Point the connector at `https://<engram-url>/mcp`. Use a **read-only, no-secrets**
-token. If the connector UI can't set an Authorization header, use the path-token
-route:
+For clients that can send HTTP headers, configure the gateway endpoint directly:
 
 ```text
-https://<engram-url>/t/<url-encoded-token>/mcp
+https://<engram-url>/mcp
+Authorization: Bearer <token>
 ```
 
-The path-token route authenticates the same token value, then rejects any token
-with `rw` scope access or `--secrets`.
+## Claude Code
 
-## Anything stdio-only
-The `@ani-hq/engram-mcp` shim proxies stdio→HTTP via `ENGRAM_HOST` +
-`ENGRAM_TOKEN` env vars:
+```bash
+claude mcp add --scope user --transport http engram \
+  https://<engram-url>/mcp --header "Authorization: Bearer $ENGRAM_TOKEN"
+```
+
+## Cursor
+
+`~/.cursor/mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "engram": {
-      "command": "engram-mcp",
+      "url": "https://<engram-url>/mcp",
+      "headers": {
+        "Authorization": "Bearer <token>"
+      }
+    }
+  }
+}
+```
+
+## Stdio-Only Harnesses
+
+Use the `@ani-hq/engram-mcp` shim as the MCP server command:
+
+```json
+{
+  "mcpServers": {
+    "engram": {
+      "command": "npx",
+      "args": ["-y", "@ani-hq/engram-mcp"],
       "env": {
         "ENGRAM_HOST": "https://<engram-url>",
         "ENGRAM_TOKEN": "<token>"
@@ -70,7 +76,19 @@ The `@ani-hq/engram-mcp` shim proxies stdio→HTTP via `ENGRAM_HOST` +
 }
 ```
 
-## Smoke test any wiring
-Ask the agent: “call engram's whoami tool” — it should report the token name and
-scopes you issued. Then: “remember that <fact>” and, from another surface,
-“search the brain for <fact>”.
+## Custom Connectors
+
+Point the connector at `https://<engram-url>/mcp` and set the Authorization
+header. Connectors that cannot send bearer headers need a local stdio harness with
+the shim.
+
+## Smoke Test Any Wiring
+
+Ask the agent to call engram's `whoami` tool. It should return exactly:
+
+```json
+{"token":"<agent-name>"}
+```
+
+Then ask it to write a page with `put_page` containing a unique phrase, and ask
+another surface to find that phrase with `search`.

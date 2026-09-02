@@ -4,7 +4,7 @@
 import { config } from "./config";
 import { migrate } from "./db";
 import { authenticate, type TokenRecord } from "./auth";
-import { startScopes, scopesHealth } from "./scopes";
+import { startBrain, brainHealth } from "./brain";
 import {
   listTools,
   callTool,
@@ -13,7 +13,6 @@ import {
   readClientMeta,
   toolsListCacheHints,
 } from "./proxy";
-import { isPathTokenAllowed } from "./tools/pathtoken";
 import { handleWeb } from "./web";
 
 function rpcResult(id: unknown, result: unknown) {
@@ -85,8 +84,8 @@ async function handleMcp(req: Request, authenticatedToken?: TokenRecord): Promis
 
 console.error("[engram] migrating gateway db...");
 await migrate();
-console.error("[engram] starting scope children:", config.scopes.join(", "));
-await startScopes();
+console.error("[engram] starting brain child...");
+await startBrain();
 
 Bun.serve({
   port: config.port,
@@ -96,26 +95,12 @@ Bun.serve({
     // /health, not /healthz: Google's frontend reserves /healthz on run.app
     // domains and answers 404 before the request reaches the container.
     if (url.pathname === "/health" || url.pathname === "/healthz") {
-      return Response.json({ status: "ok", scopes: await scopesHealth() });
+      return Response.json({ status: "ok", brain: await brainHealth() });
     }
     if (url.pathname === "/mcp") {
       if (req.method === "POST") return handleMcp(req);
       // No SSE stream support in stateless mode.
       return new Response("Method Not Allowed", { status: 405 });
-    }
-    const pathToken = url.pathname.match(/^\/t\/([^/]+)\/mcp$/);
-    if (pathToken) {
-      if (req.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
-      let rawToken: string;
-      try {
-        rawToken = decodeURIComponent(pathToken[1]);
-      } catch {
-        return Response.json({ error: "bad path token" }, { status: 400 });
-      }
-      const token = await authenticate(`Bearer ${rawToken}`);
-      if (!token) return Response.json({ error: "unauthorized" }, { status: 401 });
-      if (!isPathTokenAllowed(token)) return Response.json({ error: "forbidden" }, { status: 403 });
-      return handleMcp(req, token);
     }
     return handleWeb(req);
   },

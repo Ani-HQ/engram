@@ -21,7 +21,6 @@ services:
         condition: service_healthy
     environment:
       ENGRAM_DB_URL_TEMPLATE: postgresql://postgres:${POSTGRES_PASSWORD:-engram}@db:5432/__DB__
-      ENGRAM_SCOPES: ${ENGRAM_SCOPES:-shared}
       VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     ports:

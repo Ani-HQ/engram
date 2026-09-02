@@ -11,15 +11,9 @@ export function dbUrl(dbName: string): string {
   return template!.replace("__DB__", dbName);
 }
 
-// Scope name -> database name. Scope names never contain characters that need escaping:
-// lowercase alphanumerics plus ':' for product scopes (product:beacon -> brain_product_beacon).
-export function scopeDb(scope: string): string {
-  return "brain_" + scope.replace(/[^a-z0-9]+/g, "_");
-}
-
 export const config = {
   port: Number(process.env.PORT ?? 8080),
-  scopes: (process.env.ENGRAM_SCOPES ?? "shared").split(",").map(s => s.trim()).filter(Boolean),
+  brainDb: process.env.ENGRAM_BRAIN_DB ?? "brain_shared",
   gbrainBin: process.env.GBRAIN_BIN ?? `${process.env.HOME}/.bun/bin/gbrain`,
   gbrainHomesDir: process.env.GBRAIN_HOMES_DIR ?? "/gbrain-homes",
 };
