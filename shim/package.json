@@ -4,7 +4,7 @@
   "description": "One-command MCP harness connector and stdio proxy for engram",
   "license": "MIT",
   "bin": {
-    "engram-mcp": "./index.js"
+    "engram-mcp": "index.js"
   },
   "files": [
     "index.js",
