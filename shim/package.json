@@ -12,7 +12,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Ani-HQ/os-engram.git",
+    "url": "git+https://github.com/Ani-HQ/engram.git",
     "directory": "shim"
   },
   "engines": {
@@ -23,5 +23,9 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "homepage": "https://github.com/Ani-HQ/engram#readme",
+  "bugs": {
+    "url": "https://github.com/Ani-HQ/engram/issues"
   }
 }
