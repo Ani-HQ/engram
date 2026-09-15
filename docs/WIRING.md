@@ -82,6 +82,26 @@ Point the connector at `https://<engram-url>/mcp` and set the Authorization
 header. Connectors that cannot send bearer headers need a local stdio harness with
 the shim.
 
+## Headless and Unattended Agents
+
+An agent with no human at the keyboard — a fleet worker, a cron job, a bot — must be
+granted engram's tools explicitly, or its tool calls are blocked and it will ask a
+person who is not there. In Claude Code:
+
+```bash
+echo "<prompt>" | claude --print \
+  --allowedTools "mcp__engram__recall,mcp__engram__get_page,mcp__engram__search,mcp__engram__list_pages"
+```
+
+Add `mcp__engram__remember` and `mcp__engram__put_page` when the agent should write.
+Grant reads only where it should not.
+
+Note the flag takes a **comma-separated** list. Space-separated values are parsed as
+further arguments and will swallow your prompt.
+
+This is the most common reason a correctly-wired headless agent appears to ignore
+engram: it tried, and was denied.
+
 ## Smoke Test Any Wiring
 
 Ask the agent to call engram's `whoami` tool. It should return exactly:
