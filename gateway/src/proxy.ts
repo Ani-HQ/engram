@@ -298,7 +298,29 @@ function yamlHeader(title: string, frontmatter: unknown): string {
     .join("\n");
 }
 
+// remember is read-modify-write, so two agents appending to the same topic at the
+// same moment would both read the prior content and the second write would drop the
+// first entry. Many agents sharing one brain is the entire point, so serialize per
+// slug. Cloud Run runs max-instances=1, which makes an in-process queue sufficient;
+// if this ever scales past one instance this needs a read-after-write check instead.
+const appendQueue = new Map<string, Promise<unknown>>();
+
+function serializeBySlug<T>(slug: string, work: () => Promise<T>): Promise<T> {
+  const prior = appendQueue.get(slug) ?? Promise.resolve();
+  const next = prior.catch(() => {}).then(work);
+  appendQueue.set(slug, next.catch(() => {}));
+  return next;
+}
+
 async function remember(args: Record<string, unknown>): Promise<any> {
+  const slugForLock = slugForRemember(
+    typeof args.text === "string" ? args.text.trim() : "",
+    typeof args.topic === "string" ? args.topic : undefined,
+  );
+  return serializeBySlug(slugForLock, () => rememberUnsynchronized(args));
+}
+
+async function rememberUnsynchronized(args: Record<string, unknown>): Promise<any> {
   const text = typeof args.text === "string" ? args.text.trim() : "";
   if (!text) return toolError("remember requires a non-empty 'text'");
   const topic = typeof args.topic === "string" ? args.topic : undefined;

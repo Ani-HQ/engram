@@ -24,9 +24,13 @@ client ──HTTPS/MCP, bearer token──▶ engram gateway (Bun, stateless)
   database is `engram_gateway`.
 - **Auth model:** bearer tokens identify the person or agent. There is no access
   control between tokens; this is built for one small trusted team.
-- **Tool surface:** exactly 8 allowlisted tools: `search`, `get_page`,
-  `list_pages`, `put_page`, `add_tag`, `add_link`, `add_timeline_entry`, and
-  `whoami`. The allowlist limits blast radius, not token permissions.
+- **Tool surface:** exactly 10 tools. Seven forwarded to gbrain (`search`,
+  `get_page`, `list_pages`, `put_page`, `add_tag`, `add_link`,
+  `add_timeline_entry`) and three engram synthesizes itself (`whoami`,
+  `remember`, `recall`). The allowlist limits blast radius, not token permissions.
+- **Memory verbs:** `remember` appends a dated entry to one page per topic;
+  `recall` returns at most 5 hits with 280-character snippets. Both write pages,
+  so everything an agent stores is visible in the console.
 - **Audit:** every tool call is recorded for attribution: who taught or queried
   the brain, when, and with which tool.
 - **Routes:** `/health`, `/healthz`, `/mcp` (POST), `/api/*`, and static files.

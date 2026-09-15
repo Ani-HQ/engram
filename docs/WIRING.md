@@ -8,8 +8,8 @@ ENGRAM_DB_URL_TEMPLATE='postgresql://...__DB__...' bun cli/engram-admin.ts \
   token issue --name <agent-name>
 ```
 
-Tokens identify callers only. Any valid token can use the same 8 tools against the
-same shared brain.
+Tokens identify callers only. Any valid token can use the same 10 tools against
+the same shared brain.
 
 ## Primary Path
 

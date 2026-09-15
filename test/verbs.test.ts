@@ -290,4 +290,39 @@ describe("tool description shrinking", () => {
     expect(shrinkToolDef({ name: "whoami", inputSchema: { type: "object" } }).inputSchema)
       .toEqual({ type: "object" });
   });
+
+  test("concurrent appends to one topic do not lose an entry", async () => {
+    // The hazard is read-stale-then-write: both callers read the page, then both
+    // write based on what they read, and the second write drops the first entry.
+    // The fake must snapshot the page BEFORE its latency, or it accidentally lets
+    // the later read observe the earlier write and the race never reproduces.
+    const realCallTool = brain.callTool.bind(brain);
+    brain.callTool = async (request: any) => {
+      if (request.name === "get_page") {
+        const snapshot = pages.get(request.arguments?.slug);
+        await new Promise(r => setTimeout(r, 20));
+        const restore = pages.get(request.arguments?.slug);
+        if (snapshot === undefined) pages.delete(request.arguments?.slug);
+        else pages.set(request.arguments?.slug, snapshot);
+        const result = await realCallTool(request);
+        if (restore === undefined) pages.delete(request.arguments?.slug);
+        else pages.set(request.arguments?.slug, restore);
+        return result;
+      }
+      return realCallTool(request);
+    };
+    try {
+      await Promise.all([
+        callTool({ name: "agent-a" } as any, "remember", { topic: "raceweave", text: "entry from agent A" }),
+        callTool({ name: "agent-b" } as any, "remember", { topic: "raceweave", text: "entry from agent B" }),
+      ]);
+    } finally {
+      brain.callTool = realCallTool;
+    }
+
+    const stored = pages.get("projects/raceweave") ?? "";
+    expect(stored).toContain("entry from agent A");
+    expect(stored).toContain("entry from agent B");
+  });
+
 });
