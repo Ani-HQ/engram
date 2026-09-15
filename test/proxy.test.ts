@@ -66,7 +66,16 @@ describe("proxy tool surface", () => {
       "add_link",
       "add_timeline_entry",
       "whoami",
+      "remember",
+      "recall",
     ]);
+  });
+
+  test("every served description stays short enough to ship in a system prompt", async () => {
+    const tools = await listTools(token);
+    for (const tool of tools) {
+      expect(tool.description.split(/\s+/).length).toBeLessThanOrEqual(25);
+    }
   });
 
   test("whoami returns only the token name", async () => {
@@ -103,14 +112,27 @@ describe("proxy tool surface", () => {
     ]]);
   });
 
+  test("clamps an oversized limit before forwarding", async () => {
+    await callTool(token, "search", { query: "x", limit: 500 });
+    await callTool(token, "list_pages", { limit: 500 });
+    await callTool(token, "search", { query: "x", limit: 3 });
+
+    expect(forwardedCalls.map(call => call.arguments.limit)).toEqual([25, 25, 3]);
+    expect(auditCalls.map(call => call[2])).toEqual([
+      "{\"query\":\"x\",\"limit\":25}",
+      "{\"limit\":25}",
+      "{\"query\":\"x\",\"limit\":3}",
+    ]);
+  });
+
   test("denies removed tools", async () => {
-    for (const name of ["remember", "recall", "promote", "secret_get"]) {
+    for (const name of ["promote", "secret_get"]) {
       const result = await callTool(token, name, {});
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain(`Unknown or disallowed tool: ${name}`);
     }
     expect(forwardedCalls).toEqual([]);
-    expect(auditCalls.map(call => call[1])).toEqual(["remember", "recall", "promote", "secret_get"]);
+    expect(auditCalls.map(call => call[1])).toEqual(["promote", "secret_get"]);
     expect(auditCalls.every(call => call[3] === "denied")).toBe(true);
   });
 });

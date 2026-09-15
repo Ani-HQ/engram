@@ -12,6 +12,7 @@ import {
   resolveMcpRouting,
   readClientMeta,
   toolsListCacheHints,
+  SERVER_INSTRUCTIONS,
 } from "./proxy";
 import { handleWeb } from "./web";
 
@@ -59,6 +60,10 @@ async function handleMcp(req: Request, authenticatedToken?: TokenRecord): Promis
           protocolVersion: negotiateProtocolVersion(requested),
           capabilities: { tools: {} },
           serverInfo: { name: "engram", version: "0.1.0" },
+          // The server teaches its own usage policy: a shared brain is only useful
+          // if every harness writes to it the same way, and harnesses do not
+          // coordinate their system prompts.
+          instructions: SERVER_INSTRUCTIONS,
         });
       }
       case "ping":
