@@ -300,17 +300,29 @@ function yamlHeader(title: string, frontmatter: unknown): string {
 
 // remember is read-modify-write, so two agents appending to the same topic at the
 // same moment would both read the prior content and the second write would drop the
-// first entry. Many agents sharing one brain is the entire point, so serialize per
-// slug. Cloud Run runs max-instances=1, which makes an in-process queue sufficient;
-// if this ever scales past one instance this needs a read-after-write check instead.
+// first entry. Many agents sharing one brain is the entire point, so it is guarded
+// twice. The queue serializes appends inside one process. The read-back in
+// rememberUnsynchronized catches a writer the queue cannot see — the outgoing
+// revision still serving during a deploy, a console write, a put_page run by hand —
+// because gbrain offers no compare-and-swap to lock against.
 const appendQueue = new Map<string, Promise<unknown>>();
 
 function serializeBySlug<T>(slug: string, work: () => Promise<T>): Promise<T> {
   const prior = appendQueue.get(slug) ?? Promise.resolve();
   const next = prior.catch(() => {}).then(work);
-  appendQueue.set(slug, next.catch(() => {}));
+  const settled = next.catch(() => {});
+  appendQueue.set(slug, settled);
+  // Last one out clears the slot. Without this the map keeps a resolved promise for
+  // every topic the process has ever written, which leaks in a server up for weeks.
+  void settled.then(() => {
+    if (appendQueue.get(slug) === settled) appendQueue.delete(slug);
+  });
   return next;
 }
+
+// Each attempt restarts from whatever the last writer left, so the only way to
+// exhaust these is a page being rewritten continuously underneath us.
+const MAX_APPEND_ATTEMPTS = 3;
 
 async function remember(args: Record<string, unknown>): Promise<any> {
   const slugForLock = slugForRemember(
@@ -326,26 +338,44 @@ async function rememberUnsynchronized(args: Record<string, unknown>): Promise<an
   const topic = typeof args.topic === "string" ? args.topic : undefined;
 
   const slug = slugForRemember(text, topic);
-  const existing = await readPage(slug);
-  const prior = typeof existing?.compiled_truth === "string" && existing.compiled_truth.trim()
-    ? existing.compiled_truth.trimEnd()
-    : null;
-
-  const title = (existing?.title?.trim?.() || topic?.trim() || firstWords(text, 6)).slice(0, 120);
+  // Stamped once, outside the loop: a retry re-files the same entry rather than
+  // stamping a second, later one.
   const entry = `- ${new Date().toISOString()} — ${text}`;
-  // Append rather than replace: a topic is a running log, and an agent that
-  // overwrites it silently deletes what an earlier session learned.
-  const body = prior ? `${prior}\n\n${entry}` : `# ${title}\n\n${entry}`;
-  // compiled_truth comes back without frontmatter, so a plain write-back would drop
-  // the title and every other field on the first append. Rebuild the header from
-  // what get_page returned; YAML is a superset of JSON, so stringify is a safe
-  // encoder for every value gbrain can hand back.
-  const content = prior?.startsWith("---")
-    ? `${body}\n`
-    : `---\n${yamlHeader(title, existing?.frontmatter)}\n---\n\n${body}\n`;
 
-  await brainClient().callTool({ name: "put_page", arguments: { slug, content } });
-  return jsonResult({ ok: true, slug, appended: prior !== null });
+  let appended = false;
+  for (let attempt = 0; attempt < MAX_APPEND_ATTEMPTS; attempt += 1) {
+    const existing = await readPage(slug);
+    const prior = typeof existing?.compiled_truth === "string" && existing.compiled_truth.trim()
+      ? existing.compiled_truth.trimEnd()
+      : null;
+    appended = prior !== null;
+
+    const title = (existing?.title?.trim?.() || topic?.trim() || firstWords(text, 6)).slice(0, 120);
+    // Append rather than replace: a topic is a running log, and an agent that
+    // overwrites it silently deletes what an earlier session learned.
+    const body = prior ? `${prior}\n\n${entry}` : `# ${title}\n\n${entry}`;
+    // compiled_truth comes back without frontmatter, so a plain write-back would drop
+    // the title and every other field on the first append. Rebuild the header from
+    // what get_page returned; YAML is a superset of JSON, so stringify is a safe
+    // encoder for every value gbrain can hand back.
+    const content = prior?.startsWith("---")
+      ? `${body}\n`
+      : `---\n${yamlHeader(title, existing?.frontmatter)}\n---\n\n${body}\n`;
+
+    await brainClient().callTool({ name: "put_page", arguments: { slug, content } });
+
+    // Read back rather than trust the write: a racing writer that read the same prior
+    // body will have clobbered this entry, and the page is the only evidence of it.
+    const saved = await readPage(slug);
+    const savedBody = typeof saved?.compiled_truth === "string" ? saved.compiled_truth : "";
+    if (savedBody.includes(entry)) return jsonResult({ ok: true, slug, appended });
+  }
+
+  // Losing the entry every time means the page is being rewritten faster than it can
+  // be appended to. Report that rather than a save that is not there.
+  return toolError(
+    `remember wrote to ${slug} but the entry did not survive ${MAX_APPEND_ATTEMPTS} attempts`,
+  );
 }
 
 async function recall(args: Record<string, unknown>): Promise<any> {

@@ -326,3 +326,57 @@ describe("tool description shrinking", () => {
   });
 
 });
+
+describe("remember durability", () => {
+  // The per-slug queue only covers this process. A write from the outgoing revision
+  // during a deploy, from the console, or from a put_page run by hand lands
+  // underneath an append, and the read-back is the only thing that notices.
+  function clobberAfterPutPage(body: string, times: number) {
+    const realCallTool = brain.callTool.bind(brain);
+    let remaining = times;
+    brain.callTool = async (request: any) => {
+      const result = await realCallTool(request);
+      if (request.name === "put_page" && remaining > 0) {
+        remaining -= 1;
+        pages.set(request.arguments.slug, body);
+      }
+      return result;
+    };
+    return () => {
+      brain.callTool = realCallTool;
+    };
+  }
+
+  const otherWriter =
+    '---\ntitle: "gateway"\n---\n\n# gateway\n\n- 2026-01-01T00:00:00.000Z — written by another instance\n';
+
+  test("re-appends when another writer clobbers the page after the write", async () => {
+    const restore = clobberAfterPutPage(otherWriter, 1);
+    try {
+      const result = await callTool(token, "remember", { text: "mine", topic: "gateway" });
+      expect(payload(result)).toEqual({ ok: true, slug: "projects/gateway", appended: true });
+    } finally {
+      restore();
+    }
+
+    const stored = pages.get("projects/gateway")!;
+    // Both survive: the other writer's entry is the body this append restarted from.
+    expect(stored).toContain("written by another instance");
+    expect(stored).toContain("mine");
+    expect(stored.match(/^- \d{4}/gm)?.length).toBe(2);
+    expect(stored.match(/^---$/gm)?.length).toBe(2);
+  });
+
+  test("reports an error when the entry never survives", async () => {
+    const restore = clobberAfterPutPage(otherWriter, 99);
+    try {
+      const result = await callTool(token, "remember", { text: "mine", topic: "gateway" });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("did not survive");
+    } finally {
+      restore();
+    }
+    // A save that is gone is reported as a failure, not as ok.
+    expect(auditCalls.map(call => [call[1], call[3]])).toEqual([["remember", "error"]]);
+  });
+});
