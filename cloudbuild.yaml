@@ -53,6 +53,13 @@ steps:
       - '--timeout=900'
       - '--execution-environment=gen2'
 
+# A build that names its own service account must say where logs go, or it is
+# rejected before the first step runs. `gcloud builds submit` never hit this,
+# because it uses the default Cloud Build account and inherits its bucket; the
+# trigger names the account explicitly and so must choose.
+options:
+  logging: CLOUD_LOGGING_ONLY
+
 substitutions:
   _REGION: us-central1
 
