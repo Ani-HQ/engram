@@ -20,13 +20,23 @@ const brain = {
   },
 };
 
+// mock.module is process-global and outlives this file, so a mock that lists only
+// the exports this suite needs silently deletes the rest for every file that runs
+// after it. That cost a Cloud Build failure: web.test.ts happened to be evaluated
+// first, auth.test.ts imported this stub instead of the real module, and sha256 came
+// back undefined. Spread the real module so a mock can only ever override, never drop.
+const realAuth = await import("../gateway/src/auth");
+const realBrain = await import("../gateway/src/brain");
+
 mock.module("../gateway/src/auth", () => ({
+  ...realAuth,
   authenticate: async (authHeader: string | null) => (
     authHeader === "Bearer valid-token" ? { name: "console" } : null
   ),
 }));
 
 mock.module("../gateway/src/brain", () => ({
+  ...realBrain,
   brainClient: () => brain,
 }));
 
