@@ -39,8 +39,21 @@ client ──HTTPS/MCP, bearer token──▶ engram gateway (Bun, stateless)
 
 Self-hosted (any box): `docker compose up` -> MCP at `http://localhost:8080/mcp`.
 
-GCP (Cloud SQL + Cloud Run): `deploy/setup-gcp.sh`, then
-`gcloud builds submit --config cloudbuild.yaml --project ani-hq`.
+GCP (Cloud SQL + Cloud Run): `deploy/setup-gcp.sh` once, then every merge to
+`main` builds and deploys through the `engram-deploy` Cloud Build trigger. That
+build runs the test suite before it builds an image, so a red `main` never ships.
+
+To deploy by hand: `gcloud builds submit --config cloudbuild.yaml --project ani-hq`.
+
+A merge is not a deploy until that build finishes. Confirm what is actually serving
+by comparing the revision's creation time to the commit, which is the only reliable
+way to tell:
+
+```bash
+gcloud run services describe engram --region us-central1 \
+  --format='value(status.traffic)'
+gcloud run revisions list --service engram --region us-central1 --limit 1
+```
 
 Mint a token: `bun cli/engram-admin.ts token issue --name mac-claude`
 
