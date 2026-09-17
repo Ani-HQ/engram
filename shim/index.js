@@ -21,12 +21,17 @@ function dispatch() {
   const [subcommand, ...args] = process.argv.slice(2);
 
   if (subcommand === 'connect') {
+    let code;
     try {
-      process.exit(runConnect(args));
+      code = runConnect(args);
     } catch (err) {
       console.error(err.message || err);
       process.exit(1);
     }
+    // Seeding is the last step of connect and never its verdict: the config is
+    // already written and correct whether or not the server answers right now.
+    seedToolCache(lastConnectTarget).finally(() => process.exit(code));
+    return;
   }
 
   if (subcommand === '--help' || subcommand === '-h') {
@@ -86,6 +91,7 @@ function runConnect(args) {
   }
 
   const endpoint = toMcpEndpoint(host);
+  lastConnectTarget = { host: host.replace(/\/$/, ''), token };
 
   if (harness === 'claude') {
     return connectClaude(endpoint, token);
@@ -495,6 +501,117 @@ function backupExistingFile(file, missingMessage) {
   console.log(`Backed up ${file} to ${backup}`);
 }
 
+// ---------------------------------------------------------------------------
+// Cold-start tolerance.
+//
+// engram runs on Cloud Run with min-instances=0, so an idle service is asleep and
+// the first request pays a full container start: cloud-sql-proxy, gateway
+// migrations, a synchronous `gbrain init`, then the gbrain child's own MCP
+// handshake. That is far longer than a harness allows an MCP server to come up,
+// and the harness reports it as a server that failed to connect.
+//
+// The MCP SDK answers `initialize` from local data, so tools/list is the only
+// network call in the handshake. Serving it from a cache makes a sleeping engram
+// invisible at startup: the client connects instantly, and the wake-up happens
+// underneath the first real tool call, which is far more patient.
+const REQUEST_TIMEOUT_MS = Number(process.env.ENGRAM_TIMEOUT_MS) || 90_000;
+const WARMUP_TIMEOUT_MS = 2_000;
+// connect can afford a full cold start; a proxy handshake cannot.
+const SEED_TIMEOUT_MS = 120_000;
+const MAX_ATTEMPTS = 3;
+const RETRY_BASE_MS = 1_000;
+
+// Statuses Cloud Run's frontend returns when it never routed the request to the
+// container. The gateway itself answers 200 with a JSON-RPC error, or 401, so
+// retrying only these can never replay a write that was already applied.
+const RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
+
+function shouldRetry(status, err, idempotent) {
+  // No status means no response came back. Repeating an idempotent call is always
+  // safe. Repeating a write is not: the request may have been applied and only the
+  // reply lost, and a second `remember` would duplicate the entry.
+  if (err) return Boolean(idempotent);
+  return RETRYABLE_STATUS.has(status);
+}
+
+// Set by runConnect so the seeding step below knows where to look without
+// re-deriving it from argv and the environment a second time.
+let lastConnectTarget = null;
+
+// The first proxy run has no cache, which is the one handshake a sleeping engram
+// can still lose. connect is the right moment to fill it: credentials are in hand
+// and a person is watching, so a slow wake-up here costs nothing.
+async function seedToolCache(target) {
+  if (!target || !target.host || !target.token) return false;
+  try {
+    const res = await fetch(`${target.host.replace(/\/$/, '')}/mcp`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${target.token}`,
+        'Mcp-Method': 'tools/list',
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+      signal: AbortSignal.timeout(SEED_TIMEOUT_MS),
+    });
+    const json = await res.json();
+    const tools = normalizeTools(json && json.result);
+    if (!res.ok || !tools.length) throw new Error(`no tools returned (HTTP ${res.status})`);
+    writeToolCache(target.host, tools);
+    console.log(`Cached ${tools.length} tools for offline startup.`);
+    return true;
+  } catch (err) {
+    console.error(
+      `Could not reach engram to cache its tool list (${err.message || err}). ` +
+      'This is not fatal: the config is written, and the list will be cached on ' +
+      'the first successful call.'
+    );
+    return false;
+  }
+}
+
+function cacheKeyForHost(host) {
+  return String(host).replace(/^https?:\/\//, '').replace(/[^a-zA-Z0-9.-]/g, '_') || 'engram';
+}
+
+function toolCachePath(host) {
+  const base = process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache');
+  return path.join(base, 'engram-mcp', `tools-${cacheKeyForHost(host)}.json`);
+}
+
+// A miss is the normal first run and a failure is never fatal. The worst outcome
+// of either is the slow path this code already had.
+function readToolCache(host) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(toolCachePath(host), 'utf8'));
+    return Array.isArray(parsed && parsed.tools) && parsed.tools.length ? parsed.tools : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeToolCache(host, tools) {
+  try {
+    const file = toolCachePath(host);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      JSON.stringify({ host, savedAt: new Date().toISOString(), tools }, null, 2)
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function normalizeTools(result) {
+  return ((result && result.tools) || []).map((t) => ({
+    name: t.name,
+    description: t.description || '',
+    inputSchema: t.inputSchema || { type: 'object', properties: {} },
+  }));
+}
+
 async function runProxy() {
   const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
   const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
@@ -515,38 +632,66 @@ async function runProxy() {
 
   let rpcId = 1;
 
-  async function engramRpc(method, params) {
-    const body = {
-      jsonrpc: '2.0',
-      id: rpcId++,
-      method,
-    };
-    if (params !== undefined) body.params = params;
+  async function engramRpc(method, params, idempotent) {
+    let lastError;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+      if (attempt > 0) {
+        await new Promise((r) => setTimeout(r, RETRY_BASE_MS * 2 ** (attempt - 1)));
+      }
 
-    const headers = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${TOKEN}`,
-      'Mcp-Method': method,
-    };
-    if (params && typeof params.name === 'string') {
-      headers['Mcp-Name'] = params.name;
-    }
+      const body = {
+        jsonrpc: '2.0',
+        id: rpcId++,
+        method,
+      };
+      if (params !== undefined) body.params = params;
 
-    const res = await fetch(`${HOST}/mcp`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    });
+      const headers = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${TOKEN}`,
+        'Mcp-Method': method,
+      };
+      if (params && typeof params.name === 'string') {
+        headers['Mcp-Name'] = params.name;
+      }
 
-    const json = await res.json();
-    if (!res.ok) {
-      throw new Error(json.error?.message || json.error || `engram MCP HTTP ${res.status}`);
+      let res;
+      try {
+        res = await fetch(`${HOST}/mcp`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+      } catch (e) {
+        lastError = e;
+        if (!shouldRetry(null, e, idempotent)) throw e;
+        continue;
+      }
+
+      if (!res.ok && shouldRetry(res.status, null, idempotent)) {
+        // Drain the body so the socket is released before the next attempt.
+        await res.text().catch(() => {});
+        lastError = new Error(`engram MCP HTTP ${res.status}`);
+        continue;
+      }
+
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error?.message || json.error || `engram MCP HTTP ${res.status}`);
+      }
+      if (json.error) {
+        throw new Error(json.error.message || `engram MCP error ${json.error.code}`);
+      }
+      return json.result;
     }
-    if (json.error) {
-      throw new Error(json.error.message || `engram MCP error ${json.error.code}`);
-    }
-    return json.result;
+    throw lastError || new Error('engram MCP request failed');
   }
+
+  // Start the wake-up the moment the session opens, so the container is booting
+  // while the user is still typing rather than under their first question.
+  // Nothing waits on this and a failure changes nothing.
+  fetch(`${HOST}/health`, { signal: AbortSignal.timeout(WARMUP_TIMEOUT_MS) }).catch(() => {});
 
   const server = new Server(
     { name: 'engram', version: '0.1.0' },
@@ -554,14 +699,23 @@ async function runProxy() {
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    const result = await engramRpc('tools/list');
-    return {
-      tools: (result.tools || []).map((t) => ({
-        name: t.name,
-        description: t.description || '',
-        inputSchema: t.inputSchema || { type: 'object', properties: {} },
-      })),
-    };
+    const cached = readToolCache(HOST);
+    if (cached) {
+      // Answer instantly from cache and correct it behind the reply. The tool
+      // surface changes on a deploy, not between sessions, so a list one session
+      // stale is a far smaller problem than a handshake that times out.
+      engramRpc('tools/list', undefined, true)
+        .then((result) => {
+          const fresh = normalizeTools(result);
+          if (fresh.length) writeToolCache(HOST, fresh);
+        })
+        .catch(() => {});
+      return { tools: cached };
+    }
+
+    const tools = normalizeTools(await engramRpc('tools/list', undefined, true));
+    writeToolCache(HOST, tools);
+    return { tools };
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -587,4 +741,16 @@ async function runProxy() {
   await server.connect(transport);
 }
 
-dispatch();
+module.exports = {
+  cacheKeyForHost,
+  seedToolCache,
+  normalizeTools,
+  readToolCache,
+  shouldRetry,
+  toolCachePath,
+  writeToolCache,
+};
+
+// Only run the CLI when invoked as one, so the helpers above can be required by
+// tests without the process trying to dispatch a subcommand.
+if (require.main === module) dispatch();

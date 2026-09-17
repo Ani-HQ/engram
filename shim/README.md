@@ -37,6 +37,23 @@ Running `engram-mcp connect` with no harness prints the same list.
 
 Every file write first copies the existing config to `<file>.engram-backup`.
 
+## Cold Starts
+
+engram runs scale-to-zero, so an idle service is asleep and the first request pays a
+full container start. That is longer than a harness allows an MCP server to come up,
+and the harness reports it as a server that failed to connect.
+
+The proxy answers `initialize` locally, so `tools/list` is the only network call in
+the handshake. It is served from a cache at
+`$XDG_CACHE_HOME/engram-mcp/tools-<host>.json` and refreshed behind the reply, which
+means a sleeping engram is invisible at startup. The wake-up lands under the first
+real tool call instead, which is far more patient, and `connect` fills the cache up
+front so even a first run is instant.
+
+The proxy also pings `/health` when it starts, so the container is waking while you
+are still typing. Set `ENGRAM_TIMEOUT_MS` to change the per-request ceiling, which
+defaults to 90 seconds.
+
 ## Supported Harnesses
 
 `claude` registers engram through the Claude Code CLI:
