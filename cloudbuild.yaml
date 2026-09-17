@@ -1,4 +1,25 @@
 steps:
+  # Gate the deploy on the suite. Cloud Build is what actually ships, so the tests
+  # have to run here and not only in GitHub Actions: a trigger fires on the push
+  # itself and would otherwise deploy a red main before Actions had finished.
+  - name: 'oven/bun:1-debian'
+    id: test
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        bun install --frozen-lockfile
+        bun test
+        # The console is served from a public URL, so a remote script or font would
+        # be both a privacy leak and a CSP failure.
+        if grep -rnoE 'https?://[a-zA-Z0-9.-]+' web/ \
+             --include='*.html' --include='*.css' --include='*.js' \
+           | grep -vE 'localhost|127\.0\.0\.1|www\.w3\.org'; then
+          echo "external reference found in web/" >&2
+          exit 1
+        fi
+
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
