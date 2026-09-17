@@ -59,7 +59,12 @@ const brain = {
   },
 };
 
+// Spread the real module: mock.module is process-global, so listing only the export
+// this suite needs would delete the others for every file evaluated after it.
+const realBrain = await import("../gateway/src/brain");
+
 mock.module("../gateway/src/brain", () => ({
+  ...realBrain,
   brainClient: () => brain,
 }));
 
