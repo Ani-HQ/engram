@@ -70,7 +70,7 @@ for users or teams that need separation inside the same instance.
 
 ## The Console
 
-`https://<engram-url>/` serves 文庫, a reading room for the brain. Sign in with any
+`https://<engram-url>/` serves the console, a reading room for the brain. Sign in with any
 engram token; the console stores it in an httpOnly cookie and uses the same
 audited tool path as MCP clients.
 

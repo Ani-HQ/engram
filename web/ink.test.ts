@@ -35,7 +35,7 @@ describe("ink recency", () => {
   test("keeps the faded floor at WCAG AA contrast in both themes", () => {
     const floor = inkColor(0);
     expect(INK_MIX_FLOOR).toBeGreaterThanOrEqual(0.62);
-    expect(contrastRatio(floor, LIGHT_PALETTE.gofun)).toBeGreaterThanOrEqual(4.5);
-    expect(contrastRatio(floor, DARK_PALETTE.gofun)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(floor, LIGHT_PALETTE.surface)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(floor, DARK_PALETTE.surface)).toBeGreaterThanOrEqual(4.5);
   });
 });

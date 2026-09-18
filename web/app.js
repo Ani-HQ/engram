@@ -1,7 +1,7 @@
 import { api, AuthError } from "./api.js";
 import { inkColor, inkStepFor } from "./ink.js";
 import { renderMarkdown } from "./markdown.js";
-import { inkGlyph, relativeDate, renderKintsugi, renderTimeline, seigaiha, sealImg } from "./mechanics.js";
+import { inkGlyph, relativeDate, renderLinks, renderTimeline, pulse, sealImg } from "./mechanics.js";
 const app = document.getElementById("app");
 const refs = {};
 const state = {
@@ -33,16 +33,16 @@ async function bootstrap() {
     await loadCollection();
   } catch (error) {
     if (error instanceof AuthError) showLogin();
-    else showLogin("The gate did not answer.");
+    else showLogin("The server did not answer.");
   }
 }
 
-// Boot splash: the seigaiha arcs breathe while we ask the gate who this browser is.
+// Boot splash: a quiet pulse while we ask the gateway who this browser is.
 function showLoading(label) {
   app.className = "login-screen";
   app.replaceChildren(
     h("main", { class: "login-scroll" },
-      h("div", { class: "inline-loading", role: "status" }, seigaiha(), h("span", {}, label)),
+      h("div", { class: "inline-loading", role: "status" }, pulse(), h("span", {}, label)),
     ),
   );
 }
@@ -66,15 +66,15 @@ function showLogin(message = "") {
         showConsole();
         await loadCollection();
       } catch (error) {
-        showLogin(error instanceof AuthError ? "The seal did not open." : "The gate did not answer.");
+        showLogin(error instanceof AuthError ? "That token was not recognised." : "The gate did not answer.");
       }
     },
   },
-    sealImg("engram bunko", 82, "engram hanko"),
-    h("h1", {}, "engram 文庫"),
+    sealImg("engram", 82, "engram mark"),
+    h("h1", {}, "engram"),
     // Restraint is the aesthetic, but a screen that does not say what it wants
     // is not restrained, it is unusable. These three lines are the floor.
-    h("p", { class: "login-blurb" }, "The reading room for your brain — the memory your agents share."),
+    h("p", { class: "login-blurb" }, "Shared memory for your agents. One brain, every surface."),
     h("label", { class: "field-label" },
       h("span", {}, "paste an engram token"),
       input),
@@ -105,7 +105,7 @@ function showConsole() {
   refs.count = h("p", { class: "result-count", "aria-live": "polite" });
   // The ink fade is meaningless to anyone who was not told what it encodes.
   refs.legend = h("p", { class: "collection-legend" },
-    h("span", {}, "ink darkens with recency"),
+    h("span", {}, "weight follows recency"),
     h("span", { class: "legend-keys" }, "/ search · j k move · enter open · c write · ? keys"),
   );
   refs.list = h("section", { class: "ink-list", role: "listbox", "aria-label": "Memory pages" });
@@ -114,11 +114,11 @@ function showConsole() {
   refs.paneHost = h("div", { class: "pane-host" });
 
   const rail = h("aside", { class: "left-rail", "aria-label": "Sections" },
-    sealImg(state.session?.name || "engram", 54, "console hanko"),
-    h("h1", { class: "rail-title" }, "文庫"),
-    labelBlock("文庫", "collection"),
-    labelBlock("検索", "search"),
-    labelBlock("記憶", "memory"),
+    sealImg(state.session?.name || "engram", 40, "session mark"),
+    h("h1", { class: "rail-title" }, "engram"),
+    labelBlock("collection"),
+    labelBlock("search"),
+    labelBlock("memory"),
     h("div", { class: "rail-foot" },
       h("span", {}, state.session?.name || "guest"),
       h("button", { type: "button", class: "text-button", onclick: logout }, "leave"),
@@ -128,7 +128,7 @@ function showConsole() {
   const main = h("main", { class: "scroll-column" },
     refs.capture,
     h("section", { class: "search-field", "aria-label": "Search" },
-      h("label", { for: "search" }, "検索"),
+      h("label", { for: "search", class: "visually-hidden" }, "search"),
       refs.search,
     ),
     refs.count,
@@ -170,10 +170,10 @@ function renderList() {
   const noun = state.items.length === 1 ? "page" : "pages";
   renderResultCount(noun);
   if (state.loading) {
-    refs.list.append(h("div", { class: "inline-loading", role: "status" }, seigaiha(), h("span", {}, "wet ink settling")));
+    refs.list.append(h("div", { class: "inline-loading", role: "status" }, pulse(), h("span", {}, "loading")));
     return;
   }
-  // Yohaku is for a truly empty result — never a reason to hide a page that exists.
+  // Empty state is for a truly empty result — never a reason to hide a page that exists.
   if (state.items.length === 0) {
     refs.list.append(renderYohaku());
     return;
@@ -215,7 +215,7 @@ async function openItem(item, invoker) {
     const data = await api.page({ slug: item.slug, scope: item.scope });
     state.pane = { loading: false, ...data };
     renderPane();
-    requestAnimationFrame(() => refs.paneHost.querySelector(".shoji-pane")?.focus());
+    requestAnimationFrame(() => refs.paneHost.querySelector(".reader-pane")?.focus());
   } catch (error) {
     handleError(error);
   }
@@ -225,7 +225,7 @@ function renderPane() {
   refs.paneHost.replaceChildren();
   if (!state.pane) return;
   const pane = h("aside", {
-    class: "shoji-pane",
+    class: "reader-pane",
     tabindex: "-1",
     "aria-label": "Memory reader",
   });
@@ -233,13 +233,13 @@ function renderPane() {
   const actions = h("div", { class: "pane-actions" }, close);
   pane.append(actions);
   if (state.pane.loading) {
-    pane.append(h("div", { class: "pane-loading" }, seigaiha(), h("span", {}, "ink rising")));
+    pane.append(h("div", { class: "pane-loading" }, pulse(), h("span", {}, "loading")));
   } else {
     const page = state.pane.page;
     actions.append(h("button", { type: "button", class: "text-button pane-forget", onclick: forgetOpenPage }, "forget"));
     const body = h("article", { class: "reader-body" });
     body.append(renderMarkdown(page.body || ""));
-    // A [[wikilink]] in the prose opens the same way a kintsugi seam does.
+    // A [[wikilink]] in the prose opens the same way a link in the links panel does.
     body.addEventListener("click", event => {
       const slug = event.target.closest?.(".wikilink")?.dataset.slug;
       if (!slug) return;
@@ -248,10 +248,10 @@ function renderPane() {
     });
     pane.append(
       h("header", { class: "pane-head" },
-        sealImg(page.source_id || page.scope || page.slug, 34, "source hanko"),
+        sealImg(page.source_id || page.scope || page.slug, 28, "source mark"),
         h("div", {}, h("p", { class: "pane-kicker" }, `${page.type || "page"} · ${relativeDate(page.updated_at, state.now)}`), h("h2", {}, page.title || page.slug)),
       ),
-      renderKintsugi(page, state.pane.links ?? [], openItem),
+      renderLinks(page, state.pane.links ?? [], openItem),
       body,
       renderTimeline(state.pane.timeline ?? []),
     );
@@ -265,7 +265,7 @@ function renderPane() {
 }
 
 function closePane() {
-  const pane = refs.paneHost.querySelector(".shoji-pane");
+  const pane = refs.paneHost.querySelector(".reader-pane");
   if (!pane) return;
   pane.classList.add("is-closing");
   window.setTimeout(() => {
@@ -370,21 +370,21 @@ function clearUndoNotice() {
 function renderCapture() {
   refs.capture.replaceChildren();
   if (!state.captureOpen) {
-    refs.capture.append(h("button", { type: "button", class: "tanzaku-tab", "aria-expanded": "false", title: "Write a note (c)", onclick: openCapture },
-      h("span", { class: "tab-kanji" }, "記す"),
-      h("span", { class: "tab-roman" }, "write")));
+    refs.capture.append(h("button", { type: "button", class: "capture-tab", "aria-expanded": "false", title: "Write a note (c)", onclick: openCapture },
+      h("span", { class: "tab-label" }, "write"),
+      ));
     return;
   }
   const textarea = h("textarea", {
     rows: "7",
-    placeholder: "記憶",
+    placeholder: "write a memory",
     oninput: event => state.captureText = event.currentTarget.value,
     onkeydown: event => {
       if ((event.metaKey || event.ctrlKey) && event.key === "Enter") submitCapture();
     },
   });
   textarea.value = state.captureText;
-  const form = h("form", { class: "tanzaku-panel", onsubmit: event => { event.preventDefault(); submitCapture(); } },
+  const form = h("form", { class: "capture-panel", onsubmit: event => { event.preventDefault(); submitCapture(); } },
     textarea,
     h("div", { class: "capture-actions" },
       h("button", { type: "button", class: "text-button", onclick: collapseCapture }, "fold"),
@@ -401,7 +401,7 @@ async function submitCapture() {
   if (!text) return;
   try {
     const result = await api.capture({ text, slug: null, title: null });
-    const panel = refs.capture.querySelector(".tanzaku-panel");
+    const panel = refs.capture.querySelector(".capture-panel");
     panel?.classList.add("is-folding");
     await wait(reducedMotion() ? 0 : 320);
     state.captureText = "";
@@ -424,8 +424,7 @@ async function submitCapture() {
 function renderYohaku() {
   const hint = "Press c to write.";
   return h("section", { class: "yohaku", "aria-label": "Empty memory state" },
-    sealImg("empty paper", 72, "empty seal"),
-    h("p", { class: "empty-kanji" }, "空"),
+    sealImg("empty", 72, "empty mark"),
     h("p", { class: "empty-hint" }, hint),
   );
 }
@@ -499,8 +498,8 @@ function handleError(error) {
   }
 }
 
-function labelBlock(kanji, roman) {
-  return h("div", { class: "rail-label" }, h("span", { class: "rail-kanji" }, kanji), h("span", { class: "rail-roman" }, roman));
+function labelBlock(name) {
+  return h("div", { class: "rail-label" }, h("span", { class: "rail-name" }, name));
 }
 
 function h(tag, attrs = {}, ...children) {

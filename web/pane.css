@@ -5,7 +5,7 @@
   pointer-events: none;
 }
 
-.shoji-pane {
+.reader-pane {
   position: absolute;
   top: 0;
   right: 0;
@@ -13,8 +13,8 @@
   height: 100%;
   overflow-y: auto;
   padding: clamp(2rem, 5vw, 4.5rem) clamp(1.4rem, 4vw, 3.8rem) 5rem clamp(2.2rem, 4vw, 4rem);
-  border-left: 1px solid var(--nezumi);
-  background: color-mix(in oklab, var(--gofun) 78%, transparent);
+  border-left: 1px solid var(--line);
+  background: color-mix(in oklab, var(--surface) 78%, transparent);
   backdrop-filter: blur(20px) saturate(0.9);
   -webkit-backdrop-filter: blur(20px) saturate(0.9);
   pointer-events: auto;
@@ -22,24 +22,24 @@
   transition: transform 440ms var(--ease);
 }
 
-.shoji-pane::before {
+.reader-pane::before {
   position: fixed;
   top: 0;
   bottom: 0;
   left: 0;
   width: 2rem;
   background-image:
-    linear-gradient(to right, var(--nezumi) 0 1px, transparent 1px),
-    repeating-linear-gradient(to bottom, transparent 0 3rem, color-mix(in oklab, var(--nezumi) 58%, transparent) 3rem calc(3rem + 1px));
+    linear-gradient(to right, var(--line) 0 1px, transparent 1px),
+    repeating-linear-gradient(to bottom, transparent 0 3rem, color-mix(in oklab, var(--line) 58%, transparent) 3rem calc(3rem + 1px));
   content: "";
   pointer-events: none;
 }
 
-.shoji-pane.is-open {
+.reader-pane.is-open {
   transform: translateX(0);
 }
 
-.shoji-pane.is-closing {
+.reader-pane.is-closing {
   transform: translateX(100%);
 }
 
@@ -63,12 +63,12 @@
 
 .pane-kicker {
   margin: 0 0 0.45rem;
-  color: var(--usuzumi);
+  color: var(--text-2);
 }
 
 .pane-head h2 {
   margin: 0;
-  font-family: var(--mincho);
+  font-family: var(--display);
   font-size: clamp(1.8rem, 4vw, 3.4rem);
   font-weight: 400;
   line-height: 1.16;
@@ -77,7 +77,7 @@
 
 .reader-body {
   margin-top: clamp(2.2rem, 6vh, 4.5rem);
-  font-family: var(--mincho);
+  font-family: var(--display);
   font-size: 17px;
   line-height: 1.85;
   text-wrap: pretty;
@@ -101,7 +101,7 @@
 .reader-body a {
   color: inherit;
   text-decoration: underline;
-  text-decoration-color: var(--kin);
+  text-decoration-color: var(--accent-deep);
   text-underline-offset: 0.18em;
 }
 
@@ -114,35 +114,35 @@
 .reader-body pre {
   overflow-x: auto;
   padding: 1rem 0;
-  border-top: 1px solid var(--nezumi);
-  border-bottom: 1px solid var(--nezumi);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
 }
 
-.kintsugi {
+.links {
   position: relative;
   height: 180px;
   margin: 0 0 1rem;
-  color: var(--usuzumi);
+  color: var(--text-2);
 }
 
-.kintsugi svg {
+.links svg {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
 }
 
-.kintsugi-source {
+.links-source {
   position: absolute;
   top: 0.3rem;
   left: 0;
   max-width: 15ch;
   margin: 0;
-  font-family: var(--mincho);
+  font-family: var(--display);
   line-height: 1.4;
 }
 
-.kintsugi-targets {
+.links-targets {
   position: absolute;
   inset: 0 0 0 auto;
   width: 15rem;
@@ -152,19 +152,19 @@
   position: absolute;
   right: 0;
   padding: 0 0 0.14rem;
-  border-bottom: 1px solid var(--kin);
-  color: var(--sumi);
+  border-bottom: 1px solid var(--accent-deep);
+  color: var(--text);
   cursor: pointer;
 }
 
-.emaki {
+.timeline {
   margin-top: clamp(3rem, 8vh, 6rem);
 }
 
-.emaki h3 {
+.timeline h3 {
   margin: 0 0 1rem;
-  color: var(--usuzumi);
-  font-family: var(--mincho);
+  color: var(--text-2);
+  font-family: var(--display);
   font-weight: 400;
   letter-spacing: 0.32em;
 }
@@ -195,7 +195,7 @@
   top: 0.66rem;
   right: -12vw;
   left: -12vw;
-  border-top: 1px solid var(--nezumi);
+  border-top: 1px solid var(--line);
   content: "";
 }
 
@@ -218,12 +218,12 @@
   height: 0.48rem;
   margin: 0.45rem auto 0.8rem;
   border-radius: 50%;
-  background: var(--sumi);
+  background: var(--text);
 }
 
 .emaki-node time {
   display: block;
-  color: var(--usuzumi);
+  color: var(--text-2);
   font-family: var(--mono);
   font-size: 0.72rem;
   letter-spacing: -0.035em;
@@ -231,7 +231,7 @@
 
 .emaki-node p {
   margin: 0.42rem 0 0;
-  font-family: var(--mincho);
+  font-family: var(--display);
   font-size: 0.92rem;
   line-height: 1.55;
 }
@@ -253,11 +253,9 @@
   top: 13%;
   left: 17%;
   margin: 0;
-  color: color-mix(in oklab, var(--usuzumi) 56%, transparent);
-  font-family: var(--mincho);
-  font-size: clamp(2.3rem, 8vw, 5rem);
-  letter-spacing: 0.68em;
-  writing-mode: vertical-rl;
+  color: var(--text-2);
+  font-family: var(--display);
+  font-size: 1rem;
 }
 
 .empty-hint {
@@ -265,7 +263,7 @@
   top: 68%;
   left: 25%;
   margin: 0;
-  color: var(--usuzumi);
+  color: var(--text-2);
   font-size: 0.86rem;
 }
 
@@ -274,7 +272,7 @@
   flex-wrap: wrap;
   gap: 0.7rem 1.1rem;
   margin-top: 1.2rem;
-  color: var(--usuzumi);
+  color: var(--text-2);
 }
 
 @media (max-width: 720px) {
@@ -316,12 +314,12 @@
     right: 1rem;
   }
 
-  .shoji-pane {
+  .reader-pane {
     width: 100%;
     padding-left: 3.5rem;
   }
 
-  .kintsugi-targets {
+  .links-targets {
     width: 11rem;
   }
 }
@@ -338,11 +336,11 @@
   }
 
   .ink-row,
-  .seigaiha,
-  .tanzaku-panel.is-folding,
-  .shoji-pane,
-  .shoji-pane.is-open,
-  .shoji-pane.is-closing {
+  .pulse,
+  .capture-panel.is-folding,
+  .reader-pane,
+  .reader-pane.is-open,
+  .reader-pane.is-closing {
     filter: none !important;
     opacity: 1 !important;
     transform: none !important;

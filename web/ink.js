@@ -1,14 +1,20 @@
+// Recency is still encoded as weight, because it is the cheapest way to see at a
+// glance what is fresh. What changed is the palette it mixes against: flat white
+// rather than warm paper. The glyph and the date carry the same information, so
+// nothing depends on perceiving the fade.
 export const LIGHT_PALETTE = {
-  gofun: "#F7F4EC",
-  sumi: "#1C1A17",
+  surface: "#FFFFFF",
+  text: "#202124",
 };
 
 export const DARK_PALETTE = {
-  gofun: "#14130F",
-  sumi: "#EDE7DA",
+  surface: "#131314",
+  text: "#E3E3E3",
 };
 
-export const INK_MIX_FLOOR = 0.62;
+// Raised from 0.62: against flat white the old floor cleared AA by 0.1, which is
+// no margin at all once a renderer rounds differently.
+export const INK_MIX_FLOOR = 0.64;
 const ONE_DAY = 86_400_000;
 const FADE_DAYS = 365;
 
@@ -24,7 +30,7 @@ export function inkStepFor(updatedAt, now = new Date()) {
 
 export function inkColor(step) {
   const amount = INK_MIX_FLOOR + (1 - INK_MIX_FLOOR) * clamp(step, 0, 1);
-  return `color-mix(in oklab, var(--sumi) ${Math.round(amount * 1000) / 10}%, var(--gofun))`;
+  return `color-mix(in oklab, var(--text) ${Math.round(amount * 1000) / 10}%, var(--surface))`;
 }
 
 export function contrastRatio(colorA, colorB) {
@@ -37,11 +43,11 @@ export function contrastRatio(colorA, colorB) {
 
 function resolveColor(color, against) {
   if (typeof color === "string" && color.startsWith("color-mix(")) {
-    const mix = color.match(/var\(--sumi\)\s+([\d.]+)%/);
+    const mix = color.match(/var\(--text\)\s+([\d.]+)%/);
     const pct = mix ? Number(mix[1]) / 100 : INK_MIX_FLOOR;
     const bg = normalizeHex(against);
-    const palette = bg === normalizeHex(DARK_PALETTE.gofun) ? DARK_PALETTE : LIGHT_PALETTE;
-    return mixRgb(parseHex(palette.sumi), parseHex(palette.gofun), clamp(pct, 0, 1));
+    const palette = bg === normalizeHex(DARK_PALETTE.surface) ? DARK_PALETTE : LIGHT_PALETTE;
+    return mixRgb(parseHex(palette.text), parseHex(palette.surface), clamp(pct, 0, 1));
   }
   return parseHex(color);
 }
