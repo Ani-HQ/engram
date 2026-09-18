@@ -27,6 +27,18 @@ Use `remember` with a `topic` matching the project. It appends a dated bullet to
 continuous thread instead of forty near-duplicate session notes that make every
 later search worse.
 
+A topic page cannot grow forever. `get_page` returns a page whole and has no cap, so
+an unbounded page charges its entire history to the context of every agent that opens
+it, and `recall` could only ever hand back a slice. Once a topic page outgrows its
+budget, `remember` moves the oldest entries to `projects/<topic>-archive` and leaves a
+link to it. Nothing is lost: an archive is a page like any other, so `search` and
+`recall` still reach it. What changes is that the live page stays short enough to be
+returned in full, which is the only way a resuming agent reads the *newest* decisions
+rather than the oldest.
+
+If you do ask `recall` for a full body and the page is still over the cap, you get its
+opening and its most recent entries with the middle elided, never the head alone.
+
 ```
 remember(topic: "engram", text: "Deferred the Claude Code hook — a shell hook
 cannot see the conversation. Testing whether instructed agents write on their own

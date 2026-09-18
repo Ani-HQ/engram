@@ -192,19 +192,34 @@ describe("recall", () => {
     expect(results).toEqual([{ slug: "notes/x", title: "X", snippet: "# X\nshort body" }]);
   });
 
-  test("full:true adds the best-scoring page body, truncated", async () => {
+  test("full:true keeps both ends of an oversized page, not just the head", async () => {
     searchHits = [
       hit({ slug: "notes/low", score: 0.2 }),
       hit({ slug: "notes/best", score: 9 }),
     ];
-    pages.set("notes/best", `body ${"x".repeat(6000)}`);
+    // A topic page is append-only, so returning the head alone hands back the oldest
+    // decisions and silently drops every correction made since. The newest entry has
+    // to survive; that is the whole reason the page exists.
+    pages.set("notes/best", `OLDEST-MARKER\n${"filler line\n".repeat(900)}NEWEST-MARKER`);
 
     const { full } = payload(await callTool(token, "recall", { query: "x", full: true }));
 
     expect(full.slug).toBe("notes/best");
+    // The byte budget is unchanged: connected agents pay no more context than before.
     expect(full.body.length).toBeLessThanOrEqual(4000);
-    expect(full.body.endsWith("…")).toBe(true);
+    expect(full.body).toContain("OLDEST-MARKER");
+    expect(full.body).toContain("NEWEST-MARKER");
+    expect(full.body).toContain("older entries omitted");
     expect(calls.map(call => call.name)).toEqual(["search", "get_page"]);
+  });
+
+  test("full:true leaves a page that fits completely alone", async () => {
+    searchHits = [hit({ slug: "notes/small", score: 1 })];
+    pages.set("notes/small", "# Small\n\n- one entry");
+
+    const { full } = payload(await callTool(token, "recall", { query: "x", full: true }));
+    expect(full.body).toBe("# Small\n\n- one entry");
+    expect(full.body).not.toContain("omitted");
   });
 
   test("full:true on a miss returns null rather than erroring", async () => {
@@ -383,5 +398,90 @@ describe("remember durability", () => {
     }
     // A save that is gone is reported as a failure, not as ok.
     expect(auditCalls.map(call => [call[1], call[3]])).toEqual([["remember", "error"]]);
+  });
+});
+
+describe("topic page rollover", () => {
+  // An append-only page grows forever, and get_page has no cap, so every agent that
+  // opens one pays the whole history in context. Rolling keeps the live page bounded.
+  async function fill(topic: string, label: string, count: number, size = 500) {
+    for (let i = 0; i < count; i += 1) {
+      await callTool(token, "remember", { topic, text: `${label}-${i} ${"y".repeat(size)}` });
+    }
+  }
+
+  test("rolls the oldest entries out once the page outgrows the cap", async () => {
+    await fill("rollme", "e", 16);
+
+    const live = pages.get("projects/rollme")!;
+    const archive = pages.get("projects/rollme-archive")!;
+
+    expect(archive).toBeDefined();
+    // Oldest out, newest kept: the opposite choice is what made recall useless.
+    expect(archive).toContain("e-0 ");
+    expect(live).not.toContain("e-0 ");
+    expect(live).toContain("e-15 ");
+    // The reader is told where the rest went, and it is a link so recall can follow it.
+    expect(live).toContain("Older entries: [[projects/rollme-archive]]");
+    // Still one well-formed page, title intact.
+    expect(live.match(/^---$/gm)?.length).toBe(2);
+    expect(live.match(/^# rollme$/gm)?.length).toBe(1);
+  });
+
+  test("leaves a page that has not outgrown the cap completely alone", async () => {
+    await fill("small", "e", 3, 20);
+
+    expect(pages.get("projects/small")).toBeDefined();
+    expect(pages.get("projects/small-archive")).toBeUndefined();
+    expect(pages.get("projects/small")).not.toContain("Older entries:");
+  });
+
+  test("a later roll appends to the same archive and does not duplicate the pointer", async () => {
+    await fill("twice", "first", 16);
+    const afterOne = pages.get("projects/twice-archive")!;
+    await fill("twice", "second", 14);
+
+    const live = pages.get("projects/twice")!;
+    const archive = pages.get("projects/twice-archive")!;
+
+    // Nothing the first roll archived is lost by the second.
+    expect(archive).toContain("first-0 ");
+    expect(archive.length).toBeGreaterThan(afterOne.length);
+    // One title on the archive, one pointer on the live page.
+    expect(archive.match(/^# /gm)?.length).toBe(1);
+    expect(live.match(/Older entries:/g)?.length).toBe(1);
+    expect(live).toContain("second-13 ");
+  });
+
+  test("the live page stays bounded no matter how much is written", async () => {
+    await fill("bounded", "e", 40);
+
+    const live = pages.get("projects/bounded")!;
+    const archive = pages.get("projects/bounded-archive")!;
+    // Over 20k characters were written; the page an agent reads stays small.
+    expect(archive.length).toBeGreaterThan(12000);
+    expect(live.length).toBeLessThan(6500);
+  });
+
+  test("a failing roll still reports the entry as saved", async () => {
+    await fill("fragile", "e", 14);
+
+    // Fail only the archive write, after the entry itself is safely stored. Rolling is
+    // an optimisation, so its failure must not turn a saved entry into an error.
+    const realCallTool = brain.callTool.bind(brain);
+    brain.callTool = async (request: any) => {
+      if (request.name === "put_page" && String(request.arguments?.slug).endsWith("-archive")) {
+        throw new Error("archive write failed");
+      }
+      return realCallTool(request);
+    };
+    try {
+      const result = await callTool(token, "remember", { topic: "fragile", text: "must survive" });
+      expect(payload(result).ok).toBe(true);
+    } finally {
+      brain.callTool = realCallTool;
+    }
+
+    expect(pages.get("projects/fragile")).toContain("must survive");
   });
 });

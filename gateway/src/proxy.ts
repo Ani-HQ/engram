@@ -324,6 +324,124 @@ function serializeBySlug<T>(slug: string, work: () => Promise<T>): Promise<T> {
 // exhaust these is a page being rewritten continuously underneath us.
 const MAX_APPEND_ATTEMPTS = 3;
 
+// A topic page is append-only, so left alone it grows without bound. `get_page` has no
+// cap at all, so every agent that opens one pays the whole history in context, and
+// recall's full body can only ever hand back a slice of it. Rolling the oldest entries
+// into an archive page keeps the live page small enough to return whole, and loses
+// nothing: an archive is just another page, so search and recall still reach it.
+//
+// Capping `get_page` instead would be the wrong lever. The console reads pages through
+// the same path, and truncating a page for the human reading it is worse than the
+// problem. Bounding the page fixes it for every reader at once.
+const TOPIC_ROLL_AT = 6000;
+const TOPIC_KEEP = 3500;
+const ARCHIVE_SUFFIX = "-archive";
+const ARCHIVE_POINTER = "Older entries:";
+
+// Entries are lines beginning "- ", and any following line belongs to the entry above
+// it. Pages written before `remember` existed separate entries with a single newline
+// and pages written since use a blank line, so neither separator can be assumed.
+export function splitTopicEntries(body: string): { header: string[]; entries: string[][] } {
+  const header: string[] = [];
+  const entries: string[][] = [];
+  for (const line of body.split("\n")) {
+    if (/^- /.test(line)) entries.push([line]);
+    else if (entries.length) entries[entries.length - 1].push(line);
+    else header.push(line);
+  }
+  return { header, entries };
+}
+
+function entryText(entry: string[]): string {
+  return entry.join("\n").trimEnd();
+}
+
+// Keep the newest entries that fit the budget, oldest first out. Never keep zero: a
+// single oversized entry is still the most useful thing the page can say.
+export function splitForRoll(entries: string[][]): { keep: string[][]; move: string[][] } {
+  const keep: string[][] = [];
+  let used = 0;
+  for (let i = entries.length - 1; i >= 0; i -= 1) {
+    const size = entryText(entries[i]).length + 2;
+    if (keep.length && used + size > TOPIC_KEEP) return { keep, move: entries.slice(0, i + 1) };
+    used += size;
+    keep.unshift(entries[i]);
+  }
+  return { keep, move: [] };
+}
+
+function pageContent(title: string, frontmatter: unknown, body: string): string {
+  return `---\n${yamlHeader(title, frontmatter)}\n---\n\n${body}\n`;
+}
+
+// Returns the archive slug when it rolled, null when the page was small enough. The
+// caller treats a throw as "did not roll": the page it leaves behind is still correct.
+async function rollTopicPage(
+  slug: string,
+  title: string,
+  frontmatter: unknown,
+  body: string,
+): Promise<string | null> {
+  if (body.length <= TOPIC_ROLL_AT) return null;
+  const { header, entries } = splitTopicEntries(body);
+  if (entries.length < 2) return null;
+  const { keep, move } = splitForRoll(entries);
+  if (!move.length) return null;
+
+  const archiveSlug = `${slug}${ARCHIVE_SUFFIX}`;
+  const archive = await readPage(archiveSlug);
+  const archivePrior =
+    typeof archive?.compiled_truth === "string" && archive.compiled_truth.trim()
+      ? archive.compiled_truth.trimEnd()
+      : null;
+  const archiveTitle = (archive?.title?.trim?.() || `${title} — archive`).slice(0, 120);
+  const moved = move.map(entryText).join("\n\n");
+  const archiveBody = archivePrior
+    ? `${archivePrior}\n\n${moved}`
+    : `# ${archiveTitle}\n\n${moved}`;
+  await brainClient().callTool({
+    name: "put_page",
+    arguments: {
+      slug: archiveSlug,
+      content: archivePrior?.startsWith("---")
+        ? `${archiveBody}\n`
+        : pageContent(archiveTitle, archive?.frontmatter, archiveBody),
+    },
+  });
+
+  // One pointer, rewritten rather than accumulated, because there is one archive per
+  // topic and a reader only needs to be told where the rest went.
+  const kept = header.filter(line => !line.startsWith(ARCHIVE_POINTER)).join("\n").trimEnd();
+  const liveBody = `${kept}\n\n${ARCHIVE_POINTER} [[${archiveSlug}]]\n\n${keep.map(entryText).join("\n\n")}`;
+  await brainClient().callTool({
+    name: "put_page",
+    arguments: { slug, content: pageContent(title, frontmatter, liveBody) },
+  });
+  return archiveSlug;
+}
+
+// A page past the cap is almost always an append log, and its newest entries are the
+// ones a resuming agent needs. Returning only the head hands back the oldest decisions
+// and silently drops every correction made since, which is worse than saying less.
+const FULL_HEAD_SHARE = 0.3;
+const FULL_ELISION = "\n\n[… older entries omitted, read the page directly …]\n\n";
+
+export function truncateEnds(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const budget = max - FULL_ELISION.length;
+  if (budget < 200) return truncate(text, max);
+  const headBudget = Math.floor(budget * FULL_HEAD_SHARE);
+  const head = text.slice(0, headBudget);
+  const headBreak = head.lastIndexOf("\n");
+  const tail = text.slice(text.length - (budget - headBudget));
+  const tailBreak = tail.indexOf("\n");
+  return (
+    (headBreak > headBudget * 0.4 ? head.slice(0, headBreak) : head).trimEnd() +
+    FULL_ELISION +
+    (tailBreak >= 0 && tailBreak < tail.length * 0.4 ? tail.slice(tailBreak + 1) : tail).trimStart()
+  );
+}
+
 async function remember(args: Record<string, unknown>): Promise<any> {
   const slugForLock = slugForRemember(
     typeof args.text === "string" ? args.text.trim() : "",
@@ -368,7 +486,13 @@ async function rememberUnsynchronized(args: Record<string, unknown>): Promise<an
     // body will have clobbered this entry, and the page is the only evidence of it.
     const saved = await readPage(slug);
     const savedBody = typeof saved?.compiled_truth === "string" ? saved.compiled_truth : "";
-    if (savedBody.includes(entry)) return jsonResult({ ok: true, slug, appended });
+    if (savedBody.includes(entry)) {
+      // Deliberately after the entry is confirmed saved, and deliberately best effort:
+      // rolling is an optimisation, so a failure here must still leave a correct page.
+      const archived = await rollTopicPage(slug, title, existing?.frontmatter, savedBody)
+        .catch(() => null);
+      return jsonResult({ ok: true, slug, appended, ...(archived ? { archived } : {}) });
+    }
   }
 
   // Losing the entry every time means the page is being rewritten faster than it can
@@ -401,7 +525,7 @@ async function recall(args: Record<string, unknown>): Promise<any> {
     const page = await readPage(String(best?.slug ?? ""));
     if (page) {
       const body = typeof page.compiled_truth === "string" ? page.compiled_truth : "";
-      full = { slug: best?.slug, body: truncate(body, MAX_FULL_BODY) };
+      full = { slug: best?.slug, body: truncateEnds(body, MAX_FULL_BODY) };
     }
   }
 
