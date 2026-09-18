@@ -67,6 +67,8 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   }
   if (url.pathname === "/api/pages" && req.method === "GET") return json(listPages(url));
   if (url.pathname === "/api/search" && req.method === "GET") return json(searchPages(url));
+  if (url.pathname === "/api/graph" && req.method === "GET") return json(buildGraph());
+  if (url.pathname === "/api/activity" && req.method === "GET") return json(fakeActivity());
   if (url.pathname === "/api/page" && req.method === "GET") {
     const detail = pageDetail(url);
     return detail ? json(detail) : json({ error: "not found" }, {}, 404);
@@ -93,6 +95,59 @@ function listPages(url: URL) {
     more: rows.length === limit && offset + limit < all.length,
     scopes: [...new Set(fixture.map((page: any) => page.scope))],
   };
+}
+
+// Fixture graph: cluster by slug prefix and link each page to a couple of others in
+// the same cluster, which is enough shape to judge the layout and the interaction.
+// Rotates through a few pages so the shimmer and the agent marks can actually be
+// looked at without waiting for a real agent to touch something.
+function fakeActivity() {
+  const agents = ["mac-claude", "codex", "zara-openclaw", "hermes-baymax", "grok-bot"];
+  const tools = ["recall", "remember", "get_page", "put_page"];
+  const tick = Math.floor(Date.now() / 8000);
+  // Pick from the most recently updated pages, which are the ones actually on screen.
+  // Choosing at random from the whole set meant the shimmer was usually happening to
+  // a row forty places below the fold.
+  const visible = [...pages].sort((a: any, b: any) => comparePages(a, b, "updated_desc")).slice(0, 12);
+  const active = [0, 1, 2].map(i => {
+    const page = visible[(tick + i * 4) % visible.length];
+    return {
+      slug: page.slug,
+      by: agents[(tick + i) % agents.length],
+      tool: tools[(tick + i) % tools.length],
+      at: new Date().toISOString(),
+    };
+  });
+  return { active };
+}
+
+function buildGraph() {
+  const nodes = pages.slice(0, 150).map((page: any) => ({
+    slug: page.slug,
+    title: page.title,
+    type: page.type ?? "note",
+    updated_at: page.updated_at,
+    cluster: page.slug.includes("/") ? page.slug.slice(0, page.slug.indexOf("/")) : page.slug.split("-")[0],
+    origin: page.provenance?.origin ?? null,
+    contributors: (page.provenance?.contributors ?? []).map((c: any) => c.name),
+  }));
+  const byCluster = new Map<string, any[]>();
+  for (const node of nodes) {
+    if (!byCluster.has(node.cluster)) byCluster.set(node.cluster, []);
+    byCluster.get(node.cluster)!.push(node);
+  }
+  const edges: { source: string; target: string }[] = [];
+  for (const group of byCluster.values()) {
+    for (let i = 1; i < group.length; i += 1) {
+      edges.push({ source: group[i].slug, target: group[i - 1].slug });
+      if (i % 3 === 0) edges.push({ source: group[i].slug, target: group[0].slug });
+    }
+  }
+  const clusters = [...byCluster.values()];
+  for (let i = 1; i < clusters.length; i += 1) {
+    edges.push({ source: clusters[i][0].slug, target: clusters[i - 1][0].slug });
+  }
+  return { nodes, edges, truncated: pages.length > 150 };
 }
 
 function searchPages(url: URL) {

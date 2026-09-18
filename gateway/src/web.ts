@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
 import { extname, isAbsolute, relative, resolve } from "node:path";
-import { audit, provenance, provenanceFor } from "./audit";
+import { audit, provenance, provenanceFor, recentActivity } from "./audit";
 import { authenticate, type TokenRecord } from "./auth";
 import { brainClient } from "./brain";
 import { callTool } from "./proxy";
@@ -192,6 +192,8 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   if (req.method === "GET" && url.pathname === "/api/me") route = getMe;
   else if (req.method === "GET" && url.pathname === "/api/pages") route = getPages;
   else if (req.method === "GET" && url.pathname === "/api/search") route = getSearch;
+  else if (req.method === "GET" && url.pathname === "/api/activity") route = getActivity;
+  else if (req.method === "GET" && url.pathname === "/api/graph") route = getGraph;
   else if (req.method === "GET" && url.pathname === "/api/page") route = getPage;
   else if (req.method === "DELETE" && url.pathname === "/api/page") route = deletePage;
   else if (req.method === "POST" && url.pathname === "/api/page/restore") route = postRestorePage;
@@ -265,6 +267,77 @@ async function getSearch(_req: Request, url: URL, token: TokenRecord): Promise<R
   });
   const results = normalizeSearchResults(data);
   return Response.json({ results: results.slice(0, query.limit) });
+}
+
+// The graph needs every page's body to find its links, which is one call per page.
+// That is fine for a brain of this size and would not be at ten thousand, so it is
+// capped and the answer says when it was cut rather than quietly returning half.
+async function getActivity(_req: Request, url: URL, _token: TokenRecord): Promise<Response> {
+  const asked = Number(url.searchParams.get("window"));
+  return Response.json({ active: await recentActivity(Number.isFinite(asked) ? asked : 90) });
+}
+
+const GRAPH_MAX_NODES = 150;
+const GRAPH_BATCH = 8;
+
+async function getGraph(_req: Request, url: URL, token: TokenRecord): Promise<Response> {
+  const asked = Number(url.searchParams.get("limit"));
+  const limit = Math.min(Number.isFinite(asked) && asked > 0 ? asked : GRAPH_MAX_NODES, GRAPH_MAX_NODES);
+
+  const listed = normalizePageSummaries(
+    await readTool(token, "list_pages", { limit: limit + 1, offset: 0, sort: "updated_desc" }),
+  );
+  const truncated = listed.length > limit;
+  const pages = listed.slice(0, limit);
+  const slugs = pages.map(page => String(page.slug));
+  const known = new Set(slugs);
+
+  const provenances = await provenanceFor(slugs);
+
+  const edges: { source: string; target: string }[] = [];
+  const seenEdge = new Set<string>();
+  // gbrain multiplexes over its stdio channel, so a small batch is meaningfully
+  // faster than one at a time without swamping the child.
+  for (let i = 0; i < slugs.length; i += GRAPH_BATCH) {
+    const batch = slugs.slice(i, i + GRAPH_BATCH);
+    const bodies = await Promise.all(batch.map(async slug => {
+      try {
+        const page = normalizePageResult(await readTool(token, "get_page", { slug }), slug);
+        return { slug, body: typeof page?.body === "string" ? page.body : "" };
+      } catch {
+        // A page that will not load costs its edges, not the whole graph.
+        return { slug, body: "" };
+      }
+    }));
+    for (const { slug, body } of bodies) {
+      for (const link of deriveBodyLinks(body)) {
+        if (link.slug === slug || !known.has(link.slug)) continue;
+        // Undirected: one edge per pair, however many times they mention each other.
+        const key = [slug, link.slug].sort().join("\u0000");
+        if (seenEdge.has(key)) continue;
+        seenEdge.add(key);
+        edges.push({ source: slug, target: link.slug });
+      }
+    }
+  }
+
+  const nodes = pages.map(page => {
+    const slug = String(page.slug);
+    const provenance = provenances.get(slug) ?? { origin: null, contributors: [] };
+    return {
+      slug,
+      title: page.title || slug,
+      type: page.type ?? "page",
+      updated_at: page.updated_at ?? null,
+      // Everything before the first slash. That is how these slugs are already
+      // organised, so the clusters are the ones a person already thinks in.
+      cluster: slug.includes("/") ? slug.slice(0, slug.indexOf("/")) : "other",
+      origin: provenance.origin,
+      contributors: provenance.contributors.map(who => who.name),
+    };
+  });
+
+  return Response.json({ nodes, edges, truncated });
 }
 
 async function getPage(_req: Request, url: URL, token: TokenRecord): Promise<Response> {

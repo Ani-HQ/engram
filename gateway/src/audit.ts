@@ -82,3 +82,37 @@ export async function provenanceFor(slugs: string[]): Promise<Map<string, Proven
 export async function provenance(slug: string): Promise<Provenance> {
   return (await provenanceFor([slug])).get(slug) ?? { origin: null, contributors: [] };
 }
+
+export interface Activity {
+  slug: string;
+  by: string;
+  tool: string;
+  at: string;
+}
+
+// What is being touched right now, so the console can show a memory in use and who
+// is using it. Reads count as well as writes here: an agent recalling a page is
+// using it, which is the thing worth seeing.
+export async function recentActivity(windowSeconds = 90, limit = 40): Promise<Activity[]> {
+  const seconds = Math.min(600, Math.max(5, Math.floor(windowSeconds)));
+  try {
+    const rows = await sql`
+      SELECT DISTINCT ON (slug) slug, token_name, tool, ts
+      FROM audit_log
+      WHERE slug IS NOT NULL
+        AND outcome = 'ok'
+        AND ts > now() - make_interval(secs => ${seconds})
+      ORDER BY slug, ts DESC
+      LIMIT ${Math.min(200, Math.max(1, limit))}`;
+    return rows.map((row: any) => ({
+      slug: String(row.slug),
+      by: String(row.token_name),
+      tool: String(row.tool),
+      at: new Date(row.ts).toISOString(),
+    }));
+  } catch (e) {
+    // Live decoration. If it fails the console simply shows nothing moving.
+    console.error("[audit] activity read failed:", String(e).slice(0, 200));
+    return [];
+  }
+}

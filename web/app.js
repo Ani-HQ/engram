@@ -2,6 +2,8 @@ import { api, AuthError } from "./api.js";
 import { inkColor, inkStepFor } from "./ink.js";
 import { renderMarkdown } from "./markdown.js";
 import { inkGlyph, relativeDate, renderLinks, renderTimeline, pulse, sealImg } from "./mechanics.js";
+import { renderGraph } from "./graph.js";
+import { agentMark } from "./agents.js";
 const app = document.getElementById("app");
 const refs = {};
 const state = {
@@ -21,6 +23,11 @@ const state = {
   undo: null,
   more: false,
   loadingMore: false,
+  view: "collection",
+  active: new Map(),
+  graph: null,
+  graphError: "",
+  graphController: null,
   now: new Date(),
 };
 
@@ -110,6 +117,7 @@ function showConsole() {
   });
   refs.count = h("p", { class: "result-count", "aria-live": "polite" });
   // The ink fade is meaningless to anyone who was not told what it encodes.
+  refs.viewToggle = h("div", { class: "view-toggle", role: "group", "aria-label": "View" });
   refs.legend = h("p", { class: "collection-legend" },
     h("span", {}, "weight follows recency"),
     h("span", { class: "legend-keys" }, "/ search · j k move · enter open · c write · ? keys"),
@@ -135,6 +143,7 @@ function showConsole() {
   window.addEventListener("resize", maybeLoadMore, { passive: true });
 
   const main = h("main", { class: "scroll-column" },
+    refs.viewToggle,
     refs.capture,
     h("section", { class: "search-field", "aria-label": "Search" },
       h("label", { for: "search", class: "visually-hidden" }, "search"),
@@ -146,6 +155,8 @@ function showConsole() {
     refs.list,
   );
   app.replaceChildren(rail, main, refs.paneHost);
+  renderChrome();
+  startActivityPolling();
   renderCapture();
   renderKeyHelp();
 }
@@ -202,11 +213,121 @@ async function loadMore() {
   }
 }
 
+// How often the console asks what is in use. Slow enough to be free, quick enough
+// that a memory being read still looks live when you glance at the screen.
+const ACTIVITY_POLL_MS = 8000;
+
+async function pollActivity() {
+  // A hidden tab has nobody looking at it, so stop asking.
+  if (document.hidden || !state.session) return;
+  try {
+    const data = await api.activity({ window: 90 });
+    const next = new Map((data.active ?? []).map(entry => [entry.slug, entry]));
+    // Re-render only when the set actually changed, or the list would rebuild every
+    // eight seconds and drop the reader's selection for nothing.
+    const changed = next.size !== state.active.size
+      || [...next.keys()].some(slug => !state.active.has(slug));
+    state.active = next;
+    if (changed && state.view === "collection") renderList();
+  } catch {
+    // Live decoration: a failure shows nothing moving, which is the honest default.
+  }
+}
+
+function startActivityPolling() {
+  pollActivity();
+  window.setInterval(pollActivity, ACTIVITY_POLL_MS);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) pollActivity();
+  });
+}
+
+async function switchView(next) {
+  if (state.view === next) return;
+  state.view = next;
+  if (state.graphController) {
+    state.graphController.destroy();
+    state.graphController = null;
+  }
+  renderChrome();
+  renderList();
+  if (next === "graph" && !state.graph) await loadGraph();
+}
+
+async function loadGraph() {
+  state.graphError = "";
+  renderList();
+  try {
+    state.graph = await api.graph();
+  } catch (error) {
+    if (error instanceof AuthError) return handleError(error);
+    state.graphError = "could not load the graph";
+  }
+  renderList();
+}
+
+function renderChrome() {
+  if (!refs.viewToggle) return;
+  refs.viewToggle.replaceChildren(
+    ...[["collection", "collection"], ["graph", "graph"]].map(([id, label]) => h("button", {
+      type: "button",
+      class: `chip${state.view === id ? " is-on" : ""}`,
+      "aria-pressed": state.view === id ? "true" : "false",
+      onclick: () => switchView(id),
+    }, label)),
+  );
+}
+
+function renderGraphCard() {
+  if (state.graphError) {
+    return h("section", { class: "card graph-card" },
+      h("div", { class: "card-bar" }, h("span", {}, "graph"), h("span", { class: "card-bar-count" }, "error")),
+      h("p", { class: "graph-empty" }, state.graphError),
+    );
+  }
+  if (!state.graph) {
+    return h("section", { class: "card graph-card" },
+      h("div", { class: "card-bar" }, h("span", {}, "graph"), h("span", { class: "card-bar-count" }, "loading")),
+      h("div", { class: "graph-empty" }, pulse(), h("span", {}, "reading every page for its links")),
+    );
+  }
+
+  const { nodes, edges, truncated } = state.graph;
+  const canvas = h("canvas", {
+    class: "graph-canvas",
+    role: "img",
+    "aria-label": `${nodes.length} pages, ${edges.length} links between them. The collection view lists the same pages as text.`,
+  });
+  const card = h("section", { class: "card graph-card" },
+    h("div", { class: "card-bar" },
+      h("span", {}, "graph"),
+      h("span", { class: "card-bar-count" },
+        `${nodes.length} nodes · ${edges.length} links${truncated ? " · capped" : ""}`),
+    ),
+    canvas,
+    h("p", { class: "graph-hint" }, "drag to pan · scroll to zoom · click a node to open it"),
+  );
+
+  // The canvas has to be in the document and sized before the layout can solve
+  // against its real dimensions, so this waits a tick rather than measuring zero.
+  queueMicrotask(() => {
+    if (!canvas.isConnected) return;
+    state.graphController = renderGraph(canvas, { nodes, edges }, {
+      onSelect: node => openItem({ slug: node.slug, title: node.title }, null),
+    });
+  });
+  return card;
+}
+
 function renderList() {
   if (!refs.list) return;
   refs.list.replaceChildren();
   const noun = state.items.length === 1 ? "page" : "pages";
   renderResultCount(noun);
+  if (state.view === "graph") {
+    refs.list.append(renderGraphCard());
+    return;
+  }
   if (state.loading) {
     refs.list.append(h("div", { class: "inline-loading", role: "status" }, pulse(), h("span", {}, "loading")));
     return;
@@ -247,9 +368,10 @@ function renderRow(item, index) {
   const step = inkStepFor(item.updated_at, state.now);
   const selected = index === state.selected;
   const provenance = item.provenance || { origin: null, contributors: [] };
+  const live = state.active.get(item.slug);
   const row = h("button", {
     type: "button",
-    class: `ink-row${selected ? " is-selected" : ""}`,
+    class: `ink-row${selected ? " is-selected" : ""}${live ? " is-live" : ""}`,
     role: "option",
     "aria-selected": selected ? "true" : "false",
     "data-index": index,
@@ -258,6 +380,10 @@ function renderRow(item, index) {
     h("span", { class: "cell cell-page" },
       h("span", { class: "row-title", style: { color: inkColor(step) } }, item.title || item.slug),
       h("span", { class: "row-slug" }, item.slug),
+      live ? h("span", { class: "row-live" },
+        agentMark(live.by, 13),
+        h("span", {}, `${live.by} is ${live.tool === "remember" || live.tool === "put_page" ? "writing" : "reading"} this`),
+      ) : "",
       item.snippet ? h("span", { class: "snippet" }, item.snippet) : "",
     ),
     h("span", { class: "cell cell-origin" }, originLabel(provenance)),
@@ -283,7 +409,7 @@ function contributorLabels(provenance) {
   const shown = all.slice(0, 2).map(who => h("span", {
     class: "who",
     title: `${who.name}: ${who.writes} ${who.writes === 1 ? "write" : "writes"}`,
-  }, who.name));
+  }, agentMark(who.name, 12), h("span", {}, who.name)));
   if (all.length > 2) shown.push(h("span", { class: "who-more" }, `+${all.length - 2}`));
   return shown;
 }
