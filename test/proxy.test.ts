@@ -44,10 +44,17 @@ mock.module("../gateway/src/brain", () => ({
   brainClient: () => brain,
 }));
 
+// Spread for the same reason as the others, and override the two provenance
+// readers explicitly: the real ones query Postgres, which no unit test wants.
+const realAudit = await import("../gateway/src/audit");
+
 mock.module("../gateway/src/audit", () => ({
+  ...realAudit,
   audit: async (...args: any[]) => {
     auditCalls.push(args);
   },
+  provenance: async () => ({ origin: null, contributors: [] }),
+  provenanceFor: async () => new Map(),
 }));
 
 const { callTool, listTools } = await import("../gateway/src/proxy");
@@ -89,7 +96,8 @@ describe("proxy tool surface", () => {
       content: [{ type: "text", text: "{\"token\":\"agent\"}" }],
     });
     expect(forwardedCalls).toEqual([]);
-    expect(auditCalls).toEqual([["agent", "whoami", "{}", "ok"]]);
+    // The fifth field is the page the call touched; whoami touches none.
+    expect(auditCalls).toEqual([["agent", "whoami", "{}", "ok", null]]);
   });
 
   test("forwards allowlisted tools to the brain", async () => {
@@ -100,7 +108,7 @@ describe("proxy tool surface", () => {
     expect(JSON.parse(result.content[0].text)).toEqual({
       forwarded: { name: "search", arguments: args },
     });
-    expect(auditCalls).toEqual([["agent", "search", JSON.stringify(args), "ok"]]);
+    expect(auditCalls).toEqual([["agent", "search", JSON.stringify(args), "ok", null]]);
   });
 
   test("denies non-allowlisted tools", async () => {
@@ -114,6 +122,9 @@ describe("proxy tool surface", () => {
       "delete_page",
       "{\"slug\":\"notes/x\"}",
       "denied",
+      // A denied call still records which page it reached for, because a refusal is
+      // part of the page's history too.
+      "notes/x",
     ]]);
   });
 

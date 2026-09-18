@@ -219,6 +219,11 @@ export async function listTools(_token: TokenRecord): Promise<any[]> {
   return cachedToolDefs;
 }
 
+function slugFromResult(result: any): string | null {
+  const parsed = parseToolJson(result);
+  return parsed && typeof parsed.slug === "string" ? parsed.slug : null;
+}
+
 function summarizeArgs(args: Record<string, unknown>): string {
   return JSON.stringify(args ?? {}).slice(0, 200);
 }
@@ -570,8 +575,11 @@ export async function callTool(
 ): Promise<any> {
   const forwardedArgs = clampArgs(name, args ?? {});
 
+  // Which page a call touched, where the call knows. whoami and recall touch none.
+  const argSlug = typeof forwardedArgs.slug === "string" ? forwardedArgs.slug : null;
+
   if (name === "whoami") {
-    await audit(token.name, name, summarizeArgs(forwardedArgs), "ok");
+    await audit(token.name, name, summarizeArgs(forwardedArgs), "ok", null);
     return {
       content: [{
         type: "text",
@@ -585,25 +593,34 @@ export async function callTool(
       const result = name === "remember"
         ? await remember(forwardedArgs)
         : await recall(forwardedArgs);
-      await audit(token.name, name, summarizeArgs(forwardedArgs), result.isError ? "error" : "ok");
+      // remember derives its own slug from the topic, so read it back off the result
+      // rather than re-deriving it and risking the two drifting apart.
+      const written = name === "remember" ? slugFromResult(result) : null;
+      await audit(
+        token.name,
+        name,
+        summarizeArgs(forwardedArgs),
+        result.isError ? "error" : "ok",
+        written,
+      );
       return result;
     } catch (e) {
-      await audit(token.name, name, summarizeArgs(forwardedArgs), "error");
+      await audit(token.name, name, summarizeArgs(forwardedArgs), "error", null);
       throw e;
     }
   }
 
   if (!ALLOWED_TOOLS.has(name)) {
-    await audit(token.name, name, summarizeArgs(forwardedArgs), "denied");
+    await audit(token.name, name, summarizeArgs(forwardedArgs), "denied", argSlug);
     return toolError(`Unknown or disallowed tool: ${name}`);
   }
 
   try {
     const result = await brainClient().callTool({ name, arguments: forwardedArgs });
-    await audit(token.name, name, summarizeArgs(forwardedArgs), "ok");
+    await audit(token.name, name, summarizeArgs(forwardedArgs), "ok", argSlug);
     return name === "search" ? capSearchResult(result) : result;
   } catch (e) {
-    await audit(token.name, name, summarizeArgs(forwardedArgs), "error");
+    await audit(token.name, name, summarizeArgs(forwardedArgs), "error", argSlug);
     throw e;
   }
 }
