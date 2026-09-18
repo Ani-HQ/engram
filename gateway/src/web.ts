@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
 import { extname, isAbsolute, relative, resolve } from "node:path";
-import { audit } from "./audit";
+import { audit, provenance, provenanceFor } from "./audit";
 import { authenticate, type TokenRecord } from "./auth";
 import { brainClient } from "./brain";
 import { callTool } from "./proxy";
@@ -239,8 +239,18 @@ async function getPages(_req: Request, url: URL, token: TokenRecord): Promise<Re
 
   const data = await readTool(token, "list_pages", args);
   const pages = normalizePageSummaries(data);
+  const window = sortPageSummaries(pages, query.sort).slice(query.offset, query.offset + query.limit);
+  // One grouped query for the whole window, not one per row: the list is the hot path
+  // and N round trips to answer a decoration would be the wrong trade.
+  const provenances = await provenanceFor(window.map(page => String(page.slug)));
   return Response.json({
-    pages: sortPageSummaries(pages, query.sort).slice(query.offset, query.offset + query.limit),
+    pages: window.map(page => ({
+      ...page,
+      provenance: provenances.get(String(page.slug)) ?? { origin: null, contributors: [] },
+    })),
+    // A full page of results means there is probably another page behind it. The list
+    // lazy-loads, so it needs to know whether to ask again.
+    more: window.length === query.limit,
     scopes: ["shared"],
   });
 }
@@ -263,8 +273,8 @@ async function getPage(_req: Request, url: URL, token: TokenRecord): Promise<Res
 
   const data = await readTool(token, "get_page", { slug });
   const normalized = normalizePageResult(data, slug);
-  if (normalized) return Response.json(normalized);
-  return Response.json({ error: "not found" }, { status: 404 });
+  if (!normalized) return Response.json({ error: "not found" }, { status: 404 });
+  return Response.json({ ...normalized, provenance: await provenance(slug) });
 }
 
 async function deletePage(_req: Request, url: URL, token: TokenRecord): Promise<Response> {
@@ -415,7 +425,8 @@ async function auditConsole(
   args: Record<string, unknown>,
   outcome: string,
 ): Promise<void> {
-  await audit(token.name, tool, summarizeArgs(args), outcome);
+  const slug = typeof args?.slug === "string" ? args.slug : null;
+  await audit(token.name, tool, summarizeArgs(args), outcome, slug);
 }
 
 function summarizeArgs(args: Record<string, unknown>): string {

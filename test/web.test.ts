@@ -40,10 +40,20 @@ mock.module("../gateway/src/brain", () => ({
   brainClient: () => brain,
 }));
 
+// Spread for the same reason as the others, and override the two provenance
+// readers explicitly: the real ones query Postgres, which no unit test wants.
+let provenanceRows = new Map<string, any>();
+
+const realAudit = await import("../gateway/src/audit");
+
 mock.module("../gateway/src/audit", () => ({
+  ...realAudit,
   audit: async (...args: any[]) => {
     auditCalls.push(args);
   },
+  provenance: async () => ({ origin: null, contributors: [] }),
+  provenanceFor: async (slugs: string[]) =>
+    new Map(slugs.filter(slug => provenanceRows.has(slug)).map(slug => [slug, provenanceRows.get(slug)])),
 }));
 
 const {
@@ -217,7 +227,8 @@ describe("console API edge responses", () => {
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "not found" });
     expect(brainCalls).toEqual([{ name: "delete_page", arguments: { slug: "notes/missing" } }]);
-    expect(auditCalls).toEqual([["console", "delete_page", "{\"slug\":\"notes/missing\"}", "not_found"]]);
+    expect(auditCalls)
+      .toEqual([["console", "delete_page", "{\"slug\":\"notes/missing\"}", "not_found", "notes/missing"]]);
   });
 
   test("maps soft delete statuses to the recoverable ok shape", async () => {
@@ -237,7 +248,8 @@ describe("console API edge responses", () => {
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ ok: true, slug: `notes/${status}`, recoverable: true });
       expect(brainCalls).toEqual([{ name: "delete_page", arguments: { slug: `notes/${status}` } }]);
-      expect(auditCalls).toEqual([["console", "delete_page", `{\"slug\":\"notes/${status}\"}`, "ok"]]);
+      expect(auditCalls)
+        .toEqual([["console", "delete_page", `{\"slug\":\"notes/${status}\"}`, "ok", `notes/${status}`]]);
     }
   });
 
@@ -429,5 +441,50 @@ describe("static path resolution", () => {
     expect(resolveStaticPath("/%2e%2e%2fsecret", root)).toBeNull();
     expect(resolveStaticPath("//etc/passwd", root)).toBeNull();
     expect(resolveStaticPath("/%2Fetc/passwd", root)).toBeNull();
+  });
+});
+
+describe("provenance on the list", () => {
+  // The list is the hot path, so provenance for a whole window is one grouped query
+  // rather than one per row. The rows carry it so a stub can say where it came from
+  // and who has taught it, without the reader opening every page to find out.
+  test("each row carries its origin and contributors, and the list says if there is more", async () => {
+    brainResult = [
+      { slug: "notes/a", title: "A", type: "note", updated_at: "2026-09-18T00:00:00Z" },
+      { slug: "notes/b", title: "B", type: "note", updated_at: "2026-09-17T00:00:00Z" },
+    ];
+    provenanceRows = new Map([
+      ["notes/a", {
+        origin: { by: "codex", at: "2026-09-01T00:00:00.000Z" },
+        contributors: [
+          { name: "codex", first: "2026-09-01T00:00:00.000Z", last: "2026-09-02T00:00:00.000Z", writes: 3 },
+          { name: "mac-claude", first: "2026-09-05T00:00:00.000Z", last: "2026-09-18T00:00:00.000Z", writes: 9 },
+        ],
+      }],
+    ]);
+
+    const res = await handleWeb(new Request("http://engram.local/api/pages?limit=2", {
+      headers: { "X-Engram-Console": "1", Cookie: "engram_session=valid-token" },
+    }));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.pages[0].provenance.origin).toEqual({ by: "codex", at: "2026-09-01T00:00:00.000Z" });
+    expect(body.pages[0].provenance.contributors.map((c: any) => c.name)).toEqual(["codex", "mac-claude"]);
+    // A page with nothing recoverable says so rather than inventing an author.
+    expect(body.pages[1].provenance).toEqual({ origin: null, contributors: [] });
+    // A full window means there is probably another behind it, so the list keeps asking.
+    expect(body.more).toBe(true);
+  });
+
+  test("a short window reports that there is nothing more to load", async () => {
+    brainResult = [{ slug: "notes/only", title: "Only", type: "note", updated_at: "2026-09-18T00:00:00Z" }];
+    provenanceRows = new Map();
+
+    const res = await handleWeb(new Request("http://engram.local/api/pages?limit=25", {
+      headers: { "X-Engram-Console": "1", Cookie: "engram_session=valid-token" },
+    }));
+
+    expect((await res.json()).more).toBe(false);
   });
 });

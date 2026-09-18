@@ -68,10 +68,17 @@ mock.module("../gateway/src/brain", () => ({
   brainClient: () => brain,
 }));
 
+// Spread for the same reason as the others, and override the two provenance
+// readers explicitly: the real ones query Postgres, which no unit test wants.
+const realAudit = await import("../gateway/src/audit");
+
 mock.module("../gateway/src/audit", () => ({
+  ...realAudit,
   audit: async (...args: any[]) => {
     auditCalls.push(args);
   },
+  provenance: async () => ({ origin: null, contributors: [] }),
+  provenanceFor: async () => new Map(),
 }));
 
 const { callTool, slugForRemember, shrinkToolDef, SERVER_INSTRUCTIONS } =
@@ -483,5 +490,31 @@ describe("topic page rollover", () => {
     }
 
     expect(pages.get("projects/fragile")).toContain("must survive");
+  });
+});
+
+describe("attribution", () => {
+  // "Who contributed to this page" was unanswerable: the audit log recorded only the
+  // arguments, and remember's arguments carry a topic, never the slug it derives.
+  test("remember records the page it derived, not the topic it was given", async () => {
+    await callTool(token, "remember", { text: "a decision", topic: "Engram Gateway" });
+
+    const [call] = auditCalls;
+    expect(call[1]).toBe("remember");
+    expect(call[4]).toBe("projects/engram-gateway");
+  });
+
+  test("a forwarded write records the page it names", async () => {
+    await callTool(token, "add_tag", { slug: "notes/x", tag: "founder" });
+
+    expect(auditCalls[0][1]).toBe("add_tag");
+    expect(auditCalls[0][4]).toBe("notes/x");
+  });
+
+  test("a call that touches no page records none rather than guessing", async () => {
+    await callTool(token, "whoami", {});
+    await callTool(token, "recall", { query: "anything" });
+
+    expect(auditCalls.map(call => call[4])).toEqual([null, null]);
   });
 });
