@@ -1,7 +1,7 @@
 .capture-host {
   position: absolute;
-  top: clamp(2rem, 5vh, 3.2rem);
-  right: clamp(-5rem, -6vw, -3rem);
+  top: var(--s6);
+  right: 0;
   z-index: 20;
   perspective: 900px;
 }
@@ -9,22 +9,29 @@
 /* Was a vertical paper tab, so it carried tall side rules and a 9rem minimum
    height. As a horizontal control it only needs to look like a button. */
 .capture-tab {
-  padding: var(--s1) var(--s3);
-  color: var(--accent);
+  padding: 7px var(--s3);
+  color: var(--text);
   border: 1px solid var(--line);
-  border-radius: 999px;
   background: var(--surface);
-  font-family: var(--display);
-  font-size: 0.875rem;
-  font-weight: 500;
-  letter-spacing: 0.01em;
+  box-shadow: var(--shadow);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   cursor: pointer;
-  transition: background 140ms var(--ease), border-color 140ms var(--ease);
+  transition: transform 120ms var(--ease), box-shadow 120ms var(--ease);
 }
 
+/* Press moves the box onto its own shadow. Cheap, physical, and it only happens
+   in response to the pointer. */
 .capture-tab:hover {
-  border-color: var(--accent);
-  background: var(--surface-3);
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 var(--line);
+}
+
+.capture-tab:active {
+  transform: translate(4px, 4px);
+  box-shadow: 0 0 0 var(--line);
 }
 
 .capture-panel {

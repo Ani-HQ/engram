@@ -19,8 +19,14 @@ const state = {
   keyHelp: false,
   message: "",
   undo: null,
+  more: false,
+  loadingMore: false,
   now: new Date(),
 };
+
+// One window of rows. Small enough that the first screen arrives quickly, large
+// enough that scrolling does not fetch constantly.
+const PAGE_SIZE = 40;
 
 bootstrap();
 document.addEventListener("keydown", onKeydown);
@@ -125,6 +131,9 @@ function showConsole() {
     ),
   );
 
+  window.addEventListener("scroll", maybeLoadMore, { passive: true });
+  window.addEventListener("resize", maybeLoadMore, { passive: true });
+
   const main = h("main", { class: "scroll-column" },
     refs.capture,
     h("section", { class: "search-field", "aria-label": "Search" },
@@ -147,12 +156,15 @@ async function loadCollection() {
   renderList();
   try {
     if (state.query.trim()) {
-      const data = await api.search({ q: state.query.trim(), limit: 48 });
+      const data = await api.search({ q: state.query.trim(), limit: PAGE_SIZE });
       state.items = data.results ?? [];
+      // Search returns what it found; there is no second page to ask for.
+      state.more = false;
     } else {
-      const data = await api.pages({ limit: 48, sort: "updated_desc" });
+      const data = await api.pages({ limit: PAGE_SIZE, offset: 0, sort: "updated_desc" });
       state.items = data.pages ?? [];
       state.scopes = data.scopes ?? [];
+      state.more = data.more === true;
     }
     state.selected = Math.min(state.selected, Math.max(0, state.items.length - 1));
     state.message = "";
@@ -160,6 +172,32 @@ async function loadCollection() {
     return handleError(error);
   } finally {
     state.loading = false;
+    renderList();
+  }
+}
+
+// Called when the sentinel below the last row comes into view. Guarded on both
+// flags because the observer fires again while the request is still open.
+async function loadMore() {
+  if (!state.more || state.loadingMore || state.loading || state.query.trim()) return;
+  state.loadingMore = true;
+  try {
+    const data = await api.pages({
+      limit: PAGE_SIZE,
+      offset: state.items.length,
+      sort: "updated_desc",
+    });
+    const next = data.pages ?? [];
+    // Re-fetching a window whose rows moved could repeat one. Keyed by slug so a
+    // row can never appear twice in the list.
+    const seen = new Set(state.items.map(item => item.slug));
+    state.items = state.items.concat(next.filter(item => !seen.has(item.slug)));
+    state.more = data.more === true && next.length > 0;
+  } catch (error) {
+    state.more = false;
+    state.message = "could not load more";
+  } finally {
+    state.loadingMore = false;
     renderList();
   }
 }
@@ -173,17 +211,42 @@ function renderList() {
     refs.list.append(h("div", { class: "inline-loading", role: "status" }, pulse(), h("span", {}, "loading")));
     return;
   }
-  // Empty state is for a truly empty result — never a reason to hide a page that exists.
   if (state.items.length === 0) {
-    refs.list.append(renderYohaku());
+    refs.list.append(renderEmpty());
     return;
   }
-  state.items.forEach((item, index) => refs.list.append(renderRow(item, index)));
+
+  const card = h("section", { class: "card collection" },
+    h("div", { class: "card-bar" },
+      h("span", {}, state.query.trim() ? "results" : "collection"),
+      h("span", { class: "card-bar-count" }, `${state.items.length}${state.more ? "+" : ""} ${noun}`),
+    ),
+    // Column names are for sighted scanning; the rows are buttons with their own
+    // labels, so a screen reader is told to skip this strip rather than read it
+    // as content between every row.
+    h("div", { class: "table-head", "aria-hidden": "true" },
+      h("span", {}, "page"),
+      h("span", {}, "origin"),
+      h("span", {}, "contributors"),
+      h("span", {}, "updated"),
+    ),
+  );
+  state.items.forEach((item, index) => card.append(renderRow(item, index)));
+  refs.list.append(card);
+  // Attach first, observe second. An IntersectionObserver given a target that is
+  // not yet in the document has nothing to intersect with and never fires.
+  if (state.more) {
+    card.append(renderSentinel());
+    // The first window may not fill the viewport, in which case the reader has
+    // nothing to scroll and the next one has to be asked for immediately.
+    maybeLoadMore();
+  }
 }
 
 function renderRow(item, index) {
   const step = inkStepFor(item.updated_at, state.now);
   const selected = index === state.selected;
+  const provenance = item.provenance || { origin: null, contributors: [] };
   const row = h("button", {
     type: "button",
     class: `ink-row${selected ? " is-selected" : ""}`,
@@ -192,16 +255,58 @@ function renderRow(item, index) {
     "data-index": index,
     onclick: event => openItem(item, event.currentTarget),
   },
-    h("span", { class: "row-title", style: { color: inkColor(step) } }, item.title || item.slug),
-    h("span", { class: "row-meta" },
-      h("span", { class: "scope-tag" }, item.scope || "shared"),
-      h("span", { class: "slug" }, item.slug),
-      h("span", { class: "ink-age", "aria-label": `updated ${relativeDate(item.updated_at, state.now)}` }, `${inkGlyph(step)} ${relativeDate(item.updated_at, state.now)}`),
+    h("span", { class: "cell cell-page" },
+      h("span", { class: "row-title", style: { color: inkColor(step) } }, item.title || item.slug),
+      h("span", { class: "row-slug" }, item.slug),
+      item.snippet ? h("span", { class: "snippet" }, item.snippet) : "",
     ),
-    item.snippet ? h("span", { class: "snippet" }, item.snippet) : "",
+    h("span", { class: "cell cell-origin" }, originLabel(provenance)),
+    h("span", { class: "cell cell-contributors" }, ...contributorLabels(provenance)),
+    h("span", {
+      class: "cell cell-updated",
+      "aria-label": `updated ${relativeDate(item.updated_at, state.now)}`,
+    }, `${inkGlyph(step)} ${relativeDate(item.updated_at, state.now)}`),
   );
-  row.style.setProperty("--row-delay", `${Math.min(index, 12) * 55}ms`);
   return row;
+}
+
+// A page whose writes all predate attribution has no recoverable author. Saying so
+// is the honest answer; naming whoever touched it since would be a guess.
+function originLabel(provenance) {
+  if (!provenance.origin) return h("span", { class: "unrecorded" }, "unrecorded");
+  return h("span", {}, `${provenance.origin.by} ${provenance.origin.at.slice(0, 10)}`);
+}
+
+function contributorLabels(provenance) {
+  const all = provenance.contributors || [];
+  if (!all.length) return [h("span", { class: "unrecorded" }, "none recorded")];
+  const shown = all.slice(0, 2).map(who => h("span", {
+    class: "who",
+    title: `${who.name}: ${who.writes} ${who.writes === 1 ? "write" : "writes"}`,
+  }, who.name));
+  if (all.length > 2) shown.push(h("span", { class: "who-more" }, `+${all.length - 2}`));
+  return shown;
+}
+
+// An observer rather than a scroll handler: it fires once when the row actually
+// comes into view and costs nothing while it has not. The margin asks early enough
+// that the next window usually lands before the reader reaches the end.
+function renderSentinel() {
+  return h("div", { class: "row-sentinel", role: "status" }, pulse(), h("span", {}, "loading more"));
+}
+
+// Deliberately not an IntersectionObserver. Its callbacks are delivered by the
+// rendering loop, which a browser throttles in a tab it considers hidden, so the
+// next window would silently never load. This repo already learned that lesson
+// about requestAnimationFrame when the reader pane would not open. Measuring on a
+// real scroll event answers the same question and cannot be throttled away.
+const LOAD_AHEAD = 500;
+
+function maybeLoadMore() {
+  if (!state.more || state.loadingMore || state.loading || state.query.trim()) return;
+  const sentinel = refs.list?.querySelector(".row-sentinel");
+  if (!sentinel) return;
+  if (sentinel.getBoundingClientRect().top < window.innerHeight + LOAD_AHEAD) loadMore();
 }
 
 async function openItem(item, invoker) {
@@ -421,7 +526,7 @@ async function submitCapture() {
   }
 }
 
-function renderYohaku() {
+function renderEmpty() {
   const hint = "Press c to write.";
   return h("section", { class: "yohaku", "aria-label": "Empty memory state" },
     sealImg("empty", 72, "empty mark"),

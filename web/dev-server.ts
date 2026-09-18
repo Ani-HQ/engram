@@ -10,7 +10,31 @@ const emptyFixture = await readFixture("pages-empty.json");
 const detailFixture = await readFixture("page-detail.json");
 const searchFixture = await readFixture("search.json");
 
-let pages = clone(pagesFixture.pages);
+// The fixture file holds enough rows to judge the design, but not enough to reach a
+// second window, so lazy loading could never be exercised against it. Pad it here
+// rather than committing eighty near-identical rows to the fixture.
+let pages = padCollection(clone(pagesFixture.pages), 96);
+
+function padCollection(rows: any[], target: number): any[] {
+  const agents = ["mac-claude", "codex", "baymax", "carolyn", "midi", "grok-bot"];
+  const out = rows.slice();
+  for (let i = rows.length; i < target; i += 1) {
+    const seed = rows[i % rows.length];
+    const who = agents[i % agents.length];
+    const day = String((i % 27) + 1).padStart(2, "0");
+    out.push({
+      ...clone(seed),
+      slug: `${seed.slug}-${i}`,
+      title: `${seed.title} ${i}`,
+      updated_at: `2026-0${(i % 9) + 1}-${day}T09:00:00.000Z`,
+      provenance: {
+        origin: { by: who, at: `2026-0${(i % 9) + 1}-${day}T09:00:00.000Z` },
+        contributors: [{ name: who, first: `2026-01-${day}T09:00:00.000Z`, last: `2026-09-${day}T09:00:00.000Z`, writes: (i % 11) + 1 }],
+      },
+    });
+  }
+  return out;
+}
 const details = new Map([[detailFixture.page.slug, detailFixture]]);
 const forgotten = new Map<string, { row: any; detail: any; index: number }>();
 
@@ -59,11 +83,16 @@ function listPages(url: URL) {
   const sort = url.searchParams.get("sort") ?? "updated_desc";
   const limit = Number(url.searchParams.get("limit") ?? 48);
   const offset = Number(url.searchParams.get("offset") ?? 0);
-  const rows = fixture
+  const all = fixture
     .filter((page: any) => !scope || page.scope === scope)
-    .sort((a: any, b: any) => comparePages(a, b, sort))
-    .slice(offset, offset + limit);
-  return { pages: rows, scopes: [...new Set(fixture.map((page: any) => page.scope))] };
+    .sort((a: any, b: any) => comparePages(a, b, sort));
+  const rows = all.slice(offset, offset + limit);
+  return {
+    pages: rows,
+    // Same contract the gateway answers with: a full window means ask again.
+    more: rows.length === limit && offset + limit < all.length,
+    scopes: [...new Set(fixture.map((page: any) => page.scope))],
+  };
 }
 
 function searchPages(url: URL) {
