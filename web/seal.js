@@ -1,4 +1,7 @@
-const SHU = "#C7402E";
+// The mark is procedurally generated from its subject, so every source and session
+// gets its own. In the accent rather than seal-red: the shapes are abstract, and the
+// red was the only thing still reading as a seal stamp.
+const MARK = "#1A73E8";
 const SVG_NS = "http" + "://www.w3.org/2000/svg";
 
 export function sealSvg(text = "engram", size = 64) {
@@ -19,7 +22,7 @@ export function sealSvg(text = "engram", size = 64) {
     }
   }
 
-  return `<svg xmlns="${SVG_NS}" width="${size}" height="${size}" viewBox="0 0 64 64" role="img" aria-label="hanko seal"><defs><filter id="${filterId}" x="-12%" y="-12%" width="124%" height="124%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="${seed % 997}" result="noise"/><feDisplacementMap in="SourceGraphic" in2="noise" scale="1.1"/></filter></defs><g filter="url(#${filterId})" fill="none" stroke="${SHU}" stroke-linecap="square" stroke-linejoin="round"><rect x="5" y="5" width="54" height="54" rx="7" stroke-width="3"/><rect x="9" y="9" width="46" height="46" rx="4" stroke-width="1.35"/></g><g filter="url(#${filterId})" fill="${SHU}">${parts.join("")}</g></svg>`;
+  return `<svg xmlns="${SVG_NS}" width="${size}" height="${size}" viewBox="0 0 64 64" role="img" aria-label="identity mark"><defs><filter id="${filterId}" x="-12%" y="-12%" width="124%" height="124%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="${seed % 997}" result="noise"/><feDisplacementMap in="SourceGraphic" in2="noise" scale="1.1"/></filter></defs><g filter="url(#${filterId})" fill="none" stroke="${MARK}" stroke-linecap="square" stroke-linejoin="round"><rect x="5" y="5" width="54" height="54" rx="7" stroke-width="3"/><rect x="9" y="9" width="46" height="46" rx="4" stroke-width="1.35"/></g><g filter="url(#${filterId})" fill="${MARK}">${parts.join("")}</g></svg>`;
 }
 
 function glyph(x, y, w, h, mode) {

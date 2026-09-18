@@ -2,19 +2,19 @@ import { sealSvg } from "./seal.js";
 
 const SVG_NS = "http" + "://www.w3.org/2000/svg";
 
-export function renderKintsugi(page, links, openItem) {
-  const wrap = h("section", { class: "kintsugi", "aria-label": "Linked memory seams" }, h("p", { class: "kintsugi-source" }, page.title || page.slug));
+export function renderLinks(page, links, openItem) {
+  const wrap = h("section", { class: "links", "aria-label": "Linked memory" }, h("p", { class: "links-source" }, page.title || page.slug));
   if (!links.length) return wrap;
   const svg = s("svg", { viewBox: "0 0 640 180", preserveAspectRatio: "none", "aria-hidden": "true" });
-  const targets = h("div", { class: "kintsugi-targets" });
+  const targets = h("div", { class: "links-targets" });
   links.slice(0, 4).forEach((link, index) => {
     const y = 30 + index * 38;
     const jitter = seeded(`${page.slug}:${link.slug}`);
     const c1 = 180 + jitter() * 34;
     const c2 = 360 + jitter() * 44;
-    svg.append(s("path", { d: `M 90 28 C ${c1} ${16 + jitter() * 28}, ${c2} ${y + jitter() * 24}, 512 ${y}`, fill: "none", stroke: "var(--kin)", "stroke-width": "1.5", "stroke-linecap": "round" }));
+    svg.append(s("path", { d: `M 90 28 C ${c1} ${16 + jitter() * 28}, ${c2} ${y + jitter() * 24}, 512 ${y}`, fill: "none", stroke: "var(--accent-deep)", "stroke-width": "1.5", "stroke-linecap": "round" }));
     for (let fleck = 0; fleck < 3; fleck += 1) {
-      svg.append(s("circle", { cx: 235 + fleck * 92 + jitter() * 18, cy: y - 8 + jitter() * 20, r: 1 + jitter() * 1.1, fill: "var(--kin)", opacity: "0.8" }));
+      svg.append(s("circle", { cx: 235 + fleck * 92 + jitter() * 18, cy: y - 8 + jitter() * 20, r: 1 + jitter() * 1.1, fill: "var(--accent-deep)", opacity: "0.8" }));
     }
     targets.append(h("button", { type: "button", class: "seam-link", style: { top: `${y - 12}px` }, onclick: () => openItem(link) }, link.slug));
   });
@@ -23,9 +23,10 @@ export function renderKintsugi(page, links, openItem) {
 }
 
 export function renderTimeline(entries) {
-  // No entries means no scroll to unroll — an empty 絵巻 heading is just a dangling label.
+  // No entries means no timeline to draw, and a heading with nothing under it is
+  // just a dangling label.
   if (!entries.length) return "";
-  const strip = h("section", { class: "emaki", "aria-label": "Timeline" }, h("h3", {}, "絵巻"));
+  const strip = h("section", { class: "timeline", "aria-label": "Timeline" }, h("h3", {}, "timeline"));
   const inner = h("div", { class: "emaki-inner" }, ...entries.map(entry => h("div", { class: "emaki-node" },
     h("span", { class: "node-dot" }),
     h("time", { datetime: entry.at }, compactDate(entry.at)),
@@ -37,10 +38,16 @@ export function renderTimeline(entries) {
   return strip;
 }
 
-export function seigaiha() {
-  const svg = s("svg", { class: "seigaiha", viewBox: "0 0 120 60", "aria-hidden": "true" });
-  [22, 36, 50].forEach(r => svg.append(s("path", { d: `M ${60 - r} 54 A ${r} ${r} 0 0 1 ${60 + r} 54`, fill: "none", stroke: "currentColor", "stroke-width": "1" })));
-  return svg;
+// A quiet three-dot pulse. The wave motif it replaces was decorative and overtly
+// Japanese; this says the same thing and belongs to no tradition in particular.
+export function pulse() {
+  const wrap = s("svg", { class: "pulse", viewBox: "0 0 44 12", "aria-hidden": "true" });
+  for (let i = 0; i < 3; i += 1) {
+    const dot = s("circle", { cx: String(6 + i * 16), cy: "6", r: "3" });
+    dot.style.animationDelay = `${i * 0.16}s`;
+    wrap.append(dot);
+  }
+  return wrap;
 }
 
 export function sealImg(text, size, alt) {
@@ -59,9 +66,9 @@ export function relativeDate(value, now = new Date()) {
 }
 
 export function inkGlyph(step) {
-  if (step > 0.66) return "███";
-  if (step > 0.33) return "▓▓░";
-  return "░░░";
+  if (step > 0.66) return "●●●";
+  if (step > 0.33) return "●●○";
+  return "●○○";
 }
 
 function compactDate(value) {

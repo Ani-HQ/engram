@@ -1,16 +1,16 @@
 {
   "pages": [
     {
-      "slug": "ink-density-recency",
-      "title": "Ink density follows recency",
+      "slug": "weight-recency",
+      "title": "Weight follows recency",
       "type": "note",
       "source_id": "dev",
       "scope": "shared",
       "updated_at": "2026-08-18T07:30:00Z"
     },
     {
-      "slug": "tokonoma-console",
-      "title": "Console as tokonoma",
+      "slug": "console-layout",
+      "title": "Console layout",
       "type": "page",
       "source_id": "design",
       "scope": "shared",
@@ -18,7 +18,7 @@
     },
     {
       "slug": "capture-strip",
-      "title": "Tanzaku capture strip",
+      "title": "Capture strip",
       "type": "capture",
       "source_id": "dev",
       "scope": "shared",
@@ -33,24 +33,24 @@
       "updated_at": "2026-08-01T12:00:00Z"
     },
     {
-      "slug": "shoji-reader",
-      "title": "Shoji reader pane",
+      "slug": "reader-pane",
+      "title": "Reader pane",
       "type": "page",
       "source_id": "design",
       "scope": "shared",
       "updated_at": "2026-07-10T09:00:00Z"
     },
     {
-      "slug": "kintsugi-links",
-      "title": "Kintsugi seams for linked memory",
+      "slug": "linked-memory",
+      "title": "Links between memories",
       "type": "note",
       "source_id": "design",
       "scope": "shared",
       "updated_at": "2026-06-01T09:00:00Z"
     },
     {
-      "slug": "emaki-timeline",
-      "title": "Emaki timeline motion",
+      "slug": "timeline-motion",
+      "title": "Timeline motion",
       "type": "note",
       "source_id": "dev",
       "scope": "shared",
@@ -73,7 +73,7 @@
       "updated_at": "2026-01-15T22:10:00Z"
     },
     {
-      "slug": "hanko-identity",
+      "slug": "identity-mark",
       "title": "Hanko identity marks",
       "type": "note",
       "source_id": "dev",
@@ -89,8 +89,8 @@
       "updated_at": "2025-09-18T11:00:00Z"
     },
     {
-      "slug": "paper-grain",
-      "title": "Washi grain and uneven light",
+      "slug": "surface-contrast",
+      "title": "Surface and contrast",
       "type": "note",
       "source_id": "design",
       "scope": "shared",
@@ -98,7 +98,7 @@
     },
     {
       "slug": "negative-space",
-      "title": "Yohaku as layout",
+      "title": "Whitespace as layout",
       "type": "note",
       "source_id": "design",
       "scope": "shared",

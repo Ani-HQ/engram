@@ -16,7 +16,7 @@ const forgotten = new Map<string, { row: any; detail: any; index: number }>();
 
 if (import.meta.main) {
   Bun.serve({ port: PORT, fetch: devFetch });
-  console.log(`文庫 dev server: http://localhost:${PORT}/`);
+  console.log(`engram console dev server: http://localhost:${PORT}/`);
 }
 
 export async function devFetch(req: Request): Promise<Response> {

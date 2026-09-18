@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { sealSvg } from "./seal.js";
 
-describe("hanko seal generation", () => {
+describe("identity mark generation", () => {
   test("is deterministic for the same input", () => {
     expect(sealSvg("shared", 64)).toBe(sealSvg("shared", 64));
   });

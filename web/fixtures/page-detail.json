@@ -1,25 +1,25 @@
 {
   "page": {
-    "slug": "ink-density-recency",
-    "title": "Ink density follows recency",
+    "slug": "weight-recency",
+    "title": "Weight follows recency",
     "type": "note",
     "scope": "shared",
     "updated_at": "2026-08-18T07:30:00Z",
-    "body": "## Recency should be felt, not decoded\n\nFresh pages carry full sumi. Older pages fade only as far as readability allows, because memory should age without becoming unavailable.\n\nThe row also carries a small ink bar: **dense**, *middle*, and thin. That louder cue does the semantic work while the title stays readable.\n\n- The curve is logarithmic after the first day.\n- The floor keeps contrast above AA in both palettes.\n- The browser uses `color-mix` so the same rule follows light and dark paper.\n\n```js\ninkStepFor(updated_at, new Date())\n```\n\nRelated notes are repaired into the page with [quiet seams](./kintsugi-links)."
+    "body": "## Recency should be felt, not decoded\n\nFresh pages carry full weight. Older pages fade only as far as readability allows, because memory should age without becoming unavailable.\n\nThe row also carries a small weight bar: **dense**, *middle*, and thin. That louder cue does the semantic work while the title stays readable.\n\n- The curve is logarithmic after the first day.\n- The floor keeps contrast above AA in both palettes.\n- The browser uses `color-mix` so the same rule follows light and dark paper.\n\n```js\ninkStepFor(updated_at, new Date())\n```\n\nRelated notes are repaired into the page with [quiet seams](./linked-memory)."
   },
   "links": [
     {
-      "slug": "kintsugi-links",
-      "title": "Kintsugi seams for linked memory",
+      "slug": "linked-memory",
+      "title": "Links between memories",
       "relation": "design"
     },
     {
-      "slug": "emaki-timeline",
-      "title": "Emaki timeline motion",
+      "slug": "timeline-motion",
+      "title": "Timeline motion",
       "relation": "history"
     },
     {
-      "slug": "hanko-identity",
+      "slug": "identity-mark",
       "title": "Hanko identity marks",
       "relation": "identity"
     },
@@ -52,7 +52,7 @@
     },
     {
       "at": "2026-06-12T11:30:00Z",
-      "text": "First paper-grain prototype landed."
+      "text": "First surface-contrast prototype landed."
     }
   ]
 }

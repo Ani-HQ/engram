@@ -1,29 +1,43 @@
 :root {
-  --gofun: #F7F4EC;
-  --kinari: #EFE9DC;
-  --sumi: #1C1A17;
-  --usuzumi: #6E6A62;
-  --nezumi: #A8A29A;
-  --shu: #C7402E;
-  --kin: #B08D2E;
-  --ai: #2C4B66;
-  --mincho: "Hiragino Mincho ProN", "Yu Mincho", YuMincho, "Songti SC", "Noto Serif JP", "Iowan Old Style", Georgia, serif;
-  --ui: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Helvetica Neue", sans-serif;
-  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  /* Surfaces run light to dark; text runs dark to light. Flat, no texture: the
+     reference this is drawn from earns its calm from whitespace, not from grain. */
+  --surface: #FFFFFF;
+  --surface-2: #F8F9FA;
+  --surface-3: #F1F3F4;
+  --text: #202124;
+  --text-2: #5F6368;
+  --line: #DADCE0;
+  --accent: #1A73E8;
+  --accent-deep: #174EA6;
+
+  /* One family throughout. Headings separate themselves by weight and tracking
+     rather than by switching to a serif. */
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --display: var(--sans);
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* One vertical rhythm, used everywhere, so spacing is a decision made once. */
+  --s1: 8px;
+  --s2: 16px;
+  --s3: 24px;
+  --s4: 32px;
+  --s5: 48px;
+  --s6: 64px;
+  --s7: 96px;
+
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
-  --grain: url("data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='table' tableValues='0 .035'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --gofun: #14130F;
-    --kinari: #1D1B17;
-    --sumi: #EDE7DA;
-    --usuzumi: #A39C90;
-    --nezumi: #55514A;
-    --shu: #D85A46;
-    --kin: #C9A44C;
-    --ai: #7FA3C2;
+    --surface: #131314;
+    --surface-2: #1E1F20;
+    --surface-3: #28292A;
+    --text: #E3E3E3;
+    --text-2: #9AA0A6;
+    --line: #3C4043;
+    --accent: #8AB4F8;
+    --accent-deep: #AECBFA;
   }
 }
 
@@ -33,21 +47,21 @@
 
 html {
   min-height: 100%;
-  color: var(--sumi);
-  background: var(--gofun);
+  color: var(--text);
+  background: var(--surface);
 }
 
 body {
   min-height: 100vh;
   margin: 0;
   overflow-x: hidden;
-  color: var(--sumi);
-  background-color: var(--gofun);
+  color: var(--text);
+  background-color: var(--surface);
   background-image:
-    radial-gradient(circle at 34% 18%, color-mix(in oklab, var(--kinari) 62%, transparent) 0, transparent 48vw),
-    radial-gradient(circle at 84% 88%, color-mix(in oklab, var(--nezumi) 13%, transparent) 0, transparent 58vw),
+    radial-gradient(circle at 34% 18%, color-mix(in oklab, var(--surface-2) 62%, transparent) 0, transparent 48vw),
+    radial-gradient(circle at 84% 88%, color-mix(in oklab, var(--line) 13%, transparent) 0, transparent 58vw),
     var(--grain);
-  font-family: var(--ui);
+  font-family: var(--sans);
   text-rendering: optimizeLegibility;
 }
 
@@ -66,7 +80,7 @@ input:focus-visible,
 textarea:focus-visible,
 a:focus-visible,
 [tabindex]:focus-visible {
-  outline: 1px solid var(--shu);
+  outline: 1px solid var(--accent);
   outline-offset: 5px;
 }
 
@@ -97,7 +111,7 @@ a:focus-visible,
 
 .login-form h1 {
   margin: 0 0 1.4rem;
-  font-family: var(--mincho);
+  font-family: var(--display);
   font-size: clamp(2rem, 7vw, 4.5rem);
   font-weight: 400;
   letter-spacing: 0;
@@ -111,10 +125,10 @@ a:focus-visible,
 .search-field input {
   width: 100%;
   border: 0;
-  border-bottom: 1px solid var(--nezumi);
+  border-bottom: 1px solid var(--line);
   border-radius: 0;
   padding: 0.72rem 0;
-  color: var(--sumi);
+  color: var(--text);
   background: transparent;
 }
 
@@ -123,7 +137,7 @@ a:focus-visible,
 .inline-undo,
 .pane-close,
 .seam-link,
-.tanzaku-tab,
+.capture-tab,
 .ink-row {
   border: 0;
   border-radius: 0;
@@ -132,8 +146,8 @@ a:focus-visible,
 
 .login-submit {
   padding: 0.64rem 1.1rem;
-  border: 1px solid var(--shu);
-  color: var(--shu);
+  border: 1px solid var(--accent);
+  color: var(--accent);
   cursor: pointer;
 }
 
@@ -141,13 +155,16 @@ a:focus-visible,
 .capture-error {
   min-height: 1.4em;
   margin: 0;
-  color: var(--shu);
+  color: var(--accent);
 }
 
 .console-shell {
   display: grid;
-  grid-template-columns: minmax(88px, 10vw) minmax(0, 66ch) 1fr;
-  column-gap: clamp(2.4rem, 6vw, 6.5rem);
+  grid-template-columns: 180px minmax(0, 74ch) minmax(0, 1fr);
+  column-gap: var(--s6);
+  max-width: 1440px;
+  margin: 0 auto;
+  padding-right: var(--s4);
   min-height: 100vh;
 }
 
@@ -160,7 +177,7 @@ a:focus-visible,
   display: grid;
   grid-template-rows: auto auto repeat(3, min-content) 1fr;
   gap: 1.8rem;
-  color: var(--usuzumi);
+  color: var(--text-2);
 }
 
 .seal {
@@ -168,31 +185,32 @@ a:focus-visible,
 }
 
 .rail-title {
-  margin: 0;
-  color: color-mix(in oklab, var(--usuzumi) 48%, transparent);
-  font-family: var(--mincho);
-  font-size: clamp(2.2rem, 4vw, 4rem);
-  font-weight: 400;
-  letter-spacing: 0.35em;
+  margin: 0 0 var(--s5);
+  color: var(--text);
+  font-family: var(--display);
+  font-size: 1rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
   line-height: 1;
-  writing-mode: vertical-rl;
 }
 
 .rail-label {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
+  display: block;
+  margin-bottom: var(--s1);
 }
 
-.rail-kanji {
-  color: color-mix(in oklab, var(--usuzumi) 58%, transparent);
-  font-family: var(--mincho);
-  font-size: clamp(1.4rem, 2.4vw, 2.2rem);
-  letter-spacing: 0.42em;
-  writing-mode: vertical-rl;
+.rail-name {
+  color: var(--text-2);
+  font-size: 0.875rem;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
-.rail-roman,
+.rail-name:hover {
+  color: var(--text);
+}
+
+.rail-foot,
 .rail-foot,
 .result-count,
 .row-meta,
@@ -201,10 +219,6 @@ a:focus-visible,
   font-size: 0.74rem;
   letter-spacing: 0.05em;
   text-transform: lowercase;
-}
-
-.rail-roman {
-  padding-top: 0.2rem;
 }
 
 .rail-foot {
@@ -218,8 +232,8 @@ a:focus-visible,
 .inline-undo {
   width: fit-content;
   padding: 0;
-  color: var(--usuzumi);
-  border-bottom: 1px solid var(--nezumi);
+  color: var(--text-2);
+  border-bottom: 1px solid var(--line);
   cursor: pointer;
 }
 
@@ -241,25 +255,29 @@ a:focus-visible,
 }
 
 .search-field {
-  display: grid;
-  grid-template-columns: min-content minmax(0, 1fr);
-  align-items: end;
-  gap: 1.2rem;
-  width: min(40rem, 100%);
+  display: block;
+  width: 100%;
+  max-width: 44rem;
 }
 
-.search-field label {
-  color: color-mix(in oklab, var(--usuzumi) 70%, transparent);
-  font-family: var(--mincho);
-  font-size: 1.45rem;
-  letter-spacing: 0.32em;
-  writing-mode: vertical-rl;
+/* The search input carries its own placeholder, so the label is for screen
+   readers only rather than a second visible word beside it. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 .result-count {
   min-height: 1.5rem;
   margin: 2.1rem 0 0;
-  color: var(--usuzumi);
+  color: var(--text-2);
 }
 
 .ink-list {
@@ -290,7 +308,7 @@ a:focus-visible,
 }
 
 .ink-row.is-selected::before {
-  background: var(--shu);
+  background: var(--accent);
 }
 
 .ink-row.is-selected .row-title {
@@ -299,7 +317,7 @@ a:focus-visible,
 
 .row-title {
   display: block;
-  font-family: var(--mincho);
+  font-family: var(--display);
   font-size: clamp(1.22rem, 2vw, 1.46rem);
   line-height: 1.35;
   text-wrap: pretty;
@@ -310,11 +328,11 @@ a:focus-visible,
   flex-wrap: wrap;
   gap: 0.55rem;
   margin-top: 0.35rem;
-  color: var(--usuzumi);
+  color: var(--text-2);
 }
 
 .scope-tag {
-  color: var(--ai);
+  color: var(--accent-deep);
 }
 
 .slug,
@@ -327,8 +345,8 @@ a:focus-visible,
 .snippet {
   display: block;
   margin-top: 0.58rem;
-  color: var(--usuzumi);
-  font-family: var(--mincho);
+  color: var(--text-2);
+  font-family: var(--display);
   font-size: 0.96rem;
   line-height: 1.7;
 }
@@ -351,25 +369,26 @@ a:focus-visible,
   display: inline-flex;
   align-items: center;
   gap: 1rem;
-  color: var(--usuzumi);
+  color: var(--text-2);
 }
 
-.seigaiha {
-  width: 7.5rem;
-  height: 3.75rem;
-  color: var(--usuzumi);
-  animation: breathe 1.8s var(--ease) infinite;
+.pulse {
+  width: 44px;
+  height: 12px;
+  fill: var(--text-2);
 }
 
-@keyframes breathe {
+.pulse circle {
+  animation: pulse-fade 1.2s var(--ease) infinite;
+}
+
+@keyframes pulse-fade {
   0%,
   100% {
-    opacity: 0.45;
-    transform: scale(0.985);
+    opacity: 0.2;
   }
   50% {
     opacity: 0.9;
-    transform: scale(1.015);
   }
 }
 
@@ -378,8 +397,8 @@ a:focus-visible,
 .login-blurb {
   max-width: 34ch;
   margin: 0.4rem 0 2.4rem;
-  color: var(--usuzumi);
-  font-family: var(--mincho);
+  color: var(--text-2);
+  font-family: var(--display);
   font-size: 1.02rem;
   line-height: 1.7;
 }
@@ -391,7 +410,7 @@ a:focus-visible,
 .field-label > span {
   display: block;
   margin-bottom: 0.5rem;
-  color: var(--usuzumi);
+  color: var(--text-2);
   font-size: 0.78rem;
   letter-spacing: 0.09em;
   text-transform: lowercase;
@@ -399,7 +418,7 @@ a:focus-visible,
 
 .login-hint {
   margin-top: 1.5rem;
-  color: color-mix(in oklab, var(--usuzumi) 78%, transparent);
+  color: color-mix(in oklab, var(--text-2) 78%, transparent);
   font-family: var(--mono);
   font-size: 0.72rem;
   letter-spacing: -0.02em;
@@ -410,7 +429,7 @@ a:focus-visible,
   flex-wrap: wrap;
   gap: 0.4rem 1.4rem;
   margin-top: 0.35rem;
-  color: color-mix(in oklab, var(--usuzumi) 80%, transparent);
+  color: color-mix(in oklab, var(--text-2) 80%, transparent);
   font-size: 0.74rem;
   letter-spacing: 0.02em;
 }
@@ -420,10 +439,10 @@ a:focus-visible,
   letter-spacing: -0.03em;
 }
 
-.tab-roman {
+.tab-label-secondary {
   margin-top: 0.7rem;
-  color: var(--usuzumi);
-  font-family: var(--ui);
+  color: var(--text-2);
+  font-family: var(--sans);
   font-size: 0.62rem;
   letter-spacing: 0.14em;
   writing-mode: horizontal-tb;

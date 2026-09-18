@@ -1,31 +1,39 @@
 .capture-host {
   position: absolute;
-  top: clamp(3rem, 6vh, 4.8rem);
-  right: clamp(-6.4rem, -8vw, -4.2rem);
+  top: clamp(2rem, 5vh, 3.2rem);
+  right: clamp(-5rem, -6vw, -3rem);
   z-index: 20;
   perspective: 900px;
 }
 
-.tanzaku-tab {
-  min-height: 9.2rem;
-  padding: 0.65rem 0.35rem;
-  color: var(--sumi);
-  border-left: 1px solid var(--nezumi);
-  border-right: 1px solid color-mix(in oklab, var(--nezumi) 45%, transparent);
-  font-family: var(--mincho);
-  font-size: 1.15rem;
-  letter-spacing: 0.42em;
-  writing-mode: vertical-rl;
+/* Was a vertical paper tab, so it carried tall side rules and a 9rem minimum
+   height. As a horizontal control it only needs to look like a button. */
+.capture-tab {
+  padding: var(--s1) var(--s3);
+  color: var(--accent);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  font-family: var(--display);
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
   cursor: pointer;
+  transition: background 140ms var(--ease), border-color 140ms var(--ease);
 }
 
-.tanzaku-panel {
+.capture-tab:hover {
+  border-color: var(--accent);
+  background: var(--surface-3);
+}
+
+.capture-panel {
   width: min(27rem, calc(100vw - 2rem));
   padding: 1rem 1.1rem 0.8rem;
-  border-left: 1px solid var(--nezumi);
+  border-left: 1px solid var(--line);
   /* Opaque: a strip of paper laid on the desk. Translucent let the row text
      underneath bleed through the writing surface, which read as a broken modal. */
-  background: var(--kinari);
+  background: var(--surface-2);
   transform-origin: top;
 }
 
@@ -33,14 +41,14 @@
    unrolls INTO it rather than over the collection. The tab itself stays put —
    it is the affordance, and it belongs beside the content, not at the far edge. */
 @media (min-width: 1200px) {
-  .tanzaku-panel {
+  .capture-panel {
     position: absolute;
     top: 0;
     left: 100%;
   }
 }
 
-.tanzaku-panel.is-folding {
+.capture-panel.is-folding {
   animation: tanzaku-fold 320ms var(--ease) both;
 }
 
@@ -51,16 +59,16 @@
   }
 }
 
-.tanzaku-panel textarea {
+.capture-panel textarea {
   width: 100%;
   min-height: 13rem;
   resize: vertical;
   border: 0;
   border-radius: 0;
-  color: var(--sumi);
+  color: var(--text);
   background:
-    repeating-linear-gradient(to bottom, transparent 0 2rem, color-mix(in oklab, var(--nezumi) 42%, transparent) calc(2rem + 1px));
-  font-family: var(--mincho);
+    repeating-linear-gradient(to bottom, transparent 0 2rem, color-mix(in oklab, var(--line) 42%, transparent) calc(2rem + 1px));
+  font-family: var(--display);
   font-size: 1.05rem;
   line-height: 2rem;
 }
@@ -75,9 +83,9 @@
 
 .primary-action {
   padding: 0.6rem 0.95rem;
-  border: 1px solid var(--shu);
+  border: 1px solid var(--accent);
   border-radius: 0;
-  color: var(--gofun);
-  background: var(--shu);
+  color: var(--surface);
+  background: var(--accent);
   cursor: pointer;
 }
