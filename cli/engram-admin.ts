@@ -58,10 +58,15 @@ try {
     const name = requireName();
     const r = await sql`UPDATE tokens SET revoked_at = now() WHERE name = ${name} AND revoked_at IS NULL`;
     console.log(r.count > 0 ? `token '${name}' revoked` : `no active token named '${name}'`);
+  } else if (cmd === "dream" && sub === "run") {
+    rejectArgsExcept(new Set());
+    await sql.end({ timeout: 1 }).catch(() => {});
+    const { main } = await import("../gateway/src/jobs/dream");
+    await main();
   } else {
-    console.log("usage: engram-admin token issue --name N | token list | token revoke --name N");
+    console.log("usage: engram-admin token issue --name N | token list | token revoke --name N | dream run");
     process.exitCode = 1;
   }
 } finally {
-  await sql.end();
+  await sql.end({ timeout: 1 }).catch(() => {});
 }

@@ -81,6 +81,20 @@ mock.module("../gateway/src/audit", () => ({
   provenanceFor: async () => new Map(),
 }));
 
+const realEntries = await import("../gateway/src/memory-entries");
+mock.module("../gateway/src/memory-entries", () => ({
+  ...realEntries,
+  upsertMemoryEntry: async () => null,
+  markRolledEntries: async () => {},
+}));
+
+const realWrite = await import("../gateway/src/reflex/write");
+mock.module("../gateway/src/reflex/write", () => ({
+  ...realWrite,
+  suggestTopic: async () => null,
+  afterRemember: async () => {},
+}));
+
 const { callTool, slugForRemember, shrinkToolDef, SERVER_INSTRUCTIONS } =
   await import("../gateway/src/proxy");
 
@@ -181,7 +195,7 @@ describe("recall", () => {
     const result = await callTool(token, "recall", { query: "deploy", limit: 500 });
     const { results, full } = payload(result);
 
-    expect(calls[0]).toEqual({ name: "search", arguments: { query: "deploy", limit: 5 } });
+    expect(calls[0]).toEqual({ name: "search", arguments: { query: "deploy", limit: 20 } });
     expect(results.length).toBe(5);
     for (const entry of results) {
       expect(entry.snippet.length).toBeLessThanOrEqual(280);

@@ -28,6 +28,9 @@ const state = {
   graph: null,
   graphError: "",
   graphController: null,
+  reviewItems: [],
+  reviewLoading: false,
+  reviewError: "",
   now: new Date(),
 };
 
@@ -132,6 +135,7 @@ function showConsole() {
     h("h1", { class: "rail-title" }, "engram"),
     labelBlock("collection"),
     labelBlock("search"),
+    labelBlock("review"),
     labelBlock("memory"),
     h("div", { class: "rail-foot" },
       h("span", {}, state.session?.name || "guest"),
@@ -252,6 +256,7 @@ async function switchView(next) {
   renderChrome();
   renderList();
   if (next === "graph" && !state.graph) await loadGraph();
+  if (next === "review") await loadReview();
 }
 
 async function loadGraph() {
@@ -269,7 +274,7 @@ async function loadGraph() {
 function renderChrome() {
   if (!refs.viewToggle) return;
   refs.viewToggle.replaceChildren(
-    ...[["collection", "collection"], ["graph", "graph"]].map(([id, label]) => h("button", {
+    ...[["collection", "collection"], ["graph", "graph"], ["review", "review"]].map(([id, label]) => h("button", {
       type: "button",
       class: `chip${state.view === id ? " is-on" : ""}`,
       "aria-pressed": state.view === id ? "true" : "false",
@@ -319,6 +324,83 @@ function renderGraphCard() {
   return card;
 }
 
+async function loadReview() {
+  state.reviewLoading = true;
+  state.reviewError = "";
+  renderList();
+  try {
+    const data = await api.review({ state: "pending", limit: 40 });
+    state.reviewItems = data.items ?? [];
+  } catch (error) {
+    if (error instanceof AuthError) return handleError(error);
+    state.reviewError = "could not load the review queue";
+  } finally {
+    state.reviewLoading = false;
+    renderList();
+  }
+}
+
+function renderReviewCard() {
+  if (state.reviewLoading) {
+    return h("section", { class: "card review-card" },
+      h("div", { class: "card-bar" }, h("span", {}, "review"), h("span", { class: "card-bar-count" }, "loading")),
+      h("div", { class: "graph-empty" }, pulse(), h("span", {}, "reading proposed judgments")),
+    );
+  }
+  if (state.reviewError) {
+    return h("section", { class: "card review-card" },
+      h("div", { class: "card-bar" }, h("span", {}, "review"), h("span", { class: "card-bar-count" }, "error")),
+      h("p", { class: "graph-empty" }, state.reviewError),
+    );
+  }
+  const items = state.reviewItems;
+  const card = h("section", { class: "card review-card" },
+    h("div", { class: "card-bar" },
+      h("span", {}, "review"),
+      h("span", { class: "card-bar-count" }, `${items.length} pending`),
+    ),
+  );
+  if (!items.length) {
+    card.append(h("p", { class: "graph-empty" }, "Nothing waiting. The dream cycle will enqueue the next batch."));
+    return card;
+  }
+  items.forEach(item => card.append(renderReviewRow(item)));
+  return card;
+}
+
+function renderReviewRow(item) {
+  const payload = item.payload || {};
+  const related = payload.otherSlug || payload.slug || payload.clusterSlug || "";
+  const confidence = item.confidence == null ? "—" : Number(item.confidence).toFixed(2);
+  return h("div", { class: "review-row" },
+    h("div", { class: "review-copy" },
+      h("p", { class: "review-kind" }, item.kind),
+      h("p", { class: "review-meta" }, related ? `${related} · ${confidence}` : `confidence ${confidence}`),
+      h("p", { class: "review-body" }, String(payload.otherText || payload.text || payload.title || "").slice(0, 220)),
+    ),
+    h("div", { class: "review-actions" },
+      h("button", { type: "button", class: "text-button", onclick: () => actOnReview(item, "approve") }, "approve"),
+      h("button", { type: "button", class: "text-button", onclick: () => actOnReview(item, "defer") }, "defer"),
+      h("button", { type: "button", class: "text-button", onclick: () => actOnReview(item, "reject") }, "reject"),
+    ),
+  );
+}
+
+async function actOnReview(item, action) {
+  try {
+    if (action === "approve") await api.reviewApprove(item.id);
+    else if (action === "defer") await api.reviewDefer(item.id);
+    else await api.reviewReject(item.id);
+    state.reviewItems = state.reviewItems.filter(row => row.id !== item.id);
+    state.message = `${action}d ${item.kind}`;
+    renderList();
+  } catch (error) {
+    if (error instanceof AuthError) return handleError(error);
+    state.reviewError = "could not update that item";
+    renderList();
+  }
+}
+
 function renderList() {
   if (!refs.list) return;
   refs.list.replaceChildren();
@@ -326,6 +408,10 @@ function renderList() {
   renderResultCount(noun);
   if (state.view === "graph") {
     refs.list.append(renderGraphCard());
+    return;
+  }
+  if (state.view === "review") {
+    refs.list.append(renderReviewCard());
     return;
   }
   if (state.loading) {

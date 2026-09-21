@@ -23,6 +23,8 @@ services:
       ENGRAM_DB_URL_TEMPLATE: postgresql://postgres:${POSTGRES_PASSWORD:-engram}@db:5432/__DB__
       VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+      REFLEX_MODEL: ${REFLEX_MODEL:-jev-latest}
     ports:
       - "8080:8080"
     volumes:

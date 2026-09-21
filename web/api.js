@@ -100,4 +100,33 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
+  review(params = {}) {
+    return request(query("/api/review", {
+      state: params.state ?? "pending",
+      kind: params.kind,
+      limit: params.limit ?? 40,
+      offset: params.offset ?? 0,
+    }));
+  },
+  reviewItem(id) {
+    return request(query("/api/review/item", { id }));
+  },
+  reviewApprove(id) {
+    return request("/api/review/approve", {
+      method: "POST",
+      body: JSON.stringify({ id }),
+    });
+  },
+  reviewReject(id) {
+    return request("/api/review/reject", {
+      method: "POST",
+      body: JSON.stringify({ id }),
+    });
+  },
+  reviewDefer(id) {
+    return request("/api/review/defer", {
+      method: "POST",
+      body: JSON.stringify({ id }),
+    });
+  },
 };

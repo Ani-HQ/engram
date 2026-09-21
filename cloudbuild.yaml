@@ -44,14 +44,32 @@ steps:
       - '--allow-unauthenticated'
       - '--service-account=engram-runtime@$PROJECT_ID.iam.gserviceaccount.com'
       - '--add-cloudsql-instances=$PROJECT_ID:${_REGION}:engram-pg'
-      - '--set-secrets=ENGRAM_DB_URL_TEMPLATE=engram-db-url-template:latest'
-      - '--set-env-vars=GBRAIN_HOMES_DIR=/tmp/gbrain-homes,ENGRAM_CLOUDSQL_INSTANCE=$PROJECT_ID:${_REGION}:engram-pg'
+      - '--set-secrets=ENGRAM_DB_URL_TEMPLATE=engram-db-url-template:latest,TYPESAFE_API_KEY=typesafe-api-key:latest,VOYAGE_API_KEY=voyage-api-key:latest'
+      - '--set-env-vars=GBRAIN_HOMES_DIR=/tmp/gbrain-homes,ENGRAM_CLOUDSQL_INSTANCE=$PROJECT_ID:${_REGION}:engram-pg,REFLEX_MODEL=jev-latest,ENGRAM_EMBEDDING_MODEL=voyage:voyage-4-large,ENGRAM_EMBEDDING_DIMENSIONS=1024'
       - '--min-instances=0'
       - '--max-instances=1'
       - '--memory=2Gi'
       - '--cpu=1'
       - '--timeout=900'
       - '--execution-environment=gen2'
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'jobs'
+      - 'deploy'
+      - 'engram-dream'
+      - '--image=gcr.io/$PROJECT_ID/engram:$BUILD_ID'
+      - '--region=${_REGION}'
+      - '--service-account=engram-runtime@$PROJECT_ID.iam.gserviceaccount.com'
+      - '--add-cloudsql-instances=$PROJECT_ID:${_REGION}:engram-pg'
+      - '--set-secrets=ENGRAM_DB_URL_TEMPLATE=engram-db-url-template:latest,TYPESAFE_API_KEY=typesafe-api-key:latest,VOYAGE_API_KEY=voyage-api-key:latest'
+      - '--set-env-vars=GBRAIN_HOMES_DIR=/tmp/gbrain-homes,ENGRAM_CLOUDSQL_INSTANCE=$PROJECT_ID:${_REGION}:engram-pg,ENGRAM_JOB=dream,REFLEX_MODEL=jev-latest,ENGRAM_EMBEDDING_MODEL=voyage:voyage-4-large,ENGRAM_EMBEDDING_DIMENSIONS=1024'
+      - '--memory=2Gi'
+      - '--cpu=1'
+      - '--task-timeout=900s'
+      - '--max-retries=1'
 
 # A build that names its own service account must say where logs go, or it is
 # rejected before the first step runs. `gcloud builds submit` never hit this,

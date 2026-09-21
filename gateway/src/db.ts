@@ -3,6 +3,7 @@ import { dbUrl } from "./config";
 
 export const sql = postgres(dbUrl("engram_gateway"), {
   max: 5,
+  connect_timeout: 2,
   onnotice: () => {},
 });
 
@@ -44,4 +45,61 @@ export async function migrate() {
     UPDATE audit_log
     SET slug = substring(arg_summary from '"slug":"([^"]+)"')
     WHERE slug IS NULL AND arg_summary LIKE '%"slug":"%'`;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS memory_entries (
+      id            text PRIMARY KEY,
+      fingerprint   text UNIQUE NOT NULL,
+      slug          text NOT NULL,
+      archive_slug  text,
+      recorded_at   timestamptz,
+      token_name    text,
+      raw_text      text NOT NULL,
+      topic_hint    text,
+      status        text NOT NULL DEFAULT 'active',
+      created_at    timestamptz NOT NULL DEFAULT now(),
+      updated_at    timestamptz NOT NULL DEFAULT now()
+    )`;
+  await sql`CREATE INDEX IF NOT EXISTS memory_entries_slug_idx ON memory_entries (slug)`;
+  await sql`CREATE INDEX IF NOT EXISTS memory_entries_status_idx ON memory_entries (status, recorded_at DESC)`;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS reflex_decisions (
+      id          bigserial PRIMARY KEY,
+      entry_id    text REFERENCES memory_entries(id),
+      sheet       text NOT NULL,
+      payload     jsonb NOT NULL,
+      model_ref   text,
+      confidence  double precision,
+      created_at  timestamptz NOT NULL DEFAULT now()
+    )`;
+  await sql`CREATE INDEX IF NOT EXISTS reflex_decisions_entry_idx ON reflex_decisions (entry_id, sheet, created_at DESC)`;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS dream_runs (
+      id          bigserial PRIMARY KEY,
+      night_key   text UNIQUE NOT NULL,
+      status      text NOT NULL DEFAULT 'running',
+      started_at  timestamptz NOT NULL DEFAULT now(),
+      finished_at timestamptz,
+      cursor      jsonb,
+      stats       jsonb,
+      error       text
+    )`;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS review_items (
+      id           bigserial PRIMARY KEY,
+      fingerprint  text UNIQUE NOT NULL,
+      entry_id     text REFERENCES memory_entries(id),
+      kind         text NOT NULL,
+      state        text NOT NULL DEFAULT 'pending',
+      confidence   double precision,
+      payload      jsonb NOT NULL DEFAULT '{}'::jsonb,
+      run_id       bigint REFERENCES dream_runs(id),
+      resolved_at  timestamptz,
+      resolved_by  text,
+      created_at   timestamptz NOT NULL DEFAULT now()
+    )`;
+  await sql`CREATE INDEX IF NOT EXISTS review_items_state_idx ON review_items (state, created_at DESC)`;
 }
