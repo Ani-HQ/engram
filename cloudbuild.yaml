@@ -42,15 +42,15 @@ steps:
       - -c
       - |
         set -euo pipefail
-        SA="engram-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
         ensure_secret() {
-          local name="$1"
-          if ! gcloud secrets describe "$name" --project "$PROJECT_ID" >/dev/null 2>&1; then
-            printf 'unset' | gcloud secrets create "$name" --project "$PROJECT_ID" --data-file=-
+          local name="$$1"
+          if ! gcloud secrets describe "$$name" --project "$PROJECT_ID" >/dev/null 2>&1; then
+            printf 'unset' | gcloud secrets create "$$name" --project "$PROJECT_ID" --data-file=-
           fi
-          gcloud secrets add-iam-policy-binding "$name" --project "$PROJECT_ID" \
-            --member="serviceAccount:${SA}" --role="roles/secretmanager.secretAccessor" >/dev/null \
-            || echo "secret accessor binding for ${name} already set or not grantable"
+          gcloud secrets add-iam-policy-binding "$$name" --project "$PROJECT_ID" \
+            --member="serviceAccount:engram-runtime@${PROJECT_ID}.iam.gserviceaccount.com" \
+            --role="roles/secretmanager.secretAccessor" >/dev/null \
+            || echo "secret accessor binding for $${name} already set or not grantable"
         }
         ensure_secret typesafe-api-key
         ensure_secret voyage-api-key
@@ -103,7 +103,7 @@ steps:
       - -c
       - |
         set -euo pipefail
-        export ENGRAM_PROJECT="$PROJECT_ID"
+        export ENGRAM_PROJECT="$$PROJECT_ID"
         deploy/setup-scheduler.sh || echo "scheduler setup skipped (re-run deploy/setup-scheduler.sh)"
 
 # A build that names its own service account must say where logs go, or it is
