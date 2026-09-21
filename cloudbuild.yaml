@@ -51,8 +51,8 @@ steps:
       - '--allow-unauthenticated'
       - '--service-account=engram-runtime@$PROJECT_ID.iam.gserviceaccount.com'
       - '--add-cloudsql-instances=$PROJECT_ID:${_REGION}:engram-pg'
-      - '--set-secrets=ENGRAM_DB_URL_TEMPLATE=engram-db-url-template:latest'
-      - '--set-env-vars=GBRAIN_HOMES_DIR=/tmp/gbrain-homes,ENGRAM_CLOUDSQL_INSTANCE=$PROJECT_ID:${_REGION}:engram-pg'
+      - '--set-secrets=ENGRAM_DB_URL_TEMPLATE=engram-db-url-template:latest,TYPESAFE_API_KEY=typesafe-api-key:latest'
+      - '--set-env-vars=GBRAIN_HOMES_DIR=/tmp/gbrain-homes,ENGRAM_CLOUDSQL_INSTANCE=$PROJECT_ID:${_REGION}:engram-pg,REFLEX_MODEL=jev-latest'
       - '--min-instances=0'
       - '--max-instances=1'
       - '--memory=2Gi'
@@ -71,8 +71,8 @@ steps:
           --region=${_REGION} \
           --service-account=engram-runtime@$PROJECT_ID.iam.gserviceaccount.com \
           --set-cloudsql-instances=$PROJECT_ID:${_REGION}:engram-pg \
-          --set-secrets=ENGRAM_DB_URL_TEMPLATE=engram-db-url-template:latest \
-          --set-env-vars=GBRAIN_HOMES_DIR=/tmp/gbrain-homes,ENGRAM_CLOUDSQL_INSTANCE=$PROJECT_ID:${_REGION}:engram-pg,ENGRAM_JOB=dream \
+          --set-secrets=ENGRAM_DB_URL_TEMPLATE=engram-db-url-template:latest,TYPESAFE_API_KEY=typesafe-api-key:latest \
+          --set-env-vars=GBRAIN_HOMES_DIR=/tmp/gbrain-homes,ENGRAM_CLOUDSQL_INSTANCE=$PROJECT_ID:${_REGION}:engram-pg,ENGRAM_JOB=dream,REFLEX_MODEL=jev-latest \
           --memory=2Gi \
           --cpu=1 \
           --task-timeout=900s \
