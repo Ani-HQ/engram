@@ -61,11 +61,12 @@ only change queue state. Source-page deletes stay a human console action.
 | `VOYAGE_API_KEY` / `voyage-api-key` | `voyage-4-large` at 1024 dims |
 | `REFLEX_MODEL` | default `jev-latest` |
 
-Cloud Build creates the secret names with a placeholder `unset` value when they
-do not exist yet, then mounts them. Replace the values in Secret Manager to
-turn the providers on. The nightly scheduler is applied in the same build
-(`deploy/setup-scheduler.sh`); a permission miss there does not block the
-service deploy.
+Cloud Build tries to create the secret names with a placeholder `unset` value
+when they do not exist. If that is not allowed, the service still deploys with
+`TYPESAFE_API_KEY=unset` / `VOYAGE_API_KEY=unset` and Jev/Voyage stay off.
+Replace the Secret Manager values and remount to turn the providers on. The
+nightly scheduler is applied in the same build (`deploy/setup-scheduler.sh`);
+a permission miss there does not block the service deploy.
 
 If the live brain already has a different embedding width, `maybeEnableVoyage`
 resizes `content_chunks.embedding` after clearing old vectors, then re-inits
