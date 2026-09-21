@@ -12,7 +12,18 @@ SA="engram-runtime@${PROJECT}.iam.gserviceaccount.com"
 log() { echo "[setup-gcp] $*"; }
 
 gcloud services enable sqladmin.googleapis.com run.googleapis.com \
-  secretmanager.googleapis.com cloudbuild.googleapis.com --project "$PROJECT"
+  secretmanager.googleapis.com cloudbuild.googleapis.com \
+  cloudscheduler.googleapis.com --project "$PROJECT"
+
+ensure_secret() {
+  local name="$1"
+  local value="${2:-unset}"
+  if ! gcloud secrets describe "$name" --project "$PROJECT" >/dev/null 2>&1; then
+    printf '%s' "$value" | gcloud secrets create "$name" --project "$PROJECT" --data-file=-
+  fi
+  gcloud secrets add-iam-policy-binding "$name" --project "$PROJECT" \
+    --member="serviceAccount:$SA" --role="roles/secretmanager.secretAccessor" >/dev/null
+}
 
 if ! gcloud sql instances describe "$INSTANCE" --project "$PROJECT" >/dev/null 2>&1; then
   log "creating Cloud SQL instance $INSTANCE (smallest tier, pg16)..."
@@ -59,4 +70,10 @@ gcloud secrets add-iam-policy-binding engram-db-url-template --project "$PROJECT
   --member="serviceAccount:$SA" --role="roles/secretmanager.secretAccessor" >/dev/null
 log "secret engram-db-url-template ready and readable by $SA"
 
-log "done. next: gcloud builds submit --config cloudbuild.yaml --project $PROJECT"
+# Created even when the value is still "unset" so Cloud Run can mount the names.
+# The gateway treats a blank/unset key as disabled and fails open.
+ensure_secret typesafe-api-key "${TYPESAFE_API_KEY:-unset}"
+ensure_secret voyage-api-key "${VOYAGE_API_KEY:-unset}"
+log "secrets typesafe-api-key and voyage-api-key ready"
+
+log "done. next: gcloud builds submit --config cloudbuild.yaml --project $PROJECT && deploy/setup-scheduler.sh"

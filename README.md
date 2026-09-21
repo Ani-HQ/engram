@@ -29,8 +29,12 @@ client ──HTTPS/MCP, bearer token──▶ engram gateway (Bun, stateless)
   `add_timeline_entry`) and three engram synthesizes itself (`whoami`,
   `remember`, `recall`). The allowlist limits blast radius, not token permissions.
 - **Memory verbs:** `remember` appends a dated entry to one page per topic;
-  `recall` returns at most 5 hits with 280-character snippets. Both write pages,
-  so everything an agent stores is visible in the console.
+  `recall` retrieves up to 20 candidates, optionally reranks them with Jev, and
+  returns at most 5 hits with 280-character snippets. Both write pages, so
+  everything an agent stores is visible in the console.
+- **Reflex:** TypeSafe Jev judges topic routing, duplicates, and recall ranking.
+  A nightly dream job proposes clusters and conflicts; a person approves them
+  in the console. Raw pages stay the source of truth. See [docs/REFLEX.md](docs/REFLEX.md).
 - **Audit:** every tool call is recorded for attribution: who taught or queried
   the brain, when, and with which tool.
 - **Routes:** `/health`, `/healthz`, `/mcp` (POST), `/api/*`, and static files.
@@ -56,6 +60,10 @@ gcloud run revisions list --service engram --region us-central1 --limit 1
 ```
 
 Mint a token: `bun cli/engram-admin.ts token issue --name mac-claude`
+
+Nightly reconciliation is the `engram-dream` Cloud Run Job. After the first
+deploy that creates it, run `deploy/setup-scheduler.sh` once so Cloud Scheduler
+fires it at 03:00 Asia/Kolkata. Manual: `bun cli/engram-admin.ts dream run`.
 
 Wire a client: see `docs/WIRING.md`.
 

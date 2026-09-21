@@ -3,7 +3,10 @@ import { extname, isAbsolute, relative, resolve } from "node:path";
 import { audit, provenance, provenanceFor, recentActivity } from "./audit";
 import { authenticate, type TokenRecord } from "./auth";
 import { brainClient } from "./brain";
+import { upsertMemoryEntry } from "./memory-entries";
 import { callTool } from "./proxy";
+import { resolveReview } from "./review/apply";
+import { getReviewItem, listReviewItems } from "./review/store";
 
 export const SESSION_COOKIE_NAME = "engram_session";
 export const SESSION_COOKIE_MAX_AGE = 1_209_600;
@@ -198,6 +201,11 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   else if (req.method === "DELETE" && url.pathname === "/api/page") route = deletePage;
   else if (req.method === "POST" && url.pathname === "/api/page/restore") route = postRestorePage;
   else if (req.method === "POST" && url.pathname === "/api/capture") route = postCapture;
+  else if (req.method === "GET" && url.pathname === "/api/review") route = getReview;
+  else if (req.method === "GET" && url.pathname === "/api/review/item") route = getReviewDetail;
+  else if (req.method === "POST" && url.pathname === "/api/review/approve") route = postReviewApprove;
+  else if (req.method === "POST" && url.pathname === "/api/review/reject") route = postReviewReject;
+  else if (req.method === "POST" && url.pathname === "/api/review/defer") route = postReviewDefer;
   if (!route) return Response.json({ error: "not found" }, { status: 404 });
 
   const token = await authenticateCookie(req);
@@ -421,12 +429,62 @@ async function postCapture(req: Request, _url: URL, token: TokenRecord): Promise
 
   try {
     parseToolText(await callTool(token, "put_page", args));
+    await upsertMemoryEntry({
+      slug,
+      rawText: text.trim(),
+      tokenName: token.name,
+      topicHint: title,
+    });
     return Response.json({ ok: true, slug });
   } catch (e) {
     if (String(e).toLowerCase().includes("denied")) return forbiddenResponse();
     console.error("[web] capture failed:", String(e).slice(0, 200));
     return Response.json({ error: "bad request" }, { status: 400 });
   }
+}
+
+async function getReview(_req: Request, url: URL, _token: TokenRecord): Promise<Response> {
+  const items = await listReviewItems({
+    state: textParam(url.searchParams, "state") ?? "pending",
+    kind: textParam(url.searchParams, "kind"),
+    limit: coerceBoundedInt(url.searchParams.get("limit"), 40, 1, 100),
+    offset: coerceOffset(url.searchParams.get("offset")),
+  });
+  return Response.json({ items, more: items.length === coerceBoundedInt(url.searchParams.get("limit"), 40, 1, 100) });
+}
+
+async function getReviewDetail(_req: Request, url: URL, _token: TokenRecord): Promise<Response> {
+  const id = Number(url.searchParams.get("id"));
+  if (!Number.isFinite(id) || id < 1) return Response.json({ error: "bad request" }, { status: 400 });
+  const item = await getReviewItem(id);
+  if (!item) return Response.json({ error: "not found" }, { status: 404 });
+  return Response.json({ item });
+}
+
+async function postReviewApprove(req: Request, _url: URL, token: TokenRecord): Promise<Response> {
+  return resolveReviewResponse(req, token, "approve");
+}
+
+async function postReviewReject(req: Request, _url: URL, token: TokenRecord): Promise<Response> {
+  return resolveReviewResponse(req, token, "reject");
+}
+
+async function postReviewDefer(req: Request, _url: URL, token: TokenRecord): Promise<Response> {
+  return resolveReviewResponse(req, token, "defer");
+}
+
+async function resolveReviewResponse(
+  req: Request,
+  token: TokenRecord,
+  action: "approve" | "reject" | "defer",
+): Promise<Response> {
+  const body = await jsonObject(req);
+  const id = Number(body?.id);
+  if (!Number.isFinite(id) || id < 1) return Response.json({ error: "bad request" }, { status: 400 });
+  const result = await resolveReview(token, id, action);
+  if (result.error === "not found") return Response.json({ error: "not found" }, { status: 404 });
+  if (result.error) return Response.json({ error: result.error, item: result.item }, { status: 400 });
+  return Response.json({ ok: true, item: result.item });
 }
 
 async function serveStatic(pathname: string): Promise<Response> {

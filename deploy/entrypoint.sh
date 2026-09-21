@@ -15,4 +15,8 @@ if [ -n "${ENGRAM_CLOUDSQL_INSTANCE:-}" ]; then
   echo "[entrypoint] cloud-sql-proxy ready" >&2
 fi
 
+if [ "${ENGRAM_JOB:-}" = "dream" ]; then
+  exec bun gateway/src/jobs/dream.ts
+fi
+
 exec bun gateway/src/index.ts

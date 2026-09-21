@@ -22,7 +22,16 @@ function childEnv(): Record<string, string> {
 }
 
 function initBrain() {
-  const r = spawnSync(config.gbrainBin, ["init", "--non-interactive", "--force", "--json"], {
+  const args = ["init", "--non-interactive", "--force", "--json"];
+  if (config.voyage.apiKey) {
+    args.push(
+      "--embedding-model",
+      config.voyage.model,
+      "--embedding-dimensions",
+      String(config.voyage.dimensions),
+    );
+  }
+  const r = spawnSync(config.gbrainBin, args, {
     env: childEnv(),
     timeout: 120_000,
     encoding: "utf8",

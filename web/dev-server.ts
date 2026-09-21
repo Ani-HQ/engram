@@ -76,7 +76,38 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   if (url.pathname === "/api/page" && req.method === "DELETE") return forgetPage(req, url);
   if (url.pathname === "/api/page/restore" && req.method === "POST") return restorePage(req);
   if (url.pathname === "/api/capture" && req.method === "POST") return capture(req);
+  if (url.pathname === "/api/review" && req.method === "GET") return json({ items: reviewFixture() });
+  if (url.pathname === "/api/review/item" && req.method === "GET") {
+    const item = reviewFixture().find((row: any) => String(row.id) === url.searchParams.get("id"));
+    return item ? json({ item }) : json({ error: "not found" }, {}, 404);
+  }
+  if (url.pathname.startsWith("/api/review/") && req.method === "POST") {
+    const body = await req.json().catch(() => ({}));
+    return json({ ok: true, item: { id: Number(body.id) || 1, state: url.pathname.split("/").pop() } });
+  }
   return new Response("Not Found", { status: 404 });
+}
+
+function reviewFixture() {
+  return [
+    {
+      id: 1,
+      kind: "duplicate",
+      state: "pending",
+      confidence: 0.81,
+      payload: {
+        otherSlug: "projects/engram",
+        otherText: "Deploy is gated on the test suite.",
+      },
+    },
+    {
+      id: 2,
+      kind: "cluster",
+      state: "pending",
+      confidence: 0.74,
+      payload: { title: "engram", clusterSlug: "projects-engram", members: ["projects/engram"] },
+    },
+  ];
 }
 
 function listPages(url: URL) {

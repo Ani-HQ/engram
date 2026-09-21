@@ -2,6 +2,18 @@
 import type { TokenRecord } from "./auth";
 import { brainClient } from "./brain";
 import { audit } from "./audit";
+import { markRolledEntries, upsertMemoryEntry } from "./memory-entries";
+import { afterRemember, rerankRecallHits, suggestTopic } from "./reflex";
+import {
+  ARCHIVE_POINTER,
+  ARCHIVE_SUFFIX,
+  TOPIC_ROLL_AT,
+  entryText,
+  splitForRoll,
+  splitTopicEntries,
+} from "./topic-page";
+
+export { splitForRoll, splitTopicEntries };
 
 const FORWARDED_TOOLS = [
   "search",
@@ -25,6 +37,7 @@ const MAX_FORWARDED_LIMIT = 25;
 const MAX_SNIPPET = 280;
 const MAX_FULL_BODY = 4000;
 const RECALL_LIMIT = 5;
+const RECALL_CANDIDATES = 20;
 
 // gbrain never surfaces these prefixes in search, so a note written under one is
 // written into a hole. Anything derived here gets re-homed before it is saved.
@@ -338,43 +351,6 @@ const MAX_APPEND_ATTEMPTS = 3;
 // Capping `get_page` instead would be the wrong lever. The console reads pages through
 // the same path, and truncating a page for the human reading it is worse than the
 // problem. Bounding the page fixes it for every reader at once.
-const TOPIC_ROLL_AT = 6000;
-const TOPIC_KEEP = 3500;
-const ARCHIVE_SUFFIX = "-archive";
-const ARCHIVE_POINTER = "Older entries:";
-
-// Entries are lines beginning "- ", and any following line belongs to the entry above
-// it. Pages written before `remember` existed separate entries with a single newline
-// and pages written since use a blank line, so neither separator can be assumed.
-export function splitTopicEntries(body: string): { header: string[]; entries: string[][] } {
-  const header: string[] = [];
-  const entries: string[][] = [];
-  for (const line of body.split("\n")) {
-    if (/^- /.test(line)) entries.push([line]);
-    else if (entries.length) entries[entries.length - 1].push(line);
-    else header.push(line);
-  }
-  return { header, entries };
-}
-
-function entryText(entry: string[]): string {
-  return entry.join("\n").trimEnd();
-}
-
-// Keep the newest entries that fit the budget, oldest first out. Never keep zero: a
-// single oversized entry is still the most useful thing the page can say.
-export function splitForRoll(entries: string[][]): { keep: string[][]; move: string[][] } {
-  const keep: string[][] = [];
-  let used = 0;
-  for (let i = entries.length - 1; i >= 0; i -= 1) {
-    const size = entryText(entries[i]).length + 2;
-    if (keep.length && used + size > TOPIC_KEEP) return { keep, move: entries.slice(0, i + 1) };
-    used += size;
-    keep.unshift(entries[i]);
-  }
-  return { keep, move: [] };
-}
-
 function pageContent(title: string, frontmatter: unknown, body: string): string {
   return `---\n${yamlHeader(title, frontmatter)}\n---\n\n${body}\n`;
 }
@@ -447,15 +423,16 @@ export function truncateEnds(text: string, max: number): string {
   );
 }
 
-async function remember(args: Record<string, unknown>): Promise<any> {
-  const slugForLock = slugForRemember(
-    typeof args.text === "string" ? args.text.trim() : "",
-    typeof args.topic === "string" ? args.topic : undefined,
-  );
-  return serializeBySlug(slugForLock, () => rememberUnsynchronized(args));
+async function remember(token: TokenRecord, args: Record<string, unknown>): Promise<any> {
+  const text = typeof args.text === "string" ? args.text.trim() : "";
+  const explicit = typeof args.topic === "string" && args.topic.trim() ? args.topic : undefined;
+  const routed = explicit ?? (text ? await suggestTopic(text) : null);
+  const topic = explicit ?? routed ?? undefined;
+  const slugForLock = slugForRemember(text, topic);
+  return serializeBySlug(slugForLock, () => rememberUnsynchronized(token, { ...args, topic }));
 }
 
-async function rememberUnsynchronized(args: Record<string, unknown>): Promise<any> {
+async function rememberUnsynchronized(token: TokenRecord, args: Record<string, unknown>): Promise<any> {
   const text = typeof args.text === "string" ? args.text.trim() : "";
   if (!text) return toolError("remember requires a non-empty 'text'");
   const topic = typeof args.topic === "string" ? args.topic : undefined;
@@ -496,7 +473,25 @@ async function rememberUnsynchronized(args: Record<string, unknown>): Promise<an
       // rolling is an optimisation, so a failure here must still leave a correct page.
       const archived = await rollTopicPage(slug, title, existing?.frontmatter, savedBody)
         .catch(() => null);
-      return jsonResult({ ok: true, slug, appended, ...(archived ? { archived } : {}) });
+      const recorded = await upsertMemoryEntry({
+        slug,
+        rawText: entry,
+        tokenName: token.name,
+        topicHint: topic,
+        archiveSlug: archived,
+      });
+      if (archived) {
+        const { entries: rolled } = splitTopicEntries(savedBody);
+        await markRolledEntries(slug, archived, splitForRoll(rolled).move.map(entryText));
+      }
+      await afterRemember({ entry: recorded, text, slug, topic }).catch(() => {});
+      return jsonResult({
+        ok: true,
+        slug,
+        appended,
+        ...(recorded ? { entry_id: recorded.id } : {}),
+        ...(archived ? { archived } : {}),
+      });
     }
   }
 
@@ -514,9 +509,10 @@ async function recall(args: Record<string, unknown>): Promise<any> {
   // The limit is engram's, not the caller's: recall exists to return a small answer.
   const hits = parseToolJson(await brainClient().callTool({
     name: "search",
-    arguments: { query, limit: RECALL_LIMIT },
+    arguments: { query, limit: RECALL_CANDIDATES },
   }));
-  const top = (Array.isArray(hits) ? hits : []).slice(0, RECALL_LIMIT);
+  const candidates = (Array.isArray(hits) ? hits : []).slice(0, RECALL_CANDIDATES);
+  const top = await rerankRecallHits(query, candidates, RECALL_LIMIT);
 
   const results = top.map((hit: any) => ({
     slug: hit?.slug,
@@ -591,7 +587,7 @@ export async function callTool(
   if (SYNTHETIC_TOOLS.has(name)) {
     try {
       const result = name === "remember"
-        ? await remember(forwardedArgs)
+        ? await remember(token, forwardedArgs)
         : await recall(forwardedArgs);
       // remember derives its own slug from the topic, so read it back off the result
       // rather than re-deriving it and risking the two drifting apart.

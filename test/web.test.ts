@@ -56,6 +56,13 @@ mock.module("../gateway/src/audit", () => ({
     new Map(slugs.filter(slug => provenanceRows.has(slug)).map(slug => [slug, provenanceRows.get(slug)])),
 }));
 
+const realReview = await import("../gateway/src/review/store");
+mock.module("../gateway/src/review/store", () => ({
+  ...realReview,
+  listReviewItems: async () => [],
+  getReviewItem: async () => null,
+}));
+
 const {
   captureMarkdown,
   clearSessionCookie,
@@ -259,6 +266,18 @@ describe("console API edge responses", () => {
     }));
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "not found" });
+  });
+
+  test("lists the review queue for a console session", async () => {
+    const res = await handleWeb(new Request("http://engram.local/api/review", {
+      headers: {
+        "X-Engram-Console": "1",
+        Cookie: "engram_session=valid-token",
+      },
+    }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(Array.isArray(body.items)).toBe(true);
   });
 
   test("clears the session cookie without a response body", async () => {

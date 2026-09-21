@@ -786,3 +786,33 @@ a:focus-visible,
     border-left: 2px solid var(--accent);
   }
 }
+
+.review-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--s2);
+  padding: var(--s2);
+  border-top: 1px solid var(--line-soft);
+}
+
+.review-kind {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.review-meta,
+.review-body {
+  margin: 6px 0 0;
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.review-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
