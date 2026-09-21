@@ -32,7 +32,31 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', '--all-tags', 'gcr.io/$PROJECT_ID/engram']
 
+  # Create placeholder TypeSafe/Voyage secrets when they are missing so the
+  # first deploy after this change cannot die on --set-secrets. A value of
+  # "unset" is treated as disabled by the gateway and fails open.
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: secrets
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        SA="engram-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
+        ensure_secret() {
+          local name="$1"
+          if ! gcloud secrets describe "$name" --project "$PROJECT_ID" >/dev/null 2>&1; then
+            printf 'unset' | gcloud secrets create "$name" --project "$PROJECT_ID" --data-file=-
+          fi
+          gcloud secrets add-iam-policy-binding "$name" --project "$PROJECT_ID" \
+            --member="serviceAccount:${SA}" --role="roles/secretmanager.secretAccessor" >/dev/null \
+            || echo "secret accessor binding for ${name} already set or not grantable"
+        }
+        ensure_secret typesafe-api-key
+        ensure_secret voyage-api-key
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: deploy-service
     entrypoint: gcloud
     args:
       - 'run'
@@ -54,6 +78,7 @@ steps:
       - '--execution-environment=gen2'
 
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: deploy-dream
     entrypoint: gcloud
     args:
       - 'run'
@@ -70,6 +95,16 @@ steps:
       - '--cpu=1'
       - '--task-timeout=900s'
       - '--max-retries=1'
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: schedule-dream
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        export ENGRAM_PROJECT="$PROJECT_ID"
+        deploy/setup-scheduler.sh || echo "scheduler setup skipped (re-run deploy/setup-scheduler.sh)"
 
 # A build that names its own service account must say where logs go, or it is
 # rejected before the first step runs. `gcloud builds submit` never hit this,
