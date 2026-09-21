@@ -4,11 +4,14 @@ steps:
   # itself and would otherwise deploy a red main before Actions had finished.
   - name: 'oven/bun:1-debian'
     id: test
+    env:
+      - 'ENGRAM_DB_URL_TEMPLATE=postgresql://postgres:postgres@127.0.0.1:1/__DB__'
     entrypoint: bash
     args:
       - -c
       - |
         set -euo pipefail
+        bun --version
         bun install --frozen-lockfile
         bun test
         # The console is served from a public URL, so a remote script or font would
