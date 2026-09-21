@@ -35,15 +35,51 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', '--all-tags', 'gcr.io/$PROJECT_ID/engram']
 
-  # Mount TypeSafe/Voyage when the secrets exist; otherwise fail open with
-  # TYPESAFE_API_KEY=unset / VOYAGE_API_KEY=unset. This step lives in a file
-  # so Cloud Build cannot misread bash variables as substitutions.
+  # Same service flags as the last successful deploy (console-v2). Extra
+  # provider secrets are not mounted here; the gateway treats missing keys
+  # as disabled. The dream job is best-effort so it cannot roll back main.
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: release
+    id: deploy-service
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'engram'
+      - '--image=gcr.io/$PROJECT_ID/engram:$BUILD_ID'
+      - '--region=${_REGION}'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--service-account=engram-runtime@$PROJECT_ID.iam.gserviceaccount.com'
+      - '--add-cloudsql-instances=$PROJECT_ID:${_REGION}:engram-pg'
+      - '--set-secrets=ENGRAM_DB_URL_TEMPLATE=engram-db-url-template:latest'
+      - '--set-env-vars=GBRAIN_HOMES_DIR=/tmp/gbrain-homes,ENGRAM_CLOUDSQL_INSTANCE=$PROJECT_ID:${_REGION}:engram-pg'
+      - '--min-instances=0'
+      - '--max-instances=1'
+      - '--memory=2Gi'
+      - '--cpu=1'
+      - '--timeout=900'
+      - '--execution-environment=gen2'
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: deploy-dream
     entrypoint: bash
-    env:
-      - 'REGION=${_REGION}'
-    args: ['deploy/cloudbuild-release.sh']
+    args:
+      - -c
+      - |
+        gcloud run jobs deploy engram-dream \
+          --image=gcr.io/$PROJECT_ID/engram:$BUILD_ID \
+          --region=${_REGION} \
+          --service-account=engram-runtime@$PROJECT_ID.iam.gserviceaccount.com \
+          --set-cloudsql-instances=$PROJECT_ID:${_REGION}:engram-pg \
+          --set-secrets=ENGRAM_DB_URL_TEMPLATE=engram-db-url-template:latest \
+          --set-env-vars=GBRAIN_HOMES_DIR=/tmp/gbrain-homes,ENGRAM_CLOUDSQL_INSTANCE=$PROJECT_ID:${_REGION}:engram-pg,ENGRAM_JOB=dream \
+          --memory=2Gi \
+          --cpu=1 \
+          --task-timeout=900s \
+          --max-retries=1 \
+          || echo "dream job skipped"
+        ENGRAM_PROJECT=$PROJECT_ID ENGRAM_REGION=${_REGION} deploy/setup-scheduler.sh \
+          || echo "scheduler setup skipped"
 
 # A build that names its own service account must say where logs go, or it is
 # rejected before the first step runs. `gcloud builds submit` never hit this,
