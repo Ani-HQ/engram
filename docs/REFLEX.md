@@ -61,13 +61,11 @@ only change queue state. Source-page deletes stay a human console action.
 | `VOYAGE_API_KEY` / `voyage-api-key` | `voyage-4-large` at 1024 dims |
 | `REFLEX_MODEL` | default `jev-latest` |
 
-The Cloud Run service deploys without TypeSafe/Voyage secret mounts so a
-missing key cannot block main. The gateway treats absent keys as disabled.
-Create `typesafe-api-key` and `voyage-api-key` with `deploy/setup-gcp.sh`,
-grant `engram-runtime` accessor, then remount them on the service and the
-`engram-dream` job. The nightly scheduler is applied in the same build
-(`deploy/setup-scheduler.sh`); a permission miss there does not block the
-service deploy.
+`typesafe-api-key` is mounted as `TYPESAFE_API_KEY` on the Cloud Run service
+and the `engram-dream` job. Voyage stays unmounted until a real
+`voyage-api-key` exists; a missing Voyage key cannot block main. The nightly
+scheduler is applied in the same build (`deploy/setup-scheduler.sh`); a
+permission miss there does not block the service deploy.
 
 If the live brain already has a different embedding width, `maybeEnableVoyage`
 resizes `content_chunks.embedding` after clearing old vectors, then re-inits
