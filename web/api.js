@@ -67,6 +67,14 @@ export const api = {
       scope: params.scope,
     }));
   },
+  activity(params = {}) {
+    return request(query("/api/activity", { window: params.window }));
+  },
+
+  graph(params = {}) {
+    return request(query("/api/graph", { limit: params.limit }));
+  },
+
   search(params = {}) {
     return request(query("/api/search", {
       q: params.q,

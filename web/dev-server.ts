@@ -10,7 +10,31 @@ const emptyFixture = await readFixture("pages-empty.json");
 const detailFixture = await readFixture("page-detail.json");
 const searchFixture = await readFixture("search.json");
 
-let pages = clone(pagesFixture.pages);
+// The fixture file holds enough rows to judge the design, but not enough to reach a
+// second window, so lazy loading could never be exercised against it. Pad it here
+// rather than committing eighty near-identical rows to the fixture.
+let pages = padCollection(clone(pagesFixture.pages), 96);
+
+function padCollection(rows: any[], target: number): any[] {
+  const agents = ["mac-claude", "codex", "baymax", "carolyn", "midi", "grok-bot"];
+  const out = rows.slice();
+  for (let i = rows.length; i < target; i += 1) {
+    const seed = rows[i % rows.length];
+    const who = agents[i % agents.length];
+    const day = String((i % 27) + 1).padStart(2, "0");
+    out.push({
+      ...clone(seed),
+      slug: `${seed.slug}-${i}`,
+      title: `${seed.title} ${i}`,
+      updated_at: `2026-0${(i % 9) + 1}-${day}T09:00:00.000Z`,
+      provenance: {
+        origin: { by: who, at: `2026-0${(i % 9) + 1}-${day}T09:00:00.000Z` },
+        contributors: [{ name: who, first: `2026-01-${day}T09:00:00.000Z`, last: `2026-09-${day}T09:00:00.000Z`, writes: (i % 11) + 1 }],
+      },
+    });
+  }
+  return out;
+}
 const details = new Map([[detailFixture.page.slug, detailFixture]]);
 const forgotten = new Map<string, { row: any; detail: any; index: number }>();
 
@@ -43,6 +67,8 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   }
   if (url.pathname === "/api/pages" && req.method === "GET") return json(listPages(url));
   if (url.pathname === "/api/search" && req.method === "GET") return json(searchPages(url));
+  if (url.pathname === "/api/graph" && req.method === "GET") return json(buildGraph());
+  if (url.pathname === "/api/activity" && req.method === "GET") return json(fakeActivity());
   if (url.pathname === "/api/page" && req.method === "GET") {
     const detail = pageDetail(url);
     return detail ? json(detail) : json({ error: "not found" }, {}, 404);
@@ -59,11 +85,69 @@ function listPages(url: URL) {
   const sort = url.searchParams.get("sort") ?? "updated_desc";
   const limit = Number(url.searchParams.get("limit") ?? 48);
   const offset = Number(url.searchParams.get("offset") ?? 0);
-  const rows = fixture
+  const all = fixture
     .filter((page: any) => !scope || page.scope === scope)
-    .sort((a: any, b: any) => comparePages(a, b, sort))
-    .slice(offset, offset + limit);
-  return { pages: rows, scopes: [...new Set(fixture.map((page: any) => page.scope))] };
+    .sort((a: any, b: any) => comparePages(a, b, sort));
+  const rows = all.slice(offset, offset + limit);
+  return {
+    pages: rows,
+    // Same contract the gateway answers with: a full window means ask again.
+    more: rows.length === limit && offset + limit < all.length,
+    scopes: [...new Set(fixture.map((page: any) => page.scope))],
+  };
+}
+
+// Fixture graph: cluster by slug prefix and link each page to a couple of others in
+// the same cluster, which is enough shape to judge the layout and the interaction.
+// Rotates through a few pages so the shimmer and the agent marks can actually be
+// looked at without waiting for a real agent to touch something.
+function fakeActivity() {
+  const agents = ["mac-claude", "codex", "zara-openclaw", "hermes-baymax", "grok-bot"];
+  const tools = ["recall", "remember", "get_page", "put_page"];
+  const tick = Math.floor(Date.now() / 8000);
+  // Pick from the most recently updated pages, which are the ones actually on screen.
+  // Choosing at random from the whole set meant the shimmer was usually happening to
+  // a row forty places below the fold.
+  const visible = [...pages].sort((a: any, b: any) => comparePages(a, b, "updated_desc")).slice(0, 12);
+  const active = [0, 1, 2].map(i => {
+    const page = visible[(tick + i * 4) % visible.length];
+    return {
+      slug: page.slug,
+      by: agents[(tick + i) % agents.length],
+      tool: tools[(tick + i) % tools.length],
+      at: new Date().toISOString(),
+    };
+  });
+  return { active };
+}
+
+function buildGraph() {
+  const nodes = pages.slice(0, 150).map((page: any) => ({
+    slug: page.slug,
+    title: page.title,
+    type: page.type ?? "note",
+    updated_at: page.updated_at,
+    cluster: page.slug.includes("/") ? page.slug.slice(0, page.slug.indexOf("/")) : page.slug.split("-")[0],
+    origin: page.provenance?.origin ?? null,
+    contributors: (page.provenance?.contributors ?? []).map((c: any) => c.name),
+  }));
+  const byCluster = new Map<string, any[]>();
+  for (const node of nodes) {
+    if (!byCluster.has(node.cluster)) byCluster.set(node.cluster, []);
+    byCluster.get(node.cluster)!.push(node);
+  }
+  const edges: { source: string; target: string }[] = [];
+  for (const group of byCluster.values()) {
+    for (let i = 1; i < group.length; i += 1) {
+      edges.push({ source: group[i].slug, target: group[i - 1].slug });
+      if (i % 3 === 0) edges.push({ source: group[i].slug, target: group[0].slug });
+    }
+  }
+  const clusters = [...byCluster.values()];
+  for (let i = 1; i < clusters.length; i += 1) {
+    edges.push({ source: clusters[i][0].slug, target: clusters[i - 1][0].slug });
+  }
+  return { nodes, edges, truncated: pages.length > 150 };
 }
 
 function searchPages(url: URL) {

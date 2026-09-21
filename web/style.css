@@ -1,22 +1,23 @@
 :root {
-  /* Surfaces run light to dark; text runs dark to light. Flat, no texture: the
-     reference this is drawn from earns its calm from whitespace, not from grain. */
+  /* Near-black on white. Borders are genuinely black, not a tinted grey: the
+     structure is meant to read as drawn, like a printed spec sheet. */
   --surface: #FFFFFF;
-  --surface-2: #F8F9FA;
-  --surface-3: #F1F3F4;
-  --text: #202124;
-  --text-2: #5F6368;
-  --line: #DADCE0;
-  --accent: #1A73E8;
-  --accent-deep: #174EA6;
+  --surface-2: #F2F2F0;
+  --surface-3: #E7E7E2;
+  --text: #0A0A0A;
+  --text-2: #6B6B66;
+  --line: #0A0A0A;
+  --line-soft: #D2D2CC;
+  --accent: #1B1BFF;
+  --accent-deep: #0000C4;
 
-  /* One family throughout. Headings separate themselves by weight and tracking
-     rather than by switching to a serif. */
-  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --display: var(--sans);
-  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* One grotesk, one monospace, and no web fonts: a strict CSP forbids fetching
+     any, so these are the heaviest widely-installed faces that hold tight tracking
+     at display sizes. Monospace carries every label, count and column. */
+  --display: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --sans: var(--display);
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
 
-  /* One vertical rhythm, used everywhere, so spacing is a decision made once. */
   --s1: 8px;
   --s2: 16px;
   --s3: 24px;
@@ -25,20 +26,94 @@
   --s6: 64px;
   --s7: 96px;
 
-  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Solid, unblurred, offset down-right. A soft grey blur would put this back in
+     the card-kit idiom the rest of the page is deliberately not in. */
+  --shadow: 4px 4px 0 var(--line);
+
+  /* Motion is tokenised so a duration is chosen by what the motion does, not by
+     what looked right in the moment. Opening is an invitation and closing should
+     get out of the way, so closes are quicker than opens and never overshoot. */
+  --duration-stagger: 40ms;
+  --duration-micro: 80ms;
+  --duration-quick: 150ms;
+  --duration-fast: 250ms;
+  --duration-medium: 350ms;
+  --duration-slow: 400ms;
+  --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out: ease-out;
+  --ease-linear: linear;
+  --distance-micro: 4px;
+  --distance-base: 8px;
+  --distance-medium: 12px;
+  --ease: var(--ease-smooth-out);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --surface: #131314;
-    --surface-2: #1E1F20;
-    --surface-3: #28292A;
-    --text: #E3E3E3;
-    --text-2: #9AA0A6;
-    --line: #3C4043;
-    --accent: #8AB4F8;
-    --accent-deep: #AECBFA;
+    --surface: #0A0A0A;
+    --surface-2: #151514;
+    --surface-3: #1F1F1D;
+    --text: #F4F4F0;
+    --text-2: #9A9A93;
+    --line: #F4F4F0;
+    --line-soft: #35352F;
+    --accent: #8C8CFF;
+    --accent-deep: #B6B6FF;
   }
+}
+
+/* A card: black header bar with a monospace label on the left and its count on the
+   right, then content. The bar is what makes a group of rows read as a record
+   rather than as a list floating on the page. */
+.card {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.card-bar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s2);
+  padding: 6px var(--s2);
+  color: var(--surface);
+  background: var(--line);
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.card-bar-count {
+  opacity: 0.72;
+}
+
+/* Section boundaries are marked with corner ticks rather than a full rule, so the
+   edge of a region is legible without drawing a box around everything. */
+.tick-rule {
+  position: relative;
+  height: 1px;
+  margin: var(--s6) 0;
+  background: var(--line-soft);
+}
+
+.tick-rule::before,
+.tick-rule::after {
+  content: "";
+  position: absolute;
+  top: -5px;
+  width: 1px;
+  height: 11px;
+  background: var(--line);
+}
+
+.tick-rule::before {
+  left: 0;
+}
+
+.tick-rule::after {
+  right: 0;
 }
 
 * {
@@ -46,6 +121,9 @@
 }
 
 html {
+  /* Smoothing belongs on the root, once, rather than per-component. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   min-height: 100%;
   color: var(--text);
   background: var(--surface);
@@ -123,13 +201,20 @@ a:focus-visible,
 
 .login-form input,
 .search-field input {
-  width: 100%;
-  border: 0;
-  border-bottom: 1px solid var(--line);
-  border-radius: 0;
-  padding: 0.72rem 0;
+  flex: 1;
+  min-width: 0;
+  /* 16px on small screens: anything less and iOS zooms the viewport on focus. */
+  font-size: max(16px, 0.8125rem);
+  padding: 11px 0;
   color: var(--text);
+  border: 0;
+  border-radius: 0;
   background: transparent;
+  font-family: var(--mono);
+}
+
+.search-field input:focus {
+  outline: none;
 }
 
 .login-submit,
@@ -160,11 +245,11 @@ a:focus-visible,
 
 .console-shell {
   display: grid;
-  grid-template-columns: 180px minmax(0, 74ch) minmax(0, 1fr);
+  grid-template-columns: 200px minmax(0, 1fr);
   column-gap: var(--s6);
-  max-width: 1440px;
+  max-width: 1560px;
   margin: 0 auto;
-  padding-right: var(--s4);
+  padding: 0 var(--s5) var(--s7) 0;
   min-height: 100vh;
 }
 
@@ -213,12 +298,12 @@ a:focus-visible,
 .rail-foot,
 .rail-foot,
 .result-count,
-.row-meta,
 .key-legend,
-.pane-kicker {
-  font-size: 0.74rem;
-  letter-spacing: 0.05em;
-  text-transform: lowercase;
+.pane-kicker,
+.collection-legend {
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
 }
 
 .rail-foot {
@@ -250,14 +335,34 @@ a:focus-visible,
 
 .scroll-column {
   position: relative;
-  max-width: 66ch;
-  padding: clamp(4.8rem, 12vh, 8rem) 0 7rem;
+  max-width: 100%;
+  padding: var(--s6) 0 var(--s7);
 }
 
+/* A prompt, not a form field. The caret is the affordance: this is the place you
+   type at. */
 .search-field {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
   width: 100%;
-  max-width: 44rem;
+  max-width: 56rem;
+  padding: 0 var(--s2);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.search-field::before {
+  content: ">";
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 0.875rem;
+}
+
+.search-field:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* The search input carries its own placeholder, so the label is for screen
@@ -281,74 +386,154 @@ a:focus-visible,
 }
 
 .ink-list {
+  margin-top: var(--s5);
+}
+
+/* Four columns, shared by the header strip and every row, so the columns line up
+   without either knowing about the other. */
+.collection .table-head,
+.collection .ink-row {
   display: grid;
-  gap: 1.24rem;
-  margin-top: clamp(2.8rem, 8vh, 5.5rem);
+  grid-template-columns: minmax(0, 1fr) 11rem 13rem 6rem;
+  gap: var(--s3);
+  align-items: baseline;
+  padding: 10px var(--s2);
+  text-align: left;
+}
+
+.table-head {
+  color: var(--text-2);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .ink-row {
-  position: relative;
-  display: block;
   width: 100%;
-  padding: 0.2rem 0 0.42rem 1rem;
-  text-align: left;
+  border-bottom: 1px dotted var(--line-soft);
   cursor: pointer;
-  animation: ink-bleed 420ms var(--ease) both;
-  animation-delay: var(--row-delay);
 }
 
-.ink-row::before {
-  position: absolute;
-  top: 0.18rem;
-  bottom: 0.45rem;
-  left: 0;
-  width: 1px;
-  background: transparent;
-  content: "";
+.ink-row:last-child {
+  border-bottom: 0;
 }
 
-.ink-row.is-selected::before {
-  background: var(--accent);
+.ink-row:hover,
+.ink-row.is-selected {
+  background: var(--surface-2);
 }
 
-.ink-row.is-selected .row-title {
-  font-weight: 700;
+/* Hover in is quicker than hover out: the highlight should answer the pointer at
+   once and then let go without snapping. */
+.ink-row {
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.ink-row:hover {
+  transition-duration: var(--duration-micro);
+}
+
+/* Selection is a solid bar in the left gutter rather than a fill, so the row a
+   keyboard is on stays distinguishable from the row a mouse is merely over. */
+.ink-row.is-selected {
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .row-title {
   display: block;
   font-family: var(--display);
-  font-size: clamp(1.22rem, 2vw, 1.46rem);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  /* Tracking tightens as size grows: a 17px row title needs far less negative
+     tracking than a display headline, and over-tightening here costs legibility. */
+  letter-spacing: -0.012em;
   line-height: 1.35;
   text-wrap: pretty;
 }
 
-.row-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.55rem;
-  margin-top: 0.35rem;
+.row-slug,
+.cell-origin,
+.cell-contributors,
+.cell-updated {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  letter-spacing: -0.02em;
+  /* Dates and counts change between rows and between renders. Proportional digits
+     make the columns jitter; tabular ones keep them in place. */
+  font-variant-numeric: tabular-nums;
+}
+
+.row-slug {
+  display: block;
+  margin-top: 3px;
   color: var(--text-2);
 }
 
-.scope-tag {
-  color: var(--accent-deep);
+.cell-origin,
+.cell-updated {
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.slug,
-.ink-age,
-.seam-link {
-  font-family: var(--mono);
-  letter-spacing: -0.035em;
+.cell-contributors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* Each contributor is a bordered chip. Who taught a page is the kind of fact that
+   should be countable at a glance, not read as a sentence. */
+.who {
+  padding: 1px 5px;
+  color: var(--text);
+  border: 1px solid var(--line-soft);
+}
+
+.who-more {
+  padding: 1px 4px;
+  color: var(--text-2);
+}
+
+.unrecorded {
+  color: var(--text-2);
+  opacity: 0.65;
 }
 
 .snippet {
   display: block;
-  margin-top: 0.58rem;
+  max-width: 72ch;
+  margin-top: 6px;
   color: var(--text-2);
   font-family: var(--display);
-  font-size: 0.96rem;
-  line-height: 1.7;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.row-sentinel {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s3) var(--s2);
+  color: var(--text-2);
+  border-top: 1px dotted var(--line-soft);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+
+@media (max-width: 900px) {
+  .collection .table-head {
+    display: none;
+  }
+
+  .collection .ink-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
 }
 
 @keyframes ink-bleed {
@@ -447,4 +632,157 @@ a:focus-visible,
   letter-spacing: 0.14em;
   writing-mode: horizontal-tb;
   text-orientation: mixed;
+}
+
+/* Filter chips: bordered boxes, the active one filled solid. The state is carried
+   by fill rather than by a colour change, so it survives being read in greyscale. */
+.view-toggle {
+  display: flex;
+  gap: -1px;
+  margin-bottom: var(--s4);
+}
+
+.chip {
+  padding: 5px var(--s3);
+  color: var(--text);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background var(--duration-micro) var(--ease-out),
+    color var(--duration-micro) var(--ease-out);
+}
+
+.chip + .chip {
+  margin-left: -1px;
+}
+
+.chip:hover {
+  background: var(--surface-2);
+}
+
+.chip.is-on {
+  color: var(--surface);
+  background: var(--line);
+}
+
+.graph-card {
+  overflow: hidden;
+}
+
+.graph-canvas {
+  display: block;
+  width: 100%;
+  height: clamp(420px, 62vh, 760px);
+  touch-action: none;
+}
+
+.graph-hint,
+.graph-empty {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin: 0;
+  padding: var(--s2);
+  color: var(--text-2);
+  border-top: 1px dotted var(--line-soft);
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+}
+
+.graph-empty {
+  border-top: 0;
+  padding: var(--s6) var(--s2);
+  justify-content: center;
+}
+
+/* An agent's mark. Original geometry, not anyone's brand: this console has no
+   licence to redraw someone else's trademark, and at 12px the only job a mark has
+   is to be told apart from the others. */
+.agent-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  color: var(--text-2);
+}
+
+.agent-mark svg {
+  display: block;
+}
+
+.agent-claude { color: #C1622F; }
+.agent-codex { color: #10A37F; }
+.agent-openclaw { color: #7A4DD1; }
+.agent-hermes { color: #2A7FD4; }
+.agent-grok { color: #1F1F1F; }
+.agent-cursor { color: #5B5BD6; }
+
+@media (prefers-color-scheme: dark) {
+  .agent-grok { color: #E4E4E0; }
+}
+
+.who {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* A memory someone is using right now. The band travels once every couple of
+   seconds rather than continuously: this is a status, and a status that never
+   stops moving becomes noise you learn to ignore. */
+.row-live {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: -0.01em;
+}
+
+.ink-row.is-live {
+  position: relative;
+  overflow: hidden;
+}
+
+.ink-row.is-live::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 38%,
+    color-mix(in oklab, var(--accent) 14%, transparent) 50%,
+    transparent 62%
+  );
+  transform: translateX(-100%);
+  animation: shimmer 2.4s var(--ease-linear) infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  55%,
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Reduced motion gets the same information without the travelling band: a steady
+   tint and a rule down the edge. The agent's name is in the row either way, so
+   nothing depends on seeing movement. */
+@media (prefers-reduced-motion: reduce) {
+  .ink-row.is-live::after {
+    animation: none;
+    transform: none;
+    background: color-mix(in oklab, var(--accent) 7%, transparent);
+    border-left: 2px solid var(--accent);
+  }
 }
