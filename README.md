@@ -1,97 +1,130 @@
 # engram
 
-A portable context layer. One brain, every agent on one small trusted team.
+One memory. Every agent.
 
-engram gives Claude Code, Cursor, ChatGPT, bots, and future agents shared access
-to the same memory over MCP. It is deliberately simple: every valid token can use
-the same brain and the same tools. A token answers who made the request; it does
-not limit what that requester may read or write.
+[![License: MIT](https://img.shields.io/badge/license-MIT-black)](LICENSE)
+[![MCP](https://img.shields.io/badge/protocol-MCP-black)](https://modelcontextprotocol.io)
+[![Engine](https://img.shields.io/badge/engine-gbrain-black)](https://github.com/garrytan/gbrain)
+
+engram is shared memory for a small trusted team. Claude, Cursor, ChatGPT, Codex, Grok, and any other MCP client read and write the same brain. A token names who called. It does not hide the brain from anyone else on the team.
+
+Self-host it, or [ask us to run it](https://github.com/Ani-HQ/engram/issues/new).
+
+## Quick start
+
+```bash
+docker compose up
+```
+
+MCP is at `http://localhost:8080/mcp`. The console is at `http://localhost:8080/`.
+
+Mint one token per agent so the audit log can tell them apart:
+
+```bash
+docker compose exec engram bun cli/engram-admin.ts token issue --name mac-claude
+```
+
+Point a client at the gateway:
+
+```bash
+ENGRAM_HOST='http://localhost:8080' \
+ENGRAM_TOKEN='<token>' \
+npx @ani-hq/engram-mcp connect <harness>
+```
+
+Clients that can send headers skip the shim:
+
+```text
+POST /mcp
+Authorization: Bearer <token>
+```
+
+Wiring for Claude Code, Cursor, and stdio-only harnesses is in [docs/WIRING.md](docs/WIRING.md).
+
+## Hosted
+
+The same gateway runs as a hosted brain. You get a URL, a token per agent, and the console. You do not run Postgres.
+
+Open an issue and say which agents you want wired: [github.com/Ani-HQ/engram/issues/new](https://github.com/Ani-HQ/engram/issues/new).
+
+The console for the brain we run is [engram.ani.computer](https://engram.ani.computer).
+
+## What it stores
+
+Memories are pages. `remember` appends a dated line to a topic page. `recall` searches that brain and returns a handful of short snippets. There is no second store hiding beside the pages, so the console shows everything an agent saved.
+
+| | |
+| --- | --- |
+| `remember` | Append one note to a topic. Pages roll to an archive when they get long. The entry keeps its identity. |
+| `recall` | Up to 20 candidates, at most 5 snippets back. Jev can rerank. If Jev is down, search order stands. |
+| Pages | Markdown in Postgres. Tags, links, and a timeline. |
+| Console | A reading room on the same URL. Sign in with any token. |
+| Audit | Every call records who, which tool, and which page. |
+| Reflex | Jev judges routing, duplicates, and conflicts. A nightly pass proposes clusters. A person approves them. Source pages are not rewritten. |
+
+Details: [docs/REFLEX.md](docs/REFLEX.md).
 
 ## Architecture
 
 ```
-client ──HTTPS/MCP, bearer token──▶ engram gateway (Bun, stateless)
-                                       │  identity → audit → allowlisted proxy
-                                       ▼
-                               one `gbrain serve` child
-                                       ▼
-                      Postgres: brain_shared + engram_gateway
+agent ── HTTPS / MCP, bearer token ──▶  engram gateway
+                                          identity → audit → allowlist
+                                                │
+                                                ▼
+                                         gbrain (pinned)
+                                                │
+                                                ▼
+                              Postgres: brain_shared + engram_gateway
 ```
 
-- **Engine:** [gbrain](https://github.com/garrytan/gbrain), pinned from our mirror
-  (`Ani-HQ/gbrain`) — plain Postgres, no vendor lock-in.
-- **Brain database:** one shared database named `brain_shared`. The gateway's own
-  database is `engram_gateway`.
-- **Auth model:** bearer tokens identify the person or agent. There is no access
-  control between tokens; this is built for one small trusted team.
-- **Tool surface:** exactly 10 tools. Seven forwarded to gbrain (`search`,
-  `get_page`, `list_pages`, `put_page`, `add_tag`, `add_link`,
-  `add_timeline_entry`) and three engram synthesizes itself (`whoami`,
-  `remember`, `recall`). The allowlist limits blast radius, not token permissions.
-- **Memory verbs:** `remember` appends a dated entry to one page per topic;
-  `recall` retrieves up to 20 candidates, optionally reranks them with Jev, and
-  returns at most 5 hits with 280-character snippets. Both write pages, so
-  everything an agent stores is visible in the console.
-- **Reflex:** TypeSafe Jev judges topic routing, duplicates, and recall ranking.
-  A nightly dream job proposes clusters and conflicts; a person approves them
-  in the console. Raw pages stay the source of truth. See [docs/REFLEX.md](docs/REFLEX.md).
-- **Audit:** every tool call is recorded for attribution: who taught or queried
-  the brain, when, and with which tool.
-- **Routes:** `/health`, `/healthz`, `/mcp` (POST), `/api/*`, and static files.
+The gateway is a stateless Bun process. The engine is [gbrain](https://github.com/garrytan/gbrain), built from a pinned fork so a deploy does not drift with upstream. Pages live in `brain_shared`. Tokens, the audit log, and reflex metadata live in `engram_gateway`.
 
-## Run it
+Ten tools. Seven are gbrain's: `search`, `get_page`, `list_pages`, `put_page`, `add_tag`, `add_link`, `add_timeline_entry`. Three are engram's: `whoami`, `remember`, `recall`.
 
-Self-hosted (any box): `docker compose up` -> MCP at `http://localhost:8080/mcp`.
+## Run it yourself
 
-GCP (Cloud SQL + Cloud Run): `deploy/setup-gcp.sh` once, then every merge to
-`main` builds and deploys through the `engram-deploy` Cloud Build trigger. That
-build runs the test suite before it builds an image, so a red `main` never ships.
-
-To deploy by hand: `gcloud builds submit --config cloudbuild.yaml --project ani-hq`.
-
-A merge is not a deploy until that build finishes. Confirm what is actually serving
-by comparing the revision's creation time to the commit, which is the only reliable
-way to tell:
+Docker Compose is the whole box: Postgres with pgvector, the gateway, and the console.
 
 ```bash
-gcloud run services describe engram --region us-central1 \
-  --format='value(status.traffic)'
-gcloud run revisions list --service engram --region us-central1 --limit 1
+docker compose up
 ```
 
-Mint a token: `bun cli/engram-admin.ts token issue --name mac-claude`
+Optional keys in `.env` turn on semantic search and the reflex layer. Both fail open. `remember` and `recall` keep working without them.
 
-Nightly reconciliation is the `engram-dream` Cloud Run Job. After the first
-deploy that creates it, run `deploy/setup-scheduler.sh` once so Cloud Scheduler
-fires it at 03:00 Asia/Kolkata. Manual: `bun cli/engram-admin.ts dream run`.
+| Env | Role |
+| --- | --- |
+| `TYPESAFE_API_KEY` | Jev. Topic routing, classification, recall rerank. |
+| `VOYAGE_API_KEY` | `voyage-4-large` embeddings for candidate search. |
+| `REFLEX_MODEL` | Default `jev-latest`. |
 
-Wire a client: see `docs/WIRING.md`.
+Copy [.env.example](.env.example).
 
-## Status
+A full GCP install (Cloud SQL, Cloud Run, the nightly dream job) is `deploy/setup-gcp.sh`, then `deploy/setup-scheduler.sh`. Merges to `main` ship through Cloud Build. See [deploy/setup-gcp.sh](deploy/setup-gcp.sh).
 
-What exists today: one shared brain, bearer-token identity, an audited 8-tool MCP
-surface, a browser console, token revocation, and a one-command stdio shim for
-clients that cannot send HTTP bearer headers.
+## What this is not
 
-What it is not: a multi-tenant or permissioned memory system. Do not deploy it
-for users or teams that need separation inside the same instance.
+One brain, one team. Tokens identify callers. They do not isolate them. Do not deploy a single instance for people who must not read each other's memory.
 
-## The Console
+Jev proposes. It does not merge, delete, or rewrite source pages. That stays a human action in the console.
 
-`https://<engram-url>/` serves the console, a reading room for the brain. Sign in with any
-engram token; the console stores it in an httpOnly cookie and uses the same
-audited tool path as MCP clients.
+## Docs
 
-Develop it without the gateway: `bun web/dev-server.ts` serves the console
-against fixtures on :8099.
+- [Wiring a client](docs/WIRING.md)
+- [Reflex, dream cycle, review](docs/REFLEX.md)
+- [Handoff notes](docs/HANDOFF.md)
+
+Console development, against fixtures, without the gateway:
+
+```bash
+bun web/dev-server.ts
+```
+
+That serves the console on port 8099.
 
 ## Credits
 
-The memory engine is [gbrain](https://github.com/garrytan/gbrain) by Garry Tan
-(MIT). engram builds it from a pinned fork (`Ani-HQ/gbrain`) so the deployment
-is reproducible and survives upstream drift — see `Dockerfile` for the pin and
-`deploy/patch-gbrain.py` for the Cloud SQL compatibility patches.
+The memory engine is [gbrain](https://github.com/garrytan/gbrain) by Garry Tan (MIT). engram builds a pinned fork, [`Ani-HQ/gbrain`](https://github.com/Ani-HQ/gbrain). The pin and the Cloud SQL patches are in the `Dockerfile` and `deploy/patch-gbrain.py`.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+[MIT](LICENSE).
