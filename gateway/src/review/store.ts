@@ -1,4 +1,4 @@
-import { sql } from "../db";
+import { dataSql } from "../db";
 
 export const REVIEW_STATES = ["pending", "approved", "rejected", "deferred", "applied"] as const;
 export type ReviewState = (typeof REVIEW_STATES)[number];
@@ -26,7 +26,7 @@ export async function enqueueReviewItem(input: {
   runId?: number | null;
 }): Promise<ReviewItem | null> {
   try {
-    const rows = await sql`
+    const rows = await dataSql()`
       INSERT INTO review_items (fingerprint, entry_id, kind, state, confidence, payload, run_id)
       VALUES (
         ${input.fingerprint},
@@ -34,7 +34,7 @@ export async function enqueueReviewItem(input: {
         ${input.kind},
         'pending',
         ${input.confidence ?? null},
-        ${sql.json(input.payload)},
+        ${dataSql().json(input.payload)},
         ${input.runId ?? null}
       )
       ON CONFLICT (fingerprint) DO NOTHING
@@ -57,12 +57,12 @@ export async function listReviewItems(input: {
   const offset = Math.max(0, input.offset ?? 0);
   try {
     const rows = input.kind
-      ? await sql`
+      ? await dataSql()`
           SELECT * FROM review_items
           WHERE state = ${state} AND kind = ${input.kind}
           ORDER BY created_at DESC
           LIMIT ${limit} OFFSET ${offset}`
-      : await sql`
+      : await dataSql()`
           SELECT * FROM review_items
           WHERE state = ${state}
           ORDER BY created_at DESC
@@ -76,7 +76,7 @@ export async function listReviewItems(input: {
 
 export async function getReviewItem(id: number): Promise<ReviewItem | null> {
   try {
-    const rows = await sql`SELECT * FROM review_items WHERE id = ${id}`;
+    const rows = await dataSql()`SELECT * FROM review_items WHERE id = ${id}`;
     return rows[0] ? rowToItem(rows[0]) : null;
   } catch (e) {
     console.error("[review] get failed:", String(e).slice(0, 200));
@@ -90,7 +90,7 @@ export async function setReviewState(
   resolvedBy: string,
 ): Promise<ReviewItem | null> {
   try {
-    const rows = await sql`
+    const rows = await dataSql()`
       UPDATE review_items
       SET state = ${state},
           resolved_at = now(),

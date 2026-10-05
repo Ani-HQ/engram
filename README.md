@@ -6,7 +6,7 @@ One memory. Every agent.
 [![MCP](https://img.shields.io/badge/protocol-MCP-black)](https://modelcontextprotocol.io)
 [![Engine](https://img.shields.io/badge/engine-gbrain-black)](https://github.com/garrytan/gbrain)
 
-engram is shared memory for a small trusted team. Claude, Cursor, ChatGPT, Codex, Grok, and any other MCP client read and write the same brain. A token names who called. It does not hide the brain from anyone else on the team.
+engram is shared memory for an organization. Claude, Cursor, ChatGPT, Codex, Grok, and any other MCP client read and write that org's brain. A second org gets its own database. Inside an org, a token names who called.
 
 Self-host it, or [ask us to run it](https://github.com/Ani-HQ/engram/issues/new).
 
@@ -43,11 +43,9 @@ Wiring for Claude Code, Cursor, and stdio-only harnesses is in [docs/WIRING.md](
 
 ## Hosted
 
-The same gateway runs as a hosted brain. You get a URL, a token per agent, and the console. You do not run Postgres.
+The same gateway runs as a hosted brain. Open [engram.ani.computer](https://engram.ani.computer), start an org, and mint a token in the console. You do not run Postgres.
 
-Open an issue and say which agents you want wired: [github.com/Ani-HQ/engram/issues/new](https://github.com/Ani-HQ/engram/issues/new).
-
-The console for the brain we run is [engram.ani.computer](https://engram.ani.computer).
+Self-hosting stays `docker compose up`. Details are in [docs/ORGS.md](docs/ORGS.md).
 
 ## What it stores
 
@@ -74,10 +72,10 @@ agent ── HTTPS / MCP, bearer token ──▶  engram gateway
                                          gbrain (pinned)
                                                 │
                                                 ▼
-                              Postgres: brain_shared + engram_gateway
+                         Postgres: one brain database per org
 ```
 
-The gateway is a stateless Bun process. The engine is [gbrain](https://github.com/garrytan/gbrain), built from a pinned fork so a deploy does not drift with upstream. Pages live in `brain_shared`. Tokens, the audit log, and reflex metadata live in `engram_gateway`.
+The gateway is a stateless Bun process. The engine is [gbrain](https://github.com/garrytan/gbrain), built from a pinned fork so a deploy does not drift with upstream. Ani HQ's pages stay in `brain_shared`. A new org gets its own database. Tokens and the audit log stay in `engram_gateway`.
 
 Ten tools. Seven are gbrain's: `search`, `get_page`, `list_pages`, `put_page`, `add_tag`, `add_link`, `add_timeline_entry`. Three are engram's: `whoami`, `remember`, `recall`.
 

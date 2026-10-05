@@ -4,6 +4,7 @@ import { renderMarkdown } from "./markdown.js";
 import { inkGlyph, relativeDate, renderLinks, renderTimeline, pulse, sealImg } from "./mechanics.js";
 import { renderGraph } from "./graph.js";
 import { agentMark } from "./agents.js";
+import { copyText, hashAction, needsOnboarding, wiringBlocks } from "./onboarding.js";
 const app = document.getElementById("app");
 const refs = {};
 const state = {
@@ -31,6 +32,9 @@ const state = {
   reviewItems: [],
   reviewLoading: false,
   reviewError: "",
+  tokens: [],
+  minted: null,
+  inviteUrl: "",
   now: new Date(),
 };
 
@@ -43,14 +47,30 @@ document.addEventListener("keydown", onKeydown);
 
 async function bootstrap() {
   showLoading("Reading the gate");
+  const action = hashAction();
   try {
+    if (action.kind === "join" && action.token) {
+      state.session = await api.acceptInvite(action.token);
+      history.replaceState(null, "", "/app");
+      return enterSession();
+    }
     state.session = await api.me();
-    showConsole();
-    await loadCollection();
+    return enterSession();
   } catch (error) {
-    if (error instanceof AuthError) showLogin();
-    else showLogin("The server did not answer.");
+    if (action.kind === "start") return showCreateOrg();
+    if (action.kind === "enter") return showLogin();
+    if (error instanceof AuthError) showGate();
+    else showGate("The server did not answer.");
   }
+}
+
+async function enterSession() {
+  if (needsOnboarding(state.session)) {
+    showOnboarding();
+    return;
+  }
+  showConsole();
+  await loadCollection();
 }
 
 // Boot splash: a quiet pulse while we ask the gateway who this browser is.
@@ -63,6 +83,51 @@ function showLoading(label) {
   );
 }
 
+function showGate(message = "") {
+  app.className = "login-screen";
+  app.replaceChildren(h("main", { class: "login-scroll" },
+    h("div", { class: "login-form" },
+      sealImg("engram", 82, "engram mark"),
+      h("h1", {}, "engram"),
+      h("p", { class: "login-blurb" }, "One org. One brain. People and agents inside it share memory on purpose."),
+      h("button", { type: "button", class: "login-submit", onclick: () => showCreateOrg() }, "start an org"),
+      h("button", { type: "button", class: "text-button", onclick: () => showLogin() }, "I already have a token"),
+      h("p", { class: "login-hint" }, "Claude, ChatGPT, and Grok connectors need OAuth. Cursor and Claude Code work now."),
+      h("p", { class: "login-error", role: "status" }, message),
+    ),
+  ));
+}
+
+function showCreateOrg(message = "") {
+  app.className = "login-screen";
+  const name = h("input", { type: "text", name: "org", autocomplete: "organization", "aria-label": "Organization name", required: true });
+  const email = h("input", { type: "email", name: "email", autocomplete: "email", "aria-label": "Your email", required: true });
+  const form = h("form", {
+    class: "login-form",
+    onsubmit: async event => {
+      event.preventDefault();
+      try {
+        state.session = await api.createOrg({ name: name.value, email: email.value });
+        history.replaceState(null, "", "/app");
+        showOnboarding();
+      } catch {
+        showCreateOrg("Could not create that org.");
+      }
+    },
+  },
+    sealImg("engram", 82, "engram mark"),
+    h("h1", {}, "Name the org"),
+    h("p", { class: "login-blurb" }, "You become the owner. This brain is only yours."),
+    h("label", { class: "field-label" }, h("span", {}, "organization"), name),
+    h("label", { class: "field-label" }, h("span", {}, "your email"), email),
+    h("button", { type: "submit", class: "login-submit" }, "create"),
+    h("button", { type: "button", class: "text-button", onclick: () => showGate() }, "back"),
+    h("p", { class: "login-error", role: "status" }, message),
+  );
+  app.replaceChildren(h("main", { class: "login-scroll" }, form));
+  name.focus();
+}
+
 function showLogin(message = "") {
   app.className = "login-screen";
   const input = h("input", {
@@ -73,14 +138,14 @@ function showLogin(message = "") {
     "aria-label": "Access token",
     required: true,
   });
+  const email = h("input", { type: "email", name: "email", autocomplete: "email", "aria-label": "Email" });
   const form = h("form", {
     class: "login-form",
     onsubmit: async event => {
       event.preventDefault();
       try {
         state.session = await api.login(input.value);
-        showConsole();
-        await loadCollection();
+        await enterSession();
       } catch (error) {
         showLogin(error instanceof AuthError ? "That token was not recognised." : "The gate did not answer.");
       }
@@ -88,18 +153,116 @@ function showLogin(message = "") {
   },
     sealImg("engram", 82, "engram mark"),
     h("h1", {}, "engram"),
-    // Restraint is the aesthetic, but a screen that does not say what it wants
-    // is not restrained, it is unusable. These three lines are the floor.
-    h("p", { class: "login-blurb" }, "Shared memory for your agents. One brain, every surface."),
-    h("label", { class: "field-label" },
-      h("span", {}, "paste an engram token"),
-      input),
-    h("p", { class: "login-hint" }, "Mint one with: engram-admin token issue --name <agent>"),
+    h("p", { class: "login-blurb" }, "Paste an agent token, or ask for a link to your org."),
+    h("label", { class: "field-label" }, h("span", {}, "paste an engram token"), input),
     h("button", { type: "submit", class: "login-submit" }, "enter"),
+    h("label", { class: "field-label" }, h("span", {}, "or email a magic link"), email),
+    h("button", {
+      type: "button",
+      class: "text-button",
+      onclick: async () => {
+        try {
+          const sent = await api.loginEmail(email.value);
+          showLogin(sent.url ? `Link: ${sent.url}` : "Check your email.");
+        } catch {
+          showLogin("No org for that email.");
+        }
+      },
+    }, "send link"),
+    h("button", { type: "button", class: "text-button", onclick: () => showGate() }, "back"),
     h("p", { class: "login-error", role: "status" }, message),
   );
   app.replaceChildren(h("main", { class: "login-scroll" }, form));
   input.focus();
+}
+
+function showOnboarding() {
+  app.className = "login-screen";
+  const step = state.session?.onboarding?.step || "connect";
+  const host = h("div", { class: "login-form onboard" });
+  host.append(
+    sealImg(state.session?.org?.name || "engram", 64, "org mark"),
+    h("h1", {}, state.session?.org?.name || "engram"),
+    h("p", { class: "login-blurb" }, step === "connect"
+      ? "Mint one agent token. Copy the snippet into Cursor or Claude Code."
+      : "Write one memory so you can see the loop close."),
+  );
+  if (step === "connect") host.append(connectPanel());
+  else host.append(rememberPanel());
+  app.replaceChildren(h("main", { class: "login-scroll" }, host));
+}
+
+function connectPanel() {
+  const name = h("input", { type: "text", value: "cursor", "aria-label": "Agent name" });
+  const out = h("div", { class: "wire-block" });
+  return h("div", { class: "onboard-step" },
+    h("label", { class: "field-label" }, h("span", {}, "agent name"), name),
+    h("button", {
+      type: "button",
+      class: "login-submit",
+      onclick: async () => {
+        try {
+          const minted = await api.mintToken({ name: name.value || "cursor", canWrite: true });
+          state.minted = minted;
+          const blocks = wiringBlocks(minted, minted.token);
+          out.replaceChildren(
+            h("p", { class: "login-hint" }, "Token shown once."),
+            copyRow("token", minted.token),
+            copyRow("MCP URL", blocks.mcp),
+            copyRow("Cursor", blocks.cursor),
+            copyRow("Claude Code", blocks.claudeCode),
+            h("p", { class: "login-hint" }, blocks.chat),
+            h("button", {
+              type: "button",
+              class: "login-submit",
+              onclick: async () => {
+                state.session = await api.me();
+                showOnboarding();
+              },
+            }, "I connected it"),
+          );
+        } catch {
+          out.replaceChildren(h("p", { class: "login-error" }, "Could not mint a token."));
+        }
+      },
+    }, "mint token"),
+    out,
+  );
+}
+
+function rememberPanel() {
+  const text = h("textarea", { rows: 4, "aria-label": "First memory" });
+  return h("form", {
+    class: "onboard-step",
+    onsubmit: async event => {
+      event.preventDefault();
+      try {
+        const result = await api.capture({ text: text.value, title: "First memory" });
+        state.session = await api.me();
+        state.message = `captured ${result.slug}`;
+        showConsole();
+        await loadCollection();
+        if (result.slug) openItem({ slug: result.slug, title: result.slug }, null);
+      } catch {
+        showOnboarding();
+      }
+    },
+  },
+    text,
+    h("button", { type: "submit", class: "login-submit" }, "write it"),
+    h("button", { type: "button", class: "text-button", onclick: () => { showConsole(); loadCollection(); } }, "skip to the collection"),
+  );
+}
+
+function copyRow(label, value) {
+  return h("label", { class: "field-label" },
+    h("span", {}, label),
+    h("button", {
+      type: "button",
+      class: "wire-copy",
+      onclick: () => copyText(value),
+    }, value),
+  );
 }
 
 function showConsole() {
@@ -131,14 +294,15 @@ function showConsole() {
   refs.paneHost = h("div", { class: "pane-host" });
 
   const rail = h("aside", { class: "left-rail", "aria-label": "Sections" },
-    sealImg(state.session?.name || "engram", 40, "session mark"),
-    h("h1", { class: "rail-title" }, "engram"),
+    sealImg(state.session?.org?.name || state.session?.name || "engram", 40, "session mark"),
+    h("h1", { class: "rail-title" }, state.session?.org?.name || "engram"),
     labelBlock("collection"),
     labelBlock("search"),
     labelBlock("review"),
-    labelBlock("memory"),
+    labelBlock("org"),
     h("div", { class: "rail-foot" },
-      h("span", {}, state.session?.name || "guest"),
+      h("span", {}, `${state.session?.name || "guest"} · ${state.session?.role || "agent"}`),
+      h("button", { type: "button", class: "text-button", onclick: () => switchView("org") }, "controls"),
       h("button", { type: "button", class: "text-button", onclick: logout }, "leave"),
     ),
   );
@@ -257,6 +421,7 @@ async function switchView(next) {
   renderList();
   if (next === "graph" && !state.graph) await loadGraph();
   if (next === "review") await loadReview();
+  if (next === "org") await loadOrg();
 }
 
 async function loadGraph() {
@@ -274,7 +439,7 @@ async function loadGraph() {
 function renderChrome() {
   if (!refs.viewToggle) return;
   refs.viewToggle.replaceChildren(
-    ...[["collection", "collection"], ["graph", "graph"], ["review", "review"]].map(([id, label]) => h("button", {
+    ...[["collection", "collection"], ["graph", "graph"], ["review", "review"], ["org", "org"]].map(([id, label]) => h("button", {
       type: "button",
       class: `chip${state.view === id ? " is-on" : ""}`,
       "aria-pressed": state.view === id ? "true" : "false",
@@ -412,6 +577,10 @@ function renderList() {
   }
   if (state.view === "review") {
     refs.list.append(renderReviewCard());
+    return;
+  }
+  if (state.view === "org") {
+    refs.list.append(renderOrgCard());
     return;
   }
   if (state.loading) {
@@ -801,14 +970,167 @@ function toggleKeys() {
   renderKeyHelp();
 }
 
+async function loadOrg() {
+  try {
+    const [tokens, members] = await Promise.all([api.tokens(), api.members()]);
+    state.tokens = tokens.tokens ?? [];
+    state.mcp = tokens.mcp;
+    state.members = members.members ?? [];
+    state.invites = members.invites ?? [];
+  } catch (error) {
+    if (error instanceof AuthError) return handleError(error);
+    state.message = "could not load org controls";
+  }
+  renderList();
+}
+
+function renderOrgCard() {
+  const owner = state.session?.role === "owner";
+  const policies = state.session?.org?.policies || {};
+  const card = h("section", { class: "card org-card" },
+    h("div", { class: "card-bar" },
+      h("span", {}, "org"),
+      h("span", { class: "card-bar-count" }, state.session?.org?.name || ""),
+    ),
+  );
+  card.append(
+    h("div", { class: "org-section" },
+      h("p", { class: "review-kind" }, "agent tokens"),
+      ...(state.tokens || []).map(token => h("div", { class: "review-row" },
+        h("div", { class: "review-copy" },
+          h("p", {}, token.name),
+          h("p", { class: "review-meta" }, token.canWrite ? "read and write" : "read only"),
+        ),
+        owner ? h("div", { class: "review-actions" },
+          h("button", { type: "button", class: "text-button", onclick: () => flipWrite(token) }, token.canWrite ? "make read-only" : "allow write"),
+          h("button", { type: "button", class: "text-button", onclick: () => dropToken(token.name) }, "revoke"),
+        ) : "",
+      )),
+      owner ? mintRow() : "",
+    ),
+    h("div", { class: "org-section" },
+      h("p", { class: "review-kind" }, "policies"),
+      policySwitch("agentsMayWrite", "Agents may append", policies.agentsMayWrite !== false),
+      policySwitch("membersOnlyDelete", "Only a member may delete or restore", policies.membersOnlyDelete !== false),
+      policySwitch("jevMayPropose", "Jev may propose links, tags, and conflicts", policies.jevMayPropose !== false),
+      h("label", { class: "field-label" },
+        h("span", {}, "review approval"),
+        h("select", {
+          onchange: event => savePolicy({ reviewApprovers: event.currentTarget.value }),
+          disabled: !owner,
+        },
+          option("members", "any member", policies.reviewApprovers !== "owners"),
+          option("owners", "owners only", policies.reviewApprovers === "owners"),
+        ),
+      ),
+    ),
+    h("div", { class: "org-section" },
+      h("p", { class: "review-kind" }, "people"),
+      ...(state.members || []).map(member => h("p", { class: "review-meta" }, `${member.email} · ${member.role}`)),
+      owner ? inviteRow() : "",
+      state.inviteUrl ? copyRow("invite link", state.inviteUrl) : "",
+    ),
+  );
+  return card;
+}
+
+function mintRow() {
+  const name = h("input", { type: "text", placeholder: "agent name", "aria-label": "New agent name" });
+  return h("div", { class: "org-inline" },
+    name,
+    h("button", {
+      type: "button",
+      class: "text-button",
+      onclick: async () => {
+        try {
+          const minted = await api.mintToken({ name: name.value || "agent", canWrite: true });
+          state.minted = minted;
+          state.message = "token shown once below";
+          await loadOrg();
+        } catch (error) {
+          handleError(error);
+        }
+      },
+    }, "mint"),
+    state.minted ? copyRow("new token", state.minted.token) : "",
+  );
+}
+
+function inviteRow() {
+  const email = h("input", { type: "email", placeholder: "teammate@org", "aria-label": "Invite email" });
+  return h("div", { class: "org-inline" },
+    email,
+    h("button", {
+      type: "button",
+      class: "text-button",
+      onclick: async () => {
+        try {
+          const invite = await api.invite({ email: email.value, role: "member" });
+          state.inviteUrl = invite.url;
+          await loadOrg();
+        } catch (error) {
+          handleError(error);
+        }
+      },
+    }, "invite"),
+  );
+}
+
+function policySwitch(key, label, on) {
+  const owner = state.session?.role === "owner";
+  return h("label", { class: "policy-row" },
+    h("input", {
+      type: "checkbox",
+      checked: on,
+      disabled: !owner,
+      onchange: event => savePolicy({ [key]: event.currentTarget.checked }),
+    }),
+    h("span", {}, label),
+  );
+}
+
+function option(value, label, selected) {
+  return h("option", { value, selected }, label);
+}
+
+async function savePolicy(patch) {
+  if (state.session?.role !== "owner") return;
+  try {
+    const next = { ...(state.session.org?.policies || {}), ...patch };
+    const saved = await api.savePolicies(next);
+    state.session.org.policies = saved.policies;
+    renderList();
+  } catch (error) {
+    handleError(error);
+  }
+}
+
+async function flipWrite(token) {
+  try {
+    await api.setTokenWrite(token.name, !token.canWrite);
+    await loadOrg();
+  } catch (error) {
+    handleError(error);
+  }
+}
+
+async function dropToken(name) {
+  try {
+    await api.revokeToken(name);
+    await loadOrg();
+  } catch (error) {
+    handleError(error);
+  }
+}
+
 async function logout() {
   await api.logout().catch(() => null);
   state.session = null;
-  showLogin();
+  showGate();
 }
 
 function handleError(error) {
-  if (error instanceof AuthError) showLogin();
+  if (error instanceof AuthError) showGate();
   else {
     state.message = "the paper tore";
     renderList();

@@ -20,6 +20,14 @@ function requireName(): string {
   return name;
 }
 
+function orgId(): number {
+  const raw = arg("--org");
+  if (!raw) return 1;
+  const id = Number(raw);
+  if (!Number.isFinite(id) || id < 1) throw new Error("--org must be a positive id");
+  return id;
+}
+
 function rejectArgsExcept(allowedFlags: Set<string>) {
   const args = process.argv.slice(4);
   for (let i = 0; i < args.length; i += 1) {
@@ -34,37 +42,47 @@ const [cmd, sub] = process.argv.slice(2);
 
 try {
   if (cmd === "token" && sub === "issue") {
-    rejectArgsExcept(new Set(["--name"]));
+    rejectArgsExcept(new Set(["--name", "--org"]));
     const name = requireName();
+    const org = orgId();
     const token = "eng_" + randomBytes(32).toString("base64url");
     const hash = createHash("sha256").update(token).digest("hex");
     await sql`
-      INSERT INTO tokens (name, sha256_hash, scopes, secrets_acl)
-      VALUES (${name}, ${hash}, ${sql.json({})}, ${sql.json(false)})`;
-    console.log(`token '${name}' issued — shown ONCE, store it now:\n${token}`);
+      INSERT INTO tokens (name, sha256_hash, scopes, secrets_acl, org_id, role, can_write)
+      VALUES (${name}, ${hash}, ${sql.json({})}, ${sql.json(false)}, ${org}, 'agent', true)`;
+    console.log(`token '${name}' issued for org ${org} — shown ONCE, store it now:\n${token}`);
   } else if (cmd === "token" && sub === "list") {
-    rejectArgsExcept(new Set());
-    const rows = await sql`
-      SELECT name, created_at, revoked_at, last_used_at
-      FROM tokens ORDER BY created_at`;
+    rejectArgsExcept(new Set(["--org"]));
+    const org = arg("--org") ? orgId() : null;
+    const rows = org
+      ? await sql`
+          SELECT name, org_id, created_at, revoked_at, last_used_at
+          FROM tokens WHERE org_id = ${org} ORDER BY created_at`
+      : await sql`
+          SELECT name, org_id, created_at, revoked_at, last_used_at
+          FROM tokens ORDER BY created_at`;
     for (const r of rows) {
       console.log(
         `${r.revoked_at ? "REVOKED " : ""}${r.name}` +
+        `  org=${r.org_id}` +
         `  created=${r.created_at}` +
         `  last_used=${r.last_used_at ?? "never"}`);
     }
   } else if (cmd === "token" && sub === "revoke") {
-    rejectArgsExcept(new Set(["--name"]));
+    rejectArgsExcept(new Set(["--name", "--org"]));
     const name = requireName();
-    const r = await sql`UPDATE tokens SET revoked_at = now() WHERE name = ${name} AND revoked_at IS NULL`;
-    console.log(r.count > 0 ? `token '${name}' revoked` : `no active token named '${name}'`);
+    const org = orgId();
+    const r = await sql`
+      UPDATE tokens SET revoked_at = now()
+      WHERE name = ${name} AND org_id = ${org} AND revoked_at IS NULL`;
+    console.log(r.count > 0 ? `token '${name}' revoked` : `no active token named '${name}' in org ${org}`);
   } else if (cmd === "dream" && sub === "run") {
     rejectArgsExcept(new Set());
     await sql.end({ timeout: 1 }).catch(() => {});
     const { main } = await import("../gateway/src/jobs/dream");
     await main();
   } else {
-    console.log("usage: engram-admin token issue --name N | token list | token revoke --name N | dream run");
+    console.log("usage: engram-admin token issue --name N [--org ID] | token list [--org ID] | token revoke --name N [--org ID] | dream run");
     process.exitCode = 1;
   }
 } finally {

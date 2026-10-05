@@ -1,6 +1,9 @@
 import { audit } from "../audit";
 import type { TokenRecord } from "../auth";
 import { brainClient } from "../brain";
+import { currentOrg } from "../context";
+import { ANI_HQ_ORG } from "../orgs";
+import { canApproveReview, normalizeToken } from "../policies";
 import { getMemoryEntry, setEntryStatus } from "../memory-entries";
 import { getReviewItem, setReviewState, type ReviewItem } from "./store";
 
@@ -34,6 +37,9 @@ export async function resolveReview(
   const current = await getReviewItem(id);
   if (!current) return { item: null, error: "not found" };
   if (current.state !== "pending") return { item: current, error: "already resolved" };
+  if (!canApproveReview(normalizeToken(token), (currentOrg() ?? ANI_HQ_ORG).policies)) {
+    return { item: current, error: "forbidden" };
+  }
 
   if (action === "reject") {
     const item = await setReviewState(id, "rejected", token.name);

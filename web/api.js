@@ -129,4 +129,64 @@ export const api = {
       body: JSON.stringify({ id }),
     });
   },
+  createOrg(payload) {
+    return request("/api/orgs", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  loginEmail(email) {
+    return request("/api/login/email", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  },
+  acceptInvite(token) {
+    return request("/api/invites/accept", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    });
+  },
+  onboarding() {
+    return request("/api/onboarding");
+  },
+  tokens() {
+    return request("/api/tokens");
+  },
+  mintToken(payload) {
+    return request("/api/tokens", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  revokeToken(name) {
+    return request("/api/tokens/revoke", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+  },
+  setTokenWrite(name, canWrite) {
+    return request("/api/tokens/write", {
+      method: "POST",
+      body: JSON.stringify({ name, canWrite }),
+    });
+  },
+  policies() {
+    return request("/api/policies");
+  },
+  savePolicies(policies) {
+    return request("/api/policies", {
+      method: "PUT",
+      body: JSON.stringify({ policies }),
+    });
+  },
+  members() {
+    return request("/api/members");
+  },
+  invite(payload) {
+    return request("/api/invites", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
 };

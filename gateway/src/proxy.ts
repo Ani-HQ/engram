@@ -1,7 +1,10 @@
 // Nothing outside the curated gbrain allowlist ever reaches the child.
 import type { TokenRecord } from "./auth";
-import { brainClient } from "./brain";
 import { audit } from "./audit";
+import { brainClient } from "./brain";
+import { currentOrg } from "./context";
+import { ANI_HQ_ORG } from "./orgs";
+import { canUseTool, hasOauthScope, normalizeToken } from "./policies";
 import { markRolledEntries, upsertMemoryEntry } from "./memory-entries";
 import { afterRemember, rerankRecallHits, suggestTopic } from "./reflex";
 import {
@@ -326,14 +329,15 @@ function yamlHeader(title: string, frontmatter: unknown): string {
 const appendQueue = new Map<string, Promise<unknown>>();
 
 function serializeBySlug<T>(slug: string, work: () => Promise<T>): Promise<T> {
-  const prior = appendQueue.get(slug) ?? Promise.resolve();
+  const key = `${currentOrg()?.id ?? 1}:${slug}`;
+  const prior = appendQueue.get(key) ?? Promise.resolve();
   const next = prior.catch(() => {}).then(work);
   const settled = next.catch(() => {});
-  appendQueue.set(slug, settled);
+  appendQueue.set(key, settled);
   // Last one out clears the slot. Without this the map keeps a resolved promise for
   // every topic the process has ever written, which leaks in a server up for weeks.
   void settled.then(() => {
-    if (appendQueue.get(slug) === settled) appendQueue.delete(slug);
+    if (appendQueue.get(key) === settled) appendQueue.delete(key);
   });
   return next;
 }
@@ -569,10 +573,19 @@ export async function callTool(
   name: string,
   args: Record<string, unknown>,
 ): Promise<any> {
+  const actor = normalizeToken(token);
+  const policies = (currentOrg() ?? ANI_HQ_ORG).policies;
   const forwardedArgs = clampArgs(name, args ?? {});
 
   // Which page a call touched, where the call knows. whoami and recall touch none.
   const argSlug = typeof forwardedArgs.slug === "string" ? forwardedArgs.slug : null;
+  const served = ALLOWED_TOOLS.has(name) || SYNTHETIC_TOOLS.has(name);
+  const writing = name === "remember" || (ALLOWED_TOOLS.has(name) && !["search", "get_page", "list_pages"].includes(name));
+
+  if (served && (!canUseTool(actor, name, policies) || (writing && !hasOauthScope(actor, "memory:write")))) {
+    await audit(actor.name, name, summarizeArgs(forwardedArgs), "denied", argSlug);
+    return toolError(`denied: ${name} is not allowed for this token`);
+  }
 
   if (name === "whoami") {
     await audit(token.name, name, summarizeArgs(forwardedArgs), "ok", null);

@@ -85,8 +85,68 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     const body = await req.json().catch(() => ({}));
     return json({ ok: true, item: { id: Number(body.id) || 1, state: url.pathname.split("/").pop() } });
   }
+  if (url.pathname === "/api/tokens" && req.method === "GET") {
+    return json({ tokens: devTokens, mcp: "http://localhost:8099/mcp" });
+  }
+  if (url.pathname === "/api/tokens" && req.method === "POST") {
+    const body = await req.json().catch(() => ({}));
+    const name = String(body.name || "agent");
+    devTokens.push({ name, canWrite: body.canWrite !== false, createdAt: new Date().toISOString(), revokedAt: null, lastUsedAt: null });
+    return json({
+      name,
+      canWrite: body.canWrite !== false,
+      token: "eng_dev_token_shown_once",
+      mcp: "http://localhost:8099/mcp",
+      cursor: { mcpServers: { engram: { url: "http://localhost:8099/mcp", headers: { Authorization: "Bearer eng_dev_token_shown_once" } } } },
+      claudeCode: "claude mcp add --scope user --transport http engram http://localhost:8099/mcp --header \"Authorization: Bearer eng_dev_token_shown_once\"",
+      chatConnectors: "Claude, ChatGPT, and Grok connectors cannot connect yet.",
+    });
+  }
+  if (url.pathname === "/api/tokens/revoke" && req.method === "POST") {
+    const body = await req.json().catch(() => ({}));
+    devTokens = devTokens.filter(token => token.name !== body.name);
+    return json({ ok: true });
+  }
+  if (url.pathname === "/api/tokens/write" && req.method === "POST") {
+    const body = await req.json().catch(() => ({}));
+    devTokens = devTokens.map(token => token.name === body.name ? { ...token, canWrite: body.canWrite !== false } : token);
+    return json({ ok: true });
+  }
+  if (url.pathname === "/api/policies" && req.method === "GET") return json({ policies: devPolicies });
+  if (url.pathname === "/api/policies" && req.method === "PUT") {
+    const body = await req.json().catch(() => ({}));
+    devPolicies = { ...devPolicies, ...(body.policies ?? {}) };
+    sessionFixture.org.policies = devPolicies;
+    return json({ policies: devPolicies });
+  }
+  if (url.pathname === "/api/members" && req.method === "GET") {
+    return json({ members: devMembers, invites: [] });
+  }
+  if (url.pathname === "/api/invites" && req.method === "POST") {
+    const body = await req.json().catch(() => ({}));
+    return json({ email: body.email, role: "member", url: `http://localhost:8099/app#join=inv_dev` });
+  }
+  if (url.pathname === "/api/orgs" && req.method === "POST") {
+    const body = await req.json().catch(() => ({}));
+    return json({
+      ...sessionFixture,
+      org: { ...sessionFixture.org, name: body.name || "New org" },
+      onboarding: { step: "connect", hasToken: false, hasPage: false },
+    }, { "Set-Cookie": "engram_dev=1; Path=/; HttpOnly; SameSite=Lax" });
+  }
   return new Response("Not Found", { status: 404 });
 }
+
+let devTokens = [
+  { name: "cursor", canWrite: true, createdAt: "2026-09-22T00:00:00.000Z", revokedAt: null, lastUsedAt: null },
+];
+let devPolicies = {
+  agentsMayWrite: true,
+  membersOnlyDelete: true,
+  jevMayPropose: true,
+  reviewApprovers: "members",
+};
+const devMembers = [{ id: 1, orgId: 1, email: "ada@example.com", role: "owner" }];
 
 function reviewFixture() {
   return [
@@ -274,7 +334,11 @@ async function capture(req: Request) {
 }
 
 async function serveStatic(url: URL): Promise<Response> {
-  const pathname = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
+  const pathname = url.pathname === "/"
+    ? "/landing.html"
+    : url.pathname === "/app" || url.pathname === "/app/"
+      ? "/index.html"
+      : decodeURIComponent(url.pathname);
   const safe = normalize(pathname).replace(/^(\.\.[/\\])+/, "");
   const fileUrl = new URL(`.${safe}`, root);
   if (!fileUrl.pathname.startsWith(root.pathname)) return new Response("Forbidden", { status: 403 });

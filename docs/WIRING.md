@@ -1,7 +1,8 @@
 # Wiring a Surface to engram
 
-Every surface uses the same brain. Mint one token per person, agent, or harness so
-the audit log can attribute writes and reads:
+Every surface in one organization uses that organization's brain. Mint one token
+per agent so the audit log can attribute writes and reads. A token from another
+org cannot see these pages.
 
 ```bash
 ENGRAM_DB_URL_TEMPLATE='postgresql://...__DB__...' bun cli/engram-admin.ts \

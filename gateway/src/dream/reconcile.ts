@@ -1,5 +1,7 @@
-import { sql } from "../db";
+import { currentOrg } from "../context";
+import { dataSql } from "../db";
 import { recordReflexDecision, type MemoryEntry } from "../memory-entries";
+import { ANI_HQ_ORG } from "../orgs";
 import { reflexClient } from "../reflex/client";
 import { classifyMemory } from "../reflex/tasks/classify";
 import { judgePair } from "../reflex/tasks/pairwise";
@@ -18,24 +20,28 @@ export interface DreamResult {
 
 export async function runDreamCycle(now = new Date()): Promise<DreamResult> {
   const key = nightKey(now);
+  const policies = (currentOrg() ?? ANI_HQ_ORG).policies;
+  if (!policies.jevMayPropose) {
+    return { ok: true, nightKey: key, locked: false, stats: { skipped: 1 } };
+  }
   const locked = await tryDreamLock();
   if (!locked) return { ok: false, nightKey: key, locked: false, stats: {}, error: "lock held" };
 
   const stats = { pages: 0, entries: 0, decisions: 0, reviews: 0, clusters: 0 };
   let runId: number | null = null;
   try {
-    const existing = await sql`SELECT * FROM dream_runs WHERE night_key = ${key}`;
+    const existing = await dataSql()`SELECT * FROM dream_runs WHERE night_key = ${key}`;
     let cursor = existing[0]?.cursor ?? { offset: 0 };
     if (existing[0]?.status === "ok") {
       return { ok: true, nightKey: key, locked: true, stats: existing[0].stats ?? stats };
     }
     if (existing[0]) {
       runId = Number(existing[0].id);
-      await sql`UPDATE dream_runs SET status = 'running', error = NULL WHERE id = ${runId}`;
+      await dataSql()`UPDATE dream_runs SET status = 'running', error = NULL WHERE id = ${runId}`;
     } else {
-      const inserted = await sql`
+      const inserted = await dataSql()`
         INSERT INTO dream_runs (night_key, status, cursor, stats)
-        VALUES (${key}, 'running', ${sql.json(cursor)}, ${sql.json(stats)})
+        VALUES (${key}, 'running', ${dataSql().json(cursor)}, ${dataSql().json(stats)})
         RETURNING id`;
       runId = Number(inserted[0].id);
     }
@@ -60,18 +66,18 @@ export async function runDreamCycle(now = new Date()): Promise<DreamResult> {
     }
 
     const status = scanned.done ? "ok" : "running";
-    await sql`
+    await dataSql()`
       UPDATE dream_runs
       SET status = ${status},
-          cursor = ${sql.json(cursor)},
-          stats = ${sql.json(stats)},
-          finished_at = ${scanned.done ? sql`now()` : null}
+          cursor = ${dataSql().json(cursor)},
+          stats = ${dataSql().json(stats)},
+          finished_at = ${scanned.done ? dataSql()`now()` : null}
       WHERE id = ${runId}`;
     return { ok: true, nightKey: key, locked: true, stats };
   } catch (e) {
     const error = String(e).slice(0, 300);
     if (runId) {
-      await sql`
+      await dataSql()`
         UPDATE dream_runs
         SET status = 'failed', error = ${error}, finished_at = now()
         WHERE id = ${runId}`.catch(() => {});

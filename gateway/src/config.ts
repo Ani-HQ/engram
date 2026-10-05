@@ -26,6 +26,8 @@ export const config = {
   brainDb: process.env.ENGRAM_BRAIN_DB ?? "brain_shared",
   gbrainBin: process.env.GBRAIN_BIN ?? `${process.env.HOME}/.bun/bin/gbrain`,
   gbrainHomesDir: process.env.GBRAIN_HOMES_DIR ?? "/gbrain-homes",
+  publicUrl: (process.env.ENGRAM_PUBLIC_URL ?? "").replace(/\/$/, ""),
+  brainIdleMs: envNumber("ENGRAM_BRAIN_IDLE_MS", 10 * 60 * 1000),
   reflex: {
     apiKey: secretValue(process.env.REFLEX_API_KEY ?? process.env.TYPESAFE_API_KEY),
     model: (process.env.REFLEX_MODEL ?? process.env.TYPESAFE_MODEL ?? "jev-latest").trim(),
@@ -39,5 +41,10 @@ export const config = {
     apiKey: secretValue(process.env.VOYAGE_API_KEY),
     model: (process.env.ENGRAM_EMBEDDING_MODEL ?? "voyage:voyage-4-large").trim(),
     dimensions: envNumber("ENGRAM_EMBEDDING_DIMENSIONS", 1024),
+  },
+  oauth: {
+    issuer: (process.env.ENGRAM_OAUTH_ISSUER ?? "").trim(),
+    audience: (process.env.ENGRAM_OAUTH_AUDIENCE ?? "").trim(),
+    jwksUrl: (process.env.ENGRAM_OAUTH_JWKS_URL ?? "").trim(),
   },
 };

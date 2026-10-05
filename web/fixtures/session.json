@@ -1,8 +1,18 @@
 {
-  "name": "dev-console",
-  "scopes": {
-    "shared": "rw",
-    "private": "r"
+  "name": "ada@example.com",
+  "role": "owner",
+  "canWrite": true,
+  "email": "ada@example.com",
+  "org": {
+    "id": 1,
+    "name": "Fixture Org",
+    "slug": "fixture",
+    "policies": {
+      "agentsMayWrite": true,
+      "membersOnlyDelete": true,
+      "jevMayPropose": true,
+      "reviewApprovers": "members"
+    }
   },
-  "secrets": false
+  "onboarding": { "step": "invite", "hasToken": true, "hasPage": true }
 }
