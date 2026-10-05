@@ -864,3 +864,19 @@ a:focus-visible,
   font-family: var(--mono);
   font-size: 0.78rem;
 }
+
+.org-switch {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0 var(--s2) var(--s2);
+}
+
+.org-switch select {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+}

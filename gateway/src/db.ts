@@ -73,8 +73,33 @@ export async function migrateOrgDataTables(client: postgres.Sql) {
       created_at    timestamptz NOT NULL DEFAULT now(),
       updated_at    timestamptz NOT NULL DEFAULT now()
     )`;
+  await client`ALTER TABLE memory_entries ADD COLUMN IF NOT EXISTS repo text`;
+  await client`ALTER TABLE memory_entries ADD COLUMN IF NOT EXISTS harness text`;
+  await client`ALTER TABLE memory_entries ADD COLUMN IF NOT EXISTS session_id text`;
   await client`CREATE INDEX IF NOT EXISTS memory_entries_slug_idx ON memory_entries (slug)`;
   await client`CREATE INDEX IF NOT EXISTS memory_entries_status_idx ON memory_entries (status, recorded_at DESC)`;
+  await client`CREATE INDEX IF NOT EXISTS memory_entries_repo_idx ON memory_entries (repo)`;
+
+  await client`
+    CREATE TABLE IF NOT EXISTS trails (
+      id            text PRIMARY KEY,
+      harness       text NOT NULL,
+      session_id    text NOT NULL,
+      repo          text,
+      cwd           text,
+      branch        text,
+      author_email  text,
+      started_at    timestamptz,
+      ended_at      timestamptz,
+      transcript    text,
+      digest        text,
+      digest_slug   text,
+      created_at    timestamptz NOT NULL DEFAULT now(),
+      updated_at    timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (harness, session_id)
+    )`;
+  await client`CREATE INDEX IF NOT EXISTS trails_repo_idx ON trails (repo, ended_at DESC)`;
+  await client`CREATE INDEX IF NOT EXISTS trails_author_idx ON trails (author_email, ended_at DESC)`;
 
   await client`
     CREATE TABLE IF NOT EXISTS reflex_decisions (
@@ -169,13 +194,16 @@ export async function migrate() {
       policies    jsonb NOT NULL DEFAULT '{}'::jsonb,
       created_at  timestamptz NOT NULL DEFAULT now()
     )`;
+  await sql`ALTER TABLE orgs ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'team'`;
+  await sql`UPDATE orgs SET kind = 'team' WHERE kind IS NULL OR kind NOT IN ('team', 'personal')`;
 
   await sql`
-    INSERT INTO orgs (id, name, slug, brain_db, home_dir, data_db, policies)
+    INSERT INTO orgs (id, name, slug, kind, brain_db, home_dir, data_db, policies)
     VALUES (
       1,
       'Ani HQ',
       'ani-hq',
+      'team',
       'brain_shared',
       'brain',
       'engram_gateway',
@@ -246,4 +274,34 @@ export async function migrate() {
       expires_at  timestamptz NOT NULL,
       accepted_at timestamptz
     )`;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS share_rules (
+      id           serial PRIMARY KEY,
+      owner_email  text NOT NULL,
+      source_org   int NOT NULL REFERENCES orgs(id),
+      target_org   int NOT NULL REFERENCES orgs(id),
+      match        jsonb NOT NULL DEFAULT '{}'::jsonb,
+      level        text NOT NULL DEFAULT 'digest',
+      created_at   timestamptz NOT NULL DEFAULT now(),
+      paused_at    timestamptz,
+      revoked_at   timestamptz
+    )`;
+  await sql`CREATE INDEX IF NOT EXISTS share_rules_source_idx ON share_rules (source_org, revoked_at)`;
+  await sql`CREATE INDEX IF NOT EXISTS share_rules_owner_idx ON share_rules (owner_email, revoked_at)`;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS shared_copies (
+      id              serial PRIMARY KEY,
+      rule_id         int REFERENCES share_rules(id),
+      source_kind     text NOT NULL,
+      source_id       text NOT NULL,
+      target_org      int NOT NULL REFERENCES orgs(id),
+      target_slug     text,
+      target_trail_id text,
+      synced_at       timestamptz NOT NULL DEFAULT now(),
+      revoked_at      timestamptz,
+      UNIQUE (rule_id, source_kind, source_id)
+    )`;
+  await sql`CREATE INDEX IF NOT EXISTS shared_copies_target_idx ON shared_copies (target_org, revoked_at)`;
 }

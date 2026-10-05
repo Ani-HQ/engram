@@ -135,3 +135,68 @@ describe("connect-time cache seeding", () => {
     expect(await shim.seedToolCache({ host: "https://x.example.com" })).toBe(false);
   });
 });
+
+const capture = require("../shim/capture.js");
+
+describe("capture hooks and sweep", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "engram-capture-"));
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+
+  test("hook installers write valid config and back up the old file", () => {
+    const home = path.join(root, "home");
+    const prevHome = process.env.HOME;
+    process.env.HOME = home;
+    mkdirSync(path.join(home, ".claude"), { recursive: true });
+    writeFileSync(path.join(home, ".claude", "settings.json"), `${JSON.stringify({ model: "keep-me" }, null, 2)}\n`);
+    const file = capture.installHooks("claude", { host: "https://engram.example", token: "eng_test" });
+    const written = JSON.parse(require("node:fs").readFileSync(file, "utf8"));
+    expect(written.model).toBe("keep-me");
+    expect(JSON.stringify(written.hooks)).toContain("capture --hook claude");
+    expect(require("node:fs").existsSync(`${file}.engram-backup`)).toBe(true);
+    process.env.HOME = prevHome;
+  });
+
+  test("redaction and never-capture run before upload", () => {
+    expect(capture.redactSecrets("Bearer eng_supersecrettokenvalue123")).toContain("REDACTED");
+    expect(capture.shouldCapture(
+      { repo: "github.com/ani-hq/secrets", cwd: "/tmp/secrets" },
+      { neverRepos: ["ani-hq/secrets"], neverPaths: [] },
+    )).toBe(false);
+    expect(capture.shouldCapture(
+      { repo: "github.com/ani-hq/engram", cwd: "/tmp/engram" },
+      { neverRepos: ["ani-hq/secrets"], neverPaths: [] },
+    )).toBe(true);
+  });
+
+  test("parsers flatten harness transcripts into turns", () => {
+    const claude = capture.parseClaudeTranscript([
+      JSON.stringify({ type: "user", sessionId: "s1", cwd: "/tmp", message: { role: "user", content: "hello" }, timestamp: "2026-10-05T00:00:00.000Z" }),
+      JSON.stringify({ type: "assistant", sessionId: "s1", message: { role: "assistant", content: [{ type: "text", text: "hi" }] } }),
+    ].join("\n"));
+    expect(claude.sessionId).toBe("s1");
+    expect(claude.turns).toEqual([
+      { role: "user", text: "hello" },
+      { role: "assistant", text: "hi" },
+    ]);
+    const cursor = capture.parseCursorTranscript(JSON.stringify({
+      role: "user",
+      message: { content: [{ type: "text", text: "<user_query>share this</user_query>" }] },
+    }), "c1");
+    expect(cursor.sessionId).toBe("c1");
+    expect(cursor.turns[0].text).toBe("share this");
+  });
+
+  test("sweep is idempotent when the file has not changed", async () => {
+    const prevHome = process.env.HOME;
+    const prevCache = process.env.XDG_CACHE_HOME;
+    process.env.HOME = path.join(root, "empty-home");
+    process.env.XDG_CACHE_HOME = path.join(root, "cache");
+    mkdirSync(process.env.HOME, { recursive: true });
+    const first = await capture.sweep();
+    const second = await capture.sweep();
+    expect(first).toEqual([]);
+    expect(second).toEqual([]);
+    process.env.HOME = prevHome;
+    process.env.XDG_CACHE_HOME = prevCache;
+  });
+});

@@ -483,12 +483,19 @@ async function rememberUnsynchronized(token: TokenRecord, args: Record<string, u
         tokenName: token.name,
         topicHint: topic,
         archiveSlug: archived,
+        repo: optionalArg(args.repo),
+        harness: optionalArg(args.harness),
+        sessionId: optionalArg(args.session_id) ?? optionalArg(args.sessionId),
       });
       if (archived) {
         const { entries: rolled } = splitTopicEntries(savedBody);
         await markRolledEntries(slug, archived, splitForRoll(rolled).move.map(entryText));
       }
       await afterRemember({ entry: recorded, text, slug, topic }).catch(() => {});
+      if (recorded) {
+        const { shareAfterWrite } = await import("./sharing");
+        await shareAfterWrite({ kind: "entry", entry: recorded }).catch(() => {});
+      }
       return jsonResult({
         ok: true,
         slug,
@@ -523,6 +530,16 @@ async function recall(args: Record<string, unknown>): Promise<any> {
     title: hit?.title,
     snippet: truncate(typeof hit?.chunk_text === "string" ? hit.chunk_text : "", MAX_SNIPPET),
   }));
+  try {
+    const { attributionForSlugs } = await import("./trails");
+    const attributed = await attributionForSlugs(results.map(hit => String(hit.slug ?? "")).filter(Boolean));
+    for (const hit of results) {
+      const extra = attributed.get(String(hit.slug ?? ""));
+      if (extra) Object.assign(hit, extra);
+    }
+  } catch {
+    // attribution is decoration
+  }
 
   let full: { slug: unknown; body: string } | null = null;
   if (args.full === true && top.length) {
@@ -632,6 +649,10 @@ export async function callTool(
     await audit(token.name, name, summarizeArgs(forwardedArgs), "error", argSlug);
     throw e;
   }
+}
+
+function optionalArg(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function toolError(message: string) {

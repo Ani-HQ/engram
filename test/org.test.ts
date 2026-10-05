@@ -9,6 +9,7 @@ const {
   canDelete,
   canUseTool,
   canWrite,
+  capShareLevel,
   normalizeToken,
   parsePolicies,
 } = await import("../gateway/src/policies");
@@ -22,6 +23,7 @@ describe("org helpers", () => {
     expect(onboardingStep({ hasToken: false, hasPage: false })).toBe("connect");
     expect(onboardingStep({ hasToken: true, hasPage: false })).toBe("remember");
     expect(onboardingStep({ hasToken: true, hasPage: true })).toBe("invite");
+    expect(onboardingStep({ hasToken: true, hasPage: true, kind: "personal" })).toBe("done");
   });
 });
 
@@ -46,6 +48,15 @@ describe("org policies", () => {
     expect(canApproveReview(owner, parsePolicies({ reviewApprovers: "owners" }))).toBe(true);
     expect(canUseTool(reader, "put_page", policies)).toBe(false);
     expect(canUseTool(reader, "search", policies)).toBe(true);
+  });
+
+  test("share level is capped by the team, never raised", () => {
+    expect(parsePolicies({}).acceptShares).toBe(true);
+    expect(parsePolicies({}).maxShareLevel).toBe("digest");
+    expect(parsePolicies({ acceptShares: false, maxShareLevel: "transcript" }).maxShareLevel).toBe("transcript");
+    expect(capShareLevel("transcript", "digest")).toBe("digest");
+    expect(capShareLevel("digest", "transcript")).toBe("digest");
+    expect(capShareLevel("digest_transcript", "transcript")).toBe("digest_transcript");
   });
 });
 

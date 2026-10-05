@@ -126,6 +126,48 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     const body = await req.json().catch(() => ({}));
     return json({ email: body.email, role: "member", url: `http://localhost:8099/app#join=inv_dev` });
   }
+  if (url.pathname === "/api/orgs" && req.method === "GET") {
+    return json({ orgs: sessionFixture.orgs ?? [] });
+  }
+  if (url.pathname === "/api/session/switch" && req.method === "POST") {
+    const body = await req.json().catch(() => ({}));
+    const next = (sessionFixture.orgs ?? []).find((item: any) => item.id === Number(body.orgId));
+    if (next) sessionFixture.org = { ...sessionFixture.org, ...next };
+    return json(sessionFixture);
+  }
+  if (url.pathname === "/api/trails" && req.method === "GET") {
+    return json({ trails: devTrails, repos: ["github.com/ani-hq/engram"], more: false });
+  }
+  if (url.pathname === "/api/share/rules" && req.method === "GET") {
+    return json({ rules: devShareRules, repos: ["github.com/ani-hq/engram"] });
+  }
+  if (url.pathname === "/api/share/rules" && req.method === "POST") {
+    const body = await req.json().catch(() => ({}));
+    const rule = {
+      id: devShareRules.length + 1,
+      targetOrg: Number(body.targetOrgId || 1),
+      match: body.match ?? {},
+      level: body.level || "digest",
+      createdAt: new Date().toISOString(),
+      pausedAt: null,
+    };
+    devShareRules = [rule, ...devShareRules];
+    return json({ rule });
+  }
+  if (url.pathname === "/api/share/preview" && req.method === "POST") {
+    return json({ trails: 1, entries: 0 });
+  }
+  if (url.pathname.startsWith("/api/share/rules/") && req.method === "POST") {
+    const id = Number(url.pathname.split("/")[4]);
+    const paused = url.pathname.endsWith("/pause");
+    devShareRules = devShareRules.map(rule => rule.id === id ? { ...rule, pausedAt: paused ? new Date().toISOString() : null } : rule);
+    return json({ rule: devShareRules.find(rule => rule.id === id) });
+  }
+  if (url.pathname.startsWith("/api/share/rules/") && req.method === "DELETE") {
+    const id = Number(url.pathname.split("/")[4]);
+    devShareRules = devShareRules.filter(rule => rule.id !== id);
+    return json({ ok: true, warning: "Teammates' agents may already have read what was shared." });
+  }
   if (url.pathname === "/api/orgs" && req.method === "POST") {
     const body = await req.json().catch(() => ({}));
     return json({
@@ -145,7 +187,23 @@ let devPolicies = {
   membersOnlyDelete: true,
   jevMayPropose: true,
   reviewApprovers: "members",
+  acceptShares: true,
+  maxShareLevel: "digest",
 };
+let devShareRules = [];
+const devTrails = [
+  {
+    id: "trail-1",
+    harness: "cursor",
+    sessionId: "dev-session",
+    repo: "github.com/ani-hq/engram",
+    authorEmail: "ada@example.com",
+    startedAt: "2026-10-05T10:00:00.000Z",
+    endedAt: "2026-10-05T11:00:00.000Z",
+    digest: "Worked on github.com/ani-hq/engram in cursor.\nPrompts: share a slice of memory with the team.",
+    digestSlug: "trails/ani-hq/engram/2026-10-05-cursor-devsess",
+  },
+];
 const devMembers = [{ id: 1, orgId: 1, email: "ada@example.com", role: "owner" }];
 
 function reviewFixture() {

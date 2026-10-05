@@ -1,6 +1,8 @@
 export type ActorRole = "owner" | "member" | "agent";
 export type CredentialKind = "token" | "session" | "oauth";
 export type ReviewApprovers = "owners" | "members";
+export type OrgKind = "team" | "personal";
+export type ShareLevel = "digest" | "digest_transcript" | "transcript";
 
 export interface TokenRecord {
   name: string;
@@ -17,14 +19,36 @@ export interface OrgPolicies {
   membersOnlyDelete: boolean;
   jevMayPropose: boolean;
   reviewApprovers: ReviewApprovers;
+  acceptShares: boolean;
+  maxShareLevel: ShareLevel;
 }
+
+export const SHARE_LEVELS: ShareLevel[] = ["digest", "digest_transcript", "transcript"];
 
 export const DEFAULT_POLICIES: OrgPolicies = {
   agentsMayWrite: true,
   membersOnlyDelete: true,
   jevMayPropose: true,
   reviewApprovers: "members",
+  acceptShares: true,
+  maxShareLevel: "digest",
 };
+
+const SHARE_RANK: Record<ShareLevel, number> = {
+  digest: 0,
+  digest_transcript: 1,
+  transcript: 2,
+};
+
+export function parseShareLevel(value: unknown, fallback: ShareLevel = "digest"): ShareLevel {
+  return typeof value === "string" && SHARE_LEVELS.includes(value as ShareLevel)
+    ? value as ShareLevel
+    : fallback;
+}
+
+export function capShareLevel(requested: ShareLevel, max: ShareLevel): ShareLevel {
+  return SHARE_RANK[requested] <= SHARE_RANK[max] ? requested : max;
+}
 
 const WRITE_TOOLS = new Set([
   "put_page",
@@ -45,6 +69,8 @@ export function parsePolicies(value: unknown): OrgPolicies {
     membersOnlyDelete: raw.membersOnlyDelete !== false,
     jevMayPropose: raw.jevMayPropose !== false,
     reviewApprovers: raw.reviewApprovers === "owners" ? "owners" : "members",
+    acceptShares: raw.acceptShares !== false,
+    maxShareLevel: parseShareLevel(raw.maxShareLevel, "digest"),
   };
 }
 

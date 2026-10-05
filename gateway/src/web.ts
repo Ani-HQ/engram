@@ -9,7 +9,8 @@ import {
   serializeSessionCookie,
 } from "./cookies";
 import { upsertMemoryEntry } from "./memory-entries";
-import { handleOrgApi, handlePublicOrgApi, onboardingState, publicActor } from "./org-api";
+import { authenticateRequest } from "./auth";
+import { handleOrgApi, handlePublicOrgApi, ingestTrailRequest, onboardingState, sessionActor } from "./org-api";
 import { resolveOrg, withOrg } from "./orgs";
 import { canDelete, normalizeToken } from "./policies";
 import { callTool } from "./proxy";
@@ -155,6 +156,9 @@ export function forbiddenResponse(): Response {
 export async function handleWeb(req: Request): Promise<Response> {
   const url = new URL(req.url);
   if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
+    if (req.method === "POST" && url.pathname === "/api/trails" && req.headers.get("authorization")) {
+      return handleBearerTrail(req);
+    }
     return handleApi(req, url);
   }
   // Static files and the SPA shell answer GET/HEAD only. Without this, any method
@@ -165,6 +169,15 @@ export async function handleWeb(req: Request): Promise<Response> {
     return new Response("Method Not Allowed", { status: 405 });
   }
   return serveStatic(url.pathname);
+}
+
+async function handleBearerTrail(req: Request): Promise<Response> {
+  const token = await authenticateRequest(req);
+  if (!token) return Response.json({ error: "unauthorized" }, { status: 401 });
+  const actor = normalizeToken(token);
+  const org = await resolveOrg(actor);
+  await ensureBrain(org);
+  return withOrg(org, actor, () => ingestTrailRequest(req, actor, org));
 }
 
 async function handleApi(req: Request, url: URL): Promise<Response> {
@@ -219,7 +232,7 @@ async function postSession(req: Request): Promise<Response> {
   const token = await authenticateSecret(rawToken);
   if (!token) return Response.json({ error: "unauthorized" }, { status: 401 });
   const org = await resolveOrg(token);
-  return Response.json(publicActor(token, org, { onboarding: await onboardingState(org) }), {
+  return Response.json(await sessionActor(token, org, { onboarding: await onboardingState(org) }), {
     headers: { "Set-Cookie": serializeSessionCookie(rawToken) },
   });
 }
@@ -233,7 +246,7 @@ function deleteSession(): Response {
 
 async function getMe(_req: Request, _url: URL, token: TokenRecord): Promise<Response> {
   const org = await resolveOrg(token);
-  return Response.json(publicActor(token, org, { onboarding: await onboardingState(org) }));
+  return Response.json(await sessionActor(token, org, { onboarding: await onboardingState(org) }));
 }
 
 async function getPages(_req: Request, url: URL, token: TokenRecord): Promise<Response> {

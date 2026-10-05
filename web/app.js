@@ -36,6 +36,14 @@ const state = {
   minted: null,
   inviteUrl: "",
   now: new Date(),
+  trails: [],
+  trailRepos: [],
+  trailRepo: "",
+  trailHarness: "",
+  shareRules: [],
+  shareRepos: [],
+  sharePreview: null,
+  shareWarning: "",
 };
 
 // One window of rows. Small enough that the first screen arrives quickly, large
@@ -296,6 +304,7 @@ function showConsole() {
   const rail = h("aside", { class: "left-rail", "aria-label": "Sections" },
     sealImg(state.session?.org?.name || state.session?.name || "engram", 40, "session mark"),
     h("h1", { class: "rail-title" }, state.session?.org?.name || "engram"),
+    orgSwitcher(),
     labelBlock("collection"),
     labelBlock("search"),
     labelBlock("review"),
@@ -422,6 +431,8 @@ async function switchView(next) {
   if (next === "graph" && !state.graph) await loadGraph();
   if (next === "review") await loadReview();
   if (next === "org") await loadOrg();
+  if (next === "trails") await loadTrails();
+  if (next === "sharing") await loadSharing();
 }
 
 async function loadGraph() {
@@ -439,7 +450,7 @@ async function loadGraph() {
 function renderChrome() {
   if (!refs.viewToggle) return;
   refs.viewToggle.replaceChildren(
-    ...[["collection", "collection"], ["graph", "graph"], ["review", "review"], ["org", "org"]].map(([id, label]) => h("button", {
+    ...viewTabs().map(([id, label]) => h("button", {
       type: "button",
       class: `chip${state.view === id ? " is-on" : ""}`,
       "aria-pressed": state.view === id ? "true" : "false",
@@ -581,6 +592,14 @@ function renderList() {
   }
   if (state.view === "org") {
     refs.list.append(renderOrgCard());
+    return;
+  }
+  if (state.view === "trails") {
+    refs.list.append(renderTrailsCard());
+    return;
+  }
+  if (state.view === "sharing") {
+    refs.list.append(renderSharingCard());
     return;
   }
   if (state.loading) {
@@ -1013,6 +1032,18 @@ function renderOrgCard() {
       policySwitch("agentsMayWrite", "Agents may append", policies.agentsMayWrite !== false),
       policySwitch("membersOnlyDelete", "Only a member may delete or restore", policies.membersOnlyDelete !== false),
       policySwitch("jevMayPropose", "Jev may propose links, tags, and conflicts", policies.jevMayPropose !== false),
+      isPersonal() ? "" : policySwitch("acceptShares", "Accept shared slices from members", policies.acceptShares !== false),
+      isPersonal() ? "" : h("label", { class: "field-label" },
+        h("span", {}, "highest share level this team accepts"),
+        h("select", {
+          onchange: event => savePolicy({ maxShareLevel: event.currentTarget.value }),
+          disabled: !owner,
+        },
+          option("digest", "digest only", policies.maxShareLevel === "digest" || !policies.maxShareLevel),
+          option("digest_transcript", "digest and transcript", policies.maxShareLevel === "digest_transcript"),
+          option("transcript", "transcript", policies.maxShareLevel === "transcript"),
+        ),
+      ),
       h("label", { class: "field-label" },
         h("span", {}, "review approval"),
         h("select", {
@@ -1024,7 +1055,10 @@ function renderOrgCard() {
         ),
       ),
     ),
-    h("div", { class: "org-section" },
+    isPersonal() ? h("div", { class: "org-section" },
+      h("p", { class: "review-kind" }, "never capture"),
+      h("p", { class: "review-meta" }, "Repos and paths you do not want uploaded live in ~/.config/engram/capture.json on this machine. The hook reads that file before it sends anything."),
+    ) : h("div", { class: "org-section" },
       h("p", { class: "review-kind" }, "people"),
       ...(state.members || []).map(member => h("p", { class: "review-meta" }, `${member.email} · ${member.role}`)),
       owner ? inviteRow() : "",
@@ -1121,6 +1155,261 @@ async function dropToken(name) {
   } catch (error) {
     handleError(error);
   }
+}
+
+function isPersonal() {
+  return state.session?.org?.kind === "personal";
+}
+
+function viewTabs() {
+  const tabs = [["collection", "collection"], ["graph", "graph"], ["review", "review"], ["trails", "trails"]];
+  if (isPersonal()) tabs.push(["sharing", "sharing"]);
+  tabs.push(["org", "org"]);
+  return tabs;
+}
+
+function orgSwitcher() {
+  const orgs = state.session?.orgs || [];
+  if (orgs.length < 2) return "";
+  return h("label", { class: "field-label org-switch" },
+    h("span", {}, "brain"),
+    h("select", {
+      "aria-label": "Switch brain",
+      onchange: event => switchOrg(Number(event.currentTarget.value)),
+    }, ...orgs.map(item => option(String(item.id), item.kind === "personal" ? `${item.name} (personal)` : item.name, item.id === state.session?.org?.id))),
+  );
+}
+
+async function switchOrg(orgId) {
+  if (!orgId || orgId === state.session?.org?.id) return;
+  try {
+    state.session = await api.switchOrg(orgId);
+    state.view = "collection";
+    showConsole();
+    await loadCollection();
+  } catch (error) {
+    handleError(error);
+  }
+}
+
+async function loadTrails() {
+  try {
+    const data = await api.trails({
+      repo: state.trailRepo || undefined,
+      harness: state.trailHarness || undefined,
+      limit: 40,
+    });
+    state.trails = data.trails ?? [];
+    state.trailRepos = data.repos ?? [];
+  } catch (error) {
+    if (error instanceof AuthError) return handleError(error);
+    state.message = "could not load trails";
+  }
+  renderList();
+}
+
+async function loadSharing() {
+  try {
+    const data = await api.shareRules();
+    state.shareRules = data.rules ?? [];
+    state.shareRepos = data.repos ?? [];
+  } catch (error) {
+    if (error instanceof AuthError) return handleError(error);
+    state.message = "could not load sharing";
+  }
+  renderList();
+}
+
+function renderTrailsCard() {
+  const card = h("section", { class: "card org-card" },
+    h("div", { class: "card-bar" },
+      h("span", {}, "trails"),
+      h("span", { class: "card-bar-count" }, `${state.trails.length} conversations`),
+    ),
+    h("div", { class: "org-inline" },
+      h("select", {
+        "aria-label": "Filter by repo",
+        onchange: event => { state.trailRepo = event.currentTarget.value; loadTrails(); },
+      }, option("", "all repos", !state.trailRepo), ...state.trailRepos.map(repo => option(repo, repo, repo === state.trailRepo))),
+      h("select", {
+        "aria-label": "Filter by harness",
+        onchange: event => { state.trailHarness = event.currentTarget.value; loadTrails(); },
+      },
+        option("", "all harnesses", !state.trailHarness),
+        option("claude", "claude", state.trailHarness === "claude"),
+        option("cursor", "cursor", state.trailHarness === "cursor"),
+        option("codex", "codex", state.trailHarness === "codex"),
+      ),
+    ),
+  );
+  if (!state.trails.length) {
+    card.append(h("p", { class: "graph-empty" }, isPersonal()
+      ? "No conversations yet. Install capture hooks from the org page, then keep working."
+      : "Nothing has been shared into this team yet."));
+    return card;
+  }
+  state.trails.forEach(trail => card.append(renderTrailRow(trail)));
+  return card;
+}
+
+function renderTrailRow(trail) {
+  const teams = (state.session?.orgs || []).filter(item => item.kind === "team");
+  return h("div", { class: "review-row" },
+    h("div", { class: "review-copy" },
+      h("p", { class: "review-kind" }, `${trail.harness} · ${trail.repo || "local"}`),
+      h("p", { class: "review-meta" }, [trail.authorEmail, trail.endedAt || trail.startedAt].filter(Boolean).join(" · ")),
+      h("p", { class: "review-body" }, String(trail.digest || "").slice(0, 280)),
+    ),
+    isPersonal() && teams.length ? h("div", { class: "review-actions" },
+      h("button", { type: "button", class: "text-button", onclick: () => shareThisTrail(trail, teams[0].id) }, "share"),
+      h("button", { type: "button", class: "text-button", onclick: () => unshareThisTrail(trail, teams[0].id) }, "unshare"),
+    ) : "",
+  );
+}
+
+async function shareThisTrail(trail, targetOrgId) {
+  try {
+    await api.shareTrail(trail.id, { targetOrgId, level: "digest" });
+    state.message = "shared this conversation";
+    state.shareWarning = "Teammates' agents may already have read it once they recall.";
+    await loadSharing();
+  } catch (error) {
+    handleError(error);
+  }
+}
+
+async function unshareThisTrail(trail, targetOrgId) {
+  try {
+    const result = await api.unshareTrail(trail.id, { targetOrgId });
+    state.message = "unshared this conversation";
+    state.shareWarning = result.warning || "";
+    renderList();
+  } catch (error) {
+    handleError(error);
+  }
+}
+
+function renderSharingCard() {
+  const teams = (state.session?.orgs || []).filter(item => item.kind === "team");
+  const card = h("section", { class: "card org-card" },
+    h("div", { class: "card-bar" },
+      h("span", {}, "sharing"),
+      h("span", { class: "card-bar-count" }, `${state.shareRules.length} rules`),
+    ),
+  );
+  if (state.shareWarning) {
+    card.append(h("p", { class: "review-meta" }, state.shareWarning));
+  }
+  card.append(shareRuleForm(teams));
+  if (!state.shareRules.length) {
+    card.append(h("p", { class: "graph-empty" }, "No rules yet. A rule copies matching conversations from this personal brain into a team."));
+    return card;
+  }
+  state.shareRules.forEach(rule => card.append(renderShareRuleRow(rule, teams)));
+  return card;
+}
+
+function shareRuleForm(teams) {
+  const repo = h("select", { "aria-label": "Repo to share" },
+    option("", "all repos", true),
+    ...state.shareRepos.map(item => option(item, item, false)),
+  );
+  const level = h("select", { "aria-label": "Share level" },
+    option("digest", "digest", true),
+    option("digest_transcript", "digest and transcript", false),
+    option("transcript", "transcript", false),
+  );
+  const target = h("select", { "aria-label": "Team" },
+    ...teams.map(item => option(String(item.id), item.name, false)),
+  );
+  const preview = h("p", { class: "review-meta" }, state.sharePreview
+    ? `${state.sharePreview.trails} conversations and ${state.sharePreview.entries} notes would copy`
+    : "");
+  return h("div", { class: "org-section" },
+    h("p", { class: "review-kind" }, "new rule"),
+    h("div", { class: "org-inline" }, repo, level, target),
+    h("div", { class: "org-inline" },
+      h("button", {
+        type: "button",
+        class: "text-button",
+        onclick: async () => {
+          if (!target.value) return;
+          try {
+            state.sharePreview = await api.previewShare({
+              match: { repos: repo.value ? [repo.value] : [] },
+            });
+            renderList();
+          } catch (error) {
+            handleError(error);
+          }
+        },
+      }, "preview"),
+      h("button", {
+        type: "button",
+        class: "text-button",
+        onclick: async () => {
+          if (!target.value) return;
+          try {
+            await api.createShareRule({
+              targetOrgId: Number(target.value),
+              level: level.value,
+              match: { repos: repo.value ? [repo.value] : [] },
+            });
+            state.sharePreview = null;
+            await loadSharing();
+          } catch (error) {
+            handleError(error);
+          }
+        },
+      }, "share matching"),
+    ),
+    preview,
+  );
+}
+
+function renderShareRuleRow(rule, teams) {
+  const team = teams.find(item => item.id === rule.targetOrg);
+  const match = rule.match || {};
+  const label = [
+    (match.repos || []).join(", ") || "all repos",
+    rule.level,
+    team?.name || `org ${rule.targetOrg}`,
+    rule.pausedAt ? "paused" : "live",
+  ].join(" · ");
+  return h("div", { class: "review-row" },
+    h("div", { class: "review-copy" },
+      h("p", {}, label),
+      h("p", { class: "review-meta" }, "Unsharing removes the copies. Agents that already recalled them may still remember."),
+    ),
+    h("div", { class: "review-actions" },
+      h("button", {
+        type: "button",
+        class: "text-button",
+        onclick: async () => {
+          try {
+            if (rule.pausedAt) await api.resumeShareRule(rule.id);
+            else await api.pauseShareRule(rule.id);
+            await loadSharing();
+          } catch (error) {
+            handleError(error);
+          }
+        },
+      }, rule.pausedAt ? "resume" : "pause"),
+      h("button", {
+        type: "button",
+        class: "text-button",
+        onclick: async () => {
+          try {
+            const result = await api.deleteShareRule(rule.id);
+            state.shareWarning = result.warning || "";
+            await loadSharing();
+          } catch (error) {
+            handleError(error);
+          }
+        },
+      }, "unshare"),
+    ),
+  );
 }
 
 async function logout() {

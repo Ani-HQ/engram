@@ -1,11 +1,12 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type postgres from "postgres";
-import type { OrgPolicies, TokenRecord } from "./policies";
+import type { OrgKind, OrgPolicies, TokenRecord } from "./policies";
 
 export interface ContextOrg {
   id: number;
   name: string;
   slug: string;
+  kind: OrgKind;
   brainDb: string;
   homeDir: string;
   dataDb: string;

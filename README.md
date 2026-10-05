@@ -1,12 +1,12 @@
 # engram
 
-One memory. Every agent.
+One memory. Every agent. A personal brain first, then the slices you choose to share.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-black)](LICENSE)
 [![MCP](https://img.shields.io/badge/protocol-MCP-black)](https://modelcontextprotocol.io)
 [![Engine](https://img.shields.io/badge/engine-gbrain-black)](https://github.com/garrytan/gbrain)
 
-engram is shared memory for an organization. Claude, Cursor, ChatGPT, Codex, Grok, and any other MCP client read and write that org's brain. A second org gets its own database. Inside an org, a token names who called.
+engram is shared memory for an organization. Claude, Cursor, ChatGPT, Codex, Grok, and any other MCP client read and write that org's brain. Each person also gets a personal brain. Conversations and notes land there first. Share rules copy matching slices into the team. A second org gets its own database. Inside an org, a token names who called.
 
 Self-host it, or [ask us to run it](https://github.com/Ani-HQ/engram/issues/new).
 
@@ -101,13 +101,15 @@ A full GCP install (Cloud SQL, Cloud Run, the nightly dream job) is `deploy/setu
 
 ## What this is not
 
-One brain, one team. Tokens identify callers. They do not isolate them. Do not deploy a single instance for people who must not read each other's memory.
+One team brain is visible to everyone in that team. Private notes and conversations belong in a personal brain, then in a share rule. Tokens identify callers. They do not isolate people inside one team. Do not put two teams in one org.
 
 Jev proposes. It does not merge, delete, or rewrite source pages. That stays a human action in the console.
 
 ## Docs
 
 - [Wiring a client](docs/WIRING.md)
+- [Organizations](docs/ORGS.md)
+- [Sharing a slice](docs/SHARING.md)
 - [Reflex, dream cycle, review](docs/REFLEX.md)
 - [Handoff notes](docs/HANDOFF.md)
 

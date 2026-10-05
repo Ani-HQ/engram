@@ -7,12 +7,19 @@
     "id": 1,
     "name": "Fixture Org",
     "slug": "fixture",
+    "kind": "team",
     "policies": {
       "agentsMayWrite": true,
       "membersOnlyDelete": true,
       "jevMayPropose": true,
-      "reviewApprovers": "members"
+      "reviewApprovers": "members",
+      "acceptShares": true,
+      "maxShareLevel": "digest"
     }
   },
+  "orgs": [
+    { "id": 2, "name": "ada's memory", "slug": "me-ada", "kind": "personal", "role": "owner" },
+    { "id": 1, "name": "Fixture Org", "slug": "fixture", "kind": "team", "role": "owner" }
+  ],
   "onboarding": { "step": "invite", "hasToken": true, "hasPage": true }
 }

@@ -189,4 +189,67 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
+  orgs() {
+    return request("/api/orgs");
+  },
+  switchOrg(orgId) {
+    return request("/api/session/switch", {
+      method: "POST",
+      body: JSON.stringify({ orgId }),
+    });
+  },
+  trails(params = {}) {
+    return request(query("/api/trails", {
+      repo: params.repo,
+      harness: params.harness,
+      author: params.author,
+      limit: params.limit ?? 40,
+      offset: params.offset ?? 0,
+    }));
+  },
+  trail(id) {
+    return request(`/api/trails/${id}`);
+  },
+  shareRules() {
+    return request("/api/share/rules");
+  },
+  createShareRule(payload) {
+    return request("/api/share/rules", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  previewShare(payload) {
+    return request("/api/share/preview", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  updateShareRule(id, payload) {
+    return request(`/api/share/rules/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+  pauseShareRule(id) {
+    return request(`/api/share/rules/${id}/pause`, { method: "POST" });
+  },
+  resumeShareRule(id) {
+    return request(`/api/share/rules/${id}/resume`, { method: "POST" });
+  },
+  deleteShareRule(id) {
+    return request(`/api/share/rules/${id}`, { method: "DELETE" });
+  },
+  shareTrail(id, payload) {
+    return request(`/api/trails/${id}/share`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  unshareTrail(id, payload = {}) {
+    return request(`/api/trails/${id}/unshare`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
 };

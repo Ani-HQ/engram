@@ -15,6 +15,9 @@ export interface MemoryEntry {
   rawText: string;
   topicHint: string | null;
   status: EntryStatus;
+  repo: string | null;
+  harness: string | null;
+  sessionId: string | null;
 }
 
 export interface ParsedEntry {
@@ -72,6 +75,9 @@ export async function upsertMemoryEntry(input: {
   tokenName?: string | null;
   topicHint?: string | null;
   archiveSlug?: string | null;
+  repo?: string | null;
+  harness?: string | null;
+  sessionId?: string | null;
 }): Promise<MemoryEntry | null> {
   const parsed = parseRememberBullet(input.rawText);
   const recordedAt = input.recordedAt ?? parsed.recordedAt;
@@ -82,16 +88,21 @@ export async function upsertMemoryEntry(input: {
   try {
     const rows = await dataSql()`
       INSERT INTO memory_entries (
-        id, fingerprint, slug, archive_slug, recorded_at, token_name, raw_text, topic_hint, status
+        id, fingerprint, slug, archive_slug, recorded_at, token_name, raw_text, topic_hint, status,
+        repo, harness, session_id
       ) VALUES (
         ${id}, ${fingerprint}, ${liveSlug}, ${archiveSlug},
-        ${recordedAt}, ${input.tokenName ?? null}, ${parsed.text}, ${input.topicHint ?? null}, 'active'
+        ${recordedAt}, ${input.tokenName ?? null}, ${parsed.text}, ${input.topicHint ?? null}, 'active',
+        ${input.repo ?? null}, ${input.harness ?? null}, ${input.sessionId ?? null}
       )
       ON CONFLICT (fingerprint) DO UPDATE SET
         slug = EXCLUDED.slug,
         archive_slug = COALESCE(EXCLUDED.archive_slug, memory_entries.archive_slug),
         token_name = COALESCE(EXCLUDED.token_name, memory_entries.token_name),
         topic_hint = COALESCE(EXCLUDED.topic_hint, memory_entries.topic_hint),
+        repo = COALESCE(EXCLUDED.repo, memory_entries.repo),
+        harness = COALESCE(EXCLUDED.harness, memory_entries.harness),
+        session_id = COALESCE(EXCLUDED.session_id, memory_entries.session_id),
         updated_at = now()
       RETURNING *`;
     return rows[0] ? rowToEntry(rows[0]) : null;
@@ -206,5 +217,8 @@ function rowToEntry(row: any): MemoryEntry {
     rawText: String(row.raw_text ?? ""),
     topicHint: row.topic_hint ? String(row.topic_hint) : null,
     status: (ENTRY_STATUSES.includes(row.status) ? row.status : "active") as EntryStatus,
+    repo: row.repo ? String(row.repo) : null,
+    harness: row.harness ? String(row.harness) : null,
+    sessionId: row.session_id ? String(row.session_id) : null,
   };
 }

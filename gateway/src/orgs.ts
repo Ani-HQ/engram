@@ -8,6 +8,7 @@ import {
   DEFAULT_POLICIES,
   parsePolicies,
   type ActorRole,
+  type OrgKind,
   type OrgPolicies,
   type TokenRecord,
 } from "./policies";
@@ -20,6 +21,7 @@ export const ANI_HQ_ORG: Org = {
   id: 1,
   name: "Ani HQ",
   slug: "ani-hq",
+  kind: "team",
   brainDb: config.brainDb,
   homeDir: "brain",
   dataDb: "engram_gateway",
@@ -39,6 +41,7 @@ function rowToOrg(row: any): Org {
     id: Number(row.id),
     name: String(row.name),
     slug: String(row.slug),
+    kind: row.kind === "personal" ? "personal" : "team",
     brainDb: String(row.brain_db),
     homeDir: String(row.home_dir),
     dataDb: String(row.data_db),
@@ -97,16 +100,21 @@ async function uniqueSlug(name: string): Promise<string> {
   return `${base}-${randomBytes(3).toString("hex")}`;
 }
 
-export async function createOrg(name: string, ownerEmail: string): Promise<Org> {
+export async function createOrg(
+  name: string,
+  ownerEmail: string,
+  kind: OrgKind = "team",
+): Promise<Org> {
   const trimmed = name.trim();
   if (!trimmed) throw new Error("org name required");
   const email = normalizeEmail(ownerEmail);
   if (!email) throw new Error("owner email required");
+  if (kind !== "team" && kind !== "personal") throw new Error("invalid org kind");
 
-  const slug = await uniqueSlug(trimmed);
+  const slug = await uniqueSlug(kind === "personal" ? personalSlugBase(email) : trimmed);
   const inserted = await sql`
-    INSERT INTO orgs (name, slug, brain_db, home_dir, data_db, policies)
-    VALUES (${trimmed}, ${slug}, 'pending', 'pending', 'pending', ${sql.json(DEFAULT_POLICIES)})
+    INSERT INTO orgs (name, slug, kind, brain_db, home_dir, data_db, policies)
+    VALUES (${trimmed}, ${slug}, ${kind}, 'pending', 'pending', 'pending', ${sql.json(DEFAULT_POLICIES)})
     RETURNING *`;
   const id = Number(inserted[0].id);
   const brainDb = `brain_org_${id}`;
@@ -120,7 +128,53 @@ export async function createOrg(name: string, ownerEmail: string): Promise<Org> 
     RETURNING *`;
   const org = rowToOrg(rows[0]);
   await addMember(org.id, email, "owner");
+  if (kind === "team") {
+    await ensurePersonalOrg(email).catch(e => {
+      console.error("[org] personal org failed:", String(e).slice(0, 160));
+    });
+  }
   return org;
+}
+
+export function personalSlugBase(email: string): string {
+  const local = email.split("@")[0] || "me";
+  return `me-${slugFromName(local)}`;
+}
+
+export async function personalOrgForEmail(email: string): Promise<Org | null> {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return null;
+  const rows = await sql`
+    SELECT o.* FROM orgs o
+    JOIN org_members m ON m.org_id = o.id
+    WHERE m.email = ${normalized} AND o.kind = 'personal'
+    ORDER BY o.id
+    LIMIT 1`;
+  return rows[0] ? rowToOrg(rows[0]) : null;
+}
+
+export async function ensurePersonalOrg(email: string): Promise<Org> {
+  const normalized = normalizeEmail(email);
+  if (!normalized) throw new Error("owner email required");
+  const existing = await personalOrgForEmail(normalized);
+  if (existing) return existing;
+  const local = normalized.split("@")[0] || "me";
+  return createOrg(`${local}'s memory`, normalized, "personal");
+}
+
+export async function listMemberships(email: string): Promise<Array<Org & { role: ActorRole }>> {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return [];
+  const rows = await sql`
+    SELECT o.*, m.role AS member_role
+    FROM org_members m
+    JOIN orgs o ON o.id = m.org_id
+    WHERE m.email = ${normalized}
+    ORDER BY CASE o.kind WHEN 'personal' THEN 0 ELSE 1 END, o.id`;
+  return rows.map(row => ({
+    ...rowToOrg(row),
+    role: row.member_role === "owner" ? "owner" : "member",
+  }));
 }
 
 export async function updatePolicies(orgId: number, policies: OrgPolicies): Promise<Org | null> {
@@ -150,9 +204,13 @@ export async function findMemberByEmail(email: string): Promise<OrgMember | null
   const normalized = normalizeEmail(email);
   if (!normalized) return null;
   const rows = await sql`
-    SELECT * FROM org_members
-    WHERE email = ${normalized}
-    ORDER BY CASE role WHEN 'owner' THEN 0 ELSE 1 END, created_at DESC
+    SELECT m.* FROM org_members m
+    JOIN orgs o ON o.id = m.org_id
+    WHERE m.email = ${normalized}
+    ORDER BY
+      CASE o.kind WHEN 'team' THEN 0 ELSE 1 END,
+      CASE m.role WHEN 'owner' THEN 0 ELSE 1 END,
+      m.created_at DESC
     LIMIT 1`;
   return rows[0] ? rowToMember(rows[0]) : null;
 }
@@ -180,6 +238,8 @@ export async function createInvite(
   const normalized = normalizeEmail(email);
   if (!normalized) throw new Error("email required");
   if (role === "agent") throw new Error("invite a person, not an agent");
+  const org = await getOrg(orgId);
+  if (org?.kind === "personal") throw new Error("a personal brain has one owner");
   const raw = `inv_${randomBytes(24).toString("base64url")}`;
   await sql`
     INSERT INTO invites (org_id, email, role, sha256_hash, created_by, expires_at)
@@ -206,6 +266,9 @@ export async function acceptInvite(raw: string): Promise<{ org: Org; member: Org
   if (!org) return null;
   const member = await addMember(org.id, String(invite.email), invite.role === "owner" ? "owner" : "member");
   await sql`UPDATE invites SET accepted_at = now() WHERE id = ${invite.id}`;
+  await ensurePersonalOrg(member.email).catch(e => {
+    console.error("[org] personal org failed:", String(e).slice(0, 160));
+  });
   return { org, member };
 }
 
@@ -255,9 +318,14 @@ export async function orgHasAgentToken(orgId: number): Promise<boolean> {
   }
 }
 
-export function onboardingStep(input: { hasToken: boolean; hasPage: boolean }): "connect" | "remember" | "invite" | "done" {
+export function onboardingStep(input: {
+  hasToken: boolean;
+  hasPage: boolean;
+  kind?: OrgKind;
+}): "connect" | "remember" | "invite" | "done" {
   if (!input.hasToken) return "connect";
   if (!input.hasPage) return "remember";
+  if (input.kind === "personal") return "done";
   return "invite";
 }
 
