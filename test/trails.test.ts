@@ -34,6 +34,18 @@ describe("redaction and caps", () => {
     expect(redacted).toContain("REDACTED");
   });
 
+  test("keeps ordinary http links and still redacts credential-bearing urls", () => {
+    const raw = [
+      "See https://github.com/Ani-HQ/engram/issues/22 and http://localhost:8099/app.",
+      "https://user:pass@db.example.com/engram",
+    ].join("\n");
+    const redacted = redactSecrets(raw);
+    expect(redacted).toContain("https://github.com/Ani-HQ/engram/issues/22");
+    expect(redacted).toContain("http://localhost:8099/app");
+    expect(redacted).not.toContain("user:pass@db.example.com");
+    expect(redacted).toContain("REDACTED_CONNECTION");
+  });
+
   test("caps an oversized transcript at both ends", () => {
     const text = "a".repeat(TRANSCRIPT_CHAR_CAP + 400);
     const capped = capTranscript(text);

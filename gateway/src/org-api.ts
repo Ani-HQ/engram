@@ -28,6 +28,7 @@ import {
 } from "./orgs";
 import {
   canManageOrg,
+  canWrite,
   DEFAULT_POLICIES,
   isHuman,
   normalizeToken,
@@ -405,6 +406,9 @@ async function postTrail(req: Request, token: TokenRecord, org: Org): Promise<Re
   if (org.kind !== "personal") {
     return Response.json({ error: "capture writes to a personal brain" }, { status: 400 });
   }
+  if (!canWrite(token, org.policies)) {
+    return Response.json({ error: "forbidden" }, { status: 403 });
+  }
   const body = await jsonObject(req);
   if (!body) return Response.json({ error: "bad request" }, { status: 400 });
   const parsed = parseTrailIngest(body);
@@ -420,6 +424,9 @@ async function postTrail(req: Request, token: TokenRecord, org: Org): Promise<Re
 
 async function getShareRules(token: TokenRecord, org: Org): Promise<Response> {
   if (org.kind !== "personal") return Response.json({ rules: [] });
+  if (!isHuman(token) || !token.email) {
+    return Response.json({ rules: [], repos: await listRepos() });
+  }
   const rules = await listShareRules(org.id, token.email);
   return Response.json({ rules: rules.map(publicRule), repos: await listRepos() });
 }
@@ -516,11 +523,24 @@ async function postUnshareTrail(req: Request, url: URL, token: TokenRecord, org:
   });
 }
 
+export function ownsShareRule(
+  token: TokenRecord,
+  orgId: number,
+  rule: { sourceOrg: number; ownerEmail: string } | null,
+): boolean {
+  return Boolean(
+    rule
+    && rule.sourceOrg === orgId
+    && isHuman(token)
+    && token.email
+    && rule.ownerEmail === token.email,
+  );
+}
+
 async function ownedRule(url: URL, token: TokenRecord, org: Org) {
   const match = url.pathname.match(/^\/api\/share\/rules\/(\d+)/);
   const id = Number(match?.[1]);
   if (!Number.isFinite(id)) return null;
   const rule = await getShareRule(id);
-  if (!rule || rule.sourceOrg !== org.id || (token.email && rule.ownerEmail !== token.email)) return null;
-  return rule;
+  return ownsShareRule(token, org.id, rule) ? rule : null;
 }

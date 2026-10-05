@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 process.env.ENGRAM_DB_URL_TEMPLATE ??= "postgresql://postgres:postgres@localhost:1/__DB__";
 
 const { capShareLevel, parseShareLevel } = await import("../gateway/src/policies");
+const { slugForRemember } = await import("../gateway/src/proxy");
 const {
   itemFromEntry,
   itemFromTrail,
@@ -63,6 +64,15 @@ describe("share rule matching", () => {
     expect(ruleMatches(match, trail)).toBe(true);
     expect(ruleMatches(match, { ...trail, id: "t2" })).toBe(false);
     expect(ruleMatches(match, entry)).toBe(false);
+  });
+});
+
+describe("shared entry pages", () => {
+  test("a shared entry lands on its own page so unshare cannot delete a team topic", () => {
+    expect(slugForRemember("Ship slices from a personal brain.", `shared/${entry.id}`))
+      .toBe(`shared/${entry.id}`);
+    expect(slugForRemember("Ship slices from a personal brain.", "engram"))
+      .toBe("projects/engram");
   });
 });
 

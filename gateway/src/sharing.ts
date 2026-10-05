@@ -288,10 +288,32 @@ async function collectMatches(source: Org, match: ShareMatch): Promise<{ trails:
   const ctx = currentContext();
   const token = ctx?.token ?? { name: "share", orgId: source.id, role: "owner" as const, canWrite: true, kind: "session" as const, email: null, scopes: [] };
   return withOrg(source, token, async () => {
-    const trails = (await listTrails({ limit: 200 })).filter(trail => ruleMatches(match, itemFromTrail(trail)));
-    const entries = (await listActiveEntries(200)).filter(entry => ruleMatches(match, itemFromEntry(entry)));
+    const trails = (await listAllTrails()).filter(trail => ruleMatches(match, itemFromTrail(trail)));
+    const entries = (await listAllActiveEntries()).filter(entry => ruleMatches(match, itemFromEntry(entry)));
     return { trails, entries };
   });
+}
+
+async function listAllTrails(): Promise<Trail[]> {
+  const pageSize = 100;
+  const all: Trail[] = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const page = await listTrails({ limit: pageSize, offset });
+    all.push(...page);
+    if (page.length < pageSize) return all;
+  }
+}
+
+async function listAllActiveEntries(): Promise<MemoryEntry[]> {
+  const pageSize = 200;
+  const all: MemoryEntry[] = [];
+  let afterId: string | undefined;
+  for (;;) {
+    const page = await listActiveEntries(pageSize, afterId);
+    all.push(...page);
+    if (page.length < pageSize) return all;
+    afterId = page[page.length - 1]!.id;
+  }
 }
 
 async function mirror(
@@ -362,10 +384,10 @@ async function writeSharedEntry(entry: MemoryEntry, token: TokenRecord): Promise
   const text = `${entry.rawText} — shared from ${token.email || token.name}`;
   const result = await callTool(token, "remember", {
     text,
-    topic: entry.topicHint || entry.slug,
+    topic: `shared/${entry.id}`,
   });
   const parsed = parseToolJson(result);
-  return typeof parsed?.slug === "string" ? parsed.slug : entry.slug;
+  return typeof parsed?.slug === "string" ? parsed.slug : `shared/${entry.id}`;
 }
 
 async function recordCopy(

@@ -4,6 +4,7 @@ import { describe, expect, test } from "bun:test";
 process.env.ENGRAM_DB_URL_TEMPLATE ??= "postgresql://postgres:postgres@localhost:1/__DB__";
 
 const { onboardingStep, slugFromName } = await import("../gateway/src/orgs");
+const { ownsShareRule } = await import("../gateway/src/org-api");
 const {
   canApproveReview,
   canDelete,
@@ -48,6 +49,19 @@ describe("org policies", () => {
     expect(canApproveReview(owner, parsePolicies({ reviewApprovers: "owners" }))).toBe(true);
     expect(canUseTool(reader, "put_page", policies)).toBe(false);
     expect(canUseTool(reader, "search", policies)).toBe(true);
+  });
+
+  test("share rules mutate only when a human email matches the owner", () => {
+    const rule = { sourceOrg: 7, ownerEmail: "ada@example.com" };
+    const owner = normalizeToken({ name: "ada", role: "owner", email: "ada@example.com" });
+    const other = normalizeToken({ name: "grace", role: "member", email: "grace@example.com" });
+    const agent = normalizeToken({ name: "cursor", role: "agent", canWrite: true });
+    const agentCookie = normalizeToken({ name: "cursor", role: "agent", kind: "session", canWrite: true });
+    expect(ownsShareRule(owner, 7, rule)).toBe(true);
+    expect(ownsShareRule(other, 7, rule)).toBe(false);
+    expect(ownsShareRule(agent, 7, rule)).toBe(false);
+    expect(ownsShareRule(agentCookie, 7, rule)).toBe(false);
+    expect(ownsShareRule(owner, 8, rule)).toBe(false);
   });
 
   test("share level is capped by the team, never raised", () => {
