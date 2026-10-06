@@ -25,6 +25,8 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
       REFLEX_MODEL: ${REFLEX_MODEL:-jev-latest}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      ENGRAM_MAIL_FROM: ${ENGRAM_MAIL_FROM:-engram@updates.ani.computer}
     ports:
       - "8080:8080"
     volumes:

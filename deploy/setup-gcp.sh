@@ -74,6 +74,7 @@ log "secret engram-db-url-template ready and readable by $SA"
 # The gateway treats a blank/unset key as disabled and fails open.
 ensure_secret typesafe-api-key "${TYPESAFE_API_KEY:-unset}"
 ensure_secret voyage-api-key "${VOYAGE_API_KEY:-unset}"
-log "secrets typesafe-api-key and voyage-api-key ready"
+ensure_secret resend-api-key "${RESEND_API_KEY:-unset}"
+log "secrets typesafe-api-key, voyage-api-key, and resend-api-key ready"
 
 log "done. next: gcloud builds submit --config cloudbuild.yaml --project $PROJECT && deploy/setup-scheduler.sh"

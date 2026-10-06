@@ -1,5 +1,11 @@
 # Scoping OAuth for the chat surfaces
 
+The resource-server side is in the gateway. `/.well-known/oauth-protected-resource` (and the `/mcp` suffix) is served always. A 401 carries `WWW-Authenticate`. A bearer value that is a JWT is checked against `ENGRAM_OAUTH_ISSUER`, `ENGRAM_OAUTH_AUDIENCE` (defaulting to `https://<host>/mcp`), and that issuer's JWKS. `eng_` tokens keep working. A JWT is accepted only when its email matches an org member.
+
+Set the issuer when an authorization server exists. Until then the chat connectors still cannot connect, and the console says so.
+
+## Spec
+
 Claude, ChatGPT and Grok cannot connect to engram today. Their connector UIs accept
 OAuth only — there is no field for a bearer token or a custom header. They are also the
 surfaces where engram matters most, because they have no filesystem: memory is not a

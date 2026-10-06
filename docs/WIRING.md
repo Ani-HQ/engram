@@ -1,7 +1,10 @@
 # Wiring a Surface to engram
 
-Every surface uses the same brain. Mint one token per person, agent, or harness so
-the audit log can attribute writes and reads:
+Every surface in one organization uses that organization's brain. Mint one token
+per agent so the audit log can attribute writes and reads. A token from another
+org cannot see these pages. Capture hooks and daily `remember` calls should use a
+token from your personal brain so share rules can copy a slice into the team.
+See [SHARING.md](SHARING.md).
 
 ```bash
 ENGRAM_DB_URL_TEMPLATE='postgresql://...__DB__...' bun cli/engram-admin.ts \
@@ -101,6 +104,18 @@ further arguments and will swallow your prompt.
 
 This is the most common reason a correctly-wired headless agent appears to ignore
 engram: it tried, and was denied.
+
+## Capture hooks
+
+After the personal token exists:
+
+```bash
+ENGRAM_HOST='https://<engram-url>' \
+ENGRAM_TOKEN='<personal-token>' \
+npx @ani-hq/engram-mcp hooks install <claude|cursor|codex>
+```
+
+That writes the harness hook and `~/.config/engram/capture.json`. `capture --sweep` uploads anything the hook missed.
 
 ## Smoke Test Any Wiring
 

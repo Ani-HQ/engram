@@ -4,6 +4,7 @@ import { renderMarkdown } from "./markdown.js";
 import { inkGlyph, relativeDate, renderLinks, renderTimeline, pulse, sealImg } from "./mechanics.js";
 import { renderGraph } from "./graph.js";
 import { agentMark } from "./agents.js";
+import { copyText, hashAction, needsOnboarding, wiringBlocks } from "./onboarding.js";
 const app = document.getElementById("app");
 const refs = {};
 const state = {
@@ -31,7 +32,18 @@ const state = {
   reviewItems: [],
   reviewLoading: false,
   reviewError: "",
+  tokens: [],
+  minted: null,
+  inviteUrl: "",
   now: new Date(),
+  trails: [],
+  trailRepos: [],
+  trailRepo: "",
+  trailHarness: "",
+  shareRules: [],
+  shareRepos: [],
+  sharePreview: null,
+  shareWarning: "",
 };
 
 // One window of rows. Small enough that the first screen arrives quickly, large
@@ -43,14 +55,30 @@ document.addEventListener("keydown", onKeydown);
 
 async function bootstrap() {
   showLoading("Reading the gate");
+  const action = hashAction();
   try {
+    if (action.kind === "join" && action.token) {
+      state.session = await api.acceptInvite(action.token);
+      history.replaceState(null, "", "/app");
+      return enterSession();
+    }
     state.session = await api.me();
-    showConsole();
-    await loadCollection();
+    return enterSession();
   } catch (error) {
-    if (error instanceof AuthError) showLogin();
-    else showLogin("The server did not answer.");
+    if (action.kind === "start") return showCreateOrg();
+    if (action.kind === "enter") return showLogin();
+    if (error instanceof AuthError) showGate();
+    else showGate("The server did not answer.");
   }
+}
+
+async function enterSession() {
+  if (needsOnboarding(state.session)) {
+    showOnboarding();
+    return;
+  }
+  showConsole();
+  await loadCollection();
 }
 
 // Boot splash: a quiet pulse while we ask the gateway who this browser is.
@@ -63,6 +91,56 @@ function showLoading(label) {
   );
 }
 
+function showGate(message = "") {
+  app.className = "login-screen";
+  app.replaceChildren(h("main", { class: "login-scroll" },
+    h("div", { class: "login-form" },
+      sealImg("engram", 82, "engram mark"),
+      h("h1", {}, "engram"),
+      h("p", { class: "login-blurb" }, "One org. One brain. People and agents inside it share memory on purpose."),
+      h("button", { type: "button", class: "login-submit", onclick: () => showCreateOrg() }, "start an org"),
+      h("button", { type: "button", class: "text-button", onclick: () => showLogin() }, "I already have a token"),
+      h("p", { class: "login-hint" }, "Claude, ChatGPT, and Grok connectors need OAuth. Cursor and Claude Code work now."),
+      h("p", { class: "login-error", role: "status" }, message),
+    ),
+  ));
+}
+
+function showCreateOrg(message = "") {
+  app.className = "login-screen";
+  const name = h("input", { type: "text", name: "org", autocomplete: "organization", "aria-label": "Organization name", required: true });
+  const email = h("input", { type: "email", name: "email", autocomplete: "email", "aria-label": "Your email", required: true });
+  const form = h("form", {
+    class: "login-form",
+    onsubmit: async event => {
+      event.preventDefault();
+      try {
+        const created = await api.createOrg({ name: name.value, email: email.value });
+        if (created?.sent || created?.url) {
+          showCreateOrg(created.url ? `Link: ${created.url}` : "Check your email to confirm the org.");
+          return;
+        }
+        state.session = created;
+        history.replaceState(null, "", "/app");
+        showOnboarding();
+      } catch (error) {
+        showCreateOrg(error?.status === 502 ? "Could not send the email." : "Could not create that org.");
+      }
+    },
+  },
+    sealImg("engram", 82, "engram mark"),
+    h("h1", {}, "Name the org"),
+    h("p", { class: "login-blurb" }, "You become the owner. This brain is only yours."),
+    h("label", { class: "field-label" }, h("span", {}, "organization"), name),
+    h("label", { class: "field-label" }, h("span", {}, "your email"), email),
+    h("button", { type: "submit", class: "login-submit" }, "create"),
+    h("button", { type: "button", class: "text-button", onclick: () => showGate() }, "back"),
+    h("p", { class: "login-error", role: "status" }, message),
+  );
+  app.replaceChildren(h("main", { class: "login-scroll" }, form));
+  name.focus();
+}
+
 function showLogin(message = "") {
   app.className = "login-screen";
   const input = h("input", {
@@ -73,14 +151,14 @@ function showLogin(message = "") {
     "aria-label": "Access token",
     required: true,
   });
+  const email = h("input", { type: "email", name: "email", autocomplete: "email", "aria-label": "Email" });
   const form = h("form", {
     class: "login-form",
     onsubmit: async event => {
       event.preventDefault();
       try {
         state.session = await api.login(input.value);
-        showConsole();
-        await loadCollection();
+        await enterSession();
       } catch (error) {
         showLogin(error instanceof AuthError ? "That token was not recognised." : "The gate did not answer.");
       }
@@ -88,18 +166,116 @@ function showLogin(message = "") {
   },
     sealImg("engram", 82, "engram mark"),
     h("h1", {}, "engram"),
-    // Restraint is the aesthetic, but a screen that does not say what it wants
-    // is not restrained, it is unusable. These three lines are the floor.
-    h("p", { class: "login-blurb" }, "Shared memory for your agents. One brain, every surface."),
-    h("label", { class: "field-label" },
-      h("span", {}, "paste an engram token"),
-      input),
-    h("p", { class: "login-hint" }, "Mint one with: engram-admin token issue --name <agent>"),
+    h("p", { class: "login-blurb" }, "Paste an agent token, or ask for a link to your org."),
+    h("label", { class: "field-label" }, h("span", {}, "paste an engram token"), input),
     h("button", { type: "submit", class: "login-submit" }, "enter"),
+    h("label", { class: "field-label" }, h("span", {}, "or email a magic link"), email),
+    h("button", {
+      type: "button",
+      class: "text-button",
+      onclick: async () => {
+        try {
+          const sent = await api.loginEmail(email.value);
+          showLogin(sent.url ? `Link: ${sent.url}` : "Check your email.");
+        } catch (error) {
+          showLogin(error?.status === 502 ? "Could not send the email." : "No org for that email.");
+        }
+      },
+    }, "send link"),
+    h("button", { type: "button", class: "text-button", onclick: () => showGate() }, "back"),
     h("p", { class: "login-error", role: "status" }, message),
   );
   app.replaceChildren(h("main", { class: "login-scroll" }, form));
   input.focus();
+}
+
+function showOnboarding() {
+  app.className = "login-screen";
+  const step = state.session?.onboarding?.step || "connect";
+  const host = h("div", { class: "login-form onboard" });
+  host.append(
+    sealImg(state.session?.org?.name || "engram", 64, "org mark"),
+    h("h1", {}, state.session?.org?.name || "engram"),
+    h("p", { class: "login-blurb" }, step === "connect"
+      ? "Mint one agent token. Copy the snippet into Cursor or Claude Code."
+      : "Write one memory so you can see the loop close."),
+  );
+  if (step === "connect") host.append(connectPanel());
+  else host.append(rememberPanel());
+  app.replaceChildren(h("main", { class: "login-scroll" }, host));
+}
+
+function connectPanel() {
+  const name = h("input", { type: "text", value: "cursor", "aria-label": "Agent name" });
+  const out = h("div", { class: "wire-block" });
+  return h("div", { class: "onboard-step" },
+    h("label", { class: "field-label" }, h("span", {}, "agent name"), name),
+    h("button", {
+      type: "button",
+      class: "login-submit",
+      onclick: async () => {
+        try {
+          const minted = await api.mintToken({ name: name.value || "cursor", canWrite: true });
+          state.minted = minted;
+          const blocks = wiringBlocks(minted, minted.token);
+          out.replaceChildren(
+            h("p", { class: "login-hint" }, "Token shown once."),
+            copyRow("token", minted.token),
+            copyRow("MCP URL", blocks.mcp),
+            copyRow("Cursor", blocks.cursor),
+            copyRow("Claude Code", blocks.claudeCode),
+            h("p", { class: "login-hint" }, blocks.chat),
+            h("button", {
+              type: "button",
+              class: "login-submit",
+              onclick: async () => {
+                state.session = await api.me();
+                showOnboarding();
+              },
+            }, "I connected it"),
+          );
+        } catch {
+          out.replaceChildren(h("p", { class: "login-error" }, "Could not mint a token."));
+        }
+      },
+    }, "mint token"),
+    out,
+  );
+}
+
+function rememberPanel() {
+  const text = h("textarea", { rows: 4, "aria-label": "First memory" });
+  return h("form", {
+    class: "onboard-step",
+    onsubmit: async event => {
+      event.preventDefault();
+      try {
+        const result = await api.capture({ text: text.value, title: "First memory" });
+        state.session = await api.me();
+        state.message = `captured ${result.slug}`;
+        showConsole();
+        await loadCollection();
+        if (result.slug) openItem({ slug: result.slug, title: result.slug }, null);
+      } catch {
+        showOnboarding();
+      }
+    },
+  },
+    text,
+    h("button", { type: "submit", class: "login-submit" }, "write it"),
+    h("button", { type: "button", class: "text-button", onclick: () => { showConsole(); loadCollection(); } }, "skip to the collection"),
+  );
+}
+
+function copyRow(label, value) {
+  return h("label", { class: "field-label" },
+    h("span", {}, label),
+    h("button", {
+      type: "button",
+      class: "wire-copy",
+      onclick: () => copyText(value),
+    }, value),
+  );
 }
 
 function showConsole() {
@@ -131,14 +307,16 @@ function showConsole() {
   refs.paneHost = h("div", { class: "pane-host" });
 
   const rail = h("aside", { class: "left-rail", "aria-label": "Sections" },
-    sealImg(state.session?.name || "engram", 40, "session mark"),
-    h("h1", { class: "rail-title" }, "engram"),
+    sealImg(state.session?.org?.name || state.session?.name || "engram", 40, "session mark"),
+    h("h1", { class: "rail-title" }, state.session?.org?.name || "engram"),
+    orgSwitcher(),
     labelBlock("collection"),
     labelBlock("search"),
     labelBlock("review"),
-    labelBlock("memory"),
+    labelBlock("org"),
     h("div", { class: "rail-foot" },
-      h("span", {}, state.session?.name || "guest"),
+      h("span", {}, `${state.session?.name || "guest"} · ${state.session?.role || "agent"}`),
+      h("button", { type: "button", class: "text-button", onclick: () => switchView("org") }, "controls"),
       h("button", { type: "button", class: "text-button", onclick: logout }, "leave"),
     ),
   );
@@ -257,6 +435,9 @@ async function switchView(next) {
   renderList();
   if (next === "graph" && !state.graph) await loadGraph();
   if (next === "review") await loadReview();
+  if (next === "org") await loadOrg();
+  if (next === "trails") await loadTrails();
+  if (next === "sharing") await loadSharing();
 }
 
 async function loadGraph() {
@@ -274,7 +455,7 @@ async function loadGraph() {
 function renderChrome() {
   if (!refs.viewToggle) return;
   refs.viewToggle.replaceChildren(
-    ...[["collection", "collection"], ["graph", "graph"], ["review", "review"]].map(([id, label]) => h("button", {
+    ...viewTabs().map(([id, label]) => h("button", {
       type: "button",
       class: `chip${state.view === id ? " is-on" : ""}`,
       "aria-pressed": state.view === id ? "true" : "false",
@@ -412,6 +593,18 @@ function renderList() {
   }
   if (state.view === "review") {
     refs.list.append(renderReviewCard());
+    return;
+  }
+  if (state.view === "org") {
+    refs.list.append(renderOrgCard());
+    return;
+  }
+  if (state.view === "trails") {
+    refs.list.append(renderTrailsCard());
+    return;
+  }
+  if (state.view === "sharing") {
+    refs.list.append(renderSharingCard());
     return;
   }
   if (state.loading) {
@@ -801,14 +994,438 @@ function toggleKeys() {
   renderKeyHelp();
 }
 
+async function loadOrg() {
+  try {
+    const [tokens, members] = await Promise.all([api.tokens(), api.members()]);
+    state.tokens = tokens.tokens ?? [];
+    state.mcp = tokens.mcp;
+    state.members = members.members ?? [];
+    state.invites = members.invites ?? [];
+  } catch (error) {
+    if (error instanceof AuthError) return handleError(error);
+    state.message = "could not load org controls";
+  }
+  renderList();
+}
+
+function renderOrgCard() {
+  const owner = state.session?.role === "owner";
+  const policies = state.session?.org?.policies || {};
+  const card = h("section", { class: "card org-card" },
+    h("div", { class: "card-bar" },
+      h("span", {}, "org"),
+      h("span", { class: "card-bar-count" }, state.session?.org?.name || ""),
+    ),
+  );
+  card.append(
+    h("div", { class: "org-section" },
+      h("p", { class: "review-kind" }, "agent tokens"),
+      ...(state.tokens || []).map(token => h("div", { class: "review-row" },
+        h("div", { class: "review-copy" },
+          h("p", {}, token.name),
+          h("p", { class: "review-meta" }, token.canWrite ? "read and write" : "read only"),
+        ),
+        owner ? h("div", { class: "review-actions" },
+          h("button", { type: "button", class: "text-button", onclick: () => flipWrite(token) }, token.canWrite ? "make read-only" : "allow write"),
+          h("button", { type: "button", class: "text-button", onclick: () => dropToken(token.name) }, "revoke"),
+        ) : "",
+      )),
+      owner ? mintRow() : "",
+    ),
+    h("div", { class: "org-section" },
+      h("p", { class: "review-kind" }, "policies"),
+      policySwitch("agentsMayWrite", "Agents may append", policies.agentsMayWrite !== false),
+      policySwitch("membersOnlyDelete", "Only a member may delete or restore", policies.membersOnlyDelete !== false),
+      policySwitch("jevMayPropose", "Jev may propose links, tags, and conflicts", policies.jevMayPropose !== false),
+      isPersonal() ? "" : policySwitch("acceptShares", "Accept shared slices from members", policies.acceptShares !== false),
+      isPersonal() ? "" : h("label", { class: "field-label" },
+        h("span", {}, "highest share level this team accepts"),
+        h("select", {
+          onchange: event => savePolicy({ maxShareLevel: event.currentTarget.value }),
+          disabled: !owner,
+        },
+          option("digest", "digest only", policies.maxShareLevel === "digest" || !policies.maxShareLevel),
+          option("digest_transcript", "digest and transcript", policies.maxShareLevel === "digest_transcript"),
+          option("transcript", "transcript", policies.maxShareLevel === "transcript"),
+        ),
+      ),
+      h("label", { class: "field-label" },
+        h("span", {}, "review approval"),
+        h("select", {
+          onchange: event => savePolicy({ reviewApprovers: event.currentTarget.value }),
+          disabled: !owner,
+        },
+          option("members", "any member", policies.reviewApprovers !== "owners"),
+          option("owners", "owners only", policies.reviewApprovers === "owners"),
+        ),
+      ),
+    ),
+    isPersonal() ? h("div", { class: "org-section" },
+      h("p", { class: "review-kind" }, "never capture"),
+      h("p", { class: "review-meta" }, "Repos and paths you do not want uploaded live in ~/.config/engram/capture.json on this machine. The hook reads that file before it sends anything."),
+    ) : h("div", { class: "org-section" },
+      h("p", { class: "review-kind" }, "people"),
+      ...(state.members || []).map(member => h("p", { class: "review-meta" }, `${member.email} · ${member.role}`)),
+      owner ? inviteRow() : "",
+      state.inviteUrl ? copyRow("invite link", state.inviteUrl) : "",
+    ),
+  );
+  return card;
+}
+
+function mintRow() {
+  const name = h("input", { type: "text", placeholder: "agent name", "aria-label": "New agent name" });
+  return h("div", { class: "org-inline" },
+    name,
+    h("button", {
+      type: "button",
+      class: "text-button",
+      onclick: async () => {
+        try {
+          const minted = await api.mintToken({ name: name.value || "agent", canWrite: true });
+          state.minted = minted;
+          state.message = "token shown once below";
+          await loadOrg();
+        } catch (error) {
+          handleError(error);
+        }
+      },
+    }, "mint"),
+    state.minted ? copyRow("new token", state.minted.token) : "",
+  );
+}
+
+function inviteRow() {
+  const email = h("input", { type: "email", placeholder: "teammate@org", "aria-label": "Invite email" });
+  return h("div", { class: "org-inline" },
+    email,
+    h("button", {
+      type: "button",
+      class: "text-button",
+      onclick: async () => {
+        try {
+          const invite = await api.invite({ email: email.value, role: "member" });
+          state.inviteUrl = invite.url || "";
+          state.message = invite.sent && !invite.url ? "invite emailed" : state.message;
+          await loadOrg();
+        } catch (error) {
+          handleError(error);
+        }
+      },
+    }, "invite"),
+  );
+}
+
+function policySwitch(key, label, on) {
+  const owner = state.session?.role === "owner";
+  return h("label", { class: "policy-row" },
+    h("input", {
+      type: "checkbox",
+      checked: on,
+      disabled: !owner,
+      onchange: event => savePolicy({ [key]: event.currentTarget.checked }),
+    }),
+    h("span", {}, label),
+  );
+}
+
+function option(value, label, selected) {
+  return h("option", { value, selected }, label);
+}
+
+async function savePolicy(patch) {
+  if (state.session?.role !== "owner") return;
+  try {
+    const next = { ...(state.session.org?.policies || {}), ...patch };
+    const saved = await api.savePolicies(next);
+    state.session.org.policies = saved.policies;
+    renderList();
+  } catch (error) {
+    handleError(error);
+  }
+}
+
+async function flipWrite(token) {
+  try {
+    await api.setTokenWrite(token.name, !token.canWrite);
+    await loadOrg();
+  } catch (error) {
+    handleError(error);
+  }
+}
+
+async function dropToken(name) {
+  try {
+    await api.revokeToken(name);
+    await loadOrg();
+  } catch (error) {
+    handleError(error);
+  }
+}
+
+function isPersonal() {
+  return state.session?.org?.kind === "personal";
+}
+
+function viewTabs() {
+  const tabs = [["collection", "collection"], ["graph", "graph"], ["review", "review"], ["trails", "trails"]];
+  if (isPersonal()) tabs.push(["sharing", "sharing"]);
+  tabs.push(["org", "org"]);
+  return tabs;
+}
+
+function orgSwitcher() {
+  const orgs = state.session?.orgs || [];
+  if (orgs.length < 2) return "";
+  return h("label", { class: "field-label org-switch" },
+    h("span", {}, "brain"),
+    h("select", {
+      "aria-label": "Switch brain",
+      onchange: event => switchOrg(Number(event.currentTarget.value)),
+    }, ...orgs.map(item => option(String(item.id), item.kind === "personal" ? `${item.name} (personal)` : item.name, item.id === state.session?.org?.id))),
+  );
+}
+
+async function switchOrg(orgId) {
+  if (!orgId || orgId === state.session?.org?.id) return;
+  try {
+    state.session = await api.switchOrg(orgId);
+    state.view = "collection";
+    showConsole();
+    await loadCollection();
+  } catch (error) {
+    handleError(error);
+  }
+}
+
+async function loadTrails() {
+  try {
+    const data = await api.trails({
+      repo: state.trailRepo || undefined,
+      harness: state.trailHarness || undefined,
+      limit: 40,
+    });
+    state.trails = data.trails ?? [];
+    state.trailRepos = data.repos ?? [];
+  } catch (error) {
+    if (error instanceof AuthError) return handleError(error);
+    state.message = "could not load trails";
+  }
+  renderList();
+}
+
+async function loadSharing() {
+  try {
+    const data = await api.shareRules();
+    state.shareRules = data.rules ?? [];
+    state.shareRepos = data.repos ?? [];
+  } catch (error) {
+    if (error instanceof AuthError) return handleError(error);
+    state.message = "could not load sharing";
+  }
+  renderList();
+}
+
+function renderTrailsCard() {
+  const card = h("section", { class: "card org-card" },
+    h("div", { class: "card-bar" },
+      h("span", {}, "trails"),
+      h("span", { class: "card-bar-count" }, `${state.trails.length} conversations`),
+    ),
+    h("div", { class: "org-inline" },
+      h("select", {
+        "aria-label": "Filter by repo",
+        onchange: event => { state.trailRepo = event.currentTarget.value; loadTrails(); },
+      }, option("", "all repos", !state.trailRepo), ...state.trailRepos.map(repo => option(repo, repo, repo === state.trailRepo))),
+      h("select", {
+        "aria-label": "Filter by harness",
+        onchange: event => { state.trailHarness = event.currentTarget.value; loadTrails(); },
+      },
+        option("", "all harnesses", !state.trailHarness),
+        option("claude", "claude", state.trailHarness === "claude"),
+        option("cursor", "cursor", state.trailHarness === "cursor"),
+        option("codex", "codex", state.trailHarness === "codex"),
+      ),
+    ),
+  );
+  if (!state.trails.length) {
+    card.append(h("p", { class: "graph-empty" }, isPersonal()
+      ? "No conversations yet. Install capture hooks from the org page, then keep working."
+      : "Nothing has been shared into this team yet."));
+    return card;
+  }
+  state.trails.forEach(trail => card.append(renderTrailRow(trail)));
+  return card;
+}
+
+function renderTrailRow(trail) {
+  const teams = (state.session?.orgs || []).filter(item => item.kind === "team");
+  return h("div", { class: "review-row" },
+    h("div", { class: "review-copy" },
+      h("p", { class: "review-kind" }, `${trail.harness} · ${trail.repo || "local"}`),
+      h("p", { class: "review-meta" }, [trail.authorEmail, trail.endedAt || trail.startedAt].filter(Boolean).join(" · ")),
+      h("p", { class: "review-body" }, String(trail.digest || "").slice(0, 280)),
+    ),
+    isPersonal() && teams.length ? h("div", { class: "review-actions" },
+      h("button", { type: "button", class: "text-button", onclick: () => shareThisTrail(trail, teams[0].id) }, "share"),
+      h("button", { type: "button", class: "text-button", onclick: () => unshareThisTrail(trail, teams[0].id) }, "unshare"),
+    ) : "",
+  );
+}
+
+async function shareThisTrail(trail, targetOrgId) {
+  try {
+    await api.shareTrail(trail.id, { targetOrgId, level: "digest" });
+    state.message = "shared this conversation";
+    state.shareWarning = "Teammates' agents may already have read it once they recall.";
+    await loadSharing();
+  } catch (error) {
+    handleError(error);
+  }
+}
+
+async function unshareThisTrail(trail, targetOrgId) {
+  try {
+    const result = await api.unshareTrail(trail.id, { targetOrgId });
+    state.message = "unshared this conversation";
+    state.shareWarning = result.warning || "";
+    renderList();
+  } catch (error) {
+    handleError(error);
+  }
+}
+
+function renderSharingCard() {
+  const teams = (state.session?.orgs || []).filter(item => item.kind === "team");
+  const card = h("section", { class: "card org-card" },
+    h("div", { class: "card-bar" },
+      h("span", {}, "sharing"),
+      h("span", { class: "card-bar-count" }, `${state.shareRules.length} rules`),
+    ),
+  );
+  if (state.shareWarning) {
+    card.append(h("p", { class: "review-meta" }, state.shareWarning));
+  }
+  card.append(shareRuleForm(teams));
+  if (!state.shareRules.length) {
+    card.append(h("p", { class: "graph-empty" }, "No rules yet. A rule copies matching conversations from this personal brain into a team."));
+    return card;
+  }
+  state.shareRules.forEach(rule => card.append(renderShareRuleRow(rule, teams)));
+  return card;
+}
+
+function shareRuleForm(teams) {
+  const repo = h("select", { "aria-label": "Repo to share" },
+    option("", "all repos", true),
+    ...state.shareRepos.map(item => option(item, item, false)),
+  );
+  const level = h("select", { "aria-label": "Share level" },
+    option("digest", "digest", true),
+    option("digest_transcript", "digest and transcript", false),
+    option("transcript", "transcript", false),
+  );
+  const target = h("select", { "aria-label": "Team" },
+    ...teams.map(item => option(String(item.id), item.name, false)),
+  );
+  const preview = h("p", { class: "review-meta" }, state.sharePreview
+    ? `${state.sharePreview.trails} conversations and ${state.sharePreview.entries} notes would copy`
+    : "");
+  return h("div", { class: "org-section" },
+    h("p", { class: "review-kind" }, "new rule"),
+    h("div", { class: "org-inline" }, repo, level, target),
+    h("div", { class: "org-inline" },
+      h("button", {
+        type: "button",
+        class: "text-button",
+        onclick: async () => {
+          if (!target.value) return;
+          try {
+            state.sharePreview = await api.previewShare({
+              match: { repos: repo.value ? [repo.value] : [] },
+            });
+            renderList();
+          } catch (error) {
+            handleError(error);
+          }
+        },
+      }, "preview"),
+      h("button", {
+        type: "button",
+        class: "text-button",
+        onclick: async () => {
+          if (!target.value) return;
+          try {
+            await api.createShareRule({
+              targetOrgId: Number(target.value),
+              level: level.value,
+              match: { repos: repo.value ? [repo.value] : [] },
+            });
+            state.sharePreview = null;
+            await loadSharing();
+          } catch (error) {
+            handleError(error);
+          }
+        },
+      }, "share matching"),
+    ),
+    preview,
+  );
+}
+
+function renderShareRuleRow(rule, teams) {
+  const team = teams.find(item => item.id === rule.targetOrg);
+  const match = rule.match || {};
+  const label = [
+    (match.repos || []).join(", ") || "all repos",
+    rule.level,
+    team?.name || `org ${rule.targetOrg}`,
+    rule.pausedAt ? "paused" : "live",
+  ].join(" · ");
+  return h("div", { class: "review-row" },
+    h("div", { class: "review-copy" },
+      h("p", {}, label),
+      h("p", { class: "review-meta" }, "Unsharing removes the copies. Agents that already recalled them may still remember."),
+    ),
+    h("div", { class: "review-actions" },
+      h("button", {
+        type: "button",
+        class: "text-button",
+        onclick: async () => {
+          try {
+            if (rule.pausedAt) await api.resumeShareRule(rule.id);
+            else await api.pauseShareRule(rule.id);
+            await loadSharing();
+          } catch (error) {
+            handleError(error);
+          }
+        },
+      }, rule.pausedAt ? "resume" : "pause"),
+      h("button", {
+        type: "button",
+        class: "text-button",
+        onclick: async () => {
+          try {
+            const result = await api.deleteShareRule(rule.id);
+            state.shareWarning = result.warning || "";
+            await loadSharing();
+          } catch (error) {
+            handleError(error);
+          }
+        },
+      }, "unshare"),
+    ),
+  );
+}
+
 async function logout() {
   await api.logout().catch(() => null);
   state.session = null;
-  showLogin();
+  showGate();
 }
 
 function handleError(error) {
-  if (error instanceof AuthError) showLogin();
+  if (error instanceof AuthError) showGate();
   else {
     state.message = "the paper tore";
     renderList();

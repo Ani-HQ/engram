@@ -1,7 +1,10 @@
 // Nothing outside the curated gbrain allowlist ever reaches the child.
 import type { TokenRecord } from "./auth";
-import { brainClient } from "./brain";
 import { audit } from "./audit";
+import { brainClient } from "./brain";
+import { currentOrg } from "./context";
+import { ANI_HQ_ORG } from "./orgs";
+import { canUseTool, hasOauthScope, normalizeToken } from "./policies";
 import { markRolledEntries, upsertMemoryEntry } from "./memory-entries";
 import { afterRemember, rerankRecallHits, suggestTopic } from "./reflex";
 import {
@@ -326,14 +329,15 @@ function yamlHeader(title: string, frontmatter: unknown): string {
 const appendQueue = new Map<string, Promise<unknown>>();
 
 function serializeBySlug<T>(slug: string, work: () => Promise<T>): Promise<T> {
-  const prior = appendQueue.get(slug) ?? Promise.resolve();
+  const key = `${currentOrg()?.id ?? 1}:${slug}`;
+  const prior = appendQueue.get(key) ?? Promise.resolve();
   const next = prior.catch(() => {}).then(work);
   const settled = next.catch(() => {});
-  appendQueue.set(slug, settled);
+  appendQueue.set(key, settled);
   // Last one out clears the slot. Without this the map keeps a resolved promise for
   // every topic the process has ever written, which leaks in a server up for weeks.
   void settled.then(() => {
-    if (appendQueue.get(slug) === settled) appendQueue.delete(slug);
+    if (appendQueue.get(key) === settled) appendQueue.delete(key);
   });
   return next;
 }
@@ -479,12 +483,19 @@ async function rememberUnsynchronized(token: TokenRecord, args: Record<string, u
         tokenName: token.name,
         topicHint: topic,
         archiveSlug: archived,
+        repo: optionalArg(args.repo),
+        harness: optionalArg(args.harness),
+        sessionId: optionalArg(args.session_id) ?? optionalArg(args.sessionId),
       });
       if (archived) {
         const { entries: rolled } = splitTopicEntries(savedBody);
         await markRolledEntries(slug, archived, splitForRoll(rolled).move.map(entryText));
       }
       await afterRemember({ entry: recorded, text, slug, topic }).catch(() => {});
+      if (recorded) {
+        const { shareAfterWrite } = await import("./sharing");
+        await shareAfterWrite({ kind: "entry", entry: recorded }).catch(() => {});
+      }
       return jsonResult({
         ok: true,
         slug,
@@ -519,6 +530,16 @@ async function recall(args: Record<string, unknown>): Promise<any> {
     title: hit?.title,
     snippet: truncate(typeof hit?.chunk_text === "string" ? hit.chunk_text : "", MAX_SNIPPET),
   }));
+  try {
+    const { attributionForSlugs } = await import("./trails");
+    const attributed = await attributionForSlugs(results.map(hit => String(hit.slug ?? "")).filter(Boolean));
+    for (const hit of results) {
+      const extra = attributed.get(String(hit.slug ?? ""));
+      if (extra) Object.assign(hit, extra);
+    }
+  } catch {
+    // attribution is decoration
+  }
 
   let full: { slug: unknown; body: string } | null = null;
   if (args.full === true && top.length) {
@@ -569,10 +590,19 @@ export async function callTool(
   name: string,
   args: Record<string, unknown>,
 ): Promise<any> {
+  const actor = normalizeToken(token);
+  const policies = (currentOrg() ?? ANI_HQ_ORG).policies;
   const forwardedArgs = clampArgs(name, args ?? {});
 
   // Which page a call touched, where the call knows. whoami and recall touch none.
   const argSlug = typeof forwardedArgs.slug === "string" ? forwardedArgs.slug : null;
+  const served = ALLOWED_TOOLS.has(name) || SYNTHETIC_TOOLS.has(name);
+  const writing = name === "remember" || (ALLOWED_TOOLS.has(name) && !["search", "get_page", "list_pages"].includes(name));
+
+  if (served && (!canUseTool(actor, name, policies) || (writing && !hasOauthScope(actor, "memory:write")))) {
+    await audit(actor.name, name, summarizeArgs(forwardedArgs), "denied", argSlug);
+    return toolError(`denied: ${name} is not allowed for this token`);
+  }
 
   if (name === "whoami") {
     await audit(token.name, name, summarizeArgs(forwardedArgs), "ok", null);
@@ -619,6 +649,10 @@ export async function callTool(
     await audit(token.name, name, summarizeArgs(forwardedArgs), "error", argSlug);
     throw e;
   }
+}
+
+function optionalArg(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function toolError(message: string) {

@@ -20,6 +20,36 @@ const SUPPORTED_HARNESSES = ['claude', 'codex', 'cursor', 'vscode', 'windsurf'];
 function dispatch() {
   const [subcommand, ...args] = process.argv.slice(2);
 
+  if (subcommand === 'hooks') {
+    const [action, harness, ...rest] = args;
+    if (action !== 'install' || !harness) {
+      console.error('Usage: engram-mcp hooks install <claude|cursor|codex>');
+      process.exit(1);
+    }
+    try {
+      const capture = require('./capture');
+      const parsed = parseConnectArgs(rest);
+      const file = capture.installHooks(harness, {
+        host: parsed.host ?? process.env.ENGRAM_HOST,
+        token: parsed.token ?? process.env.ENGRAM_TOKEN,
+      });
+      console.log(`Installed ${harness} capture hooks in ${file}`);
+      process.exit(0);
+    } catch (err) {
+      console.error(err.message || err);
+      process.exit(1);
+    }
+  }
+
+  if (subcommand === 'capture') {
+    const capture = require('./capture');
+    capture.runCaptureCli(args).then(code => process.exit(code ?? 0)).catch(err => {
+      console.error(err.message || err);
+      process.exit(1);
+    });
+    return;
+  }
+
   if (subcommand === 'connect') {
     let code;
     try {
@@ -55,7 +85,10 @@ function printRootHelp() {
   console.log(`Usage:
   engram-mcp
   engram-mcp connect [harness] [--host <url>] [--token <token>]
-  engram-mcp connect --list`);
+  engram-mcp connect --list
+  engram-mcp hooks install <claude|cursor|codex>
+  engram-mcp capture --hook <claude|cursor|codex>
+  engram-mcp capture --sweep`);
 }
 
 function runConnect(args) {
@@ -719,9 +752,17 @@ async function runProxy() {
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const args = { ...(request.params.arguments || {}) };
+    if (request.params.name === 'remember') {
+      const capture = require('./capture');
+      const extra = capture.rememberContext();
+      if (!args.repo && extra.repo) args.repo = extra.repo;
+      if (!args.harness && extra.harness) args.harness = extra.harness;
+      if (!args.session_id && extra.session_id) args.session_id = extra.session_id;
+    }
     const result = await engramRpc('tools/call', {
       name: request.params.name,
-      arguments: request.params.arguments || {},
+      arguments: args,
     });
 
     if (result?.content) {

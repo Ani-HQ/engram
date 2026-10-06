@@ -76,13 +76,13 @@ describe("review apply", () => {
   });
 
   test("reject does not touch the brain", async () => {
-    const result = await resolveReview({ name: "ani" }, 1, "reject");
+    const result = await resolveReview({ name: "ani", role: "member" }, 1, "reject");
     expect(result.item?.state).toBe("rejected");
     expect(brainCalls).toEqual([]);
   });
 
   test("approve of a duplicate records a link, not a source rewrite", async () => {
-    const result = await resolveReview({ name: "ani" }, 1, "approve");
+    const result = await resolveReview({ name: "ani", role: "member" }, 1, "approve");
     expect(result.item?.state).toBe("applied");
     expect(brainCalls.some(call => call.name === "put_page" && call.arguments?.slug?.startsWith("projects/"))).toBe(false);
     expect(brainCalls.some(call => call.name === "add_link")).toBe(true);

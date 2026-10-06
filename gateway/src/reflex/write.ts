@@ -1,5 +1,7 @@
 import { brainClient } from "../brain";
 import { config } from "../config";
+import { currentOrg } from "../context";
+import { ANI_HQ_ORG } from "../orgs";
 import {
   recordReflexDecision,
   type MemoryEntry,
@@ -54,6 +56,7 @@ export async function afterRemember(input: {
   topic?: string;
 }): Promise<void> {
   if (!input.entry) return;
+  if (!(currentOrg() ?? ANI_HQ_ORG).policies.jevMayPropose) return;
   try {
     const classification = await classifyMemory(reflexClient(), input.text);
     if (classification) {

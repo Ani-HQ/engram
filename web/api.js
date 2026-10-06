@@ -129,4 +129,127 @@ export const api = {
       body: JSON.stringify({ id }),
     });
   },
+  createOrg(payload) {
+    return request("/api/orgs", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  loginEmail(email) {
+    return request("/api/login/email", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  },
+  acceptInvite(token) {
+    return request("/api/invites/accept", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    });
+  },
+  onboarding() {
+    return request("/api/onboarding");
+  },
+  tokens() {
+    return request("/api/tokens");
+  },
+  mintToken(payload) {
+    return request("/api/tokens", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  revokeToken(name) {
+    return request("/api/tokens/revoke", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+  },
+  setTokenWrite(name, canWrite) {
+    return request("/api/tokens/write", {
+      method: "POST",
+      body: JSON.stringify({ name, canWrite }),
+    });
+  },
+  policies() {
+    return request("/api/policies");
+  },
+  savePolicies(policies) {
+    return request("/api/policies", {
+      method: "PUT",
+      body: JSON.stringify({ policies }),
+    });
+  },
+  members() {
+    return request("/api/members");
+  },
+  invite(payload) {
+    return request("/api/invites", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  orgs() {
+    return request("/api/orgs");
+  },
+  switchOrg(orgId) {
+    return request("/api/session/switch", {
+      method: "POST",
+      body: JSON.stringify({ orgId }),
+    });
+  },
+  trails(params = {}) {
+    return request(query("/api/trails", {
+      repo: params.repo,
+      harness: params.harness,
+      author: params.author,
+      limit: params.limit ?? 40,
+      offset: params.offset ?? 0,
+    }));
+  },
+  trail(id) {
+    return request(`/api/trails/${id}`);
+  },
+  shareRules() {
+    return request("/api/share/rules");
+  },
+  createShareRule(payload) {
+    return request("/api/share/rules", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  previewShare(payload) {
+    return request("/api/share/preview", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  updateShareRule(id, payload) {
+    return request(`/api/share/rules/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+  pauseShareRule(id) {
+    return request(`/api/share/rules/${id}/pause`, { method: "POST" });
+  },
+  resumeShareRule(id) {
+    return request(`/api/share/rules/${id}/resume`, { method: "POST" });
+  },
+  deleteShareRule(id) {
+    return request(`/api/share/rules/${id}`, { method: "DELETE" });
+  },
+  shareTrail(id, payload) {
+    return request(`/api/trails/${id}/share`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  unshareTrail(id, payload = {}) {
+    return request(`/api/trails/${id}/unshare`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
 };

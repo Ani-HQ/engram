@@ -1,15 +1,24 @@
 import { stat } from "node:fs/promises";
 import { extname, isAbsolute, relative, resolve } from "node:path";
 import { audit, provenance, provenanceFor, recentActivity } from "./audit";
-import { authenticate, type TokenRecord } from "./auth";
-import { brainClient } from "./brain";
+import { authenticateSecret, type TokenRecord } from "./auth";
+import { brainClient, ensureBrain } from "./brain";
+import {
+  clearSessionCookie,
+  parseSessionCookie,
+  serializeSessionCookie,
+} from "./cookies";
 import { upsertMemoryEntry } from "./memory-entries";
+import { authenticateRequest } from "./auth";
+import { handleOrgApi, handlePublicOrgApi, ingestTrailRequest, onboardingState, sessionActor } from "./org-api";
+import { resolveOrg, withOrg } from "./orgs";
+import { canDelete, normalizeToken } from "./policies";
 import { callTool } from "./proxy";
 import { resolveReview } from "./review/apply";
 import { getReviewItem, listReviewItems } from "./review/store";
 
-export const SESSION_COOKIE_NAME = "engram_session";
-export const SESSION_COOKIE_MAX_AGE = 1_209_600;
+export { SESSION_COOKIE_MAX_AGE, SESSION_COOKIE_NAME } from "./cookies";
+export { clearSessionCookie, parseSessionCookie, serializeSessionCookie };
 
 const PAGE_SORTS = new Set(["updated_desc", "updated_asc", "created_desc", "slug"]);
 const HARD_EXCLUDED_SLUG_PREFIXES = ["test/", "attachments/", ".raw/"];
@@ -44,28 +53,6 @@ export interface PagesQuery {
 export interface SearchQuery {
   q: string;
   limit: number;
-}
-
-export function serializeSessionCookie(token: string, maxAge = SESSION_COOKIE_MAX_AGE): string {
-  const parts = [`${SESSION_COOKIE_NAME}=${token}`, "HttpOnly"];
-  if (process.env.ENGRAM_INSECURE_COOKIE !== "1") parts.push("Secure");
-  parts.push("SameSite=Strict", "Path=/", `Max-Age=${maxAge}`);
-  return parts.join("; ");
-}
-
-export function clearSessionCookie(): string {
-  return serializeSessionCookie("", 0);
-}
-
-export function parseSessionCookie(cookieHeader: string | null): string | null {
-  if (!cookieHeader) return null;
-  for (const part of cookieHeader.split(";")) {
-    const trimmed = part.trim();
-    const eq = trimmed.indexOf("=");
-    if (eq < 0) continue;
-    if (trimmed.slice(0, eq) === SESSION_COOKIE_NAME) return trimmed.slice(eq + 1);
-  }
-  return null;
 }
 
 export function hasConsoleHeader(headers: { get(name: string): string | null }): boolean {
@@ -169,6 +156,9 @@ export function forbiddenResponse(): Response {
 export async function handleWeb(req: Request): Promise<Response> {
   const url = new URL(req.url);
   if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
+    if (req.method === "POST" && url.pathname === "/api/trails" && req.headers.get("authorization")) {
+      return handleBearerTrail(req);
+    }
     return handleApi(req, url);
   }
   // Static files and the SPA shell answer GET/HEAD only. Without this, any method
@@ -181,6 +171,15 @@ export async function handleWeb(req: Request): Promise<Response> {
   return serveStatic(url.pathname);
 }
 
+async function handleBearerTrail(req: Request): Promise<Response> {
+  const token = await authenticateRequest(req);
+  if (!token) return Response.json({ error: "unauthorized" }, { status: 401 });
+  const actor = normalizeToken(token);
+  const org = await resolveOrg(actor);
+  await ensureBrain(org);
+  return withOrg(org, actor, () => ingestTrailRequest(req, actor, org));
+}
+
 async function handleApi(req: Request, url: URL): Promise<Response> {
   // The custom header is the CSRF boundary; browsers cannot send it cross-origin
   // without a preflight, and this gateway never emits CORS headers.
@@ -190,6 +189,9 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
 
   if (req.method === "POST" && url.pathname === "/api/session") return postSession(req);
   if (req.method === "DELETE" && url.pathname === "/api/session") return deleteSession();
+
+  const publicOrg = await handlePublicOrgApi(req, url);
+  if (publicOrg) return publicOrg;
 
   let route: ((req: Request, url: URL, token: TokenRecord) => Response | Promise<Response>) | null = null;
   if (req.method === "GET" && url.pathname === "/api/me") route = getMe;
@@ -206,21 +208,31 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   else if (req.method === "POST" && url.pathname === "/api/review/approve") route = postReviewApprove;
   else if (req.method === "POST" && url.pathname === "/api/review/reject") route = postReviewReject;
   else if (req.method === "POST" && url.pathname === "/api/review/defer") route = postReviewDefer;
-  if (!route) return Response.json({ error: "not found" }, { status: 404 });
-
   const token = await authenticateCookie(req);
-  if (!token) return Response.json({ error: "unauthorized" }, { status: 401 });
-  return route(req, url, token);
+  if (!token) {
+    if (!route) return Response.json({ error: "not found" }, { status: 404 });
+    return Response.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const actor = normalizeToken(token);
+  const org = await resolveOrg(actor);
+  await ensureBrain(org);
+  return withOrg(org, actor, async () => {
+    const orgRoute = await handleOrgApi(req, url, actor, org);
+    if (orgRoute) return orgRoute;
+    if (!route) return Response.json({ error: "not found" }, { status: 404 });
+    return route(req, url, actor);
+  });
 }
 
 async function postSession(req: Request): Promise<Response> {
   const body = await jsonObject(req);
-  const rawToken = typeof body?.token === "string" && body.token.trim() ? body.token : null;
+  const rawToken = typeof body?.token === "string" && body.token.trim() ? body.token.trim() : null;
   if (!rawToken) return Response.json({ error: "bad request" }, { status: 400 });
-
-  const token = await authenticate(`Bearer ${rawToken}`);
+  const token = await authenticateSecret(rawToken);
   if (!token) return Response.json({ error: "unauthorized" }, { status: 401 });
-  return Response.json(publicToken(token), {
+  const org = await resolveOrg(token);
+  return Response.json(await sessionActor(token, org, { onboarding: await onboardingState(org) }), {
     headers: { "Set-Cookie": serializeSessionCookie(rawToken) },
   });
 }
@@ -232,8 +244,9 @@ function deleteSession(): Response {
   });
 }
 
-function getMe(_req: Request, _url: URL, token: TokenRecord): Response {
-  return Response.json(publicToken(token));
+async function getMe(_req: Request, _url: URL, token: TokenRecord): Promise<Response> {
+  const org = await resolveOrg(token);
+  return Response.json(await sessionActor(token, org, { onboarding: await onboardingState(org) }));
 }
 
 async function getPages(_req: Request, url: URL, token: TokenRecord): Promise<Response> {
@@ -359,6 +372,8 @@ async function getPage(_req: Request, url: URL, token: TokenRecord): Promise<Res
 }
 
 async function deletePage(_req: Request, url: URL, token: TokenRecord): Promise<Response> {
+  const org = await resolveOrg(token);
+  if (!canDelete(token, org.policies)) return forbiddenResponse();
   const slug = textParam(url.searchParams, "slug");
   if (!slug) {
     await auditConsole(token, "delete_page", {}, "bad_request");
@@ -390,6 +405,8 @@ async function deletePage(_req: Request, url: URL, token: TokenRecord): Promise<
 }
 
 async function postRestorePage(req: Request, _url: URL, token: TokenRecord): Promise<Response> {
+  const org = await resolveOrg(token);
+  if (!canDelete(token, org.policies)) return forbiddenResponse();
   const body = await jsonObject(req);
   const slug = optionalText(body?.slug);
   if (!slug) {
@@ -489,6 +506,10 @@ async function resolveReviewResponse(
 
 async function serveStatic(pathname: string): Promise<Response> {
   const webDir = defaultWebDir();
+  if (pathname === "/" || pathname === "/index.html") {
+    const landing = resolveStaticPath("/landing.html", webDir);
+    if (landing && await isFile(landing)) return fileResponse(landing);
+  }
   const staticPath = resolveStaticPath(pathname, webDir);
   if (!staticPath) return new Response("Not Found", { status: 404 });
   if (await isFile(staticPath)) return fileResponse(staticPath);
@@ -507,11 +528,7 @@ function fileResponse(pathname: string): Response {
 
 async function authenticateCookie(req: Request): Promise<TokenRecord | null> {
   const rawToken = parseSessionCookie(req.headers.get("cookie"));
-  return rawToken ? authenticate(`Bearer ${rawToken}`) : null;
-}
-
-function publicToken(token: TokenRecord) {
-  return { name: token.name };
+  return rawToken ? authenticateSecret(rawToken) : null;
 }
 
 async function jsonObject(req: Request): Promise<Record<string, unknown> | null> {

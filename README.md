@@ -1,12 +1,12 @@
 # engram
 
-One memory. Every agent.
+One memory. Every agent. A personal brain first, then the slices you choose to share.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-black)](LICENSE)
 [![MCP](https://img.shields.io/badge/protocol-MCP-black)](https://modelcontextprotocol.io)
 [![Engine](https://img.shields.io/badge/engine-gbrain-black)](https://github.com/garrytan/gbrain)
 
-engram is shared memory for a small trusted team. Claude, Cursor, ChatGPT, Codex, Grok, and any other MCP client read and write the same brain. A token names who called. It does not hide the brain from anyone else on the team.
+engram is shared memory for an organization. Claude, Cursor, ChatGPT, Codex, Grok, and any other MCP client read and write that org's brain. Each person also gets a personal brain. Conversations and notes land there first. Share rules copy matching slices into the team. A second org gets its own database. Inside an org, a token names who called.
 
 Self-host it, or [ask us to run it](https://github.com/Ani-HQ/engram/issues/new).
 
@@ -43,11 +43,9 @@ Wiring for Claude Code, Cursor, and stdio-only harnesses is in [docs/WIRING.md](
 
 ## Hosted
 
-The same gateway runs as a hosted brain. You get a URL, a token per agent, and the console. You do not run Postgres.
+The same gateway runs as a hosted brain. Open [engram.ani.computer](https://engram.ani.computer), start an org, and mint a token in the console. You do not run Postgres.
 
-Open an issue and say which agents you want wired: [github.com/Ani-HQ/engram/issues/new](https://github.com/Ani-HQ/engram/issues/new).
-
-The console for the brain we run is [engram.ani.computer](https://engram.ani.computer).
+Self-hosting stays `docker compose up`. Details are in [docs/ORGS.md](docs/ORGS.md).
 
 ## What it stores
 
@@ -74,10 +72,10 @@ agent ── HTTPS / MCP, bearer token ──▶  engram gateway
                                          gbrain (pinned)
                                                 │
                                                 ▼
-                              Postgres: brain_shared + engram_gateway
+                         Postgres: one brain database per org
 ```
 
-The gateway is a stateless Bun process. The engine is [gbrain](https://github.com/garrytan/gbrain), built from a pinned fork so a deploy does not drift with upstream. Pages live in `brain_shared`. Tokens, the audit log, and reflex metadata live in `engram_gateway`.
+The gateway is a stateless Bun process. The engine is [gbrain](https://github.com/garrytan/gbrain), built from a pinned fork so a deploy does not drift with upstream. Ani HQ's pages stay in `brain_shared`. A new org gets its own database. Tokens and the audit log stay in `engram_gateway`.
 
 Ten tools. Seven are gbrain's: `search`, `get_page`, `list_pages`, `put_page`, `add_tag`, `add_link`, `add_timeline_entry`. Three are engram's: `whoami`, `remember`, `recall`.
 
@@ -96,6 +94,8 @@ Optional keys in `.env` turn on semantic search and the reflex layer. Both fail 
 | `TYPESAFE_API_KEY` | Jev. Topic routing, classification, recall rerank. |
 | `VOYAGE_API_KEY` | `voyage-4-large` embeddings for candidate search. |
 | `REFLEX_MODEL` | Default `jev-latest`. |
+| `RESEND_API_KEY` | Magic-link and invite email. Without it, the console shows the link. |
+| `ENGRAM_MAIL_FROM` | Default `engram@updates.ani.computer`. |
 
 Copy [.env.example](.env.example).
 
@@ -103,13 +103,15 @@ A full GCP install (Cloud SQL, Cloud Run, the nightly dream job) is `deploy/setu
 
 ## What this is not
 
-One brain, one team. Tokens identify callers. They do not isolate them. Do not deploy a single instance for people who must not read each other's memory.
+One team brain is visible to everyone in that team. Private notes and conversations belong in a personal brain, then in a share rule. Tokens identify callers. They do not isolate people inside one team. Do not put two teams in one org.
 
 Jev proposes. It does not merge, delete, or rewrite source pages. That stays a human action in the console.
 
 ## Docs
 
 - [Wiring a client](docs/WIRING.md)
+- [Organizations](docs/ORGS.md)
+- [Sharing a slice](docs/SHARING.md)
 - [Reflex, dream cycle, review](docs/REFLEX.md)
 - [Handoff notes](docs/HANDOFF.md)
 

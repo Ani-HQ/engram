@@ -1,8 +1,25 @@
 {
-  "name": "dev-console",
-  "scopes": {
-    "shared": "rw",
-    "private": "r"
+  "name": "ada@example.com",
+  "role": "owner",
+  "canWrite": true,
+  "email": "ada@example.com",
+  "org": {
+    "id": 1,
+    "name": "Fixture Org",
+    "slug": "fixture",
+    "kind": "team",
+    "policies": {
+      "agentsMayWrite": true,
+      "membersOnlyDelete": true,
+      "jevMayPropose": true,
+      "reviewApprovers": "members",
+      "acceptShares": true,
+      "maxShareLevel": "digest"
+    }
   },
-  "secrets": false
+  "orgs": [
+    { "id": 2, "name": "ada's memory", "slug": "me-ada", "kind": "personal", "role": "owner" },
+    { "id": 1, "name": "Fixture Org", "slug": "fixture", "kind": "team", "role": "owner" }
+  ],
+  "onboarding": { "step": "invite", "hasToken": true, "hasPage": true }
 }

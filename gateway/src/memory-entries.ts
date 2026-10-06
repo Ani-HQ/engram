@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { sql } from "./db";
+import { dataSql } from "./db";
 import { splitTopicEntries } from "./topic-page";
 
 export const ENTRY_STATUSES = ["active", "superseded", "retracted", "merged"] as const;
@@ -15,6 +15,9 @@ export interface MemoryEntry {
   rawText: string;
   topicHint: string | null;
   status: EntryStatus;
+  repo: string | null;
+  harness: string | null;
+  sessionId: string | null;
 }
 
 export interface ParsedEntry {
@@ -72,6 +75,9 @@ export async function upsertMemoryEntry(input: {
   tokenName?: string | null;
   topicHint?: string | null;
   archiveSlug?: string | null;
+  repo?: string | null;
+  harness?: string | null;
+  sessionId?: string | null;
 }): Promise<MemoryEntry | null> {
   const parsed = parseRememberBullet(input.rawText);
   const recordedAt = input.recordedAt ?? parsed.recordedAt;
@@ -80,18 +86,23 @@ export async function upsertMemoryEntry(input: {
   const archiveSlug = input.archiveSlug ?? (input.slug.endsWith("-archive") ? input.slug : null);
   const liveSlug = canonicalTopicSlug(input.slug);
   try {
-    const rows = await sql`
+    const rows = await dataSql()`
       INSERT INTO memory_entries (
-        id, fingerprint, slug, archive_slug, recorded_at, token_name, raw_text, topic_hint, status
+        id, fingerprint, slug, archive_slug, recorded_at, token_name, raw_text, topic_hint, status,
+        repo, harness, session_id
       ) VALUES (
         ${id}, ${fingerprint}, ${liveSlug}, ${archiveSlug},
-        ${recordedAt}, ${input.tokenName ?? null}, ${parsed.text}, ${input.topicHint ?? null}, 'active'
+        ${recordedAt}, ${input.tokenName ?? null}, ${parsed.text}, ${input.topicHint ?? null}, 'active',
+        ${input.repo ?? null}, ${input.harness ?? null}, ${input.sessionId ?? null}
       )
       ON CONFLICT (fingerprint) DO UPDATE SET
         slug = EXCLUDED.slug,
         archive_slug = COALESCE(EXCLUDED.archive_slug, memory_entries.archive_slug),
         token_name = COALESCE(EXCLUDED.token_name, memory_entries.token_name),
         topic_hint = COALESCE(EXCLUDED.topic_hint, memory_entries.topic_hint),
+        repo = COALESCE(EXCLUDED.repo, memory_entries.repo),
+        harness = COALESCE(EXCLUDED.harness, memory_entries.harness),
+        session_id = COALESCE(EXCLUDED.session_id, memory_entries.session_id),
         updated_at = now()
       RETURNING *`;
     return rows[0] ? rowToEntry(rows[0]) : null;
@@ -106,7 +117,7 @@ export async function markRolledEntries(liveSlug: string, archiveSlug: string, m
     const parsed = parseRememberBullet(raw);
     const fingerprint = entryFingerprint(liveSlug, parsed.recordedAt, parsed.text);
     try {
-      await sql`
+      await dataSql()`
         UPDATE memory_entries
         SET archive_slug = ${archiveSlug}, updated_at = now()
         WHERE fingerprint = ${fingerprint}`;
@@ -137,7 +148,7 @@ export async function backfillPageEntries(input: {
 
 export async function getMemoryEntry(id: string): Promise<MemoryEntry | null> {
   try {
-    const rows = await sql`SELECT * FROM memory_entries WHERE id = ${id}`;
+    const rows = await dataSql()`SELECT * FROM memory_entries WHERE id = ${id}`;
     return rows[0] ? rowToEntry(rows[0]) : null;
   } catch (e) {
     console.error("[memory-entries] get failed:", String(e).slice(0, 200));
@@ -148,12 +159,12 @@ export async function getMemoryEntry(id: string): Promise<MemoryEntry | null> {
 export async function listActiveEntries(limit = 200, afterId?: string): Promise<MemoryEntry[]> {
   try {
     const rows = afterId
-      ? await sql`
+      ? await dataSql()`
           SELECT * FROM memory_entries
           WHERE status = 'active' AND id > ${afterId}
           ORDER BY id
           LIMIT ${limit}`
-      : await sql`
+      : await dataSql()`
           SELECT * FROM memory_entries
           WHERE status = 'active'
           ORDER BY id
@@ -167,7 +178,7 @@ export async function listActiveEntries(limit = 200, afterId?: string): Promise<
 
 export async function setEntryStatus(id: string, status: EntryStatus): Promise<void> {
   try {
-    await sql`UPDATE memory_entries SET status = ${status}, updated_at = now() WHERE id = ${id}`;
+    await dataSql()`UPDATE memory_entries SET status = ${status}, updated_at = now() WHERE id = ${id}`;
   } catch (e) {
     console.error("[memory-entries] status update failed:", String(e).slice(0, 200));
   }
@@ -181,12 +192,12 @@ export async function recordReflexDecision(input: {
   confidence?: number | null;
 }): Promise<void> {
   try {
-    await sql`
+    await dataSql()`
       INSERT INTO reflex_decisions (entry_id, sheet, payload, model_ref, confidence)
       VALUES (
         ${input.entryId},
         ${input.sheet},
-        ${sql.json(input.payload)},
+        ${dataSql().json(input.payload)},
         ${input.modelRef ?? null},
         ${input.confidence ?? null}
       )`;
@@ -206,5 +217,8 @@ function rowToEntry(row: any): MemoryEntry {
     rawText: String(row.raw_text ?? ""),
     topicHint: row.topic_hint ? String(row.topic_hint) : null,
     status: (ENTRY_STATUSES.includes(row.status) ? row.status : "active") as EntryStatus,
+    repo: row.repo ? String(row.repo) : null,
+    harness: row.harness ? String(row.harness) : null,
+    sessionId: row.session_id ? String(row.session_id) : null,
   };
 }

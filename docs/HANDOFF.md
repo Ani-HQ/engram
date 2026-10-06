@@ -39,10 +39,13 @@ rather than the oldest.
 If you do ask `recall` for a full body and the page is still over the cap, you get its
 opening and its most recent entries with the middle elided, never the head alone.
 
+A shell hook can see the conversation. Claude Code Stop/SessionEnd, Cursor stop,
+and Codex notify upload a redacted trail to the personal brain. See
+[SHARING.md](SHARING.md).
+
 ```
-remember(topic: "engram", text: "Deferred the Claude Code hook — a shell hook
-cannot see the conversation. Testing whether instructed agents write on their own
-first.")
+remember(topic: "engram", text: "Deferred the Claude Code hook until we proved
+an instructed agent writes on its own. Capture hooks now exist for the trail itself.")
 ```
 
 ## Recall before starting, not on every session

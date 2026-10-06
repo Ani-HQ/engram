@@ -27,17 +27,36 @@ const brain = {
 // back undefined. Spread the real module so a mock can only ever override, never drop.
 const realAuth = await import("../gateway/src/auth");
 const realBrain = await import("../gateway/src/brain");
+const realOrgs = await import("../gateway/src/orgs");
+
+const consoleToken = {
+  name: "console",
+  orgId: 1,
+  role: "owner" as const,
+  canWrite: true,
+  kind: "token" as const,
+  email: null,
+  scopes: [] as string[],
+};
 
 mock.module("../gateway/src/auth", () => ({
   ...realAuth,
   authenticate: async (authHeader: string | null) => (
-    authHeader === "Bearer valid-token" ? { name: "console" } : null
+    authHeader === "Bearer valid-token" ? consoleToken : null
   ),
+  authenticateSecret: async (raw: string) => (raw === "valid-token" ? consoleToken : null),
 }));
 
 mock.module("../gateway/src/brain", () => ({
   ...realBrain,
   brainClient: () => brain,
+  ensureBrain: async () => brain,
+}));
+
+mock.module("../gateway/src/orgs", () => ({
+  ...realOrgs,
+  resolveOrg: async () => realOrgs.ANI_HQ_ORG,
+  withOrg: async (_org: unknown, _token: unknown, fn: () => Promise<Response>) => fn(),
 }));
 
 // Spread for the same reason as the others, and override the two provenance

@@ -8,6 +8,7 @@
   },
   "files": [
     "index.js",
+    "capture.js",
     "README.md"
   ],
   "repository": {

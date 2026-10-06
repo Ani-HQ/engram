@@ -24,6 +24,7 @@ ensure_secret() {
 
 ensure_secret typesafe-api-key || echo "[release] typesafe-api-key not created"
 ensure_secret voyage-api-key || echo "[release] voyage-api-key not created"
+ensure_secret resend-api-key || echo "[release] resend-api-key not created"
 
 SECRETS="ENGRAM_DB_URL_TEMPLATE=engram-db-url-template:latest"
 ENV_VARS="GBRAIN_HOMES_DIR=/tmp/gbrain-homes,ENGRAM_CLOUDSQL_INSTANCE=${INSTANCE},REFLEX_MODEL=jev-latest,ENGRAM_EMBEDDING_MODEL=voyage:voyage-4-large,ENGRAM_EMBEDDING_DIMENSIONS=1024,TYPESAFE_API_KEY=unset,VOYAGE_API_KEY=unset"

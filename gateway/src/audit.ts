@@ -1,3 +1,4 @@
+import { currentOrg } from "./context";
 import { sql } from "./db";
 
 // Writing a page is a contribution; reading or deleting one is not. Attribution is
@@ -18,9 +19,10 @@ export async function audit(
   slug?: string | null,
 ) {
   try {
+    const orgId = currentOrg()?.id ?? 1;
     await sql`
-      INSERT INTO audit_log (token_name, tool, arg_summary, outcome, slug)
-      VALUES (${tokenName}, ${tool}, ${argSummary}, ${outcome}, ${slug ?? null})`;
+      INSERT INTO audit_log (token_name, tool, arg_summary, outcome, slug, org_id)
+      VALUES (${tokenName}, ${tool}, ${argSummary}, ${outcome}, ${slug ?? null}, ${orgId})`;
   } catch (e) {
     console.error("[audit] write failed:", String(e).slice(0, 200));
   }
@@ -63,6 +65,7 @@ export async function provenanceFor(slugs: string[]): Promise<Map<string, Proven
              min(ts) AS first_at, max(ts) AS last_at, count(*)::int AS writes
       FROM audit_log
       WHERE slug = ANY(${slugs}) AND outcome = 'ok' AND tool = ANY(${CONTRIBUTING_TOOLS})
+        AND org_id = ${currentOrg()?.id ?? 1}
       GROUP BY slug, token_name
       ORDER BY slug, min(ts)`;
     const bySlug = new Map<string, any[]>();
@@ -101,6 +104,7 @@ export async function recentActivity(windowSeconds = 90, limit = 40): Promise<Ac
       FROM audit_log
       WHERE slug IS NOT NULL
         AND outcome = 'ok'
+        AND org_id = ${currentOrg()?.id ?? 1}
         AND ts > now() - make_interval(secs => ${seconds})
       ORDER BY slug, ts DESC
       LIMIT ${Math.min(200, Math.max(1, limit))}`;

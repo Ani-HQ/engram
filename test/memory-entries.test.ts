@@ -58,8 +58,8 @@ describe("dream helpers", () => {
 
   test("clusters use existing page slugs as labels", () => {
     const clusters = deriveClusters([
-      { id: "1", fingerprint: "a", slug: "projects/engram", archiveSlug: null, recordedAt: null, tokenName: null, rawText: "one", topicHint: null, status: "active" },
-      { id: "2", fingerprint: "b", slug: "projects/engram", archiveSlug: null, recordedAt: null, tokenName: null, rawText: "two", topicHint: null, status: "active" },
+      { id: "1", fingerprint: "a", slug: "projects/engram", archiveSlug: null, recordedAt: null, tokenName: null, rawText: "one", topicHint: null, status: "active", repo: null, harness: null, sessionId: null },
+      { id: "2", fingerprint: "b", slug: "projects/engram", archiveSlug: null, recordedAt: null, tokenName: null, rawText: "two", topicHint: null, status: "active", repo: null, harness: null, sessionId: null },
     ]);
     expect(clusters[0]?.title).toBe("engram");
     expect(clusters[0]?.members).toEqual(["projects/engram"]);

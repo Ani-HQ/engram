@@ -1,10 +1,19 @@
 // engram gateway: stateless MCP-over-HTTP endpoint at /mcp.
 // Each POST is authenticated, handled, answered with application/json — no
 // server-side session state, so Cloud Run can recycle instances freely.
+import { authenticateRequest } from "./auth";
+import { brainHealth, ensureBrain } from "./brain";
 import { config } from "./config";
 import { migrate } from "./db";
-import { authenticate, type TokenRecord } from "./auth";
-import { startBrain, brainHealth } from "./brain";
+import {
+  insufficientScope,
+  oauthEnabled,
+  protectedResourceMetadata,
+  resourceHost,
+  unauthorizedResponse,
+} from "./oauth";
+import { resolveOrg, withOrg } from "./orgs";
+import { hasOauthScope, normalizeToken } from "./policies";
 import {
   listTools,
   callTool,
@@ -23,11 +32,9 @@ function rpcError(id: unknown, code: number, message: string, status = 200) {
   return Response.json({ jsonrpc: "2.0", id, error: { code, message } }, { status });
 }
 
-async function handleMcp(req: Request, authenticatedToken?: TokenRecord): Promise<Response> {
-  const token = authenticatedToken ?? await authenticate(req.headers.get("authorization"));
-  if (!token) {
-    return Response.json({ error: "unauthorized" }, { status: 401 });
-  }
+async function handleMcp(req: Request): Promise<Response> {
+  const token = await authenticateRequest(req);
+  if (!token) return unauthorizedResponse(req);
 
   let msg: any;
   try {
@@ -52,55 +59,78 @@ async function handleMcp(req: Request, authenticatedToken?: TokenRecord): Promis
   // Routing headers that contradict the body are malformed, not a routing hint.
   if (conflict) return rpcError(msg.id, -32600, conflict, 400);
 
-  try {
-    switch (method) {
-      case "initialize": {
-        const requested = msg.params?.protocolVersion;
-        return rpcResult(msg.id, {
-          protocolVersion: negotiateProtocolVersion(requested),
-          capabilities: { tools: {} },
-          serverInfo: { name: "engram", version: "0.1.0" },
-          // The server teaches its own usage policy: a shared brain is only useful
-          // if every harness writes to it the same way, and harnesses do not
-          // coordinate their system prompts.
-          instructions: SERVER_INSTRUCTIONS,
-        });
-      }
-      case "ping":
-        return rpcResult(msg.id, {});
-      case "tools/list":
-        return rpcResult(msg.id, {
-          tools: await listTools(token),
-          ...toolsListCacheHints(token, clientMeta.protocolVersion),
-        });
-      case "tools/call": {
-        const args = msg.params?.arguments ?? {};
-        if (typeof name !== "string") return rpcError(msg.id, -32602, "missing tool name");
-        return rpcResult(msg.id, await callTool(token, name, args ?? {}));
-      }
-      default:
-        return rpcError(msg.id, -32601, `Method not found: ${method}`);
-    }
-  } catch (e) {
-    console.error("[mcp] handler error:", e);
-    return rpcError(msg.id, -32603, `Internal error: ${String(e).slice(0, 300)}`);
+  const actor = normalizeToken(token);
+  if (actor.kind === "oauth" && !hasOauthScope(actor, "memory:read")) {
+    return insufficientScope(req);
   }
+
+  const org = await resolveOrg(actor);
+  await ensureBrain(org);
+
+  return withOrg(org, actor, async () => {
+    try {
+      switch (method) {
+        case "initialize": {
+          const requested = msg.params?.protocolVersion;
+          return rpcResult(msg.id, {
+            protocolVersion: negotiateProtocolVersion(requested),
+            capabilities: { tools: {} },
+            serverInfo: { name: "engram", version: "0.1.0" },
+            instructions: SERVER_INSTRUCTIONS,
+          });
+        }
+        case "ping":
+          return rpcResult(msg.id, {});
+        case "tools/list":
+          return rpcResult(msg.id, {
+            tools: await listTools(actor),
+            ...toolsListCacheHints(actor, clientMeta.protocolVersion),
+          });
+        case "tools/call": {
+          const args = msg.params?.arguments ?? {};
+          if (typeof name !== "string") return rpcError(msg.id, -32602, "missing tool name");
+          return rpcResult(msg.id, await callTool(actor, name, args ?? {}));
+        }
+        default:
+          return rpcError(msg.id, -32601, `Method not found: ${method}`);
+      }
+    } catch (e) {
+      console.error("[mcp] handler error:", e);
+      return rpcError(msg.id, -32603, `Internal error: ${String(e).slice(0, 300)}`);
+    }
+  });
+}
+
+function wellKnown(req: Request): Response | null {
+  const url = new URL(req.url);
+  if (
+    url.pathname === "/.well-known/oauth-protected-resource" ||
+    url.pathname === "/.well-known/oauth-protected-resource/mcp"
+  ) {
+    return Response.json(protectedResourceMetadata(resourceHost(req)));
+  }
+  return null;
 }
 
 console.error("[engram] migrating gateway db...");
 await migrate();
-console.error("[engram] starting brain child...");
-await startBrain();
+console.error("[engram] brains start on first use");
 
 Bun.serve({
   port: config.port,
   idleTimeout: 120,
   async fetch(req) {
     const url = new URL(req.url);
+    const metadata = wellKnown(req);
+    if (metadata) return metadata;
     // /health, not /healthz: Google's frontend reserves /healthz on run.app
     // domains and answers 404 before the request reaches the container.
     if (url.pathname === "/health" || url.pathname === "/healthz") {
-      return Response.json({ status: "ok", brain: await brainHealth() });
+      return Response.json({
+        status: "ok",
+        brain: await brainHealth(),
+        oauth: oauthEnabled(),
+      });
     }
     if (url.pathname === "/mcp") {
       if (req.method === "POST") return handleMcp(req);
