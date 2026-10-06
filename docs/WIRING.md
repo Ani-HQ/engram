@@ -82,10 +82,11 @@ Use the `@ani-hq/engram-mcp` shim as the MCP server command:
 ## Custom Connectors
 
 Claude, ChatGPT, and Grok have no bearer-token field. They discover OAuth from a
-401 on `https://<engram-url>/mcp`. Point the connector at that URL. Sign in when
-the client opens AuthKit. Cursor and Claude Code can still send `Authorization: Bearer`.
+401 on `https://<engram-url>/mcp`. Point the connector at that URL. Sign in with
+the same magic-link email as the console. Cursor and Claude Code can still send
+`Authorization: Bearer`.
 
-Until `ENGRAM_OAUTH_ISSUER` is set, those three stay closed. See [OAUTH.md](OAUTH.md).
+Until `ENGRAM_OAUTH_PRIVATE_KEY` is set, those three stay closed. See [OAUTH.md](OAUTH.md).
 
 ## Headless and Unattended Agents
 

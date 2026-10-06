@@ -1,5 +1,6 @@
 import { createPublicKey, createVerify } from "node:crypto";
 import { config } from "./config";
+import { localJwks, oauthSigningEnabled } from "./oauth-keys";
 import { findMemberByEmail, getOrg } from "./orgs";
 import { normalizeToken, type TokenRecord } from "./policies";
 
@@ -26,7 +27,12 @@ let jwksCache: { fetchedAt: number; keys: Jwk[] } | null = null;
 const JWKS_TTL_MS = 10 * 60 * 1000;
 
 export function oauthEnabled(): boolean {
-  return Boolean(config.oauth.issuer);
+  return oauthSigningEnabled();
+}
+
+export function oauthIssuer(host: string): string {
+  const explicit = (config.oauth.issuer || config.publicUrl || host).trim();
+  return explicit.replace(/\/$/, "");
 }
 
 export function resourceHost(req: Request): string {
@@ -40,10 +46,10 @@ export function canonicalResource(host: string): string {
 }
 
 export function protectedResourceMetadata(host: string) {
-  const resource = canonicalResource(host);
+  const issuer = oauthIssuer(host);
   return {
-    resource,
-    authorization_servers: config.oauth.issuer ? [config.oauth.issuer] : [],
+    resource: canonicalResource(host),
+    authorization_servers: oauthEnabled() ? [issuer] : [],
     scopes_supported: ["openid", "email", "offline_access", "memory:read", "memory:write"],
     bearer_methods_supported: ["header"],
     resource_documentation: `${host.replace(/\/$/, "")}/`,
@@ -63,17 +69,16 @@ export function isAuthorizationServerPath(pathname: string): boolean {
 }
 
 export function jwksUrlFor(issuer: string): string {
-  const base = issuer.replace(/\/$/, "");
-  if (config.oauth.jwksUrl) return config.oauth.jwksUrl;
-  if (base.includes("authkit.app")) return `${base}/oauth2/jwks`;
-  return `${base}/.well-known/jwks.json`;
+  return `${issuer.replace(/\/$/, "")}/.well-known/jwks.json`;
 }
 
-export function authorizationServerMetadataUrl(issuer: string, openid: boolean): string {
-  const base = issuer.replace(/\/$/, "");
-  return openid
-    ? `${base}/.well-known/openid-configuration`
-    : `${base}/.well-known/oauth-authorization-server`;
+export function corsHeaders(): HeadersInit {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Max-Age": "86400",
+  };
 }
 
 export function wwwAuthenticate(host: string, extra?: string): string {
@@ -158,33 +163,10 @@ function audienceMatches(aud: string | string[] | undefined, expected: string): 
   return Array.isArray(aud) && aud.includes(expected);
 }
 
-let asMetadataCache: { url: string; fetchedAt: number; body: unknown } | null = null;
-
-export async function loadAuthorizationServerMetadata(
-  pathname: string,
-  deps: { issuer?: string; fetchImpl?: typeof fetch } = {},
-): Promise<unknown | null> {
-  const issuer = (deps.issuer ?? config.oauth.issuer).trim();
-  if (!issuer) return null;
-  const openid = pathname.includes("openid-configuration");
-  const url = authorizationServerMetadataUrl(issuer, openid);
-  if (asMetadataCache && asMetadataCache.url === url && Date.now() - asMetadataCache.fetchedAt < JWKS_TTL_MS) {
-    return asMetadataCache.body;
-  }
-  const fetchImpl = deps.fetchImpl ?? fetch;
-  const res = await fetchImpl(url);
-  if (!res.ok) throw new Error(`as metadata ${res.status}`);
-  const body = await res.json();
-  asMetadataCache = { url, fetchedAt: Date.now(), body };
-  return body;
-}
-
-export function resetAsMetadataCache() {
-  asMetadataCache = null;
-}
-
 export async function loadJwks(): Promise<Jwk[]> {
-  const url = config.oauth.issuer ? jwksUrlFor(config.oauth.issuer) : "";
+  const local = localJwks();
+  if (local.length) return local;
+  const url = config.oauth.jwksUrl;
   if (!url) return [];
   if (jwksCache && Date.now() - jwksCache.fetchedAt < JWKS_TTL_MS) return jwksCache.keys;
   const res = await fetch(url);
@@ -197,14 +179,15 @@ export async function loadJwks(): Promise<Jwk[]> {
 
 export function resetJwksCache() {
   jwksCache = null;
-  asMetadataCache = null;
 }
 
 export async function authenticateJwt(raw: string, audience: string): Promise<TokenRecord | null> {
   if (!oauthEnabled()) return null;
   const jwks = await loadJwks();
+  const issuer = (config.oauth.issuer || config.publicUrl || audience.replace(/\/mcp\/?$/, "")).replace(/\/$/, "");
+  if (!issuer) return null;
   const claims = await verifyJwt(raw, {
-    issuer: config.oauth.issuer,
+    issuer,
     audience: config.oauth.audience || audience,
     jwks,
   });

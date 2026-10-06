@@ -2,62 +2,55 @@
 
 Claude, ChatGPT, and Grok connectors have no bearer-token field. They speak
 OAuth 2.1. Cursor, Claude Code, Codex, the fleet, and the console cookie keep
-using `eng_` tokens. Auth is dual-path: a JWT from the authorization server is
-checked first; everything else is the existing sha256 lookup.
+using `eng_` tokens. Auth is dual-path: a JWT we issued is checked first;
+everything else is the existing sha256 lookup.
 
-The resource-server side lives in the gateway. The authorization server is
-**WorkOS AuthKit**. engram does not become an OAuth server.
+engram is both the resource server and the authorization server. Login is the
+same Resend magic link as the console. There is no second identity vendor.
 
-## Why WorkOS
+## What the gateway does
 
-ChatGPT accepts Client ID Metadata Documents, Dynamic Client Registration, or a
-pre-registered client. Claude prefers CIMD and falls back to DCR. Grok registers
-via DCR. AuthKit does all three, PKCE S256, resource indicators (RFC 8707), and
-discovery. One tenant covers the three chat surfaces.
+1. Protected Resource Metadata at `/.well-known/oauth-protected-resource`
+   and `/.well-known/oauth-protected-resource/mcp`.
+2. Authorization Server Metadata at `/.well-known/oauth-authorization-server`
+   (and the OpenID discovery aliases).
+3. JWKS at `/.well-known/jwks.json`.
+4. Dynamic client registration at `POST /oauth/register`, plus Client ID
+   Metadata Documents hosted on Claude / ChatGPT / Grok.
+5. `GET /oauth/authorize` with PKCE S256. A signed-in console session
+   finishes immediately. Otherwise we email a link to `/oauth/continue`.
+6. `POST /oauth/token` exchanges the code (or a refresh token) for a JWT.
+7. A JWT is accepted on `/mcp` only when its email matches an org member.
+   Audience must be `https://<host>/mcp`.
 
-A wrong authorization-server pick wastes the build. This one matches the clients.
+Redirects are allowlisted to Claude, ChatGPT, Grok, and localhost.
 
-## What the gateway already does
+## Turn it on
 
-1. Protected Resource Metadata (RFC 9728) at
-   `/.well-known/oauth-protected-resource` and
-   `/.well-known/oauth-protected-resource/mcp`.
-2. A `401` with `WWW-Authenticate: Bearer resource_metadata="…", scope="memory:read"`.
-3. JWT verification against the issuer JWKS. Audience must be
-   `https://<host>/mcp`. `eng_` tokens still work.
-4. A JWT is accepted only when its email matches an org member.
-5. A compatibility proxy of AuthKit's
-   `/.well-known/oauth-authorization-server` (and OpenID discovery) on the
-   engram host, for clients that skip protected-resource metadata.
+Set a persistent RSA private key. Cloud Run instances must share one key or
+tokens issued on one box fail on another.
 
-## Stand up AuthKit
+```bash
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048
+```
 
-1. Create a [WorkOS](https://workos.com) environment and an AuthKit domain,
-   e.g. `https://engram.authkit.app`.
-2. Connect → Configuration: enable **Client ID Metadata Document**. Keep
-   **Dynamic Client Registration** on for older clients.
-3. Add a Resource Indicator: `https://engram.ani.computer/mcp`. Set it as the
-   default so clients that omit `resource` still get the right audience.
-4. Set on Cloud Run (and in `.env` for local):
+```text
+ENGRAM_PUBLIC_URL=https://engram.ani.computer
+ENGRAM_OAUTH_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----..."
+ENGRAM_OAUTH_AUDIENCE=https://engram.ani.computer/mcp
+```
 
-   ```text
-   ENGRAM_PUBLIC_URL=https://engram.ani.computer
-   ENGRAM_OAUTH_ISSUER=https://engram.authkit.app
-   ENGRAM_OAUTH_AUDIENCE=https://engram.ani.computer/mcp
-   ```
+Hosted: the key is `engram-oauth-private-key`, mounted as
+`ENGRAM_OAUTH_PRIVATE_KEY`. Without it, connectors stay closed. Bearer tokens
+are unchanged.
 
-   AuthKit JWKS is `https://<issuer>/oauth2/jwks`. The gateway uses that when
-   the issuer host contains `authkit.app`. Override with `ENGRAM_OAUTH_JWKS_URL`
-   only if you have to.
-
-5. A person must already be an org member (console signup / invite). AuthKit
-   login proves the email; engram maps it to that membership.
+A person must already be an org member. The magic link proves the email.
 
 ## Prove one surface
 
 Add a Claude custom connector pointed at `https://engram.ani.computer/mcp`.
-Use Claude's published identity. After sign-in, `whoami` should return
-`oauth:<sub>`. Then ChatGPT and Grok.
+Use Claude's published identity or let it register. After the email link,
+`whoami` should return `oauth:<email>`. Then ChatGPT and Grok.
 
 ## What must not break
 

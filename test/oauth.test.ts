@@ -1,21 +1,32 @@
+import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, test } from "bun:test";
 
 process.env.ENGRAM_DB_URL_TEMPLATE ??= "postgresql://postgres:postgres@localhost:1/__DB__";
 
+const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+process.env.ENGRAM_OAUTH_PRIVATE_KEY = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+
 const {
-  authorizationServerMetadataUrl,
   isAuthorizationServerPath,
   isProtectedResourcePath,
   jwksUrlFor,
-  loadAuthorizationServerMetadata,
+  oauthEnabled,
   protectedResourceMetadata,
-  resetAsMetadataCache,
+  verifyJwt,
   wwwAuthenticate,
 } = await import("../gateway/src/oauth");
+const {
+  authorizationServerMetadata,
+  fetchCimd,
+  pkceChallenge,
+  redirectAllowed,
+  verifyPkce,
+} = await import("../gateway/src/oauth-as");
+const { localJwks, signJwt } = await import("../gateway/src/oauth-keys");
 const { hasOauthScope, normalizeToken } = await import("../gateway/src/policies");
 
 describe("oauth discovery paths", () => {
-  test("serves resource metadata at both probe locations", () => {
+  test("serves resource and authorization metadata at both probe locations", () => {
     expect(isProtectedResourcePath("/.well-known/oauth-protected-resource")).toBe(true);
     expect(isProtectedResourcePath("/.well-known/oauth-protected-resource/mcp")).toBe(true);
     expect(isAuthorizationServerPath("/.well-known/oauth-authorization-server")).toBe(true);
@@ -23,53 +34,81 @@ describe("oauth discovery paths", () => {
     expect(isAuthorizationServerPath("/mcp")).toBe(false);
   });
 
-  test("points AuthKit clients at oauth2/jwks", () => {
-    expect(jwksUrlFor("https://engram.authkit.app")).toBe("https://engram.authkit.app/oauth2/jwks");
-    expect(jwksUrlFor("https://as.example")).toBe("https://as.example/.well-known/jwks.json");
-    expect(authorizationServerMetadataUrl("https://engram.authkit.app", false))
-      .toBe("https://engram.authkit.app/.well-known/oauth-authorization-server");
-  });
-
-  test("a 401 names the resource metadata document", () => {
-    const header = wwwAuthenticate("https://engram.ani.computer");
-    expect(header).toContain('resource_metadata="https://engram.ani.computer/.well-known/oauth-protected-resource"');
-    const meta = protectedResourceMetadata("https://engram.ani.computer");
-    expect(meta.resource).toBe("https://engram.ani.computer/mcp");
-    expect(meta.scopes_supported).toContain("email");
+  test("names this host as the authorization server when a signing key is present", () => {
+    expect(oauthEnabled()).toBe(true);
+    const header = wwwAuthenticate("https://engram.example");
+    expect(header).toContain('resource_metadata="https://engram.example/.well-known/oauth-protected-resource"');
+    const resource = protectedResourceMetadata("https://engram.example");
+    expect(resource.resource).toBe("https://engram.example/mcp");
+    expect(resource.authorization_servers).toEqual(["https://engram.example"]);
+    const as = authorizationServerMetadata("https://engram.example");
+    expect(as.authorization_endpoint).toBe("https://engram.example/oauth/authorize");
+    expect(as.code_challenge_methods_supported).toEqual(["S256"]);
+    expect(jwksUrlFor("https://engram.example")).toBe("https://engram.example/.well-known/jwks.json");
   });
 });
 
-describe("authorization server metadata proxy", () => {
-  test("fetches the issuer document for clients that skip PRM", async () => {
-    resetAsMetadataCache();
-    const delivery = await loadAuthorizationServerMetadata("/.well-known/oauth-authorization-server", {
-      issuer: "https://engram.authkit.app",
-      fetchImpl: (async (url) => {
-        expect(String(url)).toBe("https://engram.authkit.app/.well-known/oauth-authorization-server");
-        return Response.json({ issuer: "https://engram.authkit.app", code_challenge_methods_supported: ["S256"] });
-      }) as typeof fetch,
-    });
-    expect(delivery).toEqual({
-      issuer: "https://engram.authkit.app",
-      code_challenge_methods_supported: ["S256"],
-    });
+describe("pkce and redirects", () => {
+  test("S256 challenge matches the verifier", () => {
+    const verifier = "a".repeat(43);
+    expect(verifyPkce(verifier, pkceChallenge(verifier))).toBe(true);
+    expect(verifyPkce("other", pkceChallenge(verifier))).toBe(false);
   });
 
-  test("stays quiet when no issuer is configured", async () => {
-    expect(await loadAuthorizationServerMetadata("/.well-known/oauth-authorization-server", { issuer: "" })).toBeNull();
+  test("only chat-connector and local redirects are allowed", () => {
+    expect(redirectAllowed("https://claude.ai/api/mcp/auth_callback")).toBe(true);
+    expect(redirectAllowed("https://chatgpt.com/connector_platform_oauth_redirect")).toBe(true);
+    expect(redirectAllowed("https://grok.com/oauth/callback")).toBe(true);
+    expect(redirectAllowed("http://localhost:1234/cb")).toBe(true);
+    expect(redirectAllowed("https://evil.example/cb")).toBe(false);
+    expect(redirectAllowed("https://user:pass@claude.ai/cb")).toBe(false);
+  });
+
+  test("CIMD only fetches https hosts on the redirect allowlist", async () => {
+    let called = 0;
+    const fake: typeof fetch = async () => {
+      called += 1;
+      return new Response("no");
+    };
+    expect(await fetchCimd("http://claude.ai/client.json", fake)).toBeNull();
+    expect(await fetchCimd("https://evil.example/client.json", fake)).toBeNull();
+    expect(await fetchCimd("https://user:pass@claude.ai/client.json", fake)).toBeNull();
+    expect(called).toBe(0);
+
+    const ok: typeof fetch = async () => Response.json({
+      client_id: "https://claude.ai/client.json",
+      redirect_uris: ["https://claude.ai/api/mcp/auth_callback"],
+    });
+    const client = await fetchCimd("https://claude.ai/client.json", ok);
+    expect(client?.redirectUris).toEqual(["https://claude.ai/api/mcp/auth_callback"]);
+  });
+});
+
+describe("local jwt", () => {
+  test("a token we sign verifies against our jwks", async () => {
+    const token = signJwt(
+      { sub: "ada@example.com", email: "ada@example.com", scope: "openid email" },
+      { issuer: "https://engram.example", audience: "https://engram.example/mcp" },
+    );
+    const claims = await verifyJwt(token, {
+      issuer: "https://engram.example",
+      audience: "https://engram.example/mcp",
+      jwks: localJwks(),
+    });
+    expect(claims?.email).toBe("ada@example.com");
   });
 });
 
 describe("oauth scopes", () => {
   const member = normalizeToken({
-    name: "oauth:user_1",
+    name: "oauth:ada@example.com",
     role: "member",
     kind: "oauth",
     email: "ada@example.com",
     scopes: ["openid", "email", "offline_access"],
   });
 
-  test("openid/email from AuthKit is enough until a token carries memory scopes", () => {
+  test("openid/email is enough until a token carries memory scopes", () => {
     expect(hasOauthScope(member, "memory:read")).toBe(true);
     expect(hasOauthScope(member, "memory:write")).toBe(true);
   });

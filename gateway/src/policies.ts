@@ -125,7 +125,7 @@ export function hasOauthScope(token: TokenRecord, needed: "memory:read" | "memor
   if (token.scopes.includes(needed)) return true;
   if (needed === "memory:read" && token.scopes.includes("memory:write")) return true;
   const custom = token.scopes.filter(scope => scope.startsWith("memory:"));
-  // AuthKit and similar issuers grant openid/email, not our memory:* names.
+  // Chat connectors grant openid/email, not always memory:*.
   // Membership is the gate until a token actually carries memory scopes.
   return custom.length === 0;
 }

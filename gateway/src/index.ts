@@ -9,12 +9,13 @@ import {
   insufficientScope,
   isAuthorizationServerPath,
   isProtectedResourcePath,
-  loadAuthorizationServerMetadata,
+  corsHeaders,
   oauthEnabled,
   protectedResourceMetadata,
   resourceHost,
   unauthorizedResponse,
 } from "./oauth";
+import { authorizationServerMetadata, handleOauth } from "./oauth-as";
 import { resolveOrg, withOrg } from "./orgs";
 import { hasOauthScope, normalizeToken } from "./policies";
 import {
@@ -106,19 +107,16 @@ async function handleMcp(req: Request): Promise<Response> {
 
 async function wellKnown(req: Request): Promise<Response | null> {
   const url = new URL(req.url);
+  const cors = corsHeaders();
+  if (req.method === "OPTIONS" && (isProtectedResourcePath(url.pathname) || isAuthorizationServerPath(url.pathname))) {
+    return new Response(null, { status: 204, headers: cors });
+  }
   if (isProtectedResourcePath(url.pathname)) {
-    return Response.json(protectedResourceMetadata(resourceHost(req)));
+    return Response.json(protectedResourceMetadata(resourceHost(req)), { headers: cors });
   }
   if (isAuthorizationServerPath(url.pathname)) {
-    if (!oauthEnabled()) return new Response("Not Found", { status: 404 });
-    try {
-      const metadata = await loadAuthorizationServerMetadata(url.pathname);
-      if (!metadata) return new Response("Not Found", { status: 404 });
-      return Response.json(metadata);
-    } catch (e) {
-      console.error("[oauth] as metadata failed:", String(e).slice(0, 160));
-      return Response.json({ error: "authorization server unavailable" }, { status: 502 });
-    }
+    if (!oauthEnabled()) return new Response("Not Found", { status: 404, headers: cors });
+    return Response.json(authorizationServerMetadata(resourceHost(req)), { headers: cors });
   }
   return null;
 }
@@ -134,6 +132,8 @@ Bun.serve({
     const url = new URL(req.url);
     const metadata = await wellKnown(req);
     if (metadata) return metadata;
+    const oauth = await handleOauth(req, url);
+    if (oauth) return oauth;
     // /health, not /healthz: Google's frontend reserves /healthz on run.app
     // domains and answers 404 before the request reaches the container.
     if (url.pathname === "/health" || url.pathname === "/healthz") {
