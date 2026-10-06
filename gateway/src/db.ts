@@ -307,4 +307,57 @@ export async function migrate() {
       UNIQUE (rule_id, source_kind, source_id)
     )`;
   await sql`CREATE INDEX IF NOT EXISTS shared_copies_target_idx ON shared_copies (target_org, revoked_at)`;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS oauth_clients (
+      client_id    text PRIMARY KEY,
+      redirect_uris jsonb NOT NULL,
+      client_name  text,
+      created_at   timestamptz NOT NULL DEFAULT now()
+    )`;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS oauth_requests (
+      id             text PRIMARY KEY,
+      client_id      text NOT NULL,
+      redirect_uri   text NOT NULL,
+      state          text,
+      code_challenge text NOT NULL,
+      resource       text,
+      scope          text,
+      email          text,
+      created_at     timestamptz NOT NULL DEFAULT now(),
+      expires_at     timestamptz NOT NULL,
+      used_at        timestamptz
+    )`;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS oauth_codes (
+      id             serial PRIMARY KEY,
+      sha256_hash    text UNIQUE NOT NULL,
+      client_id      text NOT NULL,
+      email          text NOT NULL,
+      org_id         int NOT NULL REFERENCES orgs(id),
+      redirect_uri   text NOT NULL,
+      code_challenge text NOT NULL,
+      resource       text,
+      scope          text,
+      created_at     timestamptz NOT NULL DEFAULT now(),
+      expires_at     timestamptz NOT NULL,
+      used_at        timestamptz
+    )`;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS oauth_refresh_tokens (
+      id          serial PRIMARY KEY,
+      sha256_hash text UNIQUE NOT NULL,
+      client_id   text NOT NULL,
+      email       text NOT NULL,
+      org_id      int NOT NULL REFERENCES orgs(id),
+      resource    text,
+      scope       text,
+      created_at  timestamptz NOT NULL DEFAULT now(),
+      expires_at  timestamptz NOT NULL,
+      revoked_at  timestamptz
+    )`;
 }

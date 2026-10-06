@@ -7,11 +7,15 @@ import { config } from "./config";
 import { migrate } from "./db";
 import {
   insufficientScope,
+  isAuthorizationServerPath,
+  isProtectedResourcePath,
+  corsHeaders,
   oauthEnabled,
   protectedResourceMetadata,
   resourceHost,
   unauthorizedResponse,
 } from "./oauth";
+import { authorizationServerMetadata, handleOauth } from "./oauth-as";
 import { resolveOrg, withOrg } from "./orgs";
 import { hasOauthScope, normalizeToken } from "./policies";
 import {
@@ -101,13 +105,18 @@ async function handleMcp(req: Request): Promise<Response> {
   });
 }
 
-function wellKnown(req: Request): Response | null {
+async function wellKnown(req: Request): Promise<Response | null> {
   const url = new URL(req.url);
-  if (
-    url.pathname === "/.well-known/oauth-protected-resource" ||
-    url.pathname === "/.well-known/oauth-protected-resource/mcp"
-  ) {
-    return Response.json(protectedResourceMetadata(resourceHost(req)));
+  const cors = corsHeaders();
+  if (req.method === "OPTIONS" && (isProtectedResourcePath(url.pathname) || isAuthorizationServerPath(url.pathname))) {
+    return new Response(null, { status: 204, headers: cors });
+  }
+  if (isProtectedResourcePath(url.pathname)) {
+    return Response.json(protectedResourceMetadata(resourceHost(req)), { headers: cors });
+  }
+  if (isAuthorizationServerPath(url.pathname)) {
+    if (!oauthEnabled()) return new Response("Not Found", { status: 404, headers: cors });
+    return Response.json(authorizationServerMetadata(resourceHost(req)), { headers: cors });
   }
   return null;
 }
@@ -121,8 +130,10 @@ Bun.serve({
   idleTimeout: 120,
   async fetch(req) {
     const url = new URL(req.url);
-    const metadata = wellKnown(req);
+    const metadata = await wellKnown(req);
     if (metadata) return metadata;
+    const oauth = await handleOauth(req, url);
+    if (oauth) return oauth;
     // /health, not /healthz: Google's frontend reserves /healthz on run.app
     // domains and answers 404 before the request reaches the container.
     if (url.pathname === "/health" || url.pathname === "/healthz") {

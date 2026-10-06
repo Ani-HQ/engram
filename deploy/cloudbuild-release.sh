@@ -25,6 +25,14 @@ ensure_secret() {
 ensure_secret typesafe-api-key || echo "[release] typesafe-api-key not created"
 ensure_secret voyage-api-key || echo "[release] voyage-api-key not created"
 ensure_secret resend-api-key || echo "[release] resend-api-key not created"
+if ! gcloud secrets describe engram-oauth-private-key --project "$PROJECT" >/dev/null 2>&1; then
+  openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+    | gcloud secrets create engram-oauth-private-key --project "$PROJECT" --data-file=- \
+    || echo "[release] engram-oauth-private-key not created"
+fi
+gcloud secrets add-iam-policy-binding engram-oauth-private-key --project "$PROJECT" \
+  --member="serviceAccount:${SA}" --role="roles/secretmanager.secretAccessor" >/dev/null \
+  || echo "[release] accessor binding for engram-oauth-private-key already set or not grantable"
 
 SECRETS="ENGRAM_DB_URL_TEMPLATE=engram-db-url-template:latest"
 ENV_VARS="GBRAIN_HOMES_DIR=/tmp/gbrain-homes,ENGRAM_CLOUDSQL_INSTANCE=${INSTANCE},REFLEX_MODEL=jev-latest,ENGRAM_EMBEDDING_MODEL=voyage:voyage-4-large,ENGRAM_EMBEDDING_DIMENSIONS=1024,TYPESAFE_API_KEY=unset,VOYAGE_API_KEY=unset"

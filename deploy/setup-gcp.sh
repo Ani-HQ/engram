@@ -75,6 +75,12 @@ log "secret engram-db-url-template ready and readable by $SA"
 ensure_secret typesafe-api-key "${TYPESAFE_API_KEY:-unset}"
 ensure_secret voyage-api-key "${VOYAGE_API_KEY:-unset}"
 ensure_secret resend-api-key "${RESEND_API_KEY:-unset}"
-log "secrets typesafe-api-key, voyage-api-key, and resend-api-key ready"
+if ! gcloud secrets describe engram-oauth-private-key --project "$PROJECT" >/dev/null 2>&1; then
+  openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+    | gcloud secrets create engram-oauth-private-key --project "$PROJECT" --data-file=-
+fi
+gcloud secrets add-iam-policy-binding engram-oauth-private-key --project "$PROJECT" \
+  --member="serviceAccount:$SA" --role="roles/secretmanager.secretAccessor" >/dev/null
+log "secrets typesafe-api-key, voyage-api-key, resend-api-key, and engram-oauth-private-key ready"
 
 log "done. next: gcloud builds submit --config cloudbuild.yaml --project $PROJECT && deploy/setup-scheduler.sh"

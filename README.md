@@ -96,6 +96,8 @@ Optional keys in `.env` turn on semantic search and the reflex layer. Both fail 
 | `REFLEX_MODEL` | Default `jev-latest`. |
 | `RESEND_API_KEY` | Magic-link and invite email. Without it, the console shows the link. |
 | `ENGRAM_MAIL_FROM` | Default `engram@updates.ani.computer`. |
+| `ENGRAM_OAUTH_PRIVATE_KEY` | RSA key that signs connector JWTs. Without it those clients stay closed. |
+| `ENGRAM_PUBLIC_URL` | Canonical host for magic links, OAuth, and the MCP audience. |
 
 Copy [.env.example](.env.example).
 
@@ -111,6 +113,7 @@ Jev proposes. It does not merge, delete, or rewrite source pages. That stays a h
 
 - [Wiring a client](docs/WIRING.md)
 - [Organizations](docs/ORGS.md)
+- [OAuth for chat connectors](docs/OAUTH.md)
 - [Sharing a slice](docs/SHARING.md)
 - [Reflex, dream cycle, review](docs/REFLEX.md)
 - [Handoff notes](docs/HANDOFF.md)

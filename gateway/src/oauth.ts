@@ -1,5 +1,6 @@
 import { createPublicKey, createVerify } from "node:crypto";
 import { config } from "./config";
+import { localJwks, oauthSigningEnabled } from "./oauth-keys";
 import { findMemberByEmail, getOrg } from "./orgs";
 import { normalizeToken, type TokenRecord } from "./policies";
 
@@ -26,7 +27,12 @@ let jwksCache: { fetchedAt: number; keys: Jwk[] } | null = null;
 const JWKS_TTL_MS = 10 * 60 * 1000;
 
 export function oauthEnabled(): boolean {
-  return Boolean(config.oauth.issuer);
+  return oauthSigningEnabled();
+}
+
+export function oauthIssuer(host: string): string {
+  const explicit = (config.oauth.issuer || config.publicUrl || host).trim();
+  return explicit.replace(/\/$/, "");
 }
 
 export function resourceHost(req: Request): string {
@@ -40,13 +46,38 @@ export function canonicalResource(host: string): string {
 }
 
 export function protectedResourceMetadata(host: string) {
-  const resource = canonicalResource(host);
+  const issuer = oauthIssuer(host);
   return {
-    resource,
-    authorization_servers: config.oauth.issuer ? [config.oauth.issuer] : [],
-    scopes_supported: ["memory:read", "memory:write"],
+    resource: canonicalResource(host),
+    authorization_servers: oauthEnabled() ? [issuer] : [],
+    scopes_supported: ["openid", "email", "offline_access", "memory:read", "memory:write"],
     bearer_methods_supported: ["header"],
     resource_documentation: `${host.replace(/\/$/, "")}/`,
+  };
+}
+
+export function isProtectedResourcePath(pathname: string): boolean {
+  return pathname === "/.well-known/oauth-protected-resource"
+    || pathname === "/.well-known/oauth-protected-resource/mcp";
+}
+
+export function isAuthorizationServerPath(pathname: string): boolean {
+  return pathname === "/.well-known/oauth-authorization-server"
+    || pathname === "/.well-known/oauth-authorization-server/mcp"
+    || pathname === "/.well-known/openid-configuration"
+    || pathname === "/.well-known/openid-configuration/mcp";
+}
+
+export function jwksUrlFor(issuer: string): string {
+  return `${issuer.replace(/\/$/, "")}/.well-known/jwks.json`;
+}
+
+export function corsHeaders(): HeadersInit {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Max-Age": "86400",
   };
 }
 
@@ -133,9 +164,9 @@ function audienceMatches(aud: string | string[] | undefined, expected: string): 
 }
 
 export async function loadJwks(): Promise<Jwk[]> {
-  const url = config.oauth.jwksUrl || (config.oauth.issuer
-    ? `${config.oauth.issuer.replace(/\/$/, "")}/.well-known/jwks.json`
-    : "");
+  const local = localJwks();
+  if (local.length) return local;
+  const url = config.oauth.jwksUrl;
   if (!url) return [];
   if (jwksCache && Date.now() - jwksCache.fetchedAt < JWKS_TTL_MS) return jwksCache.keys;
   const res = await fetch(url);
@@ -153,8 +184,10 @@ export function resetJwksCache() {
 export async function authenticateJwt(raw: string, audience: string): Promise<TokenRecord | null> {
   if (!oauthEnabled()) return null;
   const jwks = await loadJwks();
+  const issuer = (config.oauth.issuer || config.publicUrl || audience.replace(/\/mcp\/?$/, "")).replace(/\/$/, "");
+  if (!issuer) return null;
   const claims = await verifyJwt(raw, {
-    issuer: config.oauth.issuer,
+    issuer,
     audience: config.oauth.audience || audience,
     jwks,
   });
