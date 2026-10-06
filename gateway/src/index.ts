@@ -17,6 +17,7 @@ import {
 } from "./oauth";
 import { authorizationServerMetadata, handleOauth } from "./oauth-as";
 import { resolveOrg, withOrg } from "./orgs";
+import { mcpMethodNotAllowed } from "./mcp-http";
 import { hasOauthScope, normalizeToken } from "./policies";
 import {
   listTools,
@@ -145,8 +146,8 @@ Bun.serve({
     }
     if (url.pathname === "/mcp") {
       if (req.method === "POST") return handleMcp(req);
-      // No SSE stream support in stateless mode.
-      return new Response("Method Not Allowed", { status: 405 });
+      // No SSE stream. Browsers get a short hint; MCP clients still see 405.
+      return mcpMethodNotAllowed(req);
     }
     return handleWeb(req);
   },
