@@ -172,8 +172,8 @@ function showLogin(message = "") {
         try {
           const sent = await api.loginEmail(email.value);
           showLogin(sent.url ? `Link: ${sent.url}` : "Check your email.");
-        } catch {
-          showLogin("No org for that email.");
+        } catch (error) {
+          showLogin(error?.status === 502 ? "Could not send the email." : "No org for that email.");
         }
       },
     }, "send link"),
@@ -1100,7 +1100,8 @@ function inviteRow() {
       onclick: async () => {
         try {
           const invite = await api.invite({ email: email.value, role: "member" });
-          state.inviteUrl = invite.url;
+          state.inviteUrl = invite.url || "";
+          state.message = invite.sent && !invite.url ? "invite emailed" : state.message;
           await loadOrg();
         } catch (error) {
           handleError(error);

@@ -36,6 +36,7 @@ import {
   parseShareLevel,
 } from "./policies";
 import { serializeSessionCookie } from "./cookies";
+import { inviteLinkText, loginLinkResponse, loginLinkText, sendMail } from "./mail";
 import {
   getShareRule,
   createShareRule,
@@ -233,10 +234,13 @@ async function postLoginEmail(req: Request): Promise<Response> {
   if (!email) return Response.json({ error: "bad request" }, { status: 400 });
   const invite = await createLoginInvite(email, publicUrlFrom(req));
   if (!invite) return Response.json({ error: "not found" }, { status: 404 });
-  return Response.json({
-    sent: true,
-    url: invite.url,
+  const delivery = await sendMail({
+    to: email,
+    subject: "Your engram login link",
+    text: loginLinkText(invite.url),
   });
+  const result = loginLinkResponse(delivery, invite.url);
+  return Response.json(result.body, { status: result.status });
 }
 
 async function postAcceptInvite(req: Request): Promise<Response> {
@@ -318,7 +322,13 @@ async function postInvite(req: Request, token: TokenRecord, org: Org): Promise<R
   const role = text(body, "role") === "owner" ? "owner" : "member";
   try {
     const invite = await createInvite(org.id, email, role, token.name, publicUrlFrom(req));
-    return Response.json({ email, role, url: invite.url });
+    const delivery = await sendMail({
+      to: email,
+      subject: `Join ${org.name} on engram`,
+      text: inviteLinkText({ orgName: org.name, invitedBy: token.name, url: invite.url }),
+    });
+    if (delivery === "sent") return Response.json({ email, role, sent: true });
+    return Response.json({ email, role, sent: false, url: invite.url });
   } catch (e) {
     console.error("[org] invite failed:", String(e).slice(0, 160));
     return Response.json({ error: "could not invite" }, { status: 400 });

@@ -59,6 +59,8 @@ only change queue state. Source-page deletes stay a human console action.
 | --- | --- |
 | `TYPESAFE_API_KEY` / `typesafe-api-key` | Jev decisions |
 | `VOYAGE_API_KEY` / `voyage-api-key` | `voyage-4-large` at 1024 dims |
+| `RESEND_API_KEY` / `resend-api-key` | Magic-link and invite email |
+| `ENGRAM_MAIL_FROM` | Default `engram@updates.ani.computer` |
 | `REFLEX_MODEL` | default `jev-latest` |
 
 `typesafe-api-key` is mounted as `TYPESAFE_API_KEY` on the Cloud Run service

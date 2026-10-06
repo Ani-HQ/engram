@@ -47,4 +47,8 @@ export const config = {
     audience: (process.env.ENGRAM_OAUTH_AUDIENCE ?? "").trim(),
     jwksUrl: (process.env.ENGRAM_OAUTH_JWKS_URL ?? "").trim(),
   },
+  mail: {
+    apiKey: secretValue(process.env.RESEND_API_KEY),
+    from: (process.env.ENGRAM_MAIL_FROM ?? "engram@updates.ani.computer").trim(),
+  },
 };

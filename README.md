@@ -94,6 +94,8 @@ Optional keys in `.env` turn on semantic search and the reflex layer. Both fail 
 | `TYPESAFE_API_KEY` | Jev. Topic routing, classification, recall rerank. |
 | `VOYAGE_API_KEY` | `voyage-4-large` embeddings for candidate search. |
 | `REFLEX_MODEL` | Default `jev-latest`. |
+| `RESEND_API_KEY` | Magic-link and invite email. Without it, the console shows the link. |
+| `ENGRAM_MAIL_FROM` | Default `engram@updates.ani.computer`. |
 
 Copy [.env.example](.env.example).
 

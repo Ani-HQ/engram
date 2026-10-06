@@ -34,7 +34,7 @@ Topic pages still roll to an archive at the current size.
 1. Name the org. The creator is the owner.
 2. Mint one agent token. The screen shows the MCP URL and the Cursor and Claude Code snippets once.
 3. Write one memory in the console. The collection opens on that page.
-4. Invite a teammate. The console returns a join link. There is no mailer; send the link yourself. They join this org, not Ani HQ. They also get a personal brain.
+4. Invite a teammate. Resend emails the join link when `RESEND_API_KEY` is set. Without a mailer, the console still shows the link. They join this org, not Ani HQ. They also get a personal brain.
 
 Claude, ChatGPT, and Grok connectors stay closed until `ENGRAM_OAUTH_ISSUER` is set. See [OAUTH.md](OAUTH.md).
 
