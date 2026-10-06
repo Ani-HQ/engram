@@ -169,12 +169,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     return json({ ok: true, warning: "Teammates' agents may already have read what was shared." });
   }
   if (url.pathname === "/api/orgs" && req.method === "POST") {
-    const body = await req.json().catch(() => ({}));
-    return json({
-      ...sessionFixture,
-      org: { ...sessionFixture.org, name: body.name || "New org" },
-      onboarding: { step: "connect", hasToken: false, hasPage: false },
-    }, { "Set-Cookie": "engram_dev=1; Path=/; HttpOnly; SameSite=Lax" });
+    return json({ sent: false, url: "http://localhost:8099/app#join=inv_dev" });
   }
   return new Response("Not Found", { status: 404 });
 }

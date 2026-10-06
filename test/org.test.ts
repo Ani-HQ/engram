@@ -44,6 +44,9 @@ describe("org policies", () => {
   test("agents cannot delete while members can, and review follows the switch", () => {
     expect(canDelete(writer, policies)).toBe(false);
     expect(canDelete(member, policies)).toBe(true);
+    const agentsMayDelete = parsePolicies({ membersOnlyDelete: false });
+    expect(canDelete(writer, agentsMayDelete)).toBe(true);
+    expect(canDelete(reader, agentsMayDelete)).toBe(false);
     expect(canApproveReview(member, policies)).toBe(true);
     expect(canApproveReview(member, parsePolicies({ reviewApprovers: "owners" }))).toBe(false);
     expect(canApproveReview(owner, parsePolicies({ reviewApprovers: "owners" }))).toBe(true);

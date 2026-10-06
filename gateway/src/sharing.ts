@@ -30,6 +30,7 @@ export interface ShareMatch {
   since: string | null;
   until: string | null;
   trailIds: string[];
+  excludeTrailIds: string[];
 }
 
 export interface ShareRule {
@@ -64,10 +65,12 @@ export function parseShareMatch(value: unknown): ShareMatch {
     since: optionalText(raw.since),
     until: optionalText(raw.until),
     trailIds: stringList(raw.trailIds ?? raw.trail_ids),
+    excludeTrailIds: stringList(raw.excludeTrailIds ?? raw.exclude_trail_ids),
   };
 }
 
 export function ruleMatches(match: ShareMatch, item: ShareableItem): boolean {
+  if (item.kind === "trail" && match.excludeTrailIds.includes(item.id)) return false;
   if (match.trailIds.length && (item.kind !== "trail" || !match.trailIds.includes(item.id))) {
     return false;
   }
@@ -220,18 +223,6 @@ export async function unshareTrail(input: {
   let count = 0;
   for (const rule of rules) {
     if (input.targetOrgId && rule.targetOrg !== input.targetOrgId) continue;
-    if (!rule.match.trailIds.includes(input.trailId) && !ruleMatches(rule.match, {
-      kind: "trail",
-      id: input.trailId,
-      repo: null,
-      topic: null,
-      harness: null,
-      at: new Date().toISOString(),
-    })) {
-      // A standing repo rule still covers this trail; drop only an explicit one-off,
-      // or pause this trail by adding a revoked copy? Keep standing rules.
-      if (rule.match.trailIds.length === 0) continue;
-    }
     if (rule.match.trailIds.length === 1 && rule.match.trailIds[0] === input.trailId) {
       await revokeShareRule(rule.id);
       count += 1;
@@ -240,6 +231,13 @@ export async function unshareTrail(input: {
     if (rule.match.trailIds.includes(input.trailId)) {
       const next = { ...rule.match, trailIds: rule.match.trailIds.filter(id => id !== input.trailId) };
       await updateShareRule(rule, { match: next });
+      count += 1;
+      continue;
+    }
+    if (rule.match.trailIds.length === 0 && !rule.match.excludeTrailIds.includes(input.trailId)) {
+      await updateShareRule(rule, {
+        match: { ...rule.match, excludeTrailIds: [...rule.match.excludeTrailIds, input.trailId] },
+      });
       count += 1;
     }
   }

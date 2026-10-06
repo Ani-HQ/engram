@@ -2,6 +2,7 @@ import {
   authenticateSecret,
   createLoginInvite,
   createSession,
+  createSignupInvite,
   issueToken,
   listTokens,
   revokeToken,
@@ -11,7 +12,7 @@ import {
 import {
   acceptInvite,
   createInvite,
-  createOrg,
+  findMemberByEmail,
   getOrg,
   listInvites,
   listMembers,
@@ -199,29 +200,23 @@ export async function handleOrgApi(
 async function postOrg(req: Request): Promise<Response> {
   const body = await jsonObject(req);
   const name = text(body, "name");
-  const email = text(body, "email");
-  if (!name || !normalizeEmail(email ?? "")) {
+  const email = normalizeEmail(text(body, "email") ?? "");
+  if (!name || !email) {
     return Response.json({ error: "bad request" }, { status: 400 });
   }
   try {
-    const org = await createOrg(name, email!);
-    const session = await createSession({
-      orgId: org.id,
-      name: normalizeEmail(email!)!,
-      role: "owner",
-      email: normalizeEmail(email!),
+    const existing = await findMemberByEmail(email);
+    const invite = existing
+      ? await createLoginInvite(email, publicUrlFrom(req))
+      : await createSignupInvite(email, name, publicUrlFrom(req));
+    if (!invite) return Response.json({ error: "could not create org" }, { status: 400 });
+    const delivery = await sendMail({
+      to: email,
+      subject: existing ? "Your engram login link" : "Confirm your engram org",
+      text: loginLinkText(invite.url),
     });
-    return Response.json({
-      ...await sessionActor(normalizeToken({
-        name: normalizeEmail(email!)!,
-        orgId: org.id,
-        role: "owner",
-        kind: "session",
-        email: normalizeEmail(email!),
-      }), org, { onboarding: await onboardingState(org) }),
-    }, {
-      headers: { "Set-Cookie": serializeSessionCookie(session) },
-    });
+    const result = loginLinkResponse(delivery, invite.url);
+    return Response.json(result.body, { status: result.status });
   } catch (e) {
     console.error("[org] create failed:", String(e).slice(0, 200));
     return Response.json({ error: "could not create org" }, { status: 400 });

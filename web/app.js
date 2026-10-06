@@ -115,11 +115,16 @@ function showCreateOrg(message = "") {
     onsubmit: async event => {
       event.preventDefault();
       try {
-        state.session = await api.createOrg({ name: name.value, email: email.value });
+        const created = await api.createOrg({ name: name.value, email: email.value });
+        if (created?.sent || created?.url) {
+          showCreateOrg(created.url ? `Link: ${created.url}` : "Check your email to confirm the org.");
+          return;
+        }
+        state.session = created;
         history.replaceState(null, "", "/app");
         showOnboarding();
-      } catch {
-        showCreateOrg("Could not create that org.");
+      } catch (error) {
+        showCreateOrg(error?.status === 502 ? "Could not send the email." : "Could not create that org.");
       }
     },
   },

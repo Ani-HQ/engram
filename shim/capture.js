@@ -22,7 +22,8 @@ const PATTERNS = [
   { re: /\bens_[A-Za-z0-9_-]{20,}\b/g, label: 'REDACTED_TOKEN' },
   { re: /\binv_[A-Za-z0-9_-]{20,}\b/g, label: 'REDACTED_TOKEN' },
   { re: /\bBearer\s+[A-Za-z0-9._\-+/=]{16,}/gi, label: 'Bearer REDACTED_TOKEN' },
-  { re: /\b(postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|https?):\/\/[^\s'"`]+/gi, label: 'REDACTED_CONNECTION' },
+  { re: /\b(postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp):\/\/[^\s'"`]+/gi, label: 'REDACTED_CONNECTION' },
+  { re: /\bhttps?:\/\/[^\s'"`/]+@[^\s'"`]+/gi, label: 'REDACTED_CONNECTION' },
   { re: /^\s*(?:export\s+)?([A-Z][A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|DATABASE_URL)[A-Z0-9_]*)\s*=\s*.+$/gim, label: '$1=REDACTED' },
 ];
 

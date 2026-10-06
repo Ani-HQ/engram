@@ -8,8 +8,8 @@ This is not the old scope router. Scopes split one team's pages by label. An org
 
 ## Roles
 
-- **Owner.** Creates the org, invites people, sets the four policy switches, mints and revokes agent tokens.
-- **Member.** Uses the console. Can remember, recall, and approve review items when the org allows it. Cannot change policy.
+- **Owner.** Creates the org, invites people, sets the four policy switches, and can revoke tokens or change write mode.
+- **Member.** Uses the console. Can remember, recall, mint an agent token for their own harness, and approve review items when the org allows it. Cannot change policy or revoke tokens.
 - **Agent.** An MCP token. Read-only, or read and write. The gateway allowlist is still the ceiling.
 
 Existing Ani HQ tokens that predate orgs stay owners, because they were identity for one trusted team. Tokens minted after that are agents.
@@ -31,7 +31,7 @@ Topic pages still roll to an archive at the current size.
 
 `/` is the landing page. The console is `/app`.
 
-1. Name the org. The creator is the owner.
+1. Name the org and confirm the owner email. The session starts only after that link is opened.
 2. Mint one agent token. The screen shows the MCP URL and the Cursor and Claude Code snippets once.
 3. Write one memory in the console. The collection opens on that page.
 4. Invite a teammate. Resend emails the join link when `RESEND_API_KEY` is set. Without a mailer, the console still shows the link. They join this org, not Ani HQ. They also get a personal brain.

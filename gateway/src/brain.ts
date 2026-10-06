@@ -14,6 +14,7 @@ interface BrainChild {
 }
 
 const running = new Map<number, BrainChild>();
+const starting = new Map<number, Promise<Client>>();
 
 function childEnv(org: Pick<Org, "brainDb" | "homeDir">): Record<string, string> {
   const home = `${config.gbrainHomesDir}/${org.homeDir}`;
@@ -89,11 +90,19 @@ export async function ensureBrain(org: Pick<Org, "id" | "brainDb" | "homeDir">):
     touchIdle(existing);
     return existing.client;
   }
-  initBrain(org);
-  const child = await spawnBrain(org);
-  running.set(org.id, child);
-  console.error(`[brain] ready org=${org.id} db=${org.brainDb}`);
-  return child.client;
+  const inflight = starting.get(org.id);
+  if (inflight) return inflight;
+  const pending = (async () => {
+    initBrain(org);
+    const child = await spawnBrain(org);
+    running.set(org.id, child);
+    console.error(`[brain] ready org=${org.id} db=${org.brainDb}`);
+    return child.client;
+  })().finally(() => {
+    starting.delete(org.id);
+  });
+  starting.set(org.id, pending);
+  return pending;
 }
 
 export function evictBrain(orgId: number) {

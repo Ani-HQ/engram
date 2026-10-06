@@ -264,16 +264,19 @@ export async function migrate() {
 
   await sql`
     CREATE TABLE IF NOT EXISTS invites (
-      id          serial PRIMARY KEY,
-      org_id      int NOT NULL REFERENCES orgs(id),
-      email       text NOT NULL,
-      role        text NOT NULL DEFAULT 'member',
-      sha256_hash text UNIQUE NOT NULL,
-      created_by  text,
-      created_at  timestamptz NOT NULL DEFAULT now(),
-      expires_at  timestamptz NOT NULL,
-      accepted_at timestamptz
+      id           serial PRIMARY KEY,
+      org_id       int REFERENCES orgs(id),
+      email        text NOT NULL,
+      role         text NOT NULL DEFAULT 'member',
+      sha256_hash  text UNIQUE NOT NULL,
+      created_by   text,
+      created_at   timestamptz NOT NULL DEFAULT now(),
+      expires_at   timestamptz NOT NULL,
+      accepted_at  timestamptz,
+      pending_name text
     )`;
+  await sql`ALTER TABLE invites ALTER COLUMN org_id DROP NOT NULL`;
+  await sql`ALTER TABLE invites ADD COLUMN IF NOT EXISTS pending_name text`;
 
   await sql`
     CREATE TABLE IF NOT EXISTS share_rules (

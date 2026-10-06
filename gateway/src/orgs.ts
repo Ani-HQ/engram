@@ -262,6 +262,14 @@ export async function acceptInvite(raw: string): Promise<{ org: Org; member: Org
       AND expires_at > now()`;
   if (!rows.length) return null;
   const invite = rows[0];
+  const pendingName = invite.pending_name ? String(invite.pending_name) : "";
+  if (!invite.org_id && pendingName) {
+    const org = await createOrg(pendingName, String(invite.email));
+    const member = await memberInOrg(org.id, String(invite.email));
+    if (!member) return null;
+    await sql`UPDATE invites SET accepted_at = now(), org_id = ${org.id} WHERE id = ${invite.id}`;
+    return { org, member };
+  }
   const org = await getOrg(Number(invite.org_id));
   if (!org) return null;
   const member = await addMember(org.id, String(invite.email), invite.role === "owner" ? "owner" : "member");

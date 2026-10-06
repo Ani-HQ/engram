@@ -158,6 +158,8 @@ describe("capture hooks and sweep", () => {
 
   test("redaction and never-capture run before upload", () => {
     expect(capture.redactSecrets("Bearer eng_supersecrettokenvalue123")).toContain("REDACTED");
+    expect(capture.redactSecrets("See https://github.com/Ani-HQ/engram/issues/22")).toContain("https://github.com/Ani-HQ/engram/issues/22");
+    expect(capture.redactSecrets("https://user:pass@db.example.com/engram")).toContain("REDACTED_CONNECTION");
     expect(capture.shouldCapture(
       { repo: "github.com/ani-hq/secrets", cwd: "/tmp/secrets" },
       { neverRepos: ["ani-hq/secrets"], neverPaths: [] },

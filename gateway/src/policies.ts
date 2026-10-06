@@ -104,7 +104,8 @@ export function canWrite(token: TokenRecord, policies: OrgPolicies): boolean {
 
 export function canDelete(token: TokenRecord, policies: OrgPolicies): boolean {
   if (isHuman(token)) return true;
-  return !policies.membersOnlyDelete;
+  if (policies.membersOnlyDelete) return false;
+  return canWrite(token, policies);
 }
 
 export function canApproveReview(token: TokenRecord, policies: OrgPolicies): boolean {

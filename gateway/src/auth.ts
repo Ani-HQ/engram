@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { sql } from "./db";
 import { sha256 } from "./hash";
 import { authenticateJwt, canonicalResource, isJwt, resourceHost } from "./oauth";
-import { findMemberByEmail } from "./orgs";
+import { findMemberByEmail, normalizeEmail } from "./orgs";
 import { normalizeToken, type ActorRole, type TokenRecord } from "./policies";
 
 export type { TokenRecord, ActorRole } from "./policies";
@@ -165,6 +165,29 @@ export async function createLoginInvite(email: string, publicUrl: string): Promi
       ${sha256(raw)},
       'login',
       now() + interval '1 day'
+    )`;
+  return { raw, url: `${publicUrl.replace(/\/$/, "")}/app#join=${raw}` };
+}
+
+export async function createSignupInvite(
+  email: string,
+  orgName: string,
+  publicUrl: string,
+): Promise<{ raw: string; url: string } | null> {
+  const normalized = normalizeEmail(email);
+  const name = orgName.trim();
+  if (!normalized || !name) return null;
+  const raw = `inv_${randomBytes(24).toString("base64url")}`;
+  await sql`
+    INSERT INTO invites (org_id, email, role, sha256_hash, created_by, expires_at, pending_name)
+    VALUES (
+      NULL,
+      ${normalized},
+      'owner',
+      ${sha256(raw)},
+      'signup',
+      now() + interval '1 day',
+      ${name}
     )`;
   return { raw, url: `${publicUrl.replace(/\/$/, "")}/app#join=${raw}` };
 }

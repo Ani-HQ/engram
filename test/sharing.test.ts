@@ -65,6 +65,12 @@ describe("share rule matching", () => {
     expect(ruleMatches(match, { ...trail, id: "t2" })).toBe(false);
     expect(ruleMatches(match, entry)).toBe(false);
   });
+
+  test("an excluded trail stays out of a standing rule", () => {
+    const match = parseShareMatch({ repos: ["ani-hq/engram"], excludeTrailIds: ["t1"] });
+    expect(ruleMatches(match, trail)).toBe(false);
+    expect(ruleMatches(match, { ...trail, id: "t2" })).toBe(true);
+  });
 });
 
 describe("shared entry pages", () => {
