@@ -96,6 +96,8 @@ Optional keys in `.env` turn on semantic search and the reflex layer. Both fail 
 | `REFLEX_MODEL` | Default `jev-latest`. |
 | `RESEND_API_KEY` | Magic-link and invite email. Without it, the console shows the link. |
 | `ENGRAM_MAIL_FROM` | Default `engram@updates.ani.computer`. |
+| `ENGRAM_OAUTH_ISSUER` | WorkOS AuthKit issuer. Opens Claude, ChatGPT, and Grok connectors. |
+| `ENGRAM_PUBLIC_URL` | Canonical host for magic links and the MCP audience. |
 
 Copy [.env.example](.env.example).
 

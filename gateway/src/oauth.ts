@@ -44,10 +44,36 @@ export function protectedResourceMetadata(host: string) {
   return {
     resource,
     authorization_servers: config.oauth.issuer ? [config.oauth.issuer] : [],
-    scopes_supported: ["memory:read", "memory:write"],
+    scopes_supported: ["openid", "email", "offline_access", "memory:read", "memory:write"],
     bearer_methods_supported: ["header"],
     resource_documentation: `${host.replace(/\/$/, "")}/`,
   };
+}
+
+export function isProtectedResourcePath(pathname: string): boolean {
+  return pathname === "/.well-known/oauth-protected-resource"
+    || pathname === "/.well-known/oauth-protected-resource/mcp";
+}
+
+export function isAuthorizationServerPath(pathname: string): boolean {
+  return pathname === "/.well-known/oauth-authorization-server"
+    || pathname === "/.well-known/oauth-authorization-server/mcp"
+    || pathname === "/.well-known/openid-configuration"
+    || pathname === "/.well-known/openid-configuration/mcp";
+}
+
+export function jwksUrlFor(issuer: string): string {
+  const base = issuer.replace(/\/$/, "");
+  if (config.oauth.jwksUrl) return config.oauth.jwksUrl;
+  if (base.includes("authkit.app")) return `${base}/oauth2/jwks`;
+  return `${base}/.well-known/jwks.json`;
+}
+
+export function authorizationServerMetadataUrl(issuer: string, openid: boolean): string {
+  const base = issuer.replace(/\/$/, "");
+  return openid
+    ? `${base}/.well-known/openid-configuration`
+    : `${base}/.well-known/oauth-authorization-server`;
 }
 
 export function wwwAuthenticate(host: string, extra?: string): string {
@@ -132,10 +158,33 @@ function audienceMatches(aud: string | string[] | undefined, expected: string): 
   return Array.isArray(aud) && aud.includes(expected);
 }
 
+let asMetadataCache: { url: string; fetchedAt: number; body: unknown } | null = null;
+
+export async function loadAuthorizationServerMetadata(
+  pathname: string,
+  deps: { issuer?: string; fetchImpl?: typeof fetch } = {},
+): Promise<unknown | null> {
+  const issuer = (deps.issuer ?? config.oauth.issuer).trim();
+  if (!issuer) return null;
+  const openid = pathname.includes("openid-configuration");
+  const url = authorizationServerMetadataUrl(issuer, openid);
+  if (asMetadataCache && asMetadataCache.url === url && Date.now() - asMetadataCache.fetchedAt < JWKS_TTL_MS) {
+    return asMetadataCache.body;
+  }
+  const fetchImpl = deps.fetchImpl ?? fetch;
+  const res = await fetchImpl(url);
+  if (!res.ok) throw new Error(`as metadata ${res.status}`);
+  const body = await res.json();
+  asMetadataCache = { url, fetchedAt: Date.now(), body };
+  return body;
+}
+
+export function resetAsMetadataCache() {
+  asMetadataCache = null;
+}
+
 export async function loadJwks(): Promise<Jwk[]> {
-  const url = config.oauth.jwksUrl || (config.oauth.issuer
-    ? `${config.oauth.issuer.replace(/\/$/, "")}/.well-known/jwks.json`
-    : "");
+  const url = config.oauth.issuer ? jwksUrlFor(config.oauth.issuer) : "";
   if (!url) return [];
   if (jwksCache && Date.now() - jwksCache.fetchedAt < JWKS_TTL_MS) return jwksCache.keys;
   const res = await fetch(url);
@@ -148,6 +197,7 @@ export async function loadJwks(): Promise<Jwk[]> {
 
 export function resetJwksCache() {
   jwksCache = null;
+  asMetadataCache = null;
 }
 
 export async function authenticateJwt(raw: string, audience: string): Promise<TokenRecord | null> {

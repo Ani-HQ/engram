@@ -7,6 +7,9 @@ import { config } from "./config";
 import { migrate } from "./db";
 import {
   insufficientScope,
+  isAuthorizationServerPath,
+  isProtectedResourcePath,
+  loadAuthorizationServerMetadata,
   oauthEnabled,
   protectedResourceMetadata,
   resourceHost,
@@ -101,13 +104,21 @@ async function handleMcp(req: Request): Promise<Response> {
   });
 }
 
-function wellKnown(req: Request): Response | null {
+async function wellKnown(req: Request): Promise<Response | null> {
   const url = new URL(req.url);
-  if (
-    url.pathname === "/.well-known/oauth-protected-resource" ||
-    url.pathname === "/.well-known/oauth-protected-resource/mcp"
-  ) {
+  if (isProtectedResourcePath(url.pathname)) {
     return Response.json(protectedResourceMetadata(resourceHost(req)));
+  }
+  if (isAuthorizationServerPath(url.pathname)) {
+    if (!oauthEnabled()) return new Response("Not Found", { status: 404 });
+    try {
+      const metadata = await loadAuthorizationServerMetadata(url.pathname);
+      if (!metadata) return new Response("Not Found", { status: 404 });
+      return Response.json(metadata);
+    } catch (e) {
+      console.error("[oauth] as metadata failed:", String(e).slice(0, 160));
+      return Response.json({ error: "authorization server unavailable" }, { status: 502 });
+    }
   }
   return null;
 }
@@ -121,7 +132,7 @@ Bun.serve({
   idleTimeout: 120,
   async fetch(req) {
     const url = new URL(req.url);
-    const metadata = wellKnown(req);
+    const metadata = await wellKnown(req);
     if (metadata) return metadata;
     // /health, not /healthz: Google's frontend reserves /healthz on run.app
     // domains and answers 404 before the request reaches the container.

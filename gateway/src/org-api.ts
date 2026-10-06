@@ -38,6 +38,7 @@ import {
 } from "./policies";
 import { serializeSessionCookie } from "./cookies";
 import { inviteLinkText, loginLinkResponse, loginLinkText, sendMail } from "./mail";
+import { oauthEnabled } from "./oauth";
 import {
   getShareRule,
   createShareRule,
@@ -344,7 +345,9 @@ export function wiringPayload(req: Request, token: string | null) {
       },
     },
     claudeCode: `claude mcp add --scope user --transport http engram ${mcp} --header "Authorization: Bearer ${shown}"`,
-    chatConnectors: "Claude, ChatGPT, and Grok connectors need OAuth. Cursor and Claude Code work now.",
+    chatConnectors: oauthEnabled()
+      ? `Add a custom connector pointed at ${mcp}. Sign in when the client asks. Cursor and Claude Code can still use a bearer token.`
+      : "Claude, ChatGPT, and Grok connectors need OAuth. Cursor and Claude Code work now.",
   };
 }
 

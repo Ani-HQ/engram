@@ -1,88 +1,65 @@
-# Scoping OAuth for the chat surfaces
+# OAuth for the chat surfaces
 
-The resource-server side is in the gateway. `/.well-known/oauth-protected-resource` (and the `/mcp` suffix) is served always. A 401 carries `WWW-Authenticate`. A bearer value that is a JWT is checked against `ENGRAM_OAUTH_ISSUER`, `ENGRAM_OAUTH_AUDIENCE` (defaulting to `https://<host>/mcp`), and that issuer's JWKS. `eng_` tokens keep working. A JWT is accepted only when its email matches an org member.
+Claude, ChatGPT, and Grok connectors have no bearer-token field. They speak
+OAuth 2.1. Cursor, Claude Code, Codex, the fleet, and the console cookie keep
+using `eng_` tokens. Auth is dual-path: a JWT from the authorization server is
+checked first; everything else is the existing sha256 lookup.
 
-Set the issuer when an authorization server exists. Until then the chat connectors still cannot connect, and the console says so.
+The resource-server side lives in the gateway. The authorization server is
+**WorkOS AuthKit**. engram does not become an OAuth server.
 
-## Spec
+## Why WorkOS
 
-Claude, ChatGPT and Grok cannot connect to engram today. Their connector UIs accept
-OAuth only — there is no field for a bearer token or a custom header. They are also the
-surfaces where engram matters most, because they have no filesystem: memory is not a
-convenience there, it is the only channel.
+ChatGPT accepts Client ID Metadata Documents, Dynamic Client Registration, or a
+pre-registered client. Claude prefers CIMD and falls back to DCR. Grok registers
+via DCR. AuthKit does all three, PKCE S256, resource indicators (RFC 8707), and
+discovery. One tenant covers the three chat surfaces.
 
-## The good news: engram does not become an OAuth server
+A wrong authorization-server pick wastes the build. This one matches the clients.
 
-The June 2025 revision of the MCP authorization spec separates the MCP server from the
-authorization server. engram is a **resource server**: it validates tokens that an
-external authorization server issued. Consent screens, PKCE verification, refresh
-rotation, client registration — none of it is ours.
+## What the gateway already does
 
-## What engram MUST implement
+1. Protected Resource Metadata (RFC 9728) at
+   `/.well-known/oauth-protected-resource` and
+   `/.well-known/oauth-protected-resource/mcp`.
+2. A `401` with `WWW-Authenticate: Bearer resource_metadata="…", scope="memory:read"`.
+3. JWT verification against the issuer JWKS. Audience must be
+   `https://<host>/mcp`. `eng_` tokens still work.
+4. A JWT is accepted only when its email matches an org member.
+5. A compatibility proxy of AuthKit's
+   `/.well-known/oauth-authorization-server` (and OpenID discovery) on the
+   engram host, for clients that skip protected-resource metadata.
 
-1. **Protected Resource Metadata (RFC 9728)** at `/.well-known/oauth-protected-resource`
-   — a JSON document whose `authorization_servers` field names our AS. Serve it at the
-   root and at the endpoint-suffixed path `/.well-known/oauth-protected-resource/mcp`,
-   because clients probe both.
-2. **A `WWW-Authenticate` header on 401** pointing at that document, and a `scope` hint:
-   `Bearer resource_metadata="https://<host>/.well-known/oauth-protected-resource", scope="memory:read"`
-3. **Token validation.** Verify the JWT signature against the AS's JWKS, check issuer
-   and expiry, and — the security-critical part — **verify the audience is engram**.
-   A server that accepts tokens minted for something else is the confused-deputy hole
-   the spec spends most of its length warning about.
-4. **Canonical resource URI**: `https://<host>/mcp`. Tokens must be bound to it via
-   RFC 8707 resource indicators.
-5. **403 with `error="insufficient_scope"`** when a token is valid but lacks a scope,
-   including the scopes needed so the client can step up.
+## Stand up AuthKit
 
-## What must NOT break
+1. Create a [WorkOS](https://workos.com) environment and an AuthKit domain,
+   e.g. `https://engram.authkit.app`.
+2. Connect → Configuration: enable **Client ID Metadata Document**. Keep
+   **Dynamic Client Registration** on for older clients.
+3. Add a Resource Indicator: `https://engram.ani.computer/mcp`. Set it as the
+   default so clients that omit `resource` still get the right audience.
+4. Set on Cloud Run (and in `.env` for local):
 
-Five surfaces authenticate with `eng_` bearer tokens today: Claude Code, Cursor, Codex,
-the fleet VM, and the console's cookie. **Auth becomes dual-path**: if the credential
-parses as a JWT from our AS, validate it that way; otherwise fall back to the existing
-sha256 token lookup. Breaking five working surfaces to add three is not a trade worth
-making.
+   ```text
+   ENGRAM_PUBLIC_URL=https://engram.ani.computer
+   ENGRAM_OAUTH_ISSUER=https://engram.authkit.app
+   ENGRAM_OAUTH_AUDIENCE=https://engram.ani.computer/mcp
+   ```
 
-## The decision that gates everything: which authorization server
+   AuthKit JWKS is `https://<issuer>/oauth2/jwks`. The gateway uses that when
+   the issuer host contains `authkit.app`. Override with `ENGRAM_OAUTH_JWKS_URL`
+   only if you have to.
 
-Requirements, in order of how badly a wrong choice hurts:
+5. A person must already be an org member (console signup / invite). AuthKit
+   login proves the email; engram maps it to that membership.
 
-- **OAuth 2.1 with PKCE S256**, and `code_challenge_methods_supported` present in its
-  metadata — clients MUST refuse to proceed without it.
-- **Discovery** via RFC 8414 or OpenID Connect Discovery.
-- **Dynamic Client Registration (RFC 7591)** — the spec now calls this MAY, preferring
-  Client ID Metadata Documents, but ChatGPT reportedly *mandates* DCR. **Verify this
-  against OpenAI's own connector documentation before choosing**, because picking an AS
-  without DCR and discovering that later wastes the entire build.
-- **Resource indicators (RFC 8707)** so tokens are audience-bound.
-- Free or near-free at one-user scale.
+## Prove one surface
 
-Candidates worth comparing: WorkOS AuthKit (has MCP-specific support), Auth0, Descope,
-Stytch, Logto, or self-hosted Keycloak. Self-hosting adds an always-on service to a
-project whose current virtue is having very few moving parts.
+Add a Claude custom connector pointed at `https://engram.ani.computer/mcp`.
+Use Claude's published identity. After sign-in, `whoami` should return
+`oauth:<sub>`. Then ChatGPT and Grok.
 
-## Identity mapping
+## What must not break
 
-engram's audit log keys on a token *name*. An OAuth token carries a subject and usually
-an email. Map one to the other on first sight — `oauth:<sub>`, or resolve to a name via
-email — so attribution keeps working and the console keeps showing who taught the brain
-what.
-
-## Effort, honestly
-
-The engram-side code is small: two metadata endpoints, one header, and JWT verification.
-JWKS-backed RS256 verification is roughly eighty lines with `node:crypto` and no new
-dependency, which is worth doing given the project has exactly two.
-
-The long pole is not code. It is that **the only way to test a ChatGPT or Claude
-connector is to connect one**, and each failure costs a round trip through someone
-else's UI with error messages you do not control. Budget most of the time there, not in
-the gateway.
-
-## Suggested order
-
-1. Confirm ChatGPT's actual requirement (DCR vs Client ID Metadata Documents). One
-   wrong assumption here invalidates the AS choice.
-2. Pick the AS against that answer and stand up a tenant.
-3. Build the resource-server side behind a flag, with the bearer path untouched.
-4. Prove it with one surface end to end before wiring the other two.
+Five surfaces stay on bearer tokens. Do not require OAuth for Cursor, Claude
+Code, Codex, the fleet VM, or the console cookie.
