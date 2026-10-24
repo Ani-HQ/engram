@@ -36,6 +36,7 @@ export const api = {
   checkout: (plan, workspaceId) => post("/api/billing/checkout", { plan }, workspaceId),
   billingPortal: workspaceId => post("/api/billing/portal", {}, workspaceId),
   members: workspaceId => request("/api/members", scoped(workspaceId)),
+  renameWorkspace: (name, workspaceId) => request("/api/workspace", { ...scoped(workspaceId), method: "PUT", body: JSON.stringify({ name }) }),
   invite: (email, workspaceId) => post("/api/invites", { email, role: "member" }, workspaceId),
   removeMember: (email, workspaceId) => request("/api/members", { ...scoped(workspaceId), method: "DELETE", body: JSON.stringify({ email }) }),
   savePolicies: (policies, workspaceId) => request("/api/policies", { ...scoped(workspaceId), method: "PUT", body: JSON.stringify({ policies }) }),
@@ -74,6 +75,6 @@ export const api = {
 // Callbacks retain the workspace that created them, even if the session cookie
 // changes before a request reaches the server. The server verifies this header.
 export function workspaceApi(workspaceId) {
-  const methods = ["signupInvites", "issueSignupInvite", "revokeSignupInvite", "provisioning", "onboarding", "billing", "checkout", "billingPortal", "members", "invite", "removeMember", "savePolicies", "setTokenWrite", "setTokenSource", "showcase", "saveShowcase", "actions", "activities", "activity", "pages", "search", "page", "capture", "tokens", "connections", "wiring", "mintToken", "revokeToken", "insights", "runInsights", "reviews", "review", "resolveReview"];
+  const methods = ["renameWorkspace", "signupInvites", "issueSignupInvite", "revokeSignupInvite", "provisioning", "onboarding", "billing", "checkout", "billingPortal", "members", "invite", "removeMember", "savePolicies", "setTokenWrite", "setTokenSource", "showcase", "saveShowcase", "actions", "activities", "activity", "pages", "search", "page", "capture", "tokens", "connections", "wiring", "mintToken", "revokeToken", "insights", "runInsights", "reviews", "review", "resolveReview"];
   return Object.fromEntries(methods.map(name => [name, (...args) => api[name](...args, workspaceId)]));
 }

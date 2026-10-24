@@ -32,7 +32,9 @@ import {
   onboardingStep,
   orgHasAgentToken,
   orgHasRecordedPage,
+  parseWorkspaceName,
   publicUrlFrom,
+  renameWorkspace,
   updatePolicies,
   type Org,
 } from "./orgs";
@@ -72,6 +74,18 @@ import {
   publicTrail,
 } from "./trails";
 
+export function publicOrg(org: Org) {
+  return {
+    id: org.id,
+    name: org.name,
+    slug: org.slug,
+    kind: org.kind,
+    policies: org.policies,
+    provisioningStatus: org.provisioningStatus ?? "ready",
+    provisioningError: org.provisioningError ?? null,
+  };
+}
+
 export function publicActor(token: TokenRecord, org: Org, extra: Record<string, unknown> = {}) {
   const actor = normalizeToken(token);
   return {
@@ -79,15 +93,7 @@ export function publicActor(token: TokenRecord, org: Org, extra: Record<string, 
     role: actor.role,
     canWrite: actor.canWrite,
     email: actor.email,
-    org: {
-      id: org.id,
-      name: org.name,
-      slug: org.slug,
-      kind: org.kind,
-      policies: org.policies,
-      provisioningStatus: org.provisioningStatus ?? "ready",
-      provisioningError: org.provisioningError ?? null,
-    },
+    org: publicOrg(org),
     orgs: extra.orgs ?? [],
     ...extra,
   };
@@ -147,6 +153,9 @@ export async function handleOrgApi(
   org: Org,
 ): Promise<Response | null> {
   if (token.orgId !== org.id) return Response.json({ error: "forbidden" }, { status: 403 });
+  if (url.pathname === "/api/workspace") {
+    return req.method === "PUT" ? putWorkspace(req, token, org) : Response.json({ error: "method not allowed" }, { status: 405, headers: { Allow: "PUT" } });
+  }
   if (url.pathname === "/api/admin/signup-invites" || url.pathname.startsWith("/api/admin/signup-invites/")) {
     return handleSignupInviteAdmin(req, url, token);
   }
@@ -397,6 +406,25 @@ async function putPolicies(req: Request, token: TokenRecord, org: Org): Promise<
   const updated = await updatePolicies(org.id, next);
   if (!updated) return Response.json({ error: "not found" }, { status: 404 });
   return Response.json({ policies: updated.policies });
+}
+
+async function putWorkspace(req: Request, token: TokenRecord, org: Org): Promise<Response> {
+  if (token.kind !== "session" || !canManageOrg(token) || !isHuman(token) || !token.email || !token.canWrite) return forbidden();
+  const pin = req.headers.get("x-engram-workspace");
+  if (!pin) return Response.json({ error: "Select the workspace before changing its name." }, { status: 400 });
+  if (pin !== String(org.id)) return Response.json({ error: "The selected workspace changed. Please retry." }, { status: 409 });
+  const body = await jsonObject(req);
+  const name = parseWorkspaceName(body?.name);
+  if (!body || Object.keys(body).some(key => key !== "name") || !name) {
+    return Response.json({ error: "Use a workspace name between 1 and 100 characters without control characters." }, { status: 400 });
+  }
+  try {
+    const updated = await renameWorkspace(org.id, token.email, name);
+    return updated ? Response.json({ org: publicOrg(updated) }) : forbidden();
+  } catch (error) {
+    console.error("[workspace] rename failed:", failureCode(error));
+    return Response.json({ error: "The workspace name could not be updated. Please try again." }, { status: 503 });
+  }
 }
 
 async function postInvite(req: Request, token: TokenRecord, org: Org): Promise<Response> {

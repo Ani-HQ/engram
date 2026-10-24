@@ -94,6 +94,8 @@ describe("email-bound beta signup", () => {
     const view = signupView({ mode: "create", policy: beta, api: { createOrg: async (payload: any) => { calls.push(payload); return { sent: true }; } }, changeMode() {}, signedIn: (session: any) => sessions.push(session) }).element as Element;
     input(view, "email").value = " friend@example.com "; input(view, "password").value = " example-invite ";
     expect(all(view).filter(item => item.tag === "input" && item.attrs.required !== undefined)).toHaveLength(2);
+    expect(view.textContent).not.toContain("Name your workspace"); expect(all(view).filter(item => item.tag === "input")).toHaveLength(2);
+    expect(signupRequest(beta, { email: "friend@example.com", name: "Ignore pre-signup name", inviteCode: "example-invite" })).toEqual({ email: "friend@example.com", inviteCode: "example-invite" });
     await submit(view).fire("submit");
     expect(calls).toEqual([{ email: "friend@example.com", inviteCode: "example-invite" }]);
     expect(sessions).toHaveLength(0);

@@ -239,6 +239,30 @@ export async function updatePolicies(orgId: number, policies: OrgPolicies): Prom
   return rows[0] ? rowToOrg(rows[0]) : null;
 }
 
+export function parseWorkspaceName(value: unknown): string | null {
+  if (typeof value !== "string" || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) return null;
+  const name = value.trim();
+  return name.length > 0 && name.length <= 100 ? name : null;
+}
+
+export async function renameWorkspace(orgId: number, email: string, name: string, db: postgres.Sql = sql): Promise<Org | null> {
+  const normalizedEmail = normalizeEmail(email), parsedName = parseWorkspaceName(name);
+  if (!Number.isSafeInteger(orgId) || orgId < 1 || !normalizedEmail || !parsedName) return null;
+  return db.begin(async transaction => {
+    // Keep ownership valid through the update, including a concurrent removal
+    // or demotion after the session was authenticated.
+    const owner = await transaction`
+      SELECT id FROM org_members
+      WHERE org_id = ${orgId} AND email = ${normalizedEmail} AND role = 'owner'
+      FOR SHARE`;
+    if (owner.length !== 1) return null;
+    const rows = await transaction`
+      UPDATE orgs SET name = ${parsedName}
+      WHERE id = ${orgId} AND provisioning_status = 'ready' RETURNING *`;
+    return rows[0] ? rowToOrg(rows[0]) : null;
+  });
+}
+
 export async function addMember(orgId: number, email: string, role: ActorRole): Promise<OrgMember> {
   const normalized = normalizeEmail(email);
   if (!normalized) throw new Error("email required");

@@ -310,9 +310,10 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   else if (req.method === "POST" && url.pathname === "/api/review/reject") route = postReviewReject;
   else if (req.method === "POST" && url.pathname === "/api/review/defer") route = postReviewDefer;
   const adminSignup = url.pathname === "/api/admin/signup-invites" || url.pathname.startsWith("/api/admin/signup-invites/");
+  const workspaceMetadata = url.pathname === "/api/workspace";
   const token = adminSignup && req.headers.get("authorization") ? await authenticateRequest(req) : await authenticateCookie(req);
   if (!token) {
-    if (!route) return Response.json({ error: "not found" }, { status: 404 });
+    if (!route && !workspaceMetadata) return Response.json({ error: "not found" }, { status: 404 });
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 
@@ -339,6 +340,9 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   if (provisioningStatus !== "ready") return Response.json({ error: "Your workspace is still being prepared. Please check again shortly.", code: "workspace_provisioning", provisioningStatus }, {
     status: 202, headers: { "Cache-Control": "no-store", "Retry-After": "4" },
   });
+  // Workspace display metadata lives centrally and must not depend on tenant
+  // storage, the memory engine, or a paid content-write entitlement.
+  if (workspaceMetadata) return await handleOrgApi(req, url, actor, storedOrg) ?? Response.json({ error: "not found" }, { status: 404 });
   const org = ["/api/search", "/api/page", "/api/pages", "/api/capture", "/api/insights"].includes(url.pathname) ? await processingOrg(storedOrg, actor) : storedOrg;
   const lightweight = url.pathname === "/api/activities" || url.pathname.startsWith("/api/activities/") || url.pathname === "/api/insights" || ["/api/actions", "/api/showcase", "/api/billing", "/api/billing/checkout", "/api/billing/portal", "/api/policies", "/api/tokens", "/api/connections", "/api/tokens/write", "/api/tokens/source", "/api/tokens/revoke", "/api/members", "/api/invites", "/api/wiring", "/api/me", "/api/onboarding"].includes(url.pathname);
   return withOrg(org, actor, async () => {

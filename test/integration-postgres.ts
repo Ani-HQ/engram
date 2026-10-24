@@ -408,6 +408,8 @@ try {
   checks += await checkSignupInviteAccess(sql);
   const { checkSignupInvites } = await import("./integration-signup-invites");
   checks += await checkSignupInvites(sql);
+  const { checkWorkspaceName } = await import("./integration-workspace-name");
+  checks += await checkWorkspaceName(sql);
 
   process.stdout.write(JSON.stringify({ ok: true, checks, postgres: "real", coverage: ["repeatable migrations", "physical tenant databases", "token and live session isolation", "action union and filters", "trial persistence", "public aggregate privacy and unpublishing", "CLI workspace creation and owner login", "concurrent action lifecycle and delivery idempotency", "fresh and stale public activity", "private grouped activity and contributor methods", "durable insight queue and provider budget"] }) + "\n");
 } finally {

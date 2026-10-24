@@ -18,6 +18,7 @@ import { agentConnectionGuide, accessKeyConfiguration, onboardingProgress, shoul
 import { parseSignupPolicy, signupAuthMode, signupEntryMode, emailLinkRecovery } from "./signup-model.js";
 import { signupView } from "./signup-view.js";
 import { signupAdminPanel } from "./signup-admin.js";
+import { applyWorkspaceName, createWorkspaceNameEditor, captureSetupFocus, restoreSetupFocus } from "./workspace-name.js";
 
 const root = document.querySelector("#app");
 const state = {
@@ -42,6 +43,7 @@ let insightTimer, pendingInsightRun = false;
 let provisioningTimer, provisioningChecking = false, provisioningError = "", provisioningAttempt = 0;
 let connectionDraft = null, connectionFocusPending = null, skipDetailReturnFocus = false;
 let signupPolicy = null, signupPolicyRequest = null, authPanel = null, signupAdmin = null;
+let workspaceNameEpoch = 0;
 const setupByWorkspace = new Map();
 const setupReader = createOnboardingReader(workspaceId => api.onboarding(workspaceId), () => state.session?.org.id);
 const dialog = el("dialog", { class: "detail", "aria-labelledby": "detail-title" });
@@ -188,12 +190,27 @@ function setupState() {
     try { dismissed = sessionStorage.getItem(`engram-setup-dismissed:${workspaceId}`) === "1"; } catch {}
     setupByWorkspace.set(workspaceId, { data: state.session.onboarding, visible: !dismissed && shouldOfferOnboarding(state.session.onboarding), agentId: "", checking: false, error: "" });
   }
-  return setupByWorkspace.get(workspaceId);
+  const setup = setupByWorkspace.get(workspaceId), ownerEmail = state.session.role === "owner" ? state.session.email : null;
+  if (ownerEmail && setup.nameIdentity !== ownerEmail) {
+    setup.nameEditor?.invalidate(); setup.nameIdentity = ownerEmail;
+    setup.nameEditor = createWorkspaceNameEditor({ workspaceId, name: state.session.org.name,
+      save: name => api.renameWorkspace(name, workspaceId),
+      context: () => !sessionMutation && state.session?.org.id === workspaceId && state.session?.role === "owner" && state.session?.email === ownerEmail ? `${authEpoch}:${workspaceNameEpoch}:${workspaceId}:${ownerEmail}` : null,
+      changed: () => { if (state.session?.org.id === workspaceId && setupByWorkspace.get(workspaceId) === setup) renderSetup(); },
+      saved: org => {
+        if (applyWorkspaceName(state.session, org)) render();
+      },
+      failed: error => { if (error instanceof AuthError) expired("Your session expired. Please sign in again."); },
+    });
+  }
+  setup.nameEditor?.syncName(state.session.org.name);
+  return setup;
 }
+function invalidateWorkspaceNames() { ++workspaceNameEpoch; for (const setup of setupByWorkspace.values()) setup.nameEditor?.invalidate(); }
 function setupPanel() {
   const setup = setupState();
   if (!setup?.visible) return null;
-  return onboardingGuide({ ...setup, mcp: state.mcp || `${location.origin}/mcp`, policies: state.session.org.policies, inventory: state.connections, demo: state.demo,
+  return onboardingGuide({ ...setup, session: state.session, mcp: state.mcp || `${location.origin}/mcp`, policies: state.session.org.policies, inventory: state.connections, demo: state.demo,
     onChoose: agentId => { setup.agentId = agentId; renderSetup(); },
     onCheck: refreshSetup, onDismiss: dismissSetup, onReporting: taskReportingHelp,
     onCreateKey: agentId => {
@@ -207,10 +224,10 @@ function setupPanel() {
 function renderSetup(focusTitle = false) {
   const slot = document.querySelector("#setup-slot");
   if (!slot) return;
-  const focusKey = slot.contains(document.activeElement) ? document.activeElement?.dataset.setupFocus : null;
+  const focus = captureSetupFocus(slot);
   const panel = setupPanel(); slot.replaceChildren(...(panel ? [panel] : []));
-  const target = focusTitle ? slot.querySelector("#setup-title") : focusKey ? [...slot.querySelectorAll("[data-setup-focus]")].find(node => node.dataset.setupFocus === focusKey) : null;
-  target?.focus({ preventScroll: true });
+  if (focusTitle) slot.querySelector("#setup-title")?.focus({ preventScroll: true });
+  else restoreSetupFocus(slot, focus);
 }
 function openSetup() {
   const setup = setupState(); if (!setup) return;
@@ -241,6 +258,7 @@ async function refreshSetup() {
   } finally { setup.checking = false; if (state.session?.org.id === workspaceId) renderSetup(); }
 }
 function render() {
+  const setupFocus = captureSetupFocus(document.querySelector("#setup-slot"));
   authPanel?.dispose(); authPanel = null;
   signupAdmin?.dispose(); signupAdmin = null;
   previewWatcher?.stop(); previewWatcher = null;
@@ -270,6 +288,7 @@ function render() {
         el("main", { class: "workspace", id: "main" }, el("div", { id: "setup-slot" }, setupPanel()), state.view === "activity" ? activityView() : state.view === "attention" ? attentionView() : state.view === "memory" ? memoryView() : state.view === "showcase" ? showcaseView() : ["workspace", "billing"].includes(state.view) ? accountView() : connectView()))));
   if (state.view === "showcase" && state.showcase?.profile.published) watchPreview();
   setSessionControlsBusy(sessionMutation);
+  restoreSetupFocus(document.querySelector("#setup-slot"), setupFocus);
 }
 function watchPreview() {
   const orgId = state.session.org.id, slug = state.showcase.profile.slug;
@@ -1013,6 +1032,7 @@ function setSessionControlsBusy(pending) {
 async function switchOrg(orgId) {
   if (sessionMutation || !state.session) return;
   sessionMutation = true; setSessionControlsBusy(true);
+  invalidateWorkspaceNames();
   signupAdmin?.dispose(); signupAdmin = null;
   const epoch = authEpoch;
   setupReader.invalidate();
@@ -1055,6 +1075,7 @@ async function loadAccount() {
 async function signOut() {
   if (sessionMutation) return;
   sessionMutation = true; ++authEpoch; setSessionControlsBusy(true);
+  invalidateWorkspaceNames();
   signupAdmin?.dispose(); signupAdmin = null;
   try { await api.logout(); expired(); }
   catch (error) { toast(errorMessage(error)); }
@@ -1062,6 +1083,7 @@ async function signOut() {
 }
 function expired(message = "") {
   ++authEpoch;
+  invalidateWorkspaceNames();
   signupAdmin?.dispose(); signupAdmin = null;
   setupReader.invalidate(); setupByWorkspace.clear();
   previewWatcher?.stop(); previewWatcher = null;

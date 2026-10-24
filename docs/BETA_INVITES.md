@@ -21,6 +21,12 @@ The friend enters that email and code. Engram sends a verification link to the
 assigned inbox. Only accepting that email link consumes the code and admits the
 account. A code by itself does not authenticate its holder.
 
+The invite page asks only for email and code. After verification, workspace owners
+can set the workspace's display name in the getting-started guide before connecting
+an agent. Naming is optional, and the saved name remains available for editing in
+that guide. Renaming keeps the workspace identity, storage, policies and billing
+unchanged.
+
 Unused codes expire after seven days by default and can be revoked. Raw codes
 are returned only at creation; the database stores their hashes. Generate a
 replacement if the code was lost. Verification emails have their own short

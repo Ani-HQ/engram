@@ -44,6 +44,23 @@ describe("local static branding", () => {
 });
 
 describe("local activity demo", () => {
+  test("renames the pinned workspace display name and preserves it across switches", async () => {
+    const before = (await (await request("/api/me")).json()).org;
+    const rename = (name: string, headers: Record<string, string> = { "X-Engram-Workspace": "1", "X-Engram-Console": "1" }) => request("/api/workspace", { method: "PUT", headers, body: JSON.stringify({ name }) });
+    expect((await rename("Unscoped", { "X-Engram-Console": "1" })).status).toBe(400);
+    expect((await rename("No console", { "X-Engram-Workspace": "1" })).status).toBe(403);
+    expect((await rename("Wrong workspace", { "X-Engram-Workspace": "2", "X-Engram-Console": "1" })).status).toBe(409);
+    expect((await rename("Invalid\nname")).status).toBe(400);
+    try {
+      const response = await rename("  Shared decisions  "); expect(response.status).toBe(200);
+      const result = await response.json(); expect(result.org).toEqual({ ...before, name: "Shared decisions" });
+      const current = await (await request("/api/me")).json(); expect(current.org.name).toBe("Shared decisions"); expect(current.orgs.find((org: any) => org.id === 1).name).toBe("Shared decisions");
+      await request("/api/session/switch", { method: "POST", body: JSON.stringify({ orgId: 2 }) });
+      const other = await (await request("/api/me")).json(); expect(other.org.name).not.toBe("Shared decisions");
+      await request("/api/session/switch", { method: "POST", body: JSON.stringify({ orgId: 1 }) });
+      expect((await (await request("/api/me")).json()).org.name).toBe("Shared decisions");
+    } finally { await request("/api/session/switch", { method: "POST", body: JSON.stringify({ orgId: 1 }) }); await rename(before.name); }
+  });
   test("previews email-bound signup and operator-only code management without sending mail", async () => {
     const policy = await (await request("/api/signup-policy", { headers: { Cookie: "engram_dev=0" } })).json();
     expect(policy).toMatchObject({ mode: "invite-only", inviteCodeRequired: true, verificationRequired: true, complimentary: true, tokenSignInAllowed: false });

@@ -10,6 +10,11 @@ beforeEach(() => {
 afterEach(() => { globalThis.fetch = originalFetch; });
 
 describe("private workspace API requests", () => {
+  test("renames only the pinned workspace with a private PUT body", async () => {
+    await workspaceApi(7).renameWorkspace("My decisions & notes");
+    expect(calls[0].url).toBe("/api/workspace"); expect(calls[0].options.method).toBe("PUT"); expect(JSON.parse(String(calls[0].options.body))).toEqual({ name: "My decisions & notes" });
+    expect(new Headers(calls[0].options.headers).get("X-Engram-Workspace")).toBe("7"); expect(new Headers(calls[0].options.headers).get("X-Engram-Console")).toBe("1"); expect(calls[0].options.credentials).toBe("same-origin");
+  });
   test("uses scoped operator routes and keeps invite codes in the signup body only", async () => {
     const selected = workspaceApi(1);
     await selected.signupInvites(); await selected.issueSignupInvite({ email: "friend@example.com" }); await selected.revokeSignupInvite("invite/opaque");

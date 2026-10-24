@@ -1,10 +1,11 @@
 import { h } from "./profile.js";
 import { icon } from "./icons.js";
 import { onboardingAgents, onboardingProgress, onboardingWriteGuidance, agentConnectionGuide, connectionCheckPrompt, firstMemoryPrompt, recallMemoryPrompt } from "./onboarding-model.js";
+import { workspaceNameForm } from "./workspace-name.js";
 
 const button = (label, action, attrs = {}) => h("button", { type: "button", onclick: action, ...attrs }, label);
 
-export function onboardingGuide({ data, agentId = "", mcp, checking, error, policies, inventory, demo = false, onChoose, onCheck, onDismiss, onCreateKey, onReporting, copyControl }) {
+export function onboardingGuide({ data, agentId = "", mcp, checking, error, policies, inventory, session, nameEditor, demo = false, onChoose, onCheck, onDismiss, onCreateKey, onReporting, copyControl }) {
   const progress = onboardingProgress(data);
   const writeGuidance = onboardingWriteGuidance({ policies, agentId, inventory });
   const connection = agentConnectionGuide(agentId, mcp);
@@ -43,6 +44,7 @@ export function onboardingGuide({ data, agentId = "", mcp, checking, error, poli
   ].filter(Boolean));
   return h("section", { class: "setup-guide", "aria-labelledby": "setup-title", "aria-busy": String(Boolean(checking)) },
     h("div", { class: "setup-heading" }, h("div", {}, h("span", { class: "eyebrow" }, demo ? "LOCAL PREVIEW · SIMULATED PROGRESS" : "GET STARTED"), h("h2", { id: "setup-title", tabindex: "-1", "data-setup-focus": "title" }, "Memory your agents can use.")), button("Do this later", onDismiss, { class: "text small", "data-setup-focus": "dismiss" })),
+    workspaceNameForm({ session, editor: nameEditor }),
     h("ol", { class: "setup-steps", "aria-label": "Getting started progress" }, steps.map(([key, label], index) => h("li", { class: progress.checks[key] ? "complete" : progress.step === ["connect", "remember", "recall"][index] ? "current" : "", "aria-current": progress.step === ["connect", "remember", "recall"][index] ? "step" : null }, h("span", { class: "setup-step-symbol", "aria-hidden": "true" }, progress.checks[key] ? icon("check", { size: 13 }) : String(index + 1)), h("span", {}, label), h("span", { class: "sr-only" }, progress.checks[key] ? ": complete" : ": pending")))),
     !progress.available && h("p", { class: "notice", role: "status" }, "Progress hasn't been checked yet. You can follow the steps below, then check again."),
     stage,

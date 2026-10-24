@@ -25,7 +25,7 @@ export function emailLinkRecovery(raw) {
 export function signupRequest(policy, { email, name, inviteCode }) {
   if (!policy) throw new Error("Signup availability could not be checked. Please try again.");
   const payload = { email: String(email || "").trim() };
-  if (String(name || "").trim()) payload.name = String(name).trim();
+  if (!policy.inviteCodeRequired && String(name || "").trim()) payload.name = String(name).trim();
   if (policy.inviteCodeRequired) {
     const code = String(inviteCode || "").trim();
     if (!code) throw new Error("Enter the invite code shared with your email address.");

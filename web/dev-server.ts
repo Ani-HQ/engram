@@ -134,6 +134,17 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   const expectedWorkspace = req.headers.get("x-engram-workspace");
   if (expectedWorkspace && expectedWorkspace !== String(session.org.id)) return json({ error: "The selected workspace changed. Please start the export again." }, 409);
   const workspaceId = session.org.id;
+  if (url.pathname === "/api/workspace") {
+    if (req.method !== "PUT") return json({ error: "method not allowed" }, 405);
+    if (req.headers.get("x-engram-console") !== "1") return json({ error: "Use the console to rename this workspace." }, 403);
+    if (!expectedWorkspace) return json({ error: "Select a workspace before renaming it." }, 400);
+    if (session.role !== "owner" || !session.email) return json({ error: "Only a workspace owner can rename it." }, 403);
+    const body = await bodyObject(req), name = typeof body?.name === "string" ? body.name.trim() : "";
+    if (!name || name.length > 100 || /[\u0000-\u001f\u007f-\u009f]/u.test(body.name) || Object.keys(body).some(key => key !== "name")) return json({ error: "Use a workspace name between 1 and 100 characters without control characters." }, 400);
+    session.org.name = name;
+    session.orgs = session.orgs.map((org: any) => org.id === workspaceId ? { ...org, name } : org);
+    return json({ org: { ...session.org } });
+  }
   if (url.pathname.startsWith("/api/admin/signup-invites")) {
     if (!demoSession().capabilities.manageSignupInvites) return json({ error: "Operator access is required.", code: "forbidden" }, 403);
     if (route === "GET /api/admin/signup-invites") return json({ invites: [...signupInvitations.values()].reverse().slice(0, 100), more: signupInvitations.size > 100 });
