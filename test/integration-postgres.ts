@@ -36,6 +36,9 @@ const { getActivity, listActivities } = await import("../gateway/src/activities"
 const { audit } = await import("../gateway/src/audit");
 const { authenticateStoredSecret, issueToken, revokeToken, createSession } = await import("../gateway/src/auth");
 const { getOrg, withOrg } = await import("../gateway/src/orgs");
+const { currentContext } = await import("../gateway/src/context");
+const { handleWeb } = await import("../gateway/src/web");
+const { onboardingState } = await import("../gateway/src/org-api");
 const { getBillingSummary, requireHostedWriteAccess, BillingError } = await import("../gateway/src/billing");
 const { getShowcaseSettings, updateShowcaseSettings, getPublicActivity, handlePublicShowcase } = await import("../gateway/src/showcase");
 const { upsertMemoryEntry, getMemoryEntry } = await import("../gateway/src/memory-entries");
@@ -107,6 +110,39 @@ try {
   const sessionA = await createSession({ ...ownerA, email: ownerA.email });
   const sessionB = await createSession({ ...ownerB, email: ownerB.email });
   equal((await authenticateStoredSecret(sessionA))?.orgId, 2, "A session is bound to its exact tenant");
+  // Exercise real cookie authentication and the HTTP switch route between two
+  // ready stores. Metadata switching must not start an engine or carry the
+  // source workspace context into the target's onboarding checks.
+  const switchRequest = (raw: string, source: number, destination: number) => new Request("https://integration.example/api/session/switch", {
+    method: "POST", headers: { Cookie: `engram_session=${raw}`, "X-Engram-Console": "1", "X-Engram-Workspace": String(source), "Content-Type": "application/json" },
+    body: JSON.stringify({ orgId: destination }),
+  });
+  equal(currentContext(), undefined, "HTTP workspace switching starts outside a tenant context");
+  const switched = await handleWeb(switchRequest(sessionA, 2, 3));
+  equal(switched.status, 200, "A verified member can switch from one ready workspace to another");
+  const switchedBody = await switched.json();
+  equal([switchedBody.org.id, switchedBody.org.provisioningStatus], [3, "ready"], "The switch response describes the destination workspace");
+  equal(switchedBody.onboarding.step, "connect", "Destination onboarding reads its own successful receipts");
+  const switchedCookie = switched.headers.get("set-cookie")!;
+  check(switchedCookie?.includes("HttpOnly") && switchedCookie.includes("SameSite=Strict"), "Workspace switching returns a protected session cookie");
+  const switchedRaw = switchedCookie.split(";")[0].slice("engram_session=".length);
+  equal((await authenticateStoredSecret(switchedRaw))?.orgId, 3, "The new session authenticates only as the destination tenant");
+  equal((await authenticateStoredSecret(sessionA))?.orgId, 2, "The source credential keeps its original workspace binding");
+  const afterSwitch = await handleWeb(new Request("https://integration.example/api/me", { headers: { Cookie: `engram_session=${switchedRaw}`, "X-Engram-Console": "1", "X-Engram-Workspace": "3" } }));
+  equal((await afterSwitch.json()).org.id, 3, "The destination cookie selects that workspace on the next real HTTP read");
+  const switchedBack = await handleWeb(switchRequest(switchedRaw, 3, 2));
+  equal(switchedBack.status, 200, "A ready destination can switch back without leaking its context");
+  equal((await switchedBack.json()).org.id, 2, "The return switch identifies the original workspace");
+  const sessionsBeforeDeniedSwitch = Number((await sql`SELECT count(*) AS n FROM sessions`)[0].n);
+  const deniedSwitch = await handleWeb(switchRequest(sessionA, 2, 1));
+  equal(deniedSwitch.status, 404, "A person without destination membership cannot switch into that workspace");
+  equal(deniedSwitch.headers.get("set-cookie"), null, "A denied switch cannot replace the browser session");
+  equal(Number((await sql`SELECT count(*) AS n FROM sessions`)[0].n), sessionsBeforeDeniedSwitch, "A denied switch does not mint an orphan session");
+  await withOrg(orgA, ownerA, async () => {
+    await rejects(() => onboardingState(orgB), error => error.status === 403, "Onboarding still rejects a mismatched tenant context");
+    equal(currentContext()?.org.id, 2, "A rejected nested onboarding call preserves its source context");
+  });
+  equal(currentContext(), undefined, "Tenant context is restored after switching and guarded onboarding failures");
   await sql`UPDATE org_members SET role = 'member' WHERE org_id = 2 AND email = 'owner@example.test'`;
   equal((await authenticateStoredSecret(sessionA))?.role, "member", "A demoted owner loses session billing privileges immediately");
   equal((await authenticateStoredSecret(sessionB))?.role, "owner", "Demotion in one tenant does not change another tenant's role");

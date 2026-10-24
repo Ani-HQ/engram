@@ -318,7 +318,10 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   // Account metadata and provisioning progress must remain available before a
   // tenant database exists. Every content route stays outside that context.
   const provisioningStatus = storedOrg.provisioningStatus ?? "ready";
-  if (provisioningStatus !== "ready" && req.method === "POST" && url.pathname === "/api/session/switch") {
+  // A switch reads account metadata for a different authorized workspace. Keep
+  // it outside the source tenant context, even when that source is ready; target
+  // onboarding checks must not inherit the source workspace's isolation scope.
+  if (req.method === "POST" && url.pathname === "/api/session/switch") {
     return await handleOrgApi(req, url, actor, storedOrg) ?? Response.json({ error: "not found" }, { status: 404 });
   }
   if (req.method === "GET" && (url.pathname === "/api/me" || url.pathname === "/api/provisioning")) {

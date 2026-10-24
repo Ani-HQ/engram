@@ -265,19 +265,20 @@ async function postAcceptInvite(req: Request): Promise<Response> {
   if (!raw) return Response.json({ error: "bad request" }, { status: 400 });
   const accepted = await acceptInvite(raw);
   if (!accepted) return Response.json({ error: "unauthorized" }, { status: 401 });
+  const payload = await sessionActor(normalizeToken({
+    name: accepted.member.email,
+    orgId: accepted.org.id,
+    role: accepted.member.role,
+    kind: "session",
+    email: accepted.member.email,
+  }), accepted.org, { onboarding: await onboardingState(accepted.org) });
   const session = await createSession({
     orgId: accepted.org.id,
     name: accepted.member.email,
     role: accepted.member.role,
     email: accepted.member.email,
   });
-  return Response.json(await sessionActor(normalizeToken({
-    name: accepted.member.email,
-    orgId: accepted.org.id,
-    role: accepted.member.role,
-    kind: "session",
-    email: accepted.member.email,
-  }), accepted.org, { onboarding: await onboardingState(accepted.org) }), {
+  return Response.json(payload, {
     status: accepted.org.provisioningStatus === "ready" ? 200 : 202,
     headers: { "Set-Cookie": serializeSessionCookie(session) },
   });
@@ -433,19 +434,20 @@ async function postSwitchOrg(req: Request, token: TokenRecord, _org: Org): Promi
   const member = await memberInOrg(orgId, token.email);
   const next = await getOrg(orgId);
   if (!member || !next) return Response.json({ error: "not found" }, { status: 404 });
+  const payload = await sessionActor(normalizeToken({
+    name: token.email,
+    orgId: next.id,
+    role: member.role,
+    kind: "session",
+    email: token.email,
+  }), next, { onboarding: await onboardingState(next) });
   const session = await createSession({
     orgId: next.id,
     name: token.email,
     role: member.role,
     email: token.email,
   });
-  return Response.json(await sessionActor(normalizeToken({
-    name: token.email,
-    orgId: next.id,
-    role: member.role,
-    kind: "session",
-    email: token.email,
-  }), next, { onboarding: await onboardingState(next) }), {
+  return Response.json(payload, {
     headers: { "Set-Cookie": serializeSessionCookie(session) },
   });
 }
