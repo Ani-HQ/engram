@@ -20,6 +20,7 @@ process.env.ENGRAM_PROVISIONER_DB_URL_TEMPLATE = template;
 process.env.ENGRAM_TENANT_CREDENTIAL_KEY = "engram-disposable-only-master-key-32-bytes";
 process.env.ENGRAM_DEPLOYMENT_MODE = "hosted";
 process.env.ENGRAM_DATABASE_AUTHORITY = "provisioner";
+process.env.ENGRAM_PROVISION_JOB = "";
 delete process.env.ENGRAM_ALLOW_LEGACY_DB_CREDENTIALS;
 
 const admin = postgres(template.replace("__DB__", "engram_gateway"), { max: 1, onnotice: () => {} });
@@ -37,7 +38,7 @@ function connect(url: string): postgres.Sql {
 function databaseUrl(url: string, name: string): string { const result = new URL(url); result.pathname = `/${name}`; return result.toString(); }
 
 const { migrate, sql, closeDatabasePools, ensureDatabase } = await import("../gateway/src/db");
-const { createOrg, addMember, removeMember, withOrg } = await import("../gateway/src/orgs");
+const { createOrg, addMember, removeMember, withOrg, acceptInvite } = await import("../gateway/src/orgs");
 const { issueToken, authenticateStoredSecret, createSession } = await import("../gateway/src/auth");
 const { tenantDbUrl } = await import("../gateway/src/tenant-db");
 const { brainEnvironment } = await import("../gateway/src/privacy");
@@ -45,6 +46,8 @@ const { normalizeToken } = await import("../gateway/src/policies");
 const { oauthMemberForClaims } = await import("../gateway/src/oauth");
 const { listConnections } = await import("../gateway/src/connections");
 const { closeWriteCoordinator } = await import("../gateway/src/write-coordination");
+const { canManageSignupInvites, issueSignupInvite, createSignupVerification } = await import("../gateway/src/signup-invites");
+const { ensureHostedSignupInvitesSchema } = await import("../gateway/src/signup-invites-schema");
 try {
   const marker = await admin`SELECT purpose FROM _engram_integration_sandbox WHERE id = 1`;
   equal(marker[0]?.purpose, "engram-disposable-integration-v1", "Only the marked integration sandbox may be upgraded");
@@ -81,8 +84,27 @@ try {
   await denied(() => sql`INSERT INTO complimentary_access_events (id,org_id,grant_id,owner_member_id,operation,request_id,payload_hash,operator_role,reason) VALUES (gen_random_uuid(),1,gen_random_uuid(),0,'grant','runtime-forgery',repeat('a',64),current_user,'forbidden')`, "Runtime cannot forge a complimentary audit receipt");
   await denied(() => sql`UPDATE complimentary_access_events SET reason='tampered' WHERE org_id=1`, "Runtime cannot alter complimentary audit history");
   await denied(() => sql`DELETE FROM complimentary_access_events WHERE org_id=1`, "Runtime cannot delete complimentary audit history");
+  equal((await sql`SELECT count(*)::int AS n FROM hosted_signup_operators`)[0].n >= 0, true, "Runtime can read operator capability membership");
+  await denied(() => sql`INSERT INTO hosted_signup_operators (member_id) VALUES (0)`, "Runtime cannot appoint a signup operator");
+  await denied(() => sql`UPDATE hosted_signup_operators SET revoked_at=NULL`, "Runtime cannot reactivate a revoked signup operator");
+  await denied(() => sql`DELETE FROM hosted_signup_operators`, "Runtime cannot erase the protected operator allowlist");
 
   const stamp = `${Date.now()}`;
+  const betaOperatorEmail = `security-beta-operator-${stamp}@example.test`, betaEmail = `security-beta-friend-${stamp}@example.test`;
+  const betaOperatorId = Number((await admin`INSERT INTO org_members (org_id,email,role) VALUES (1,${betaOperatorEmail},'owner') RETURNING id`)[0].id);
+  await admin`INSERT INTO hosted_signup_operators (member_id) VALUES (${betaOperatorId})`;
+  const betaOperator = normalizeToken({ name: betaOperatorEmail, email: betaOperatorEmail, orgId: 1, role: "owner", kind: "session" });
+  equal(await canManageSignupInvites(betaOperator, sql), true, "Restricted runtime reads the live operator capability without acquiring forbidden write authority");
+  const betaInvite = await issueSignupInvite(betaOperator, betaEmail, undefined, sql);
+  const betaProof = await createSignupVerification(betaEmail, "Restricted signup fixture", betaInvite.inviteCode, "https://security.example", sql);
+  const betaAccepted = await acceptInvite(betaProof.raw, sql);
+  check(betaAccepted?.org.kind === "personal" && betaAccepted.org.provisioningStatus === "pending", "The restricted request role can atomically verify and queue one personal workspace");
+  equal(await acceptInvite(betaProof.raw, sql), null, "Restricted runtime cannot replay the verified admission");
+  equal(Number((await sql`SELECT count(*) AS n FROM workspace_complimentary_access WHERE org_id = ${betaAccepted!.org.id}`)[0].n), 0, "Verified runtime admission still cannot grant its own billing entitlement");
+  await admin`UPDATE hosted_signup_operators SET revoked_at=now() WHERE member_id=${betaOperatorId}`;
+  await ensureHostedSignupInvitesSchema(admin);
+  equal(await canManageSignupInvites(betaOperator, sql), false, "Repeated schema bootstrap cannot reactivate an explicitly revoked operator");
+  await admin`UPDATE hosted_signup_operators SET revoked_at=NULL WHERE member_id=${betaOperatorId}`;
   const a = await createOrg(`Security A ${stamp}`, "security-owner@example.test", "personal");
   const b = await createOrg(`Security B ${stamp}`, "security-other@example.test", "personal");
   const urlA = tenantDbUrl(a.brainDb), urlB = tenantDbUrl(b.brainDb);
@@ -178,6 +200,7 @@ try {
   const [jobOutput, jobError, jobCode] = await Promise.all([new Response(provisioner.stdout).text(), new Response(provisioner.stderr).text(), provisioner.exited]);
   equal(jobCode, 0, `Separate provisioner job creates queued storage: ${jobError}`);
   check(JSON.parse(jobOutput).provisioning.ready >= 1, "Separate job reports durable provisioning completion");
+  equal((await sql`SELECT o.provisioning_status, c.expires_at, c.revoked_at FROM orgs o JOIN workspace_complimentary_access c ON c.org_id=o.id WHERE o.id=${betaAccepted!.org.id}`)[0], { provisioning_status: "ready", expires_at: null, revoked_at: null }, "The separate privileged job commits the verified signup grant with readiness under restricted runtime ACLs");
   equal(await runGateway(String(pendingOrg.id)), "ready", "Original no-admin runtime can use the completed workspace without schema authority");
 
   const inventoryOwner = normalizeToken({ name: "security-owner@example.test", orgId: a.id, role: "owner", kind: "session", email: "security-owner@example.test" });

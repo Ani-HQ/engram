@@ -26,16 +26,18 @@ export function provisioningPanel({ session, checking, error, retry, signOut, sw
   );
 }
 
-export function planCards(catalog, cloudHref = "/app#start", cloudLabel = "Start a 14-day trial") {
+export function planCards(catalog, cloudHref = "/app#start", cloudLabel = "Start a 14-day trial", signupPolicy = null) {
+  const beta = catalog.mode === "hosted" && signupPolicy?.mode === "invite-only";
+  if (beta) { cloudHref = "/app#invite"; cloudLabel = "Have an invite?"; }
   if (catalog.mode === "self-hosted" && cloudHref === "/app#start") { cloudHref = "/hosted"; cloudLabel = "Explore Engram Cloud"; }
   return h("div", { class: "plan-grid" }, catalog.plans.map(plan => h("section", { class: `plan-card ${plan.id === "cloud" ? "cloud-plan" : ""}` },
     h("div", { class: "plan-label" }, icon(plan.id === "cloud" ? "cloud" : "terminal", { size: 18 }), plan.name),
     h("p", { class: "plan-description" }, plan.description),
-    h("div", { class: "plan-price" }, h("strong", {}, `$${plan.monthlyPrice}`), h("span", {}, plan.id === "cloud" ? "/ workspace / month" : "/ Engram licence")),
-    h("p", { class: "field-hint" }, plan.id === "cloud" ? "USD · launch pricing · taxes may apply" : "You cover your infrastructure costs."),
-    h("ul", { class: "plan-features" }, plan.features.map(feature => h("li", {}, icon("check", { size: 14 }), feature))),
+    h("div", { class: "plan-price" }, h("strong", {}, `$${beta && plan.id === "cloud" ? 0 : plan.monthlyPrice}`), h("span", {}, plan.id === "cloud" ? beta ? "/ invited early access" : "/ workspace / month" : "/ Engram licence")),
+    h("p", { class: "field-hint" }, plan.id === "cloud" ? beta ? "Closed beta · free until access is revoked" : "USD · launch pricing · taxes may apply" : "You cover your infrastructure costs."),
+    h("ul", { class: "plan-features" }, plan.features.map(feature => h("li", {}, icon("check", { size: 14 }), beta && plan.id === "cloud" && feature === "Cancel any time" ? "Email-bound invitation and verification" : feature))),
     link(plan.id === "cloud" ? cloudLabel : "Self-host Engram", plan.id === "cloud" ? cloudHref : "/self-host", plan.id === "cloud" ? "button primary" : "button"),
-    h("p", { class: "field-hint" }, plan.id === "cloud" ? "No card needed to try it. Subscribe when you're ready." : "Open source · MIT licence"),
+    h("p", { class: "field-hint" }, plan.id === "cloud" ? beta ? "Invite code required. Verify your email. No card needed." : "No card needed to try it. Subscribe when you're ready." : "Open source · MIT licence"),
   )));
 }
 

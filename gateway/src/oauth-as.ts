@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import type postgres from "postgres";
 import { connectorBranding } from "../../shim/branding.js";
 import { authenticateSecret, createLoginInvite, createSession, type TokenRecord } from "./auth";
 import { parseSessionCookie, serializeSessionCookie } from "./cookies";
@@ -158,7 +159,7 @@ async function sendAuthorizeLink(
       ${email},
       ${new Date(Date.now() + REQUEST_TTL_MS)}
     )`;
-  const invite = await createLoginInvite(email, resourceHost(req));
+  const invite = await createLoginInvite(email, resourceHost(req), rid);
   if (!invite) return authorizePage(parsed, "No org for that email.");
   const continueUrl = `${oauthIssuer(resourceHost(req))}/oauth/continue?invite=${invite.raw}&rid=${rid}`;
   const delivery = await sendMail({
@@ -179,14 +180,18 @@ async function continueAuthorize(req: Request, url: URL): Promise<Response> {
   const invite = url.searchParams.get("invite") ?? "";
   const rid = url.searchParams.get("rid") ?? "";
   if (!invite || !rid) return new Response("Missing login link.", { status: 400 });
-  const accepted = await acceptInvite(invite);
-  if (!accepted?.member.email) return new Response("That login link is not valid.", { status: 401 });
-  const rows = await sql`
-    UPDATE oauth_requests SET used_at = now()
-    WHERE id = ${rid} AND email = ${accepted.member.email} AND used_at IS NULL AND expires_at > now()
-    RETURNING *`;
-  if (!rows.length) return new Response("That sign-in request expired.", { status: 401 });
-  const parsed = requestToParams(rows[0]);
+  const result = await sql.begin(async tx => {
+    const rows = await tx`SELECT * FROM oauth_requests WHERE id = ${rid} AND used_at IS NULL AND expires_at > now() FOR UPDATE`;
+    if (rows.length !== 1) return null;
+    // OAuth continuation accepts only the login proof issued for this exact
+    // request. It must never redeem a signup/team invitation as a side effect.
+    const accepted = await acceptInvite(invite, tx as unknown as postgres.Sql, { purpose: "login", oauthRequestId: rid, email: String(rows[0].email) });
+    if (!accepted?.member.email || accepted.member.email !== rows[0].email) return null;
+    await tx`UPDATE oauth_requests SET used_at = now() WHERE id = ${rid}`;
+    return { accepted, parsed: requestToParams(rows[0]) };
+  });
+  if (!result) return new Response("That sign-in request expired or is not valid.", { status: 401 });
+  const { accepted, parsed } = result;
   const session = await createSession({
     orgId: accepted.org.id,
     name: accepted.member.email,

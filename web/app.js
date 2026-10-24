@@ -15,6 +15,9 @@ import { aiConfiguration, attentionResults } from "./insights-view.js";
 import { confidenceLabel, reviewAllowed, reviewPlan } from "./insight-model.js";
 import { onboardingGuide } from "./onboarding-view.js";
 import { agentConnectionGuide, accessKeyConfiguration, onboardingProgress, shouldOfferOnboarding, createOnboardingReader } from "./onboarding-model.js";
+import { parseSignupPolicy, signupEntryMode, emailLinkRecovery } from "./signup-model.js";
+import { signupView } from "./signup-view.js";
+import { signupAdminPanel } from "./signup-admin.js";
 
 const root = document.querySelector("#app");
 const state = {
@@ -38,6 +41,7 @@ let sessionMutation = false, authEpoch = 0;
 let insightTimer, pendingInsightRun = false;
 let provisioningTimer, provisioningChecking = false, provisioningError = "", provisioningAttempt = 0;
 let connectionDraft = null, connectionFocusPending = null, skipDetailReturnFocus = false;
+let signupPolicy = null, signupPolicyRequest = null, authPanel = null, signupAdmin = null;
 const setupByWorkspace = new Map();
 const setupReader = createOnboardingReader(workspaceId => api.onboarding(workspaceId), () => state.session?.org.id);
 const dialog = el("dialog", { class: "detail", "aria-labelledby": "detail-title" });
@@ -237,6 +241,8 @@ async function refreshSetup() {
   } finally { setup.checking = false; if (state.session?.org.id === workspaceId) renderSetup(); }
 }
 function render() {
+  authPanel?.dispose(); authPanel = null;
+  signupAdmin?.dispose(); signupAdmin = null;
   previewWatcher?.stop(); previewWatcher = null;
   if (!state.session) return;
   if (workspacePending(state.session)) {
@@ -1007,6 +1013,7 @@ function setSessionControlsBusy(pending) {
 async function switchOrg(orgId) {
   if (sessionMutation || !state.session) return;
   sessionMutation = true; setSessionControlsBusy(true);
+  signupAdmin?.dispose(); signupAdmin = null;
   const epoch = authEpoch;
   setupReader.invalidate();
   clearTimeout(provisioningTimer); ++provisioningAttempt; provisioningChecking = false; provisioningError = "";
@@ -1032,7 +1039,8 @@ function accountView() {
   const fail = error => { if (workspaceId === state.session?.org.id && error instanceof AuthError) expired("Your session expired. Please sign in again."); };
   const notify = message => { if (workspaceId === state.session?.org.id) toast(message); };
   const scopedApi = workspaceApi(workspaceId);
-  return [heading(title, description), billing ? billingPanel({ billing: state.account.billing, catalog: state.account.catalog, api: scopedApi, notify, fail, refresh: loadAccount }) : [workspacePanel({ session: state.session, members: state.account.members, invites: state.account.invites, api: scopedApi, notify, fail, saved: policies => { if (state.session?.org.id === workspaceId) { state.session.org.policies = policies; loadAccount(); } } }), state.account.external && aiConfiguration(state.account.external, { settings: false })]];
+  if (!billing) signupAdmin = signupAdminPanel({ session: state.session, api: scopedApi, fail, copy: value => navigator.clipboard.writeText(value), isCurrent: () => !sessionMutation && state.view === "workspace" && state.session?.org.id === workspaceId && state.session?.capabilities?.manageSignupInvites === true });
+  return [heading(title, description), billing ? billingPanel({ billing: state.account.billing, catalog: state.account.catalog, api: scopedApi, notify, fail, refresh: loadAccount }) : [workspacePanel({ session: state.session, members: state.account.members, invites: state.account.invites, api: scopedApi, notify, fail, saved: policies => { if (state.session?.org.id === workspaceId) { state.session.org.policies = policies; loadAccount(); } } }), signupAdmin?.element, state.account.external && aiConfiguration(state.account.external, { settings: false })]];
 }
 async function loadAccount() {
   if (!["owner", "member"].includes(state.session.role) || (state.view === "billing" && state.session.role !== "owner")) return;
@@ -1047,12 +1055,14 @@ async function loadAccount() {
 async function signOut() {
   if (sessionMutation) return;
   sessionMutation = true; ++authEpoch; setSessionControlsBusy(true);
+  signupAdmin?.dispose(); signupAdmin = null;
   try { await api.logout(); expired(); }
   catch (error) { toast(errorMessage(error)); }
   finally { sessionMutation = false; setSessionControlsBusy(false); }
 }
 function expired(message = "") {
   ++authEpoch;
+  signupAdmin?.dispose(); signupAdmin = null;
   setupReader.invalidate(); setupByWorkspace.clear();
   previewWatcher?.stop(); previewWatcher = null;
   state.account = null;
@@ -1060,26 +1070,23 @@ function expired(message = "") {
   clearTimeout(searchTimer); clearTimeout(insightTimer); ++generation; closeDetail(); state.session = null; state.activities = []; state.activityStats = {}; state.freshIds = new Set(); state.memories = []; state.tokens = []; state.connections = null; state.connectionError = ""; state.connectionFetchedAt = 0; connectionDraft = null; connectionFocusPending = null; state.agents = []; state.tools = []; state.showcase = null; state.showcaseDraft = null; state.insights = null; state.insightsQuery = ""; state.insightsActivityId = ""; state.insightBusy = false; state.insightError = ""; state.reviews = []; pendingInsightRun = false; renderAuth("email", message);
 }
 function renderAuth(mode = "email", message = "") {
-  const email = el("input", { type: "email", required: true, autocomplete: "email", placeholder: "you@example.com" });
-  const token = el("input", { type: "password", required: true, autocomplete: "off", placeholder: "Access token" });
-  const name = el("input", { required: true, placeholder: "Workspace name", maxlength: 100 });
-  const submit = el("button", { type: "submit", class: "primary" }, mode === "token" ? "Sign in" : mode === "create" ? "Create workspace" : "Email me a sign-in link");
-  const feedback = el("div", { role: "status", class: "detail-note" }, message);
-  const form = el("form", { class: "stack", onsubmit: async event => {
-    event.preventDefault(); const originalLabel = submit.textContent; busy(submit, mode === "token" ? "Signing in…" : "Sending link…", true); feedback.textContent = "";
-    try {
-      if (mode === "token") { state.session = await api.login(token.value.trim()); readRoute(); render(); loadView(); }
-      else {
-        const data = mode === "create" ? await api.createOrg({ name: name.value.trim(), email: email.value.trim() }) : await api.loginEmail(email.value.trim());
-        feedback.replaceChildren(data.url ? el("a", { href: data.url }, "Continue to your workspace →") : "Check your email for a sign-in link.");
-      }
-    } catch (error) { feedback.textContent = errorMessage(error); }
-    finally { busy(submit, originalLabel, false); }
-  } }, mode === "create" && field("Workspace", name), field(mode === "token" ? "Access token" : "Email", mode === "token" ? token : email), submit, feedback);
-  root.replaceChildren(...[state.demo && el("div", { class: "demo" }, "Preview · Sample data. Sign-in and connections are simulated."), el("main", { class: "auth" }, el("a", { class: "wordmark", href: "/" }, el("img", { class: "brand-mark", src: "/brand/engram-mark.svg", width: 27, height: 27, alt: "" }), "engram"), el("h1", {}, mode === "create" ? "A home for your agents." : "Your agents. One place."),
-    el("p", {}, "Activity and shared memory across the agents you use."), form,
-    el("div", { class: "auth-switch" }, button(mode === "token" ? "Sign in with email" : "Use an access token", () => renderAuth(mode === "token" ? "email" : "token"), { class: "text small" }), " · ", button(mode === "create" ? "Sign in" : "Create a workspace", () => renderAuth(mode === "create" ? "email" : "create"), { class: "text small" })),
-    el("div", { class: "auth-links" }, el("a", { href: "/pricing" }, "Pricing"), el("a", { href: "/self-host" }, "Self-host"), el("a", { href: "/privacy" }, "Privacy")))].filter(Boolean));
+  authPanel?.dispose(); signupAdmin?.dispose(); signupAdmin = null;
+  authPanel = signupView({ mode, policy: signupPolicy, message, api,
+    changeMode: next => { history.replaceState(null, "", next === "create" ? "#invite" : "#signin"); renderAuth(next); },
+    signedIn: session => { state.session = session; readRoute(); render(); loadView(); },
+    retryPolicy: async () => { const epoch = authEpoch; try { await loadSignupPolicy(); } catch {} if (!state.session && epoch === authEpoch) renderAuth(mode, message); },
+  });
+  root.replaceChildren(...[state.demo && el("div", { class: "demo" }, "Preview · Sample data. Sign-in and connections are simulated."), authPanel.element].filter(Boolean));
+}
+async function loadSignupPolicy() {
+  if (signupPolicy) return signupPolicy;
+  if (!signupPolicyRequest) signupPolicyRequest = api.signupPolicy().then(value => signupPolicy = parseSignupPolicy(value)).finally(() => { signupPolicyRequest = null; });
+  return signupPolicyRequest;
+}
+async function openAuth(message = "") {
+  const epoch = authEpoch;
+  try { await loadSignupPolicy(); } catch {}
+  if (!state.session && epoch === authEpoch) renderAuth(signupEntryMode(signupPolicy, location.hash, location.pathname), message);
 }
 async function loadView() {
   if (workspacePending(state.session)) { scheduleProvisioning(); return; }
@@ -1116,7 +1123,7 @@ async function pollProvisioning() {
   }
 }
 window.addEventListener("hashchange", () => {
-  if (!state.session) return;
+  if (!state.session) { openAuth(); return; }
   clearTimeout(searchTimer); clearTimeout(insightTimer); ++generation; closeDetail(); state.insightBusy = false; state.error = ""; state.more = false; readRoute(); render(); window.scrollTo(0, 0); loadView();
 });
 document.addEventListener("click", event => {
@@ -1136,7 +1143,7 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) { previewWatcher?.pause(); clearTimeout(activityRefreshTimer); clearTimeout(insightTimer); clearTimeout(provisioningTimer); }
   else { if (workspacePending(state.session)) { scheduleProvisioning(0); return; } previewWatcher?.resume(); if (currentActivity && dialog.open) fetchActivityDetail({ quiet: true }); if (state.view === "attention" && ["queued", "running"].includes(state.insights?.job?.status)) loadInsights({ jobId: state.insights.job.id, quiet: true }); }
 });
-window.addEventListener("pagehide", () => { previewWatcher?.pause(); clearTimeout(activityRefreshTimer); clearTimeout(insightTimer); clearTimeout(provisioningTimer); });
+window.addEventListener("pagehide", () => { authPanel?.clearSecrets(); signupAdmin?.clearSecrets(); previewWatcher?.pause(); clearTimeout(activityRefreshTimer); clearTimeout(insightTimer); clearTimeout(provisioningTimer); });
 window.addEventListener("pageshow", event => {
   if (!event.persisted) return;
   if (workspacePending(state.session)) { scheduleProvisioning(0); return; }
@@ -1146,12 +1153,17 @@ window.addEventListener("pageshow", event => {
   else if (state.session && state.view === "attention") loadInsights({ jobId: state.insights?.job?.id, quiet: true });
 });
 async function boot() {
+  // Warm the public policy for sign-out too; a failed policy check never stops
+  // an existing session or makes signup available by assumption.
+  loadSignupPolicy().catch(() => {});
   root.replaceChildren(el("main", { class: "auth boot-loader", role: "status" }, el("img", { class: "brand-mark", src: "/brand/engram-mark.svg", width: 27, height: 27, alt: "" }), icon("loader-circle", { size: 18, class: "spin" }), el("p", { class: "muted" }, "Opening your workspace…")));
+  const hash = location.hash.slice(1), joining = hash.startsWith("join="), recovery = joining ? emailLinkRecovery(hash.slice(5)) : null;
+  // Email bearer links must leave the address bar on both success and failure.
+  if (joining) history.replaceState(null, "", recovery.hash);
   try {
-    const hash = location.hash.slice(1);
-    state.session = hash.startsWith("join=") ? await api.acceptInvite(hash.slice(5)) : await api.me();
-    if (hash.startsWith("join=")) history.replaceState(null, "", "#activity");
+    state.session = joining ? await api.acceptInvite(hash.slice(5)) : await api.me();
+    if (joining) history.replaceState(null, "", "#activity");
     state.demo = Boolean(state.session.demo); readRoute(); render(); await loadView();
-  } catch (error) { renderAuth(location.hash === "#start" ? "create" : "email", error instanceof AuthError ? "" : errorMessage(error)); }
+  } catch (error) { await openAuth(recovery ? [error instanceof AuthError ? "" : errorMessage(error), recovery.message].filter(Boolean).join(" ") : error instanceof AuthError ? "" : errorMessage(error)); }
 }
 boot();

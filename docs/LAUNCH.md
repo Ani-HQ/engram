@@ -16,10 +16,12 @@ the tasks they perform elsewhere. Workspaces are private by default.
 **For:** People who use more than one agent for software work and want decisions,
 context and task reports to carry between them.
 
-**Primary action:** [Create a workspace](https://engram.ani.computer/app#start).
+**Primary action:** Ask Ani for an invitation, then [enter the code](https://engram.ani.computer/app#invite).
 
-Cloud includes a 14-day trial without a card, then costs $19 USD per workspace
-per month. Taxes may apply. The MIT-licensed source can also be self-hosted.
+The hosted beta is invite-only. Codes are bound to the recipient's email, which
+must be verified before access. Invited personal workspaces are free until that
+access is revoked, with no card required. Standard Cloud pricing is $19 USD per
+workspace per month; taxes may apply. The MIT-licensed source can also be self-hosted.
 See [pricing](https://engram.ani.computer/pricing),
 [privacy](https://engram.ani.computer/privacy) and
 [self-hosting](https://engram.ani.computer/self-host).
@@ -31,7 +33,8 @@ See [pricing](https://engram.ani.computer/pricing),
 > Save a decision with one agent. Recall it with another. See shared memory and
 > reported task activity in one private workspace.
 >
-> Try it: https://engram.ani.computer
+> I’m opening a small, free, invite-only beta. Ask me for a code if you’d like to try it:
+> https://engram.ani.computer
 
 Attach the reviewed motion demo. Do not include private workspace captures or
 raw verification receipts.
@@ -49,10 +52,11 @@ raw verification receipts.
 > before writing the configuration, and keeps the key out of the command.
 >
 > Workspaces are private by default. Optional external AI processing starts
-> disabled. Cloud has a 14-day trial without a card, then costs $19 USD per
-> workspace per month. You can also self-host the MIT-licensed source.
+> disabled. This is a free, invite-only beta with no card required. Ask me for a
+> code; it’s bound to your email and verified before you get in. You can also
+> self-host the MIT-licensed source.
 >
-> Try it at https://engram.ani.computer
+> Details: https://engram.ani.computer
 >
 > I’d like feedback on the first save-and-recall experience, especially when
 > you switch between agents.
@@ -74,8 +78,8 @@ raw verification receipts.
 >
 > Hosted app: https://engram.ani.computer
 >
-> Self-hosting is MIT licensed. Hosted workspaces start with a 14-day cardless
-> trial; Cloud is $19 USD per workspace per month after that.
+> Self-hosting is MIT licensed. The hosted beta is free and invite-only: ask me
+> for an email-bound code, then verify the inbox to get access.
 >
 > I’m interested in where the shared-memory workflow helps and where the setup
 > still gets in your way.

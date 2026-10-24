@@ -10,6 +10,15 @@ beforeEach(() => {
 afterEach(() => { globalThis.fetch = originalFetch; });
 
 describe("private workspace API requests", () => {
+  test("uses scoped operator routes and keeps invite codes in the signup body only", async () => {
+    const selected = workspaceApi(1);
+    await selected.signupInvites(); await selected.issueSignupInvite({ email: "friend@example.com" }); await selected.revokeSignupInvite("invite/opaque");
+    expect(calls.map(call => call.url)).toEqual(["/api/admin/signup-invites", "/api/admin/signup-invites", "/api/admin/signup-invites/invite%2Fopaque/revoke"]);
+    for (const call of calls) { expect(new Headers(call.options.headers).get("X-Engram-Workspace")).toBe("1"); expect(new Headers(call.options.headers).get("X-Engram-Console")).toBe("1"); }
+    await api.createOrg({ email: "friend@example.com", inviteCode: "example-code" });
+    expect(calls[3].url).toBe("/api/orgs"); expect(JSON.parse(String(calls[3].options.body))).toEqual({ email: "friend@example.com", inviteCode: "example-code" });
+    await api.signupPolicy(); expect(calls[4].url).toBe("/api/signup-policy"); expect(calls[4].options.cache).toBe("no-store");
+  });
   test("reads getting started evidence with the originating workspace and no mutation", async () => {
     await workspaceApi(7).onboarding();
     expect(calls[0].url).toBe("/api/onboarding");

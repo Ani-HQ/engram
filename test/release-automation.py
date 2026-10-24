@@ -33,6 +33,7 @@ class ReleaseTests(unittest.TestCase):
         self.assertNotIn("ENGRAM_PROVISIONER_DB_URL_TEMPLATE", env)
         self.assertNotIn("ENGRAM_ALLOW_LEGACY_DB_CREDENTIALS", env)
         self.assertEqual(env["ENGRAM_DATABASE_AUTHORITY"]["value"], "runtime")
+        self.assertEqual(env["ENGRAM_SIGNUP_MODE"]["value"], "invite-only")
         self.assertEqual(env["ENGRAM_DB_URL_TEMPLATE"]["valueFrom"]["secretKeyRef"]["name"], "engram-runtime-db-url-template")
         self.assertEqual(env["ENGRAM_WORKER_CONNECTOR_SERVICE_ACCOUNT"]["value"], "engram-db-connector@ani-hq.iam.gserviceaccount.com")
         self.assertEqual(env["ENGRAM_PROVISION_JOB"]["value"], "projects/ani-hq/locations/us-central1/jobs/engram-provision")

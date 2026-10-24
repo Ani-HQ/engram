@@ -29,6 +29,8 @@ if (!["postgres:", "postgresql:"].includes(target.protocol) || !["127.0.0.1", "l
 process.env.ENGRAM_DB_URL_TEMPLATE = template;
 process.env.ENGRAM_DEPLOYMENT_MODE = "self-hosted";
 process.env.ENGRAM_ALLOW_LEGACY_DB_CREDENTIALS = "1";
+process.env.ENGRAM_SIGNUP_MODE = "open";
+process.env.ENGRAM_PROVISION_JOB = "";
 
 const { sql, migrate, migrateOrgDataTables, ensureDatabase, poolFor, closeOrgPool, dataSql } = await import("../gateway/src/db");
 const { recordAction, listActions } = await import("../gateway/src/actions");
@@ -402,6 +404,10 @@ try {
   checks += await checkConnections(sql);
   const { checkComplimentaryAccess } = await import("./integration-complimentary");
   checks += await checkComplimentaryAccess(sql);
+  const { checkSignupInviteAccess } = await import("./integration-signup-access");
+  checks += await checkSignupInviteAccess(sql);
+  const { checkSignupInvites } = await import("./integration-signup-invites");
+  checks += await checkSignupInvites(sql);
 
   process.stdout.write(JSON.stringify({ ok: true, checks, postgres: "real", coverage: ["repeatable migrations", "physical tenant databases", "token and live session isolation", "action union and filters", "trial persistence", "public aggregate privacy and unpublishing", "CLI workspace creation and owner login", "concurrent action lifecycle and delivery idempotency", "fresh and stale public activity", "private grouped activity and contributor methods", "durable insight queue and provider budget"] }) + "\n");
 } finally {

@@ -212,19 +212,20 @@ export async function createSession(input: {
   return raw;
 }
 
-export async function createLoginInvite(email: string, publicUrl: string): Promise<{ raw: string; url: string } | null> {
+export async function createLoginInvite(email: string, publicUrl: string, oauthRequestId: string | null = null): Promise<{ raw: string; url: string } | null> {
   const member = await findMemberByEmail(email);
   if (!member) return null;
   const raw = `inv_${randomBytes(24).toString("base64url")}`;
   await sql`
-    INSERT INTO invites (org_id, email, role, sha256_hash, created_by, expires_at)
+    INSERT INTO invites (org_id, email, role, sha256_hash, created_by, expires_at, oauth_request_id)
     VALUES (
       ${member.orgId},
       ${member.email},
       ${member.role},
       ${sha256(raw)},
       'login',
-      now() + interval '1 day'
+      now() + interval '1 day',
+      ${oauthRequestId}
     )`;
   return { raw, url: `${publicUrl.replace(/\/$/, "")}/app#join=${raw}` };
 }
@@ -236,6 +237,8 @@ export async function createSignupInvite(
 ): Promise<{ raw: string; url: string } | null> {
   const normalized = normalizeEmail(email);
   const name = orgName.trim();
+  const { config } = await import("./config");
+  if (config.signupMode === "invite-only") return null;
   if (!normalized || !name) return null;
   const raw = `inv_${randomBytes(24).toString("base64url")}`;
   await sql`

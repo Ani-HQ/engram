@@ -176,6 +176,22 @@ export async function createOrg(
   return org;
 }
 
+// Signup verification owns the outer transaction. This helper creates only
+// central records; it never starts an engine, provisions storage, or creates a
+// second workspace outside that transaction.
+export async function createPersonalOrgRecords(name: string, ownerEmail: string, db: postgres.Sql): Promise<{ org: Org; member: OrgMember }> {
+  const email = normalizeEmail(ownerEmail), trimmed = name.trim();
+  if (!email || !trimmed || trimmed.length > 100) throw new Error("valid personal workspace identity required");
+  const inserted = await db`INSERT INTO orgs (name, slug, kind, brain_db, home_dir, data_db, policies)
+    VALUES (${trimmed}, ${`pending-${randomBytes(16).toString("hex")}`}, 'personal', 'pending', 'pending', 'pending', ${db.json(DEFAULT_POLICIES)}) RETURNING id`;
+  const id = Number(inserted[0].id), binding = `brain_org_${id}`;
+  const rows = await db`UPDATE orgs SET slug = ${`${personalSlugBase(email).slice(0, 40)}-${id}`},
+      brain_db = ${binding}, data_db = ${binding}, home_dir = ${`org-${id}`}, provisioning_status = 'pending'
+    WHERE id = ${id} RETURNING *`;
+  const members = await db`INSERT INTO org_members (org_id, email, role) VALUES (${id}, ${email}, 'owner') RETURNING *`;
+  return { org: rowToOrg(rows[0]), member: rowToMember(members[0]) };
+}
+
 export function personalSlugBase(email: string): string {
   const local = email.split("@")[0] || "me";
   return `me-${slugFromName(local)}`;
@@ -322,6 +338,7 @@ export async function createInvite(
   const normalized = normalizeEmail(email);
   if (!normalized) throw new Error("email required");
   if (role === "agent") throw new Error("invite a person, not an agent");
+  if (config.signupMode === "invite-only" && !await findMemberByEmail(normalized)) throw new Error("A signup invitation and email verification are required first");
   const org = await getOrg(orgId);
   if (org?.kind === "personal") throw new Error("a personal brain has one owner");
   const raw = `inv_${randomBytes(24).toString("base64url")}`;
@@ -338,7 +355,8 @@ export async function createInvite(
   return { raw, url: joinUrl(publicUrl, raw) };
 }
 
-export async function acceptInvite(raw: string, db: postgres.Sql = sql): Promise<{ org: Org; member: OrgMember } | null> {
+export async function acceptInvite(raw: string, db: postgres.Sql = sql, options: { purpose?: "login"; oauthRequestId?: string; email?: string } = {}): Promise<{ org: Org; member: OrgMember } | null> {
+  if (raw.startsWith("svf_")) return options.purpose || options.oauthRequestId ? null : acceptSignupVerification(raw, db);
   // Claim a one-use link atomically. Two requests must never both provision a
   // workspace or revive a membership from the same login link.
   const rows = await db`
@@ -346,6 +364,12 @@ export async function acceptInvite(raw: string, db: postgres.Sql = sql): Promise
     WHERE sha256_hash = ${sha256(raw)}
       AND accepted_at IS NULL
       AND expires_at > now()
+      AND signup_invite_id IS NULL
+      AND (${options.purpose ?? null}::text IS NULL OR created_by = ${options.purpose ?? null})
+      AND (${options.email ?? null}::text IS NULL OR email = ${options.email ?? null})
+      AND (oauth_request_id IS NULL AND ${options.oauthRequestId ?? null}::text IS NULL OR oauth_request_id = ${options.oauthRequestId ?? null})
+      AND (${config.signupMode === "open"} OR created_by = 'login'
+        OR (org_id IS NOT NULL AND EXISTS (SELECT 1 FROM org_members m WHERE m.email = invites.email AND m.role IN ('owner', 'member'))))
     RETURNING *`;
   if (!rows.length) return null;
   const invite = rows[0];
@@ -371,6 +395,36 @@ export async function acceptInvite(raw: string, db: postgres.Sql = sql): Promise
     console.error("[org] personal org failed:", failureCode(e));
   });
   return { org, member };
+}
+
+async function acceptSignupVerification(raw: string, db: postgres.Sql): Promise<{ org: Org; member: OrgMember } | null> {
+  const { eligiblePersonalWorkspace } = await import("./signup-invites");
+  const result = await db.begin(async tx => {
+    const rows = await tx`
+      SELECT i.id AS signup_id, i.email, v.id AS verification_id, v.pending_name
+      FROM hosted_signup_invites i JOIN hosted_signup_verifications v ON v.signup_invite_id = i.id
+      JOIN hosted_signup_operators op ON op.member_id = i.created_by_member_id AND op.revoked_at IS NULL
+      JOIN org_members creator ON creator.id = op.member_id AND creator.org_id = 1 AND creator.role = 'owner'
+      WHERE v.token_hash = ${sha256(raw)}
+        AND v.accepted_at IS NULL AND v.expires_at > now() AND v.email = i.email
+        AND i.redeemed_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > now()
+      FOR UPDATE OF i, v FOR SHARE OF creator`;
+    if (rows.length !== 1) return null;
+    const row = rows[0], email = String(row.email);
+    await tx`SELECT pg_advisory_xact_lock(hashtextextended(${`engram/signup/${email}`}, 0))`;
+    const prior = await eligiblePersonalWorkspace(tx as unknown as postgres.Sql, email);
+    const target = prior ? { org: (await getOrg(prior.orgId, tx as unknown as postgres.Sql))!, member: prior.member }
+      : await createPersonalOrgRecords(String(row.pending_name), email, tx as unknown as postgres.Sql);
+    if (!target.org) return null;
+    await tx`UPDATE hosted_signup_invites SET redeemed_at = now(), redeemed_org_id = ${target.org.id}, redeemed_owner_member_id = ${target.member.id}
+      WHERE id = ${row.signup_id}`;
+    await tx`UPDATE hosted_signup_verifications SET accepted_at = now() WHERE id = ${row.verification_id}`;
+    return target;
+  });
+  // Existing ready workspaces have no provisioning poll to retry a coalesced
+  // nudge. Their one-use verified admission must schedule its reconciliation.
+  if (result) await triggerProvisioning({ force: result.org.provisioningStatus === "ready" });
+  return result;
 }
 
 export async function listInvites(orgId: number) {

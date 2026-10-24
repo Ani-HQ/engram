@@ -28,6 +28,10 @@ const post = (path, body, workspaceId) => request(path, { ...scoped(workspaceId)
 
 export const api = {
   plans: () => request("/api/plans"),
+  signupPolicy: () => request("/api/signup-policy", { cache: "no-store", signal: AbortSignal.timeout(10000) }),
+  signupInvites: workspaceId => request("/api/admin/signup-invites", scoped(workspaceId)),
+  issueSignupInvite: (payload, workspaceId) => post("/api/admin/signup-invites", payload, workspaceId),
+  revokeSignupInvite: (id, workspaceId) => post(`/api/admin/signup-invites/${encodeURIComponent(id)}/revoke`, {}, workspaceId),
   billing: workspaceId => request("/api/billing", scoped(workspaceId)),
   checkout: (plan, workspaceId) => post("/api/billing/checkout", { plan }, workspaceId),
   billingPortal: workspaceId => post("/api/billing/portal", {}, workspaceId),
@@ -70,6 +74,6 @@ export const api = {
 // Callbacks retain the workspace that created them, even if the session cookie
 // changes before a request reaches the server. The server verifies this header.
 export function workspaceApi(workspaceId) {
-  const methods = ["provisioning", "onboarding", "billing", "checkout", "billingPortal", "members", "invite", "removeMember", "savePolicies", "setTokenWrite", "setTokenSource", "showcase", "saveShowcase", "actions", "activities", "activity", "pages", "search", "page", "capture", "tokens", "connections", "wiring", "mintToken", "revokeToken", "insights", "runInsights", "reviews", "review", "resolveReview"];
+  const methods = ["signupInvites", "issueSignupInvite", "revokeSignupInvite", "provisioning", "onboarding", "billing", "checkout", "billingPortal", "members", "invite", "removeMember", "savePolicies", "setTokenWrite", "setTokenSource", "showcase", "saveShowcase", "actions", "activities", "activity", "pages", "search", "page", "capture", "tokens", "connections", "wiring", "mintToken", "revokeToken", "insights", "runInsights", "reviews", "review", "resolveReview"];
   return Object.fromEntries(methods.map(name => [name, (...args) => api[name](...args, workspaceId)]));
 }

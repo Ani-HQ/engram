@@ -68,6 +68,10 @@ const demoStreams = createShowcaseStreamManager({
   },
 });
 const invitations = new Map<number, any[]>();
+const signupInvitations = new Map<string, any>();
+const signupCodes = new Map<string, string>();
+const signupLinks = new Map<string, string>();
+const demoSession = () => ({ ...session, capabilities: { manageSignupInvites: session.org.id === 1 && session.role === "owner" }, onboarding: demoOnboarding() });
 const tokens: any[] = [
   { id: 1, orgId: 1, name: "codex", harness: "codex", sourceLabel: null, canWrite: true, createdAt: "2026-10-20T09:00:00.000Z", revokedAt: null, lastUsedAt: "2026-10-21T09:42:00.000Z", issuerKind: "member", issuedBy: session.email },
   { id: 2, orgId: 1, name: "mac-claude", harness: "claude-code", sourceLabel: null, canWrite: true, createdAt: "2026-10-19T09:00:00.000Z", revokedAt: null, lastUsedAt: "2026-10-21T09:38:00.000Z", issuerKind: "member", issuedBy: session.email },
@@ -94,10 +98,17 @@ export async function devFetch(req: Request): Promise<Response> {
 async function handleApi(req: Request, url: URL): Promise<Response> {
   const route = `${req.method} ${url.pathname}`;
   if (route === "GET /api/plans") return json({ mode: "hosted", trialDays: 14, currency: "usd", checkoutAvailable: false, plans: PLANS, demo: true });
+  if (route === "GET /api/signup-policy") return json({ mode: "invite-only", complimentary: true, verificationRequired: true, inviteCodeRequired: true, demo: true });
   if (route === "POST /api/session" || route === "POST /api/invites/accept") {
     const body = await bodyObject(req);
     if (!string(body?.token)) return json({ error: "A token is required." }, 400);
-    return json({ ...session, onboarding: demoOnboarding() }, 200, { "Set-Cookie": "engram_dev=1; Path=/; HttpOnly; SameSite=Lax" });
+    const signupId = signupLinks.get(body.token), signup = signupId && signupInvitations.get(signupId);
+    if (route === "POST /api/invites/accept" && body.token.startsWith("svf_") && !signup) return json({ error: "This preview verification link is unavailable." }, 400);
+    if (signup) {
+      if (signup.revokedAt || signup.redeemedAt || Date.parse(signup.expiresAt) <= Date.now()) return json({ error: "This preview verification link is unavailable." }, 400);
+      signup.redeemedAt = new Date().toISOString(); signup.complimentaryAppliedAt = signup.redeemedAt; signup.redeemedOrgId = 2;
+    }
+    return json(demoSession(), 200, { "Set-Cookie": "engram_dev=1; Path=/; HttpOnly; SameSite=Lax" });
   }
   if (route === "DELETE /api/session") {
     return new Response(null, { status: 204, headers: { "Set-Cookie": "engram_dev=0; Path=/; HttpOnly; SameSite=Lax" } });
@@ -105,16 +116,43 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   if (route === "POST /api/login/email" || route === "POST /api/orgs") {
     const body = await bodyObject(req);
     if (typeof body?.email !== "string" || !body.email.includes("@")) return json({ error: "An email is required." }, 400);
+    if (route === "POST /api/orgs" && (body.inviteCode || body.email.toLowerCase() !== session.email.toLowerCase())) {
+      const id = signupCodes.get(String(body.inviteCode || "")), invite = id && signupInvitations.get(id);
+      if (!invite || invite.email !== body.email.trim().toLowerCase() || invite.revokedAt || Date.parse(invite.expiresAt) <= Date.now() || invite.redeemedAt) return json({ error: "Use an unexpired invite code issued for this email address.", code: "invite_invalid" }, 400);
+      const token = `svf_demo_${crypto.randomUUID()}`; signupLinks.set(token, invite.id);
+      return json({ sent: false, url: `${url.origin}/app#join=${token}`, demo: true });
+    }
     return json({ sent: false, url: `${url.origin}/app#join=inv_dev`, demo: true });
   }
   // An initial visit is signed in to the demo. An explicit sign-out stays signed out.
   if (req.headers.get("cookie")?.split(";").some(value => value.trim() === "engram_dev=0")) {
     return json({ error: "unauthorized" }, 401);
   }
-  if (route === "GET /api/me") return json({ ...session, onboarding: demoOnboarding() });
+  if (route === "GET /api/me") return json(demoSession());
   const expectedWorkspace = req.headers.get("x-engram-workspace");
   if (expectedWorkspace && expectedWorkspace !== String(session.org.id)) return json({ error: "The selected workspace changed. Please start the export again." }, 409);
   const workspaceId = session.org.id;
+  if (url.pathname.startsWith("/api/admin/signup-invites")) {
+    if (!demoSession().capabilities.manageSignupInvites) return json({ error: "Operator access is required.", code: "forbidden" }, 403);
+    if (route === "GET /api/admin/signup-invites") return json({ invites: [...signupInvitations.values()].reverse().slice(0, 100), more: signupInvitations.size > 100 });
+    if (route === "POST /api/admin/signup-invites") {
+      const body = await bodyObject(req);
+      if (typeof body?.email !== "string" || !body.email.includes("@")) return json({ error: "An email is required." }, 400);
+      const id = crypto.randomUUID(), inviteCode = `demo_signup_${crypto.randomUUID()}`;
+      const invite = { id, email: body.email.trim().toLowerCase(), createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 7 * 86_400_000).toISOString(), revokedAt: null, redeemedAt: null, redeemedOrgId: null, accessExpiresAt: null, complimentaryAppliedAt: null, complimentaryRevokedAt: null };
+      signupInvitations.set(id, invite); signupCodes.set(inviteCode, id);
+      return json({ invite, inviteCode }, 201);
+    }
+    const revoke = url.pathname.match(/^\/api\/admin\/signup-invites\/([^/]+)\/revoke$/);
+    if (req.method === "POST" && revoke) {
+      const invite = signupInvitations.get(decodeURIComponent(revoke[1]));
+      if (!invite) return json({ error: "Invite not found." }, 404);
+      invite.revokedAt = new Date().toISOString();
+      if (invite.complimentaryAppliedAt) invite.complimentaryRevokedAt = invite.revokedAt;
+      return json({ invite, revocationPending: false });
+    }
+    return json({ error: "not found" }, 404);
+  }
   if (route === "GET /api/billing") return json({ mode: "hosted", planId: "trial", status: "trial", canWrite: true, trialEndsAt: new Date(Date.now() + 14 * 86_400_000).toISOString(), currentPeriodEndsAt: null, cancelAtPeriodEnd: false, checkoutAvailable: false, portalAvailable: false });
   if (route === "POST /api/billing/checkout" || route === "POST /api/billing/portal") return json({ error: "Payments are disabled in the local preview. No charge was made." }, 503);
   if (url.pathname === "/api/insights") return handleDemoInsights(req, url);
@@ -249,7 +287,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     const next = session.orgs.find((org: any) => org.id === Number(body?.orgId));
     if (!next) return json({ error: "not found" }, 404);
     session.org = { ...session.org, ...next, policies: workspacePolicies.get(next.id) || parsePolicies({}) };
-    return json({ ...session, onboarding: demoOnboarding() });
+    return json(demoSession());
   }
   return json({ error: "not found" }, 404);
 }

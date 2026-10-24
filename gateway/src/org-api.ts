@@ -1,4 +1,5 @@
 import { failureCode } from "./diagnostics";
+import { config } from "./config";
 import type postgres from "postgres";
 import { agentOnboardingChecks, handleConnectionsApi } from "./connections";
 import { parseReportedSource } from "./agent-source";
@@ -47,6 +48,8 @@ import {
 import { serializeSessionCookie } from "./cookies";
 import { inviteLinkText, loginLinkResponse, loginLinkText, sendMail } from "./mail";
 import { oauthEnabled } from "./oauth";
+import { canManageSignupInvites, createSignupVerification, issueSignupInvite, listSignupInvites, revokeSignupInvite, SignupInviteError } from "./signup-invites";
+import { triggerProvisioning } from "./provisioning-trigger";
 import {
   getShareRule,
   createShareRule,
@@ -100,7 +103,8 @@ export async function sessionActor(token: TokenRecord, org: Org, extra: Record<s
       role: item.role,
     }))
     : [];
-  return publicActor(token, org, { orgs, ...extra });
+  const capabilities = { manageSignupInvites: await canManageSignupInvites(token) };
+  return publicActor(token, org, { orgs, ...extra, capabilities });
 }
 
 export async function onboardingState(org: Org, db: postgres.Sql = sql) {
@@ -143,6 +147,9 @@ export async function handleOrgApi(
   org: Org,
 ): Promise<Response | null> {
   if (token.orgId !== org.id) return Response.json({ error: "forbidden" }, { status: 403 });
+  if (url.pathname === "/api/admin/signup-invites" || url.pathname.startsWith("/api/admin/signup-invites/")) {
+    return handleSignupInviteAdmin(req, url, token);
+  }
   if (req.method === "GET" && url.pathname === "/api/onboarding") {
     return Response.json(await onboardingState(org));
   }
@@ -220,14 +227,19 @@ export async function handleOrgApi(
 
 async function postOrg(req: Request): Promise<Response> {
   const body = await jsonObject(req);
-  const name = text(body, "name");
   const email = normalizeEmail(text(body, "email") ?? "");
-  if (!name || !email) {
+  if (!email) return Response.json({ error: "bad request" }, { status: 400 });
+  const name = text(body, "name") ?? `${email.split("@")[0]}'s memory`;
+  const inviteCode = text(body, "inviteCode");
+  if (name.length > 100) {
     return Response.json({ error: "bad request" }, { status: 400 });
   }
   try {
     const existing = await findMemberByEmail(email);
-    const invite = existing
+    if (!existing && config.signupMode === "invite-only" && !inviteCode) {
+      return Response.json({ error: "An invitation code is required to create a workspace.", code: "signup_invite_required" }, { status: 403 });
+    }
+    const invite = inviteCode ? await createSignupVerification(email, name, inviteCode, publicUrlFrom(req)) : existing
       ? await createLoginInvite(email, publicUrlFrom(req))
       : await createSignupInvite(email, name, publicUrlFrom(req));
     if (!invite) return Response.json({ error: "could not create org" }, { status: 400 });
@@ -239,8 +251,33 @@ async function postOrg(req: Request): Promise<Response> {
     const result = loginLinkResponse(delivery, invite.url);
     return Response.json(result.body, { status: result.status });
   } catch (e) {
+    if (e instanceof SignupInviteError) return Response.json({ error: e.message, code: e.code }, { status: e.status });
     console.error("[org] create failed:", failureCode(e));
     return Response.json({ error: "could not create org" }, { status: 400 });
+  }
+}
+
+async function handleSignupInviteAdmin(req: Request, url: URL, token: TokenRecord): Promise<Response> {
+  try {
+    if (req.method === "GET" && url.pathname === "/api/admin/signup-invites") return Response.json(await listSignupInvites(token));
+    const body = await jsonObject(req);
+    if (!body) return Response.json({ error: "Provide a JSON object." }, { status: 400 });
+    if (req.method === "POST" && url.pathname === "/api/admin/signup-invites") {
+      if (Object.keys(body).some(key => !["email", "expiresAt"].includes(key))) return Response.json({ error: "Only email and invitation expiry may be supplied." }, { status: 400 });
+      return Response.json(await issueSignupInvite(token, text(body, "email") ?? "", body.expiresAt), { status: 201 });
+    }
+    const revoke = url.pathname.match(/^\/api\/admin\/signup-invites\/([a-f0-9-]+)\/revoke$/);
+    if (req.method === "POST" && revoke) {
+      if (Object.keys(body).length) return Response.json({ error: "Revocation does not accept account or workspace overrides." }, { status: 400 });
+      const result = await revokeSignupInvite(token, revoke[1]);
+      if (result.revocationPending) await triggerProvisioning({ force: true });
+      return Response.json(result);
+    }
+    return Response.json({ error: "not found" }, { status: 404 });
+  } catch (error) {
+    if (error instanceof SignupInviteError) return Response.json({ error: error.message, code: error.code }, { status: error.status });
+    console.error("[signup-invites] request failed:", failureCode(error));
+    return Response.json({ error: "Signup invitations are temporarily unavailable.", code: "signup_unavailable" }, { status: 503 });
   }
 }
 
@@ -263,7 +300,12 @@ async function postAcceptInvite(req: Request): Promise<Response> {
   const body = await jsonObject(req);
   const raw = text(body, "token");
   if (!raw) return Response.json({ error: "bad request" }, { status: 400 });
-  const accepted = await acceptInvite(raw);
+  let accepted;
+  try { accepted = await acceptInvite(raw); }
+  catch (error) {
+    if (error instanceof SignupInviteError) return Response.json({ error: error.message, code: error.code }, { status: error.status });
+    throw error;
+  }
   if (!accepted) return Response.json({ error: "unauthorized" }, { status: 401 });
   const payload = await sessionActor(normalizeToken({
     name: accepted.member.email,
@@ -371,7 +413,8 @@ async function postInvite(req: Request, token: TokenRecord, org: Org): Promise<R
       text: inviteLinkText({ orgName: org.name, invitedBy: token.name, url: invite.url }),
     });
     if (delivery === "sent") return Response.json({ email, role, sent: true });
-    return Response.json({ email, role, sent: false, url: invite.url });
+    const result = loginLinkResponse(delivery, invite.url);
+    return Response.json({ email, role, ...result.body }, { status: result.status });
   } catch (e) {
     console.error("[org] invite failed:", failureCode(e));
     return Response.json({ error: "could not invite" }, { status: 400 });
