@@ -17,7 +17,7 @@ import { authenticateRequest } from "./auth";
 import { handleOrgApi, handlePublicOrgApi, ingestTrailRequest, onboardingState, sessionActor } from "./org-api";
 import { resolveOrg, withOrg } from "./orgs";
 import { signupPolicy } from "./signup-invites";
-import { canDelete, normalizeToken } from "./policies";
+import { canDelete, isHuman, normalizeToken } from "./policies";
 import { callTool } from "./proxy";
 import { resolveReview } from "./review/apply";
 import { getReviewItem, listReviewItems } from "./review/store";
@@ -361,6 +361,9 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
 }
 
 async function postSession(req: Request): Promise<Response> {
+  if (!signupPolicy().tokenSignInAllowed) {
+    return Response.json({ error: "Sign in with email to use the hosted console.", code: "token_sign_in_disabled" }, { status: 403 });
+  }
   const body = await jsonObject(req);
   const rawToken = typeof body?.token === "string" && body.token.trim() ? body.token.trim() : null;
   if (!rawToken) return Response.json({ error: "bad request" }, { status: 400 });
@@ -675,7 +678,11 @@ function fileResponse(pathname: string, head = false, publicBrandAsset = false):
 
 async function authenticateCookie(req: Request): Promise<TokenRecord | null> {
   const rawToken = parseSessionCookie(req.headers.get("cookie"));
-  return rawToken ? authenticateSecret(rawToken) : null;
+  const actor = rawToken ? await authenticateSecret(rawToken) : null;
+  // Hosted console authority comes from email verification and live membership.
+  // Agent tokens remain valid bearer credentials, including on self-hosted installs.
+  if (!signupPolicy().tokenSignInAllowed && (actor?.kind !== "session" || !actor.email || !isHuman(actor))) return null;
+  return actor;
 }
 
 async function jsonObject(req: Request): Promise<Record<string, unknown> | null> {

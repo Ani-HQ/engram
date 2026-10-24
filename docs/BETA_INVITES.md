@@ -4,6 +4,12 @@ Hosted signup is invite-only. Self-hosted installations remain open by default.
 The public policy is available at `GET /api/signup-policy`; public signup must
 never fall back to open access when that policy cannot be loaded.
 
+The hosted console uses email sign-in. Its policy returns
+`tokenSignInAllowed: false`; token exchange through `POST /api/session` is
+disabled, and API keys cannot be used as hosted console cookies. Agent bearer
+credentials continue to authenticate MCP and supported APIs. Self-hosted
+installations retain token sign-in for owner bootstrap and recovery.
+
 ## Invite a friend
 
 Sign in with the existing installation administrator account, select **Ani HQ**,

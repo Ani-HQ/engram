@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { EventEmitter } from "node:events";
 import { settings } from "../deploy/smoke-candidate";
-import { ownerOnboardingSettings, ownerSmokeRequest, ownerSmokeState, secureOwnerCookie, withOwnerSmokeSession } from "../deploy/smoke-owner-onboarding";
+import { ownerOnboardingSettings, ownerReads, ownerSmokeRequest, ownerSmokeState, withOwnerSmokeSession } from "../deploy/smoke-owner-onboarding";
 
 function database(failRevoke = false, unknownCommit = false) {
   let row: any, revocations: any[] = [];
@@ -39,10 +39,11 @@ describe("operator owner onboarding smoke", () => {
       };
     }
     const signal = new AbortController().signal;
-    const value = await ownerSmokeRequest("/api/session", "POST", { token: "PRIVATE" }, "", "1", signal, transport(200, Buffer.from('{"ok":true}')));
+    const value = await ownerSmokeRequest("/api/me", "GET", undefined, "engram_session=PRIVATE", "1", signal, transport(200, Buffer.from('{"ok":true}')));
     expect(value).toEqual({ status: 200, data: { ok: true }, setCookie: "opaque-cookie" });
-    expect(selected).toMatchObject({ hostname: "candidate---engram-l4ewh6u7va-uc.a.run.app", protocol: "https:", family: 4, rejectUnauthorized: true, path: "/api/session", method: "POST" });
-    expect(selected.headers["X-Engram-Console"]).toBe("1"); expect(selected.headers.Authorization).toBeUndefined(); expect(sent).toBe('{"token":"PRIVATE"}');
+    expect(selected).toMatchObject({ hostname: "candidate---engram-l4ewh6u7va-uc.a.run.app", protocol: "https:", family: 4, rejectUnauthorized: true, path: "/api/me", method: "GET" });
+    expect(selected.headers["X-Engram-Console"]).toBe("1"); expect(selected.headers.Authorization).toBeUndefined(); expect(selected.headers.Cookie).toBe("engram_session=PRIVATE"); expect(sent).toBeUndefined();
+    expect(() => ownerSmokeRequest("/api/session", "POST", { token: "PRIVATE" }, "", "1", signal)).toThrow();
     await expect(ownerSmokeRequest("/api/me", "GET", undefined, "", "1", signal, transport(302, Buffer.from("{}")))).rejects.toThrow();
     await expect(ownerSmokeRequest("/api/me", "GET", undefined, "", "1", signal, transport(200, Buffer.alloc(1_000_001)))).rejects.toThrow();
     expect(destroyed).toBe(true);
@@ -71,10 +72,20 @@ describe("operator owner onboarding smoke", () => {
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
-  test("accepts only the exact secure host cookie without domain widening", () => {
-    const raw = "ens_" + "x".repeat(32), cookie = `engram_session=${raw}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=1209600`;
-    expect(secureOwnerCookie(cookie, raw)).toBe(`engram_session=${raw}`);
-    for (const invalid of [cookie.replace("HttpOnly; ", ""), cookie.replace("Secure; ", ""), cookie.replace("Strict", "Lax"), cookie + "; Domain=.run.app", cookie.replace(raw, "wrong")]) expect(() => secureOwnerCookie(invalid, raw)).toThrow();
+  test("reads with its existing email session without a token exchange or claiming cookie issuance", async () => {
+    const raw = "ens_" + "x".repeat(32), requests: string[] = [];
+    const request: typeof ownerSmokeRequest = async (path, method, body, cookie, workspace) => {
+      expect(method).toBe("GET"); expect(body).toBeUndefined(); expect(cookie).toBe(`engram_session=${raw}`);
+      requests.push(path);
+      const data = path === "/api/me" ? { email: "owner@example.com", role: "owner", org: { id: 1, provisioningStatus: "ready" }, onboarding: { step: "connect", hasToken: false, hasPage: false } }
+        : path === "/api/billing" ? { mode: "hosted", canWrite: true }
+        : path === "/api/connections" ? { connections: [], checkedAt: new Date().toISOString() } : {};
+      return { status: workspace === "1" ? 200 : 409, data, setCookie: null };
+    };
+    const checks = await ownerReads(raw, true, new AbortController().signal, "owner@example.com", request);
+    expect(checks.emailSessionAuthenticated).toBe(true); expect(checks.secureCookie).toBeUndefined();
+    expect(requests).not.toContain("/api/session"); expect(requests).toContain("/api/billing");
+    await expect(ownerReads("eng_" + "x".repeat(32), true, new AbortController().signal, "owner@example.com", request)).rejects.toThrow();
   });
 
   test("revokes exactly the issued owner session after success, HTTP failure and unknown issuance commit", async () => {

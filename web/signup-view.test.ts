@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { signupView } from "./signup-view.js";
 import { signupAdminPanel } from "./signup-admin.js";
-import { parseSignupPolicy, signupEntryMode, signupInviteStatus, signupRequest, emailLinkRecovery } from "./signup-model.js";
+import { parseSignupPolicy, signupAuthMode, signupEntryMode, signupInviteStatus, signupRequest, emailLinkRecovery } from "./signup-model.js";
 import { planCards } from "./account.js";
 
 class Element {
@@ -22,8 +22,8 @@ const find = (node: Element, predicate: (item: Element) => boolean) => all(node)
 const input = (node: Element, type: string) => find(node, item => item.tag === "input" && item.type === type);
 const button = (node: Element, text: string) => find(node, item => item.tag === "button" && item.textContent === text);
 const submit = (node: Element) => find(node, item => item.tag === "form");
-const beta = parseSignupPolicy({ mode: "invite-only", complimentary: true, verificationRequired: true, inviteCodeRequired: true });
-const open = parseSignupPolicy({ mode: "open", complimentary: true, verificationRequired: true, inviteCodeRequired: false });
+const beta = parseSignupPolicy({ mode: "invite-only", complimentary: true, verificationRequired: true, inviteCodeRequired: true, tokenSignInAllowed: false });
+const open = parseSignupPolicy({ mode: "open", complimentary: true, verificationRequired: true, inviteCodeRequired: false, tokenSignInAllowed: true });
 const operator = { capabilities: { manageSignupInvites: true } };
 const invite = { id: "invite-1", email: "friend@example.com", createdAt: "2026-10-24T00:00:00Z", expiresAt: "2099-10-31T00:00:00Z", revokedAt: null, redeemedAt: null, accessExpiresAt: null, complimentaryAppliedAt: null, complimentaryRevokedAt: null };
 const original = { Node: globalThis.Node, document: globalThis.document };
@@ -31,6 +31,44 @@ beforeEach(() => Object.assign(globalThis, { Node: Element, document: { createEl
 afterEach(() => Object.assign(globalThis, original));
 
 describe("email-bound beta signup", () => {
+  test("hosted email and invite forms have no token entry or separator, including a legacy token mode", async () => {
+    let tokenCalls = 0; const addresses: string[] = [];
+    for (const mode of ["email", "create", "token"]) {
+      const view = signupView({ mode, policy: beta, api: { login: async () => { tokenCalls++; }, loginEmail: async (email: string) => { addresses.push(email); return {}; } }, changeMode() {}, signedIn() {} }).element as Element;
+      expect(view.textContent).not.toContain("Use an access token");
+      expect(all(view).some(item => item.attrs.placeholder === "Access token")).toBe(false);
+      expect(find(view, item => item.attrs.class === "auth-switch").textContent).toBe(mode === "create" ? "Already joined? Sign in" : "Have an invite?");
+      if (mode === "token") { input(view, "email").value = "existing@example.com"; await submit(view).fire("submit"); }
+    }
+    expect(tokenCalls).toBe(0); expect(addresses).toEqual(["existing@example.com"]);
+    expect(signupAuthMode("token", beta)).toBe("email");
+  });
+
+  test("unknown, malformed, and older policy flags cannot enable token sign-in", async () => {
+    let tokenCalls = 0, emailCalls = 0;
+    const policies = [null, ...[undefined, false, null, "true", 1].map(flag => parseSignupPolicy({ ...beta, tokenSignInAllowed: flag }))];
+    for (const policy of policies) {
+      expect(signupAuthMode("token", policy)).toBe("email");
+      const view = signupView({ mode: "token", policy, api: { login: async () => { tokenCalls++; }, loginEmail: async () => { emailCalls++; return {}; } }, changeMode() {}, signedIn() {} }).element as Element;
+      expect(view.textContent).not.toContain("Use an access token"); expect(all(view).some(item => item.type === "password")).toBe(false);
+      input(view, "email").value = "existing@example.com"; await submit(view).fire("submit");
+    }
+    expect(tokenCalls).toBe(0); expect(emailCalls).toBe(policies.length);
+  });
+
+  test("self-host token recovery requires explicit permission and obsolete controls cannot reopen it", async () => {
+    const modes: string[] = [], logins: string[] = [], sessions: any[] = [];
+    const chooser = signupView({ mode: "email", policy: open, api: {}, changeMode: (mode: string) => modes.push(mode), signedIn() {} });
+    const oldSwitch = button(chooser.element as Element, "Use an access token"); await oldSwitch.fire("click"); expect(modes).toEqual(["token"]);
+    const token = signupView({ mode: "token", policy: open, api: { login: async (value: string) => { logins.push(value); return { org: { id: 7 } }; } }, changeMode() {}, signedIn: (session: any) => sessions.push(session) });
+    input(token.element as Element, "password").value = " sample-self-host-token "; await submit(token.element as Element).fire("submit");
+    expect(logins).toEqual(["sample-self-host-token"]); expect(sessions).toEqual([{ org: { id: 7 } }]); expect(input(token.element as Element, "password").value).toBe("");
+    chooser.dispose(); token.dispose();
+    const hosted = signupView({ mode: "token", policy: beta, api: {}, changeMode() {}, signedIn() {} });
+    await oldSwitch.fire("click"); await submit(token.element as Element).fire("submit");
+    expect(modes).toEqual(["token"]); expect(logins).toHaveLength(1); expect(input(hosted.element as Element, "email")).toBeDefined();
+  });
+
   test("fails closed on unknown policy and preserves explicit existing sign-in entry", () => {
     for (const value of [null, {}, { mode: "invite-only", verificationRequired: true, inviteCodeRequired: false }, { mode: "open", verificationRequired: false, inviteCodeRequired: false }]) expect(() => parseSignupPolicy(value)).toThrow();
     expect(signupEntryMode(beta, "", "/")).toBe("create");
@@ -73,7 +111,7 @@ describe("email-bound beta signup", () => {
     expect(input(view, "email").value).toBe("friend@example.com"); expect(input(view, "password").value).toBe("wrong-code"); expect(view.textContent).toContain("Invite is invalid");
     panel.dispose(); expect(input(view, "password").value).toBe("");
     let finish: (value: any) => void = () => {}; let signedIn = false;
-    const login = signupView({ mode: "token", policy: beta, api: { login: () => new Promise(resolve => { finish = resolve; }) }, changeMode() {}, signedIn() { signedIn = true; } });
+    const login = signupView({ mode: "token", policy: open, api: { login: () => new Promise(resolve => { finish = resolve; }) }, changeMode() {}, signedIn() { signedIn = true; } });
     input(login.element as Element, "password").value = "sample-token";
     const pending = submit(login.element as Element).fire("submit"); login.dispose(); finish({ org: { id: 1 } }); await pending;
     expect(signedIn).toBe(false); expect(input(login.element as Element, "password").value).toBe("");

@@ -1,14 +1,15 @@
 import { h } from "./profile.js";
-import { signupRequest } from "./signup-model.js";
+import { signupAuthMode, signupRequest } from "./signup-model.js";
 
 const action = (label, onclick, attrs = {}) => h("button", { type: "button", onclick, ...attrs }, label);
 const field = (label, input) => h("label", { class: "field" }, label, input);
 
 export function signupView({ mode = "email", policy, message = "", api, changeMode, signedIn, retryPolicy }) {
+  mode = signupAuthMode(mode, policy);
   let active = true, pending = false;
-  const create = mode === "create", inviteOnly = policy?.mode === "invite-only";
+  const create = mode === "create", inviteOnly = policy?.mode === "invite-only", tokenAllowed = policy?.tokenSignInAllowed === true;
   const email = h("input", { type: "email", required: true, autocomplete: "email", placeholder: "you@example.com", maxlength: 254 });
-  const token = h("input", { type: "password", required: true, autocomplete: "off", placeholder: "Access token" });
+  const token = tokenAllowed ? h("input", { type: "password", required: true, autocomplete: "off", placeholder: "Access token" }) : null;
   const code = h("input", { type: "password", required: true, autocomplete: "off", placeholder: "Your invite code", spellcheck: "false", autocapitalize: "none" });
   const name = h("input", { placeholder: "My workspace", maxlength: 100, autocomplete: "organization" });
   const label = mode === "token" ? "Sign in" : create ? inviteOnly ? "Verify email & join" : "Create workspace" : "Email me a sign-in link";
@@ -38,8 +39,8 @@ export function signupView({ mode = "email", policy, message = "", api, changeMo
     create && inviteOnly && h("p", { class: "signup-promise" }, "No card required. Verify your email to get started."),
     create && !policy && h("p", { class: "notice" }, "Signup availability could not be checked. You can still sign in. ", action("Try again", retryPolicy, { class: "text small" })), form,
     create && inviteOnly && h("p", { class: "detail-note" }, h("a", { href: "mailto:ani@odstdio.com?subject=Engram%20early%20access" }, "Don’t have a code? Ask for an invite")),
-    h("div", { class: "auth-switch" }, action(mode === "token" ? "Sign in with email" : "Use an access token", () => changeMode(mode === "token" ? "email" : "token"), { class: "text small" }), " · ",
-      action(create ? "Already joined? Sign in" : inviteOnly || !policy ? "Have an invite?" : "Create a workspace", () => changeMode(create ? "email" : "create"), { class: "text small" })),
+    h("div", { class: "auth-switch" }, tokenAllowed && action(mode === "token" ? "Sign in with email" : "Use an access token", () => { if (active) changeMode(mode === "token" ? "email" : "token"); }, { class: "text small" }), tokenAllowed && " · ",
+      action(create ? "Already joined? Sign in" : inviteOnly || !policy ? "Have an invite?" : "Create a workspace", () => { if (active) changeMode(create ? "email" : "create"); }, { class: "text small" })),
     h("div", { class: "auth-links" }, h("a", { href: "/pricing" }, "Pricing"), h("a", { href: "/self-host" }, "Self-host"), h("a", { href: "/privacy" }, "Privacy"), h("a", { href: "mailto:ani@odstdio.com?subject=Engram%20support" }, "Support")));
-  return { element, clearSecrets() { code.value = ""; token.value = ""; }, dispose() { active = false; code.value = ""; token.value = ""; email.value = ""; name.value = ""; } };
+  return { element, clearSecrets() { code.value = ""; if (token) token.value = ""; }, dispose() { active = false; code.value = ""; if (token) token.value = ""; email.value = ""; name.value = ""; } };
 }
