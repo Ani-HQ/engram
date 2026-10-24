@@ -7,11 +7,12 @@ trial, CLI identity/discovery checks, an exact memory save/readback and a task
 report visible through the console API. The temporary agent key was revoked.
 
 Guided browser onboarding, interactive CLI setup and operator-specific public
-policies are being prepared for the next release. The full Stripe subscription
-lifecycle, npm publication and the deployed onboarding verification remain open.
-The revised 62-second motion export passed encoded checks; continuous full-rate
-perceptual review is not claimed. This document preserves earlier checkpoints
-below; their pending edge and desktop-connection statements are historical.
+policies passed the staged-candidate checks described below. The full Stripe
+subscription lifecycle, npm publication and activation remain open. The revised
+62-second motion export passed encoded checks and normal-rate browser playback
+to its end; continuous frame-by-frame perceptual review is not claimed. This
+document preserves earlier checkpoints below; their pending edge and
+desktop-connection statements are historical.
 
 Private verification records, captures, and local launch-video artifacts are
 retained outside this public source release. Descriptions below identify those
@@ -56,6 +57,54 @@ records without publishing their contents or machine-local paths.
 - The earlier deployment and client evidence below remains scoped to its image
   and time. [LAUNCH.md](LAUNCH.md) contains prepared announcement drafts and the
   publication order; no social post or personal outreach has been sent.
+
+## Staged launch candidate
+
+Cloud Build `35b0edd1-93ab-4e25-872d-a0953bfe3ee5` succeeded with all seven
+gates passing for source commit `3db200f6ec89ddc2e96c393b91a62eaa1f87acbf`.
+Candidate revision `engram-r-1792849141` uses image
+`sha256:3486cb136512f78fcff0b5fdc6da2fd1a00b094fd010af9d152f67bf335c123c`.
+It is staged with zero production traffic; the prior revision remains the
+production target. [Source PR 26](https://github.com/Ani-HQ/engram/pull/26) is a
+draft and its source CI passed.
+
+Authenticated candidate smoke passed; its temporary read-only agent key was
+confirmed revoked before smoke proof was recorded. All 139 checked public
+runtime assets and page routes byte-matched the committed source and returned
+the expected self-only script CSP and nosniff header. A separate private Cloud
+Run service verified this exact image's worker capability/bootstrap boundary
+and was deleted successfully. No provider or payment call was involved in that
+probe.
+
+The real email-verified test workspace then exercised the candidate guide:
+
+1. A newly issued dedicated key left all three steps pending.
+2. Its successful `whoami` call advanced the guide to saving memory.
+3. A successful unique memory save advanced the guide to recall.
+4. Copying the recall prompt showed copy feedback and did not complete recall.
+5. Recall returned the exact saved marker, after which the actual browser guide
+   showed all three steps complete. Desktop and 320px layouts were observed;
+   content width was 305px within the 320px viewport.
+6. The test key was revoked and 401 was confirmed. Completion screenshots capture
+   the state before this deliberate revocation; current progress only counts
+   usable agent credentials.
+
+The guided test used an actual MCP HTTP client, not a model running behind a
+Codex label. The selected Codex setup instructions and the separate actual CLI
+doctor checks do not establish a new Codex model tool-call claim.
+
+The final 0.3.0 package contains exactly eight files, each byte-identical to its
+committed source. Its SHA-256 is
+`4abccae677545eed5497ed3d97c30f31a55c993b81cf8f338b20d144b60e09ee`.
+It is not yet published. npm returned 401 for the saved publishing identity; the
+named Stripe test secret was still absent at the last metadata check. Both
+account prerequisites are required before declaring the launch complete. Do not
+activate guidance that depends on the new package while npm still serves 0.2.0.
+
+The unchanged motion export completed local browser playback at 1× to 62 seconds,
+with no media error. Opening, middle task-card and closing brand/domain frames
+were inspected. This adds bounded playback evidence to the earlier phase-sample
+checks; it is not a claim to have perceptually reviewed every encoded frame.
 
 ## Deployed release
 
@@ -212,7 +261,10 @@ the earlier CLI execution checkpoint; it does not claim a new independent
 content review. This completes the scoped two-client product workflow; other
 clients remain unverified, and video verification is scoped below.
 
-## Remaining verification and UI status
+## Earlier verification and UI status
+
+This section records the morning checkpoint. The follow-up and candidate
+results above supersede its desktop, edge, signup, package and playback status.
 
 - **Workspace entitlement — resolved:** the user authorized non-expiring access,
   and the owner/workspace-pinned operator grant is active with `expiresAt: null`.
@@ -294,5 +346,6 @@ and service were verified. No Yap screen recording was started for this edit.
 
 This report contains curated verification summaries only. Credentials, personal
 identifiers, private memory, infrastructure addresses and raw client traces are
-excluded. No new deployment, test execution, entitlement mutation or charge was
-performed while preparing this report.
+excluded. The original morning report summarized existing evidence without
+executing a new release or test. The later follow-up above records the additional
+staging and verification work; no real payment was made.

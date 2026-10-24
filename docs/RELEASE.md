@@ -4,6 +4,33 @@ Private operator captures and verification records described in the historical
 release entries are retained outside the public source release. Their local
 paths and raw contents are not published here.
 
+## Launch candidate, 24 October 2026
+
+Cloud Build `35b0edd1-93ab-4e25-872d-a0953bfe3ee5` passed all seven gates for
+source commit `3db200f6ec89ddc2e96c393b91a62eaa1f87acbf` and staged revision
+`engram-r-1792849141` with zero production traffic. The immutable image is
+`gcr.io/ani-hq/engram@sha256:3486cb136512f78fcff0b5fdc6da2fd1a00b094fd010af9d152f67bf335c123c`.
+Backup `1792825021777` was verified successful at 06:58:43 UTC on 24 October before
+staging. The previous production revision remains `engram-r-1792829094`.
+
+Public/private candidate smoke passed and its temporary credential was revoked.
+All 139 checked public assets/page routes matched source with CSP/nosniff intact.
+The exact image's separate private Cloud Run isolation probe passed and its
+temporary service was deleted. Real browser onboarding advanced through contact,
+save and recall only after corresponding successful calls; its dedicated agent
+key was then revoked. See [launch verification](LAUNCH-VERIFICATION-2026-10-24.md#staged-launch-candidate).
+
+This candidate adds guided onboarding, credential-safe interactive CLI setup,
+operator privacy/support/retention disclosures and an atomic central ACL/RLS
+refresh. The latter removes an observed source race during provisioning;
+it does not establish the cause of the earlier transient signup 503.
+
+Activation is intentionally pending the new npm package publication and full
+Stripe sandbox lifecycle verification. Source PR 26 remains a draft. Recheck
+smoke freshness before activation; a successful candidate is not an activated
+production release, and neither staging nor these read checks completes a
+payment round trip.
+
 The release automation does not create credentials, change IAM or grant the
 runtime administrative database access. Complete the separately approved
 database/IAM setup first. The web runtime receives a restricted database URL and
