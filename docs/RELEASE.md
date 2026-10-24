@@ -4,32 +4,109 @@ Private operator captures and verification records described in the historical
 release entries are retained outside the public source release. Their local
 paths and raw contents are not published here.
 
-## Launch candidate, 24 October 2026
+## Verified hosted launch release — 24 October 2026
+
+Cloud Build `665db6d2-72b3-4cb3-9cc3-9002f40dc127` passed all seven gates for
+repair commit `4f697721edc6ea43a909a2bd39e5b56f5f044b8b`. Production revision
+`engram-r-1792853391` is Ready and serves 100% of observed traffic. It uses image
+`gcr.io/ani-hq/engram@sha256:da8068a690afa09b416c9e4e090bcadcb10f10d6cfc319d29ee6951dfe888b73`.
+Candidate checks passed 139/139 exact assets/page routes with CSP/nosniff intact.
+Authenticated smoke confirmed its token revoked and `cleanupRequired: false`.
+The private Cloud Run exact-image isolation check passed and its temporary
+service was confirmed deleted.
+
+The repair resolves the canonical ready-to-ready workspace-switch 503 recorded
+below by checking destination metadata in the correct workspace scope while
+preserving the scope guard. The HTTP regression failed before the fix and passed
+after it; 24 focused tests/160 assertions cover ready/pending switches,
+membership, CSRF, workspace pinning, no engine startup, and no session mint before
+destination metadata is available. Independent security review passed. The
+local real PostgreSQL suite passed 237 checks, including 16 added assertions,
+with cleanup complete. Source CI is green for the repair commit.
+
+Actual candidate browser testing used the email-authenticated session to switch
+to its ready personal workspace and back. The personal workspace showed zero
+activity and automatically offered the getting started guide; returning restored
+the original five activities. No new key was issued.
+
+Post-activation canonical verification passed 139/139 exact assets/page routes
+with CSP/nosniff intact and all 12 control checks: runtime/dream/provisioner
+image/identity, plus runtime/dream sandbox configuration. The actual email-authenticated canonical browser switched
+to the personal workspace with zero activities and its guide, preserved that
+workspace across reload, and returned to the original five activities. Selecting
+Codex showed the published npm setup command without a key. The 1280px desktop
+screenshot was visually inspected without a layout issue. No new agent keys were
+created for the canonical checks.
+
+Rollback preserves prior revision `engram-r-1792849141`; successful backup
+`1792825021777` was reused. The activated state archive completed successfully:
+`gs://ani-hq_cloudbuild/engram-releases/665db6d2-72b3-4cb3-9cc3-9002f40dc127/release-state.json`.
+[Source PR 26](https://github.com/Ani-HQ/engram/pull/26) is the release PR with green
+source CI for the repair commit. Stripe and npm completion are recorded below
+and are unchanged by this gateway-only repair. Announcement/video materials are
+prepared; no social post has been sent.
+
+## Historical initial launch checkpoint — 24 October 2026
 
 Cloud Build `35b0edd1-93ab-4e25-872d-a0953bfe3ee5` passed all seven gates for
-source commit `3db200f6ec89ddc2e96c393b91a62eaa1f87acbf` and staged revision
-`engram-r-1792849141` with zero production traffic. The immutable image is
+source commit `3db200f6ec89ddc2e96c393b91a62eaa1f87acbf`. Revision
+`engram-r-1792849141` was first staged with zero production traffic and later
+reached ready status and 100% observed production traffic. The immutable image is
 `gcr.io/ani-hq/engram@sha256:3486cb136512f78fcff0b5fdc6da2fd1a00b094fd010af9d152f67bf335c123c`.
 Backup `1792825021777` was verified successful at 06:58:43 UTC on 24 October before
-staging. The previous production revision remains `engram-r-1792829094`.
+staging and reused within its validity window for this release. Rollback preserves
+the previous production revision `engram-r-1792829094`. Its activated state was
+archived successfully at
+`gs://ani-hq_cloudbuild/engram-releases/35b0edd1-93ab-4e25-872d-a0953bfe3ee5/release-state.json`.
 
 Public/private candidate smoke passed and its temporary credential was revoked.
 All 139 checked public assets/page routes matched source with CSP/nosniff intact.
 The exact image's separate private Cloud Run isolation probe passed and its
 temporary service was deleted. Real browser onboarding advanced through contact,
 save and recall only after corresponding successful calls; its dedicated agent
-key was then revoked. See [launch verification](LAUNCH-VERIFICATION-2026-10-24.md#staged-launch-candidate).
+key was then revoked. After routing convergence, the canonical check
+matched 139/139 checked assets/page routes with the expected CSP and nosniff
+header. Subsequent canonical UI testing found a real ready-to-ready workspace-
+switch 503: the destination onboarding check ran under the previous workspace's
+request context and failed closed. This was a release blocker despite the exact-
+asset pass; the replacement candidate and successful regression are recorded
+above. The replacement activation and actual canonical browser checks now
+resolve it; the failed checkpoint remains historical.
+See [launch verification](LAUNCH-VERIFICATION-2026-10-24.md#historical-initial-launch-deployment-checkpoint).
 
-This candidate adds guided onboarding, credential-safe interactive CLI setup,
+This image adds guided onboarding, credential-safe interactive CLI setup,
 operator privacy/support/retention disclosures and an atomic central ACL/RLS
 refresh. The latter removes an observed source race during provisioning;
 it does not establish the cause of the earlier transient signup 503.
 
-Activation is intentionally pending the new npm package publication and full
-Stripe sandbox lifecycle verification. Source PR 26 remains a draft. Recheck
-smoke freshness before activation; a successful candidate is not an activated
-production release, and neither staging nor these read checks completes a
-payment round trip.
+The dedicated Stripe sandbox secret's version 1 is ENABLED. Its full lifecycle
+run passed 332 checks: real test-card Checkout, signed webhook delivery and
+database state, Test Clock renewal, failed payment, recovery, and cancellation
+at period end. The run reported `cleanupRequired: false` and left no artifacts.
+It used no real money and touched no production billing or production data.
+The earlier anonymous sandbox portal residue is a separate historical cleanup
+finding, not an artifact of this successful dedicated run.
+
+npm `@ani-hq/engram-mcp` 0.3.0 is publicly published as `latest`. The registry
+tarball is byte-identical to the reviewed archive, contains exactly eight files
+matching the committed shim, and has SHA-256
+`4abccae677545eed5497ed3d97c30f31a55c993b81cf8f338b20d144b60e09ee`.
+An independent check without npm profile/authentication verified registry
+integrity and extracted offline `connect --list`, `setup --help`, and
+`doctor --help` behavior.
+
+Local verification passed 425 tests and 3,585 assertions, with one Cloud Run-only
+capability check skipped locally. Actual PostgreSQL checks passed 221 baseline,
+67 restricted-authority, and 22 managed/concurrency checks. Cloud Build passed
+all seven gates, including the built image's actual engine boundary; a separate
+private Cloud Run exact-image isolation check passed and its service was deleted.
+
+[Source PR 26](https://github.com/Ani-HQ/engram/pull/26) is the release PR. The
+verified repair release, canonical browser checks, and archive are recorded
+above. Announcement and video materials are prepared; no social post has been
+sent.
+
+## Release procedure
 
 The release automation does not create credentials, change IAM or grant the
 runtime administrative database access. Complete the separately approved
@@ -129,8 +206,8 @@ life; after a full idle shutdown they wait for the next instance/request. This
 avoids a forced warm-instance cost. If predictable unattended latency becomes a
 requirement, add an explicitly configured scheduler/worker or paid warm capacity.
 
-Keep the original pre-migration backup `1792649176475` for recovery. The
-current staging backup is `1792728364590`, completed successfully on
+Earlier release checkpoints recorded pre-migration backup `1792649176475` and
+staging backup `1792728364590`, completed successfully on
 23 October 2026 at 04:07:15 UTC after owner recovery and central migration,
 before the managed-role repair. Verify backup age before each new release;
 a recorded backup is never assumed to satisfy the 24-hour requirement.
@@ -139,6 +216,10 @@ References: [Cloud Run service replacement and optimistic concurrency](https://d
 [Cloud Run sandbox configuration](https://docs.cloud.google.com/run/docs/configuring/services/sandboxes).
 
 ## Live release, 23 October 2026
+
+This and the subsequent dated entries preserve historical checkpoints. Former
+production revisions, edge differences, and pending payment/package/client
+claims are scoped to those checkpoints; the current launch status is above.
 
 Cloud Build `a70da10b-fd06-4651-a965-29cdcdbae18c` passed its release gates,
 including 142 baseline PostgreSQL checks, 58 credential/authority checks,

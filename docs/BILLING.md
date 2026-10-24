@@ -150,7 +150,19 @@ The default automated suite performs no provider mutations. An explicitly opted-
 
 For this deployment's operator-provided sandbox key, additionally set `ENGRAM_STRIPE_SANDBOX_KEY_SOURCE=secret-manager`. The harness reads only `engram-stripe-test-secret-key` from project `ani-hq`, captures its value in memory with cloud CLI file logging disabled, and refuses live keys before making any Stripe request. This path does not provision an anonymous sandbox. Each run uses fresh disposable workspace IDs so its idempotency keys cannot collide with another test run. It never changes the four live billing secrets or deployment bindings.
 
-The harness reports which lifecycle stages actually passed. Anonymous sandbox permissions can omit Test Clocks: the fallback restarts a test billing cycle and separately tests scheduled-cancellation state and immediate cancellation; it does not claim a naturally timed renewal or paid-period expiry. Provider rate limits stop the run; do not evade them by rotating identities or networks. Until the harness reports Checkout completion and real signed delivery, those stages remain unverified. A staging deployment and test-mode payment roundtrip remain release checks, even when authorized live merchant configuration is already present.
+```sh
+ENGRAM_RUN_STRIPE_SANDBOX=1 \
+ENGRAM_STRIPE_SANDBOX_KEY_SOURCE=secret-manager \
+bun test/integration-stripe-sandbox.ts
+```
+
+On 24 October 2026, this dedicated-key invocation **passed 332 checks** against a fresh disposable PostgreSQL database and a real Stripe test-mode subscription with flexible billing and a Test Clock. Stripe delivered signed events through the public test receiver for all six exercised event types: `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, and `invoice.payment_failed`. The run verified Checkout activation, a scheduled paid renewal, a failed scheduled renewal that blocked writes, recovery by paying the original failed invoice, cancellation with access through the paid period, ended-period write denial, and isolation of the second workspace.
+
+Duplicate and delayed-event reconciliation also passed using **locally signed replays of real provider events**. These checks do not establish Stripe-initiated redelivery (`providerRedeliveryVerified: false`). Asynchronous payment methods were not exercised (`asynchronousPaymentMethodVerified: false`); the completed lifecycle covers card payments.
+
+The final result reported `APIKeysPersisted: false`, `productionTouched: false`, and `realMoneyMoved: false`. Cleanup completed with `cleanupRequired: false`, `cleanupFailures: []`, and `retainedSandboxArtifacts: []`. No sandbox artifacts were reported as retained, including a default Portal configuration.
+
+The harness reports which lifecycle stages actually passed. Anonymous sandbox permissions can omit Test Clocks: flexible billing then stops after the verified Checkout stages and reports the missing lifecycle coverage. The classic-billing fallback restarts a test billing cycle and separately tests scheduled-cancellation state and immediate cancellation; it does not claim a naturally timed renewal or paid-period expiry. Provider rate limits stop the run; do not evade them by rotating identities or networks. Live merchant configuration, staging verification, and this completed test-mode payment roundtrip remain distinct release evidence.
 
 ## Pricing context
 

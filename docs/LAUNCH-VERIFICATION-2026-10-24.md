@@ -1,15 +1,24 @@
 # Launch verification — 24 October 2026
 
-The explicit-page-guard release is live. The scoped Cloudflare changes have now
-removed the previously observed HTML injection and API user-agent block. A real
-new customer completed email verification, workspace provisioning, the cardless
+The hosted launch release is verified live on ready revision
+`engram-r-1792853391`, serving 100% of observed traffic. Build
+`665db6d2-72b3-4cb3-9cc3-9002f40dc127` passed all seven gates for source
+`4f697721edc6ea43a909a2bd39e5b56f5f044b8b`. Canonical 139/139 exact-asset
+checks, CSP/nosniff, all 12 control-plane checks, and actual email-session browser
+switching/reload passed. The release state was archived successfully. The
+dedicated Stripe lifecycle and public npm 0.3.0 publication are complete.
+The scoped Cloudflare changes removed the previously observed HTML injection
+and API user-agent block. A real new customer completed email verification,
+workspace provisioning, the cardless
 trial, CLI identity/discovery checks, an exact memory save/readback and a task
 report visible through the console API. The temporary agent key was revoked.
 
 Guided browser onboarding, interactive CLI setup and operator-specific public
-policies passed the staged-candidate checks described below. The full Stripe
-subscription lifecycle, npm publication and activation remain open. The revised
-62-second motion export passed encoded checks and normal-rate browser playback
+policies are deployed and verified. The original switch failure is preserved
+below as a resolved historical finding. [Source PR 26](https://github.com/Ani-HQ/engram/pull/26)
+is the release PR; source CI is green for the repair commit. Announcement drafts
+are prepared, and no social post has been sent. The revised 62-second motion
+export passed encoded checks and normal-rate browser playback
 to its end; continuous frame-by-frame perceptual review is not claimed. This
 document preserves earlier checkpoints below; their pending edge and
 desktop-connection statements are historical.
@@ -39,34 +48,94 @@ records without publishing their contents or machine-local paths.
 - Current Codex desktop calls to recall and task reporting succeed. This
   supersedes the earlier authentication failure for this active desktop session;
   it does not establish every saved client configuration works.
-- The anonymous Stripe sandbox accepted one test-card checkout and delivered
-  the real signed activation webhook. Renewal failed before later lifecycle
-  assertions; cancellation, failed-payment recovery and the full round trip are
-  still unverified. The current sandbox test fails closed without the necessary
-  Test Clock permissions. No production charge or production billing change was
-  made. One sandbox portal configuration could not be removed after the run;
-  its exact expiry was not verified, and it remains a test cleanup finding.
-- The dedicated `engram-stripe-test-secret-key` was still absent at the latest
-  metadata check. The 0.3.0 npm archive was built offline, contained exactly the
-  eight intended files with the root licence, and passed extracted CLI help
-  checks. Publishing remains pending because npm rejected the saved login.
-- The complete local unit/process suite passed 425 tests with 3,585 assertions and
-  one Cloud Run-only capability check skipped locally. Release automation 16,
+- The dedicated `engram-stripe-test-secret-key` version 1 is ENABLED. The full
+  dedicated sandbox run passed 332 checks, including real test-card Checkout,
+  signed delivery and database verification, Test Clock renewal, failed payment,
+  recovery, and cancellation at period end. Its result was
+  `cleanupRequired: false`, with no artifacts left by that run. No real money,
+  production billing, or production data was touched. The earlier anonymous
+  sandbox's unremoved portal configuration remains a separately scoped
+  historical cleanup finding; successful dedicated cleanup does not erase it.
+- npm 0.3.0 is publicly published as `latest`. The public registry download is
+  byte-identical to the verified archive, contains exactly eight intended files,
+  and matches the committed shim at `3db200f6ec89ddc2e96c393b91a62eaa1f87acbf`.
+  Extracted offline `connect --list`, `setup --help`, and `doctor --help` passed;
+  the independent registry check accessed no npm profile or authentication.
+- The earlier complete local unit/process suite passed 425 tests with 3,585
+  assertions and one Cloud Run-only capability check skipped locally. Release automation 16,
   billing verifier 5 and edge 10 offline checks passed; runtime asset privacy
-  checked 40 files. The cloud container boundary remains a required build gate.
+  checked 40 files. The repair then passed 24 focused tests with 160 assertions,
+  an independent security review, and 237 real PostgreSQL checks, including 16
+  additional switch assertions; test cleanup completed. The earlier restricted
+  authority and managed/concurrency results were 67 and 22 respectively. The
+  replacement Cloud Build passed all seven gates; its exact-image private Cloud
+  Run isolation check passed and the temporary service was deleted.
 - The earlier deployment and client evidence below remains scoped to its image
   and time. [LAUNCH.md](LAUNCH.md) contains prepared announcement drafts and the
   publication order; no social post or personal outreach has been sent.
 
-## Staged launch candidate
+## Verified launch release
+
+Cloud Build `665db6d2-72b3-4cb3-9cc3-9002f40dc127` succeeded with all seven
+gates for repair commit `4f697721edc6ea43a909a2bd39e5b56f5f044b8b`.
+Production revision `engram-r-1792853391` uses immutable image
+`sha256:da8068a690afa09b416c9e4e090bcadcb10f10d6cfc319d29ee6951dfe888b73`.
+Its 139/139 checked assets/page routes exactly matched source with CSP/nosniff
+intact. Authenticated candidate smoke reported `tokenRevoked: true` and
+`cleanupRequired: false`. The separate private Cloud Run exact-image isolation
+check passed and reported `deleted: true`.
+
+The candidate browser, using the email-authenticated session, successfully switched
+from the test workspace to its ready personal workspace and back. The personal
+workspace showed zero activity and automatically offered the guide; returning
+restored the original five activities. No new key was issued for this retest.
+The post-activation canonical browser then independently passed the same switch
+and return: the personal workspace opened its guide with zero activities,
+reloading preserved that workspace, and returning restored the original five
+activities. Selecting Codex in the personal workspace showed the published npm
+setup command without a key. The actual desktop screenshot at 1280px was visually
+inspected without a layout issue. No new agent keys were created in these
+post-activation checks.
+
+The HTTP regression failed before the fix and passed after it. Its 24 focused
+tests/160 assertions cover ready-to-ready and ready-to-pending switches,
+membership, CSRF, workspace pinning, intact scope guards, no engine startup,
+and no session mint before destination metadata is ready. An independent
+security review passed. The local real PostgreSQL suite passed 237 checks,
+including 16 added assertions, and cleanup completed. Source CI is green for the
+repair commit.
+
+The revision is Ready and serves 100% of observed traffic. Canonical verification
+passed all 139/139 exact assets/page routes with CSP/nosniff intact. All 12
+control-plane checks passed: image/identity for the runtime, dream job, and
+provisioner, plus sandbox configuration for the runtime and dream job. Rollback preserves prior revision
+`engram-r-1792849141`; successful backup `1792825021777` was reused. Archiving
+completed successfully at
+`gs://ani-hq_cloudbuild/engram-releases/665db6d2-72b3-4cb3-9cc3-9002f40dc127/release-state.json`.
+
+## Historical initial launch deployment checkpoint
 
 Cloud Build `35b0edd1-93ab-4e25-872d-a0953bfe3ee5` succeeded with all seven
 gates passing for source commit `3db200f6ec89ddc2e96c393b91a62eaa1f87acbf`.
 Candidate revision `engram-r-1792849141` uses image
 `sha256:3486cb136512f78fcff0b5fdc6da2fd1a00b094fd010af9d152f67bf335c123c`.
-It is staged with zero production traffic; the prior revision remains the
-production target. [Source PR 26](https://github.com/Ani-HQ/engram/pull/26) is a
-draft and its source CI passed.
+It was first staged with zero production traffic and later reached ready status
+and 100% observed production traffic. After routing converged, the canonical
+check matched all 139/139 checked assets/page routes with the expected CSP and
+nosniff header. [Source PR 26](https://github.com/Ani-HQ/engram/pull/26) was a draft
+with green source CI at that historical checkpoint.
+
+Subsequent canonical browser testing found a real 503 when switching between
+two ready workspaces: the destination onboarding check ran while the current
+request context still selected the original workspace. The check failed closed.
+This was release-blocking despite the exact-asset pass. The repair commit,
+replacement image, and successful candidate regression are recorded above;
+this initial image is not the final verified launch image.
+
+Rollback preserves prior revision `engram-r-1792829094`. Successful Cloud SQL
+backup `1792825021777` was reused within its validity window. Its activated
+release state was archived successfully at
+`gs://ani-hq_cloudbuild/engram-releases/35b0edd1-93ab-4e25-872d-a0953bfe3ee5/release-state.json`.
 
 Authenticated candidate smoke passed; its temporary read-only agent key was
 confirmed revoked before smoke proof was recorded. All 139 checked public
@@ -76,7 +145,8 @@ Run service verified this exact image's worker capability/bootstrap boundary
 and was deleted successfully. No provider or payment call was involved in that
 probe.
 
-The real email-verified test workspace then exercised the candidate guide:
+The real email-verified test workspace exercised the candidate guide before
+activation:
 
 1. A newly issued dedicated key left all three steps pending.
 2. Its successful `whoami` call advanced the guide to saving memory.
@@ -96,17 +166,27 @@ doctor checks do not establish a new Codex model tool-call claim.
 The final 0.3.0 package contains exactly eight files, each byte-identical to its
 committed source. Its SHA-256 is
 `4abccae677545eed5497ed3d97c30f31a55c993b81cf8f338b20d144b60e09ee`.
-It is not yet published. npm returned 401 for the saved publishing identity; the
-named Stripe test secret was still absent at the last metadata check. Both
-account prerequisites are required before declaring the launch complete. Do not
-activate guidance that depends on the new package while npm still serves 0.2.0.
+The published npm 0.3.0 tarball downloaded from the public registry has this same
+SHA-256 and exact content, and 0.3.0 is the public `latest` version. The earlier
+npm authentication failure and missing sandbox secret were resolved before
+activation. The full dedicated Stripe run described above supersedes the
+anonymous sandbox's incomplete lifecycle result.
+
+Canonical native UI verification at this checkpoint found the switch failure
+above. The verified replacement release, regression, and actual canonical
+post-activation browser checks now resolve it. The failed checkpoint is retained
+as history, not current behavior.
 
 The unchanged motion export completed local browser playback at 1× to 62 seconds,
 with no media error. Opening, middle task-card and closing brand/domain frames
 were inspected. This adds bounded playback evidence to the earlier phase-sample
 checks; it is not a claim to have perceptually reviewed every encoded frame.
 
-## Deployed release
+## Historical guard-release checkpoint
+
+The table and related evidence below describe the preceding guard release,
+before the launch deployment checkpoint and edge corrections above. Its former production
+revision, byte mismatches, and pending items are historical, not current status.
 
 | Check | Verified result |
 | --- | --- |
@@ -136,7 +216,10 @@ the required nullable guard at 08:13 UTC, without model or tool calls
 Upstream's legacy internal unconditional mode is unchanged; a missing-page error
 with a non-null version is distinct from omitting the version parameter.
 
-## Regression and browser results
+## Historical regression and browser results
+
+These earlier results apply to their recorded images and dates. Current launch
+build, package, payment, and canonical-asset results are recorded above.
 
 | Suite | Result | Curated evidence |
 | --- | --- | --- |
@@ -159,7 +242,11 @@ reporting states and inventory bounds. They made no production writes or
 external requests. Passing fixture tests is separate from a real client sending
 a task report to the deployed workspace.
 
-## Actual client verification
+## Historical client verification
+
+This client matrix and its follow-up prose preserve the earlier checkpoint.
+The launch-completion follow-up above supersedes its Codex desktop and npm
+publication status; other client coverage remains limited to the stated tests.
 
 | Client | Verified | Remaining limitation |
 | --- | --- | --- |
@@ -263,8 +350,9 @@ clients remain unverified, and video verification is scoped below.
 
 ## Earlier verification and UI status
 
-This section records the morning checkpoint. The follow-up and candidate
-results above supersede its desktop, edge, signup, package and playback status.
+This section records the morning checkpoint. The follow-up and activated-release
+results above supersede its desktop, edge, signup, payment, package and playback
+status.
 
 - **Workspace entitlement — resolved:** the user authorized non-expiring access,
   and the owner/workspace-pinned operator grant is active with `expiresAt: null`.
@@ -318,8 +406,10 @@ and hash verification passed. It contains 33 beats and 32 boundaries. Root
 checked all 1,860 decoded frames: none were uniform, and measured temporal
 variation confirms motion. Root visually reviewed all 33 encoded beat midpoints
 across four contact sheets, plus 96 encoded samples spanning all 32 joins,
-12 large native proof frames and repaired inverse cards. Type lifts, opacity transitions and actual camera curves execute;
-this is not a full-rate perceptual playback review. The AAC track decodes to
+12 large native proof frames and repaired inverse cards. Type lifts, opacity transitions and actual camera curves execute.
+Later local browser playback at 1× reached 62 seconds without a media error,
+with opening, middle task-card, and closing frames inspected. This does not
+claim continuous frame-by-frame perceptual review. The AAC track decodes to
 exact digital silence: 5,952,000 samples, peak 0 and RMS 0. Export issues are
 empty and no cleanup is pending. The encoded-motion QA, encoded/audio QA,
 delivery record, and review are retained as local launch artifacts.
@@ -348,4 +438,5 @@ This report contains curated verification summaries only. Credentials, personal
 identifiers, private memory, infrastructure addresses and raw client traces are
 excluded. The original morning report summarized existing evidence without
 executing a new release or test. The later follow-up above records the additional
-staging and verification work; no real payment was made.
+staging, activation, package publication, and sandbox verification work; no real
+payment was made. Public announcements remain prepared drafts.
