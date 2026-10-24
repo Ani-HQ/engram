@@ -4,6 +4,37 @@ Private operator captures and verification records described in the historical
 release entries are retained outside the public source release. Their local
 paths and raw contents are not published here.
 
+## Verified email-only hosted console — 24 October 2026
+
+Hosted sign-in and invitation entry no longer offer access-token login.
+`POST /api/session` rejects hosted token exchange before reading/authenticating a
+submitted credential, and token/OAuth-backed console cookies are rejected.
+Email sessions and agent bearer credentials remain supported. Self-hosted owner
+bootstrap and recovery retain explicit token sign-in. The public signup policy
+reports `tokenSignInAllowed`; clients hide the option unless it is explicitly true.
+
+Build `81a0c517-563b-4ee1-b2e2-d346c91bd2fc` passed all seven gates for source
+`99b708732398918f3711567eb242a6297582c618`. Ready revision
+`engram-r-1792863937` serves 100% of observed production traffic using
+`gcr.io/ani-hq/engram@sha256:aac675505b2574373c045e0d459b85870720090db72c7622856fd8d67e582713`.
+Local regression passed 444 tests and 3,769 assertions, with one Cloud Run-only
+skip. Independent security review found no actionable issues. Candidate smoke
+passed and revoked its temporary read credential with no cleanup required.
+
+The real approved-inbox check passed 21 checks: delivered single-use email login,
+secure email-session cookie and authenticated workspace access, preserved workspace
+pinning, valid agent token denied for console exchange/cookie but accepted as a
+bearer credential, and both temporary credentials revoked and rejected afterward.
+No unused login proof, new workspace, membership or billing change remained.
+Candidate and canonical checks matched 142 assets/page routes and security headers;
+all six canonical authentication checks and 12 final control checks passed. Browser
+inspection confirmed both hosted screens omit token sign-in.
+
+Successful backup `1792859988777` was reused within its validity window; rollback
+preserves `engram-r-1792862781`. [Source PR 29](https://github.com/Ani-HQ/engram/pull/29)
+contains the implementation and release record. The activated state was archived at
+`gs://ani-hq_cloudbuild/engram-releases/81a0c517-563b-4ee1-b2e2-d346c91bd2fc/release-state.json`.
+
 ## Verified invite copy update — 24 October 2026
 
 The invite screen now reads: “No card required. Verify your email to get started.”
