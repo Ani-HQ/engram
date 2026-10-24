@@ -8,10 +8,24 @@
       content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'"
     >
     <title>engram</title>
+    <link rel="preload" href="/vendor/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="/style.css">
-    <link rel="stylesheet" href="/capture.css">
-    <link rel="stylesheet" href="/pane.css">
-  </head>
+    <link rel="stylesheet" href="/activity.css">
+    <link rel="stylesheet" href="/showcase.css">
+    <link rel="stylesheet" href="/account.css">
+    <link rel="stylesheet" href="/connection.css">
+    <link rel="stylesheet" href="/memory-loading.css">
+    <link rel="stylesheet" href="/memory-document.css">
+    <link rel="stylesheet" href="/task-reporting.css">
+    <link rel="stylesheet" href="/onboarding.css">
+    <meta name="description" content="Activity and shared memory across your agents.">
+      <link rel="icon" href="/favicon.ico" type="image/x-icon" sizes="16x16 32x32 48x48">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" sizes="any">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
+    <link rel="manifest" href="/site.webmanifest">
+    <meta name="application-name" content="Engram">
+    <meta name="theme-color" content="#171717">
+</head>
   <body>
     <div id="app"></div>
     <script type="module" src="/app.js"></script>

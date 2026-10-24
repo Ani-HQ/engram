@@ -1,10 +1,11 @@
 import { createSign, generateKeyPairSync } from "node:crypto";
 import { describe, expect, test } from "bun:test";
+import type postgres from "postgres";
 
 process.env.ENGRAM_DB_URL_TEMPLATE ??= "postgresql://postgres:postgres@localhost:1/__DB__";
 
-const { onboardingStep, slugFromName } = await import("../gateway/src/orgs");
-const { ownsShareRule } = await import("../gateway/src/org-api");
+const { ANI_HQ_ORG, onboardingStep, slugFromName } = await import("../gateway/src/orgs");
+const { onboardingState, ownsShareRule } = await import("../gateway/src/org-api");
 const {
   canApproveReview,
   canDelete,
@@ -21,18 +22,42 @@ const policies = parsePolicies({});
 describe("org helpers", () => {
   test("slugs a name and keeps the onboarding order", () => {
     expect(slugFromName("Ani HQ")).toBe("ani-hq");
-    expect(onboardingStep({ hasToken: false, hasPage: false })).toBe("connect");
-    expect(onboardingStep({ hasToken: true, hasPage: false })).toBe("remember");
-    expect(onboardingStep({ hasToken: true, hasPage: true })).toBe("invite");
-    expect(onboardingStep({ hasToken: true, hasPage: true, kind: "personal" })).toBe("done");
+    const checks = { agentConnected: false, memorySaved: false, memoryRecalled: false };
+    expect(onboardingStep({ checks, hasToken: true, hasPage: true })).toBe("connect");
+    expect(onboardingStep({ checks: { ...checks, agentConnected: true } })).toBe("remember");
+    expect(onboardingStep({ checks: { ...checks, agentConnected: true, memorySaved: true } })).toBe("recall");
+    for (const kind of ["team", "personal"] as const) {
+      expect(onboardingStep({ checks: { agentConnected: true, memorySaved: true, memoryRecalled: true }, kind })).toBe("done");
+    }
+  });
+  test("pending storage returns an explicit provisioning state with no invented proof", async () => {
+    expect(await onboardingState({ ...ANI_HQ_ORG, provisioningStatus: "pending" })).toEqual({
+      step: "provisioning", provisioning: true, hasToken: false, hasPage: false,
+      checks: { agentConnected: false, memorySaved: false, memoryRecalled: false, taskReported: false },
+    });
+  });
+  test("ready onboarding reads only central metadata and keeps historical pages separate from agent proof", async () => {
+    const calls: string[] = [];
+    const db = ((parts: TemplateStringsArray) => {
+      const query = parts.join('?'); calls.push(query);
+      return Promise.resolve(query.includes("SELECT 1 FROM audit_log") ? [{ present: 1 }] : []);
+    }) as unknown as postgres.Sql;
+    db.begin = (async (_mode: string, work: (tx: postgres.Sql) => unknown) => work(db)) as any;
+    const org = { ...ANI_HQ_ORG };
+    Object.defineProperty(org, 'dataDb', { get() { throw new Error('Onboarding must not open tenant storage'); } });
+    expect(await onboardingState(org, db)).toEqual({
+      step: "connect", provisioning: false, hasToken: false, hasPage: true,
+      checks: { agentConnected: false, memorySaved: false, memoryRecalled: false, taskReported: false },
+    });
+    expect(calls.every(query => !query.includes('memory_entries'))).toBe(true);
   });
 });
 
 describe("org policies", () => {
-  const owner = normalizeToken({ name: "ada", role: "owner" });
-  const member = normalizeToken({ name: "grace", role: "member" });
-  const writer = normalizeToken({ name: "cursor", role: "agent", canWrite: true });
-  const reader = normalizeToken({ name: "cursor", role: "agent", canWrite: false });
+  const owner = normalizeToken({ orgId: 7, name: "ada", role: "owner" });
+  const member = normalizeToken({ orgId: 7, name: "grace", role: "member" });
+  const writer = normalizeToken({ orgId: 7, name: "cursor", role: "agent", canWrite: true });
+  const reader = normalizeToken({ orgId: 7, name: "cursor", role: "agent", canWrite: false });
 
   test("agents write only when the token and the org both allow it", () => {
     expect(canWrite(writer, policies)).toBe(true);
@@ -56,10 +81,10 @@ describe("org policies", () => {
 
   test("share rules mutate only when a human email matches the owner", () => {
     const rule = { sourceOrg: 7, ownerEmail: "ada@example.com" };
-    const owner = normalizeToken({ name: "ada", role: "owner", email: "ada@example.com" });
-    const other = normalizeToken({ name: "grace", role: "member", email: "grace@example.com" });
-    const agent = normalizeToken({ name: "cursor", role: "agent", canWrite: true });
-    const agentCookie = normalizeToken({ name: "cursor", role: "agent", kind: "session", canWrite: true });
+    const owner = normalizeToken({ orgId: 7, name: "ada", role: "owner", email: "ada@example.com" });
+    const other = normalizeToken({ orgId: 7, name: "grace", role: "member", email: "grace@example.com" });
+    const agent = normalizeToken({ orgId: 7, name: "cursor", role: "agent", canWrite: true });
+    const agentCookie = normalizeToken({ orgId: 7, name: "cursor", role: "agent", kind: "session", canWrite: true });
     expect(ownsShareRule(owner, 7, rule)).toBe(true);
     expect(ownsShareRule(other, 7, rule)).toBe(false);
     expect(ownsShareRule(agent, 7, rule)).toBe(false);

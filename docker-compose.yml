@@ -1,10 +1,10 @@
-# Self-host path: `docker compose up` gives you the whole brain on any box.
-# Also the restore-drill target: load a pg_dump into `db`, point a client at :8080.
+# Copy .env.example to .env and set generated database passwords and tenant key.
+# The gateway binds only to loopback; the database has no published port.
 services:
   db:
     image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-engram}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD to a generated secret in .env}
     volumes:
       - engram-pg:/var/lib/postgresql/data
       - ./deploy/create-dbs.sql:/docker-entrypoint-initdb.d/create-dbs.sql:ro
@@ -13,6 +13,7 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
+    restart: unless-stopped
 
   engram:
     build: .
@@ -20,20 +21,31 @@ services:
       db:
         condition: service_healthy
     environment:
-      ENGRAM_DB_URL_TEMPLATE: postgresql://postgres:${POSTGRES_PASSWORD:-engram}@db:5432/__DB__
+      ENGRAM_DEPLOYMENT_MODE: self-hosted
+      ENGRAM_DB_URL_TEMPLATE: postgresql://engram_gateway_runtime:${ENGRAM_RUNTIME_DB_PASSWORD:?Set ENGRAM_RUNTIME_DB_PASSWORD in .env}@db:5432/__DB__
+      ENGRAM_PROVISIONER_DB_URL_TEMPLATE: postgresql://postgres:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/__DB__
+      ENGRAM_TENANT_CREDENTIAL_KEY: ${ENGRAM_TENANT_CREDENTIAL_KEY:?Set ENGRAM_TENANT_CREDENTIAL_KEY in .env}
       VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      REFLEX_API_KEY: ${REFLEX_API_KEY:-}
       TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
-      REFLEX_MODEL: ${REFLEX_MODEL:-jev-latest}
+      REFLEX_MODEL: ${REFLEX_MODEL:-jev-1.13.0}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       ENGRAM_MAIL_FROM: ${ENGRAM_MAIL_FROM:-engram@updates.ani.computer}
-      ENGRAM_PUBLIC_URL: ${ENGRAM_PUBLIC_URL:-}
+      ENGRAM_PUBLIC_URL: ${ENGRAM_PUBLIC_URL:-http://localhost:8080}
+      ENGRAM_INSECURE_COOKIE: ${ENGRAM_INSECURE_COOKIE:-0}
+      ENGRAM_DEV_LOGIN_LINKS: ${ENGRAM_DEV_LOGIN_LINKS:-0}
       ENGRAM_OAUTH_PRIVATE_KEY: ${ENGRAM_OAUTH_PRIVATE_KEY:-}
       ENGRAM_OAUTH_AUDIENCE: ${ENGRAM_OAUTH_AUDIENCE:-}
     ports:
-      - "8080:8080"
+      - "${ENGRAM_BIND_ADDRESS:-127.0.0.1}:${ENGRAM_PORT:-8080}:8080"
     volumes:
       - engram-homes:/gbrain-homes
+    init: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
 volumes:
   engram-pg:

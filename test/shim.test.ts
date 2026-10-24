@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -13,11 +13,11 @@ beforeEach(() => {
 });
 
 const HOST = "https://engram-test.us-central1.run.app";
+const TOKEN = "eng_fixture-credential-never-real";
 
 describe("retry classification", () => {
-  // Retrying a write that the gateway already applied would duplicate a remember
-  // entry, so only the two safe cases retry: an idempotent call, and a status the
-  // Cloud Run frontend produces when it never routed the request at all.
+  // A timeout/error status can arrive after a write was applied. Only callers
+  // that explicitly declare an operation idempotent may retry automatically.
   test("a lost response retries only for idempotent calls", () => {
     const err = new Error("fetch failed");
     expect(shim.shouldRetry(null, err, true)).toBe(true);
@@ -25,9 +25,12 @@ describe("retry classification", () => {
     expect(shim.shouldRetry(null, err, undefined)).toBe(false);
   });
 
-  test("frontend statuses retry even for writes", () => {
+  test("transient HTTP statuses retry only explicitly idempotent operations", () => {
     for (const status of [429, 502, 503, 504]) {
-      expect(shim.shouldRetry(status, null, false)).toBe(true);
+      expect(shim.shouldRetry(status, null, true)).toBe(true);
+      expect(shim.shouldRetry(status, null, false)).toBe(false);
+      expect(shim.shouldRetry(status, null, undefined)).toBe(false);
+      expect(shim.shouldRetry(status, null, "true")).toBe(false);
     }
   });
 
@@ -45,36 +48,48 @@ describe("tool cache", () => {
   ];
 
   test("round trips through a path derived from the host", () => {
-    expect(shim.writeToolCache(HOST, tools)).toBe(true);
-    expect(shim.toolCachePath(HOST)).toContain("engram-test.us-central1.run.app");
-    expect(shim.readToolCache(HOST)).toEqual(tools);
+    expect(shim.writeToolCache(HOST, TOKEN, tools)).toBe(true);
+    expect(shim.toolCachePath(HOST, TOKEN)).toMatch(/tools-v2-[a-f0-9]{64}\.json$/);
+    expect(shim.readToolCache(HOST, TOKEN)).toEqual(tools);
+    expect(readFileSync(shim.toolCachePath(HOST, TOKEN), "utf8")).not.toContain(TOKEN);
+    expect(statSync(shim.toolCachePath(HOST, TOKEN)).mode & 0o777).toBe(0o600);
   });
 
   test("keys separate hosts apart", () => {
-    expect(shim.toolCachePath("https://a.example.com"))
-      .not.toBe(shim.toolCachePath("https://b.example.com"));
+    expect(shim.toolCachePath("https://a.example.com", TOKEN))
+      .not.toBe(shim.toolCachePath("https://b.example.com", TOKEN));
     // A host must never produce a path that escapes the cache directory.
     expect(shim.cacheKeyForHost("https://evil/../../etc")).not.toContain("/");
   });
 
   test("a missing, corrupt or empty cache reads as a miss rather than throwing", () => {
-    expect(shim.readToolCache("https://never-written.example.com")).toBeNull();
+    expect(shim.readToolCache("https://never-written.example.com", TOKEN)).toBeNull();
 
-    const corrupt = shim.toolCachePath("https://corrupt.example.com");
+    const corrupt = shim.toolCachePath("https://corrupt.example.com", TOKEN);
     mkdirSync(path.dirname(corrupt), { recursive: true });
     writeFileSync(corrupt, "{not json");
-    expect(shim.readToolCache("https://corrupt.example.com")).toBeNull();
+    expect(shim.readToolCache("https://corrupt.example.com", TOKEN)).toBeNull();
 
-    shim.writeToolCache("https://empty.example.com", []);
+    shim.writeToolCache("https://empty.example.com", TOKEN, []);
     // An empty list is a miss too: serving it would advertise a server with no
     // tools, which is worse than taking the slow path.
-    expect(shim.readToolCache("https://empty.example.com")).toBeNull();
+    expect(shim.readToolCache("https://empty.example.com", TOKEN)).toBeNull();
   });
 
   test("an unwritable cache directory fails soft", () => {
     process.env.XDG_CACHE_HOME = "/proc/nonexistent-engram";
-    expect(shim.writeToolCache(HOST, tools)).toBe(false);
-    expect(shim.readToolCache(HOST)).toBeNull();
+    expect(shim.writeToolCache(HOST, TOKEN, tools)).toBe(false);
+    expect(shim.readToolCache(HOST, TOKEN)).toBeNull();
+  });
+
+  test("binds catalogs to credentials, rejects old versions and requires a credential", () => {
+    expect(shim.writeToolCache(HOST, TOKEN, tools)).toBe(true);
+    expect(shim.toolCachePath(HOST, TOKEN)).not.toBe(shim.toolCachePath(HOST, "eng_other-fixture"));
+    expect(shim.readToolCache(HOST, "eng_other-fixture")).toBeNull();
+    expect(shim.toolCachePath(HOST)).toBeNull();
+    expect(shim.writeToolCache(HOST, "", tools)).toBe(false);
+    writeFileSync(shim.toolCachePath(HOST, TOKEN), JSON.stringify({ version: 1, tools }));
+    expect(shim.readToolCache(HOST, TOKEN)).toBeNull();
   });
 });
 
@@ -104,7 +119,7 @@ describe("connect-time cache seeding", () => {
     })) as any;
 
     expect(await shim.seedToolCache(target)).toBe(true);
-    expect(shim.readToolCache(target.host).map((t: any) => t.name)).toEqual(["recall", "remember"]);
+    expect(shim.readToolCache(target.host, target.token).map((t: any) => t.name)).toEqual(["recall", "remember"]);
   });
 
   test("a server that cannot be reached is reported, not thrown", async () => {
@@ -116,7 +131,7 @@ describe("connect-time cache seeding", () => {
     // here must not look like a failed connect.
     expect(await shim.seedToolCache({ host: "https://unreachable.example.com", token: "t" }))
       .toBe(false);
-    expect(shim.readToolCache("https://unreachable.example.com")).toBeNull();
+    expect(shim.readToolCache("https://unreachable.example.com", "t")).toBeNull();
   });
 
   test("an empty tool list is refused rather than cached", async () => {
@@ -128,6 +143,15 @@ describe("connect-time cache seeding", () => {
 
     expect(await shim.seedToolCache({ host: "https://empty-seed.example.com", token: "t" }))
       .toBe(false);
+  });
+
+  test("connect-time HTML authorization denial also deletes the known-denied credential cache", async () => {
+    for (const status of [401, 403]) {
+      expect(shim.writeToolCache(target.host, target.token, [{ name: "record_action" }])).toBe(true);
+      globalThis.fetch = (async () => new Response("<html>Authorization required</html>", { status })) as any;
+      expect(await shim.seedToolCache(target)).toBe(false);
+      expect(shim.readToolCache(target.host, target.token)).toBeNull();
+    }
   });
 
   test("nothing to seed without a resolved target", async () => {

@@ -1,6 +1,10 @@
+import { failureCode } from "./diagnostics";
 import { stat } from "node:fs/promises";
 import { extname, isAbsolute, relative, resolve } from "node:path";
 import { audit, provenance, provenanceFor, recentActivity } from "./audit";
+import { ActionError, listActions, recordAction } from "./actions";
+import { handleActivitiesApi } from "./activities";
+import { handleConnectionsApi } from "./connections";
 import { authenticateSecret, type TokenRecord } from "./auth";
 import { brainClient, ensureBrain } from "./brain";
 import {
@@ -8,7 +12,7 @@ import {
   parseSessionCookie,
   serializeSessionCookie,
 } from "./cookies";
-import { upsertMemoryEntry } from "./memory-entries";
+import { getMemoryEntry, upsertMemoryEntry } from "./memory-entries";
 import { authenticateRequest } from "./auth";
 import { handleOrgApi, handlePublicOrgApi, ingestTrailRequest, onboardingState, sessionActor } from "./org-api";
 import { resolveOrg, withOrg } from "./orgs";
@@ -16,6 +20,11 @@ import { canDelete, normalizeToken } from "./policies";
 import { callTool } from "./proxy";
 import { resolveReview } from "./review/apply";
 import { getReviewItem, listReviewItems } from "./review/store";
+import { handlePublicShowcase, handleShowcaseApi } from "./showcase";
+import { BillingError, handleBillingApi, handleBillingWebhook, publicPlans, requireHostedWriteAccess, requiresHostedEntitlement } from "./billing";
+import { triggerProvisioning } from "./provisioning-trigger";
+import { processingOrg } from "./privacy";
+import { handleInsightsApi } from "./insights";
 
 export { SESSION_COOKIE_MAX_AGE, SESSION_COOKIE_NAME } from "./cookies";
 export { clearSessionCookie, parseSessionCookie, serializeSessionCookie };
@@ -32,6 +41,8 @@ const CONTENT_TYPES: Record<string, string> = {
   ".json": "application/json; charset=utf-8",
   ".woff2": "font/woff2",
   ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".webmanifest": "application/manifest+json",
 };
 
 export class ToolTextError extends Error {
@@ -154,8 +165,57 @@ export function forbiddenResponse(): Response {
 }
 
 export async function handleWeb(req: Request): Promise<Response> {
+  const response = await routeWeb(req);
+  if (new URL(req.url).pathname.startsWith("/api/") && !response.headers.has("Cache-Control")) {
+    response.headers.set("Cache-Control", "no-store");
+  }
+  return response;
+}
+
+async function routeWeb(req: Request): Promise<Response> {
   const url = new URL(req.url);
+  if (url.pathname === "/source" && req.method === "GET") return Response.redirect("https://github.com/Ani-HQ/engram", 302);
+  if (url.pathname === "/hosted" && req.method === "GET") return Response.redirect("https://engram.ani.computer/pricing", 302);
+  if (url.pathname === "/api/billing/webhook") return handleBillingWebhook(req);
+  if (url.pathname === "/api/plans" && ["GET", "HEAD"].includes(req.method)) {
+    return new Response(req.method === "HEAD" ? null : JSON.stringify(publicPlans()), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+  }
+  const showcase = await handlePublicShowcase(req);
+  if (showcase) return showcase;
   if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
+    if ((url.pathname === "/api/billing" || url.pathname.startsWith("/api/billing/")) && req.headers.get("authorization")) {
+      const token = await authenticateRequest(req);
+      if (!token) return Response.json({ error: "unauthorized" }, { status: 401 });
+      const actor = normalizeToken(token), org = await resolveOrg(actor);
+      return withOrg(org, actor, () => handleBillingApi(req, actor));
+    }
+    if (url.pathname === "/api/showcase" && req.headers.get("authorization")) {
+      const token = await authenticateRequest(req);
+      if (!token) return Response.json({ error: "unauthorized" }, { status: 401 });
+      const actor = normalizeToken(token);
+      const org = await resolveOrg(actor);
+      return withOrg(org, actor, () => handleShowcaseApi(req, actor));
+    }
+    if (url.pathname === "/api/actions" && ["GET", "POST"].includes(req.method) && req.headers.get("authorization")) {
+      return handleBearerActions(req, url);
+    }
+    if ((url.pathname === "/api/activities" || url.pathname.startsWith("/api/activities/")) && req.headers.get("authorization")) {
+      const token = await authenticateRequest(req);
+      if (!token) return Response.json({ error: "unauthorized" }, { status: 401 });
+      const actor = normalizeToken(token);
+      const expectedWorkspace = req.headers.get("x-engram-workspace");
+      if (expectedWorkspace && expectedWorkspace !== String(actor.orgId)) return Response.json({ error: "The selected workspace changed. Please start the request again." }, { status: 409 });
+      return withOrg(await resolveOrg(actor), actor, () => handleActivitiesApi(req, actor));
+    }
+    if (url.pathname === "/api/insights" && req.headers.get("authorization")) {
+      const token = await authenticateRequest(req);
+      if (!token) return Response.json({ error: "unauthorized" }, { status: 401 });
+      const actor = normalizeToken(token);
+      const expected = req.headers.get("x-engram-workspace");
+      if (expected && expected !== String(actor.orgId)) return Response.json({ error: "The selected workspace changed. Please retry." }, { status: 409 });
+      const org = await processingOrg(await resolveOrg(actor), actor);
+      return withOrg(org, actor, () => handleInsightsApi(req, actor));
+    }
     if (req.method === "POST" && url.pathname === "/api/trails" && req.headers.get("authorization")) {
       return handleBearerTrail(req);
     }
@@ -168,16 +228,47 @@ export async function handleWeb(req: Request): Promise<Response> {
   if (req.method !== "GET" && req.method !== "HEAD") {
     return new Response("Method Not Allowed", { status: 405 });
   }
-  return serveStatic(url.pathname);
+  return serveStatic(url.pathname, req.method === "HEAD");
 }
 
 async function handleBearerTrail(req: Request): Promise<Response> {
   const token = await authenticateRequest(req);
   if (!token) return Response.json({ error: "unauthorized" }, { status: 401 });
   const actor = normalizeToken(token);
+  const org = await processingOrg(await resolveOrg(actor), actor);
+  return withOrg(org, actor, async () => {
+    try { await requireHostedWriteAccess(actor); }
+    catch (error) {
+      if (error instanceof BillingError) return Response.json({ error: error.message }, { status: error.status });
+      throw error;
+    }
+    await ensureBrain(org);
+    return ingestTrailRequest(req, actor, org);
+  });
+}
+
+async function handleBearerActions(req: Request, url: URL): Promise<Response> {
+  const token = await authenticateRequest(req);
+  if (!token) return Response.json({ error: "unauthorized" }, { status: 401 });
+  const actor = normalizeToken(token);
   const org = await resolveOrg(actor);
-  await ensureBrain(org);
-  return withOrg(org, actor, () => ingestTrailRequest(req, actor, org));
+  return withOrg(org, actor, () => actionsResponse(req, url, actor));
+}
+
+async function actionsResponse(req: Request, url: URL, token: TokenRecord): Promise<Response> {
+  try {
+    if (req.method === "GET") return Response.json(await listActions(token, url.searchParams));
+    await requireHostedWriteAccess(token);
+    if (Number(req.headers.get("content-length")) > 100_000) {
+      return Response.json({ error: "Action payload is too large" }, { status: 413 });
+    }
+    return Response.json(await recordAction(token, await jsonObject(req)), { status: 201 });
+  } catch (error) {
+    if (error instanceof BillingError) return Response.json({ error: error.message, code: "subscription_required" }, { status: error.status });
+    if (error instanceof ActionError) return Response.json({ error: error.message }, { status: error.status });
+    console.error("[actions] request failed");
+    return Response.json({ error: "Action history is temporarily unavailable" }, { status: 503 });
+  }
 }
 
 async function handleApi(req: Request, url: URL): Promise<Response> {
@@ -195,6 +286,12 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
 
   let route: ((req: Request, url: URL, token: TokenRecord) => Response | Promise<Response>) | null = null;
   if (req.method === "GET" && url.pathname === "/api/me") route = getMe;
+  else if (url.pathname === "/api/billing" || url.pathname.startsWith("/api/billing/")) route = (req, _url, actor) => handleBillingApi(req, actor);
+  else if (url.pathname === "/api/showcase") route = (req, _url, actor) => handleShowcaseApi(req, actor);
+  else if (["GET", "POST"].includes(req.method) && url.pathname === "/api/actions") route = actionsResponse;
+  else if (url.pathname === "/api/connections") route = (req, _url, actor) => handleConnectionsApi(req, actor);
+  else if (url.pathname === "/api/activities" || url.pathname.startsWith("/api/activities/")) route = (req, _url, actor) => handleActivitiesApi(req, actor);
+  else if (url.pathname === "/api/insights") route = (req, _url, actor) => handleInsightsApi(req, actor);
   else if (req.method === "GET" && url.pathname === "/api/pages") route = getPages;
   else if (req.method === "GET" && url.pathname === "/api/search") route = getSearch;
   else if (req.method === "GET" && url.pathname === "/api/activity") route = getActivity;
@@ -215,9 +312,42 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   }
 
   const actor = normalizeToken(token);
-  const org = await resolveOrg(actor);
-  await ensureBrain(org);
+  const expectedWorkspace = req.headers.get("x-engram-workspace");
+  if (expectedWorkspace && expectedWorkspace !== String(actor.orgId)) return Response.json({ error: "The selected workspace changed. Please start the export again." }, { status: 409 });
+  const storedOrg = await resolveOrg(actor);
+  // Account metadata and provisioning progress must remain available before a
+  // tenant database exists. Every content route stays outside that context.
+  const provisioningStatus = storedOrg.provisioningStatus ?? "ready";
+  // A switch reads account metadata for a different authorized workspace. Keep
+  // it outside the source tenant context, even when that source is ready; target
+  // onboarding checks must not inherit the source workspace's isolation scope.
+  if (req.method === "POST" && url.pathname === "/api/session/switch") {
+    return await handleOrgApi(req, url, actor, storedOrg) ?? Response.json({ error: "not found" }, { status: 404 });
+  }
+  if (req.method === "GET" && (url.pathname === "/api/me" || url.pathname === "/api/provisioning")) {
+    if (provisioningStatus !== "ready") await triggerProvisioning();
+    return Response.json(await sessionActor(actor, storedOrg, { onboarding: await onboardingState(storedOrg) }), {
+      status: provisioningStatus === "ready" ? 200 : 202,
+      headers: { "Cache-Control": "no-store", ...(provisioningStatus === "ready" ? {} : { "Retry-After": "4" }) },
+    });
+  }
+  if (provisioningStatus !== "ready") return Response.json({ error: "Your workspace is still being prepared. Please check again shortly.", code: "workspace_provisioning", provisioningStatus }, {
+    status: 202, headers: { "Cache-Control": "no-store", "Retry-After": "4" },
+  });
+  const org = ["/api/search", "/api/page", "/api/pages", "/api/capture", "/api/insights"].includes(url.pathname) ? await processingOrg(storedOrg, actor) : storedOrg;
+  const lightweight = url.pathname === "/api/activities" || url.pathname.startsWith("/api/activities/") || url.pathname === "/api/insights" || ["/api/actions", "/api/showcase", "/api/billing", "/api/billing/checkout", "/api/billing/portal", "/api/policies", "/api/tokens", "/api/connections", "/api/tokens/write", "/api/tokens/source", "/api/tokens/revoke", "/api/members", "/api/invites", "/api/wiring", "/api/me", "/api/onboarding"].includes(url.pathname);
   return withOrg(org, actor, async () => {
+    if (url.pathname === "/api/billing" || url.pathname.startsWith("/api/billing/")) return handleBillingApi(req, actor);
+    // Keep reads, billing recovery, revocation, privacy controls, deletion and
+    // unpublishing available after a trial or subscription ends.
+    if (requiresHostedEntitlement(req.method, url.pathname)) {
+      try { await requireHostedWriteAccess(actor); }
+      catch (error) {
+        if (error instanceof BillingError) return Response.json({ error: error.message, code: "subscription_required" }, { status: error.status });
+        throw error;
+      }
+    }
+    if (!lightweight) await ensureBrain(org);
     const orgRoute = await handleOrgApi(req, url, actor, org);
     if (orgRoute) return orgRoute;
     if (!route) return Response.json({ error: "not found" }, { status: 404 });
@@ -233,6 +363,7 @@ async function postSession(req: Request): Promise<Response> {
   if (!token) return Response.json({ error: "unauthorized" }, { status: 401 });
   const org = await resolveOrg(token);
   return Response.json(await sessionActor(token, org, { onboarding: await onboardingState(org) }), {
+    status: org.provisioningStatus && org.provisioningStatus !== "ready" ? 202 : 200,
     headers: { "Set-Cookie": serializeSessionCookie(rawToken) },
   });
 }
@@ -254,13 +385,17 @@ async function getPages(_req: Request, url: URL, token: TokenRecord): Promise<Re
   if (!query) return Response.json({ error: "bad request" }, { status: 400 });
 
   const args: Record<string, unknown> = {
-    limit: query.limit + query.offset,
+    limit: query.limit + query.offset + 1,
     offset: 0,
     sort: query.sort,
   };
   if (query.tag) args.tag = query.tag;
 
-  const data = await readTool(token, "list_pages", args);
+  // The browser/export window has its own bounded pagination. The MCP proxy's
+  // 25-result context cap would silently truncate every larger browser request.
+  let data: any;
+  try { data = await brainTool("list_pages", args); await auditConsole(token, "list_pages", args, "ok"); }
+  catch { return Response.json({ error: "Memory is temporarily unavailable" }, { status: 503 }); }
   const pages = normalizePageSummaries(data);
   const window = sortPageSummaries(pages, query.sort).slice(query.offset, query.offset + query.limit);
   // One grouped query for the whole window, not one per row: the list is the hot path
@@ -271,9 +406,7 @@ async function getPages(_req: Request, url: URL, token: TokenRecord): Promise<Re
       ...page,
       provenance: provenances.get(String(page.slug)) ?? { origin: null, contributors: [] },
     })),
-    // A full page of results means there is probably another page behind it. The list
-    // lazy-loads, so it needs to know whether to ask again.
-    more: window.length === query.limit,
+    more: pages.length > query.offset + query.limit,
     scopes: ["shared"],
   });
 }
@@ -399,7 +532,7 @@ async function deletePage(_req: Request, url: URL, token: TokenRecord): Promise<
     const notFound = isPageNotFoundError(e);
     await auditConsole(token, "delete_page", args, notFound ? "not_found" : "error");
     if (notFound) return Response.json({ error: "not found" }, { status: 404 });
-    console.error("[web] delete_page failed:", String(e).slice(0, 200));
+    console.error("[web] delete_page failed:", failureCode(e));
     return Response.json({ error: "bad request" }, { status: 400 });
   }
 }
@@ -423,7 +556,7 @@ async function postRestorePage(req: Request, _url: URL, token: TokenRecord): Pro
     const notFound = isPageNotFoundError(e);
     await auditConsole(token, "restore_page", args, notFound ? "not_found" : "error");
     if (notFound) return Response.json({ error: "not found" }, { status: 404 });
-    console.error("[web] restore_page failed:", String(e).slice(0, 200));
+    console.error("[web] restore_page failed:", failureCode(e));
     return Response.json({ error: "bad request" }, { status: 400 });
   }
 }
@@ -442,7 +575,7 @@ async function postCapture(req: Request, _url: URL, token: TokenRecord): Promise
   const reason = rejectedSlugReason(slug);
   if (reason) return Response.json({ error: "bad request", message: reason }, { status: 400 });
 
-  const args: Record<string, unknown> = { slug, content: captureMarkdown(title, text) };
+  const args: Record<string, unknown> = { slug, content: captureMarkdown(title, text), expected_hash: null };
 
   try {
     parseToolText(await callTool(token, "put_page", args));
@@ -455,7 +588,7 @@ async function postCapture(req: Request, _url: URL, token: TokenRecord): Promise
     return Response.json({ ok: true, slug });
   } catch (e) {
     if (String(e).toLowerCase().includes("denied")) return forbiddenResponse();
-    console.error("[web] capture failed:", String(e).slice(0, 200));
+    console.error("[web] capture failed:", failureCode(e));
     return Response.json({ error: "bad request" }, { status: 400 });
   }
 }
@@ -475,7 +608,8 @@ async function getReviewDetail(_req: Request, url: URL, _token: TokenRecord): Pr
   if (!Number.isFinite(id) || id < 1) return Response.json({ error: "bad request" }, { status: 400 });
   const item = await getReviewItem(id);
   if (!item) return Response.json({ error: "not found" }, { status: 404 });
-  return Response.json({ item });
+  const entry = item.entryId ? await getMemoryEntry(item.entryId) : null;
+  return Response.json({ item, entry: entry ? { id: entry.id, slug: entry.slug, rawText: entry.rawText, status: entry.status } : null });
 }
 
 async function postReviewApprove(req: Request, _url: URL, token: TokenRecord): Promise<Response> {
@@ -504,25 +638,33 @@ async function resolveReviewResponse(
   return Response.json({ ok: true, item: result.item });
 }
 
-async function serveStatic(pathname: string): Promise<Response> {
+function isPublicBrandAsset(pathname: string): boolean {
+  return pathname === "/brand" || pathname.startsWith("/brand/") || ["/favicon.svg", "/favicon.ico", "/apple-touch-icon.png", "/site.webmanifest"].includes(pathname);
+}
+
+async function serveStatic(pathname: string, head = false): Promise<Response> {
   const webDir = defaultWebDir();
-  if (pathname === "/" || pathname === "/index.html") {
-    const landing = resolveStaticPath("/landing.html", webDir);
-    if (landing && await isFile(landing)) return fileResponse(landing);
-  }
+  const publicPages: Record<string, string> = { "/pricing": "/pricing.html", "/privacy": "/privacy.html", "/self-host": "/self-host.html" };
+  pathname = publicPages[pathname] ?? pathname;
   const staticPath = resolveStaticPath(pathname, webDir);
-  if (!staticPath) return new Response("Not Found", { status: 404 });
-  if (await isFile(staticPath)) return fileResponse(staticPath);
+  const notFound = () => new Response(head ? null : "Not Found", { status: 404, headers: { "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff" } });
+  if (!staticPath) return notFound();
+  // Classify the resolved path, so an encoded /brand/../ path cannot grant CORS
+  // to unrelated app files.
+  const assetPath = `/${relative(webDir, staticPath).replaceAll("\\", "/")}`;
+  const publicBrandAsset = isPublicBrandAsset(assetPath);
+  if (await isFile(staticPath)) return fileResponse(staticPath, head, publicBrandAsset);
+  if (publicBrandAsset || assetPath === "/oauth.css") return notFound();
 
   // Unknown client-side routes fall back to the SPA shell without exposing cwd.
   const indexPath = resolveStaticPath("/", webDir);
-  if (indexPath && await isFile(indexPath)) return fileResponse(indexPath);
-  return new Response("Not Found", { status: 404 });
+  if (indexPath && await isFile(indexPath)) return fileResponse(indexPath, head);
+  return notFound();
 }
 
-function fileResponse(pathname: string): Response {
-  return new Response(Bun.file(pathname), {
-    headers: { "Content-Type": contentTypeFor(pathname) },
+function fileResponse(pathname: string, head = false, publicBrandAsset = false): Response {
+  return new Response(head ? null : Bun.file(pathname), {
+    headers: { "Content-Type": contentTypeFor(pathname), "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "same-origin", "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'", ...(publicBrandAsset ? { "Access-Control-Allow-Origin": "*" } : {}) },
   });
 }
 
@@ -558,7 +700,7 @@ async function readTool(
   try {
     return parseToolText(await callTool(token, name, args));
   } catch (e) {
-    console.error(`[web] ${name} failed:`, String(e).slice(0, 200));
+    console.error(`[web] ${name} failed:`, failureCode(e));
     return null;
   }
 }

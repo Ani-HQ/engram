@@ -1,58 +1,38 @@
 {
   "page": {
-    "slug": "weight-recency",
-    "title": "Weight follows recency",
-    "type": "note",
+    "slug": "deployment-approvals",
+    "title": "Production deployments need approval",
+    "body": "Prepare a preview and share the test results before requesting approval for a production deployment.",
     "scope": "shared",
-    "updated_at": "2026-08-18T07:30:00Z",
-    "body": "## Recency should be felt, not decoded\n\nFresh pages carry full weight. Older pages fade only as far as readability allows, because memory should age without becoming unavailable.\n\nThe row also carries a small weight bar: **dense**, *middle*, and thin. That louder cue does the semantic work while the title stays readable.\n\n- The curve is logarithmic after the first day.\n- The floor keeps contrast above AA in both palettes.\n- The browser uses `color-mix` so the same rule follows light and dark paper.\n\n```js\ninkStepFor(updated_at, new Date())\n```\n\nRelated notes are repaired into the page with [quiet seams](./linked-memory)."
+    "type": "note",
+    "source_id": "demo",
+    "updated_at": "2026-10-21T07:58:00.000Z",
+    "provenance": {
+      "origin": {
+        "by": "codex",
+        "at": "2026-10-21T07:58:00.000Z"
+      },
+      "contributors": [
+        {
+          "name": "codex",
+          "first": "2026-10-21T07:58:00.000Z",
+          "last": "2026-10-21T07:58:00.000Z",
+          "writes": 1
+        }
+      ]
+    }
   },
   "links": [
     {
-      "slug": "linked-memory",
-      "title": "Links between memories",
-      "relation": "design"
-    },
-    {
-      "slug": "timeline-motion",
-      "title": "Timeline motion",
-      "relation": "history"
-    },
-    {
-      "slug": "identity-mark",
-      "title": "Hanko identity marks",
-      "relation": "identity"
-    },
-    {
-      "slug": "markdown-boundary",
-      "title": "Markdown boundary",
-      "relation": "safety"
+      "slug": "preview-environment",
+      "title": "Preview environment",
+      "relation": "context"
     }
   ],
   "timeline": [
     {
-      "at": "2026-08-18T07:30:00Z",
-      "text": "Recency curve fixed to a narrow contrast-safe range."
-    },
-    {
-      "at": "2026-08-16T12:00:00Z",
-      "text": "Ink bar separated the semantic cue from title darkness."
-    },
-    {
-      "at": "2026-08-10T09:40:00Z",
-      "text": "Dark palette checked against the same ground tokens."
-    },
-    {
-      "at": "2026-07-25T17:10:00Z",
-      "text": "Rows switched from boxes to hanging text."
-    },
-    {
-      "at": "2026-07-03T08:25:00Z",
-      "text": "The reader pane replaced centered dialogs."
-    },
-    {
-      "at": "2026-06-12T11:30:00Z",
-      "text": "First surface-contrast prototype landed."
+      "at": "2026-10-21T07:58:00.000Z",
+      "text": "Saved by codex from the deployment task."
     }
   ]
 }

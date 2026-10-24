@@ -1,96 +1,132 @@
+# Build gates prepare a tagged candidate only. Traffic activation is an explicit
+# separate command after an authenticated candidate smoke and operator review.
 steps:
-  # Gate the deploy on the suite. Cloud Build is what actually ships, so the tests
-  # have to run here and not only in GitHub Actions: a trigger fires on the push
-  # itself and would otherwise deploy a red main before Actions had finished.
-  - name: 'oven/bun:1-debian'
-    id: test
+  - name: 'oven/bun:1.3.10-debian'
+    id: unit-tests
     env:
-      - 'ENGRAM_DB_URL_TEMPLATE=postgresql://postgres:postgres@127.0.0.1:1/__DB__'
+      - 'ENGRAM_DB_URL_TEMPLATE=postgresql://unit:unit@127.0.0.1:1/__DB__'
+      - 'ENGRAM_DEPLOYMENT_MODE=self-hosted'
+      - 'ENGRAM_ALLOW_LEGACY_DB_CREDENTIALS=1'
     entrypoint: bash
     args:
       - -c
       - |
         set -euo pipefail
-        bun --version
+        apt-get update
+        apt-get install -y --no-install-recommends python3
         bun install --frozen-lockfile
         bun test
-        # The console is served from a public URL, so a remote script or font would
-        # be both a privacy leak and a CSP failure.
-        if grep -rnoE 'https?://[a-zA-Z0-9.-]+' web/ \
-             --include='*.html' --include='*.css' --include='*.js' \
-           | grep -vE 'localhost|127\.0\.0\.1|www\.w3\.org'; then
-          echo "external reference found in web/" >&2
-          exit 1
-        fi
+        bun test/check-runtime-assets.ts
+        bun test/eval-insights.ts
+        cp /usr/local/bin/bun /workspace/.ci-bun
 
   - name: 'gcr.io/cloud-builders/docker'
-    args:
-      - 'build'
-      - '-t'
-      - 'gcr.io/$PROJECT_ID/engram:$BUILD_ID'
-      - '-t'
-      - 'gcr.io/$PROJECT_ID/engram:latest'
-      - '.'
-
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', '--all-tags', 'gcr.io/$PROJECT_ID/engram']
-
-  # Same service flags as the last successful deploy (console-v2). Extra
-  # provider secrets are not mounted here; the gateway treats missing keys
-  # as disabled. The dream job is best-effort so it cannot roll back main.
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: deploy-service
-    entrypoint: gcloud
-    args:
-      - 'run'
-      - 'deploy'
-      - 'engram'
-      - '--image=gcr.io/$PROJECT_ID/engram:$BUILD_ID'
-      - '--region=${_REGION}'
-      - '--platform=managed'
-      - '--allow-unauthenticated'
-      - '--service-account=engram-runtime@$PROJECT_ID.iam.gserviceaccount.com'
-      - '--add-cloudsql-instances=$PROJECT_ID:${_REGION}:engram-pg'
-      - '--set-secrets=ENGRAM_DB_URL_TEMPLATE=engram-db-url-template:latest,TYPESAFE_API_KEY=typesafe-api-key:latest,RESEND_API_KEY=resend-api-key:latest,ENGRAM_OAUTH_PRIVATE_KEY=engram-oauth-private-key:latest'
-      - '--set-env-vars=GBRAIN_HOMES_DIR=/tmp/gbrain-homes,ENGRAM_CLOUDSQL_INSTANCE=$PROJECT_ID:${_REGION}:engram-pg,REFLEX_MODEL=jev-latest,ENGRAM_MAIL_FROM=engram@updates.ani.computer,ENGRAM_PUBLIC_URL=https://engram.ani.computer,ENGRAM_OAUTH_AUDIENCE=https://engram.ani.computer/mcp'
-      - '--min-instances=0'
-      - '--max-instances=1'
-      - '--memory=2Gi'
-      - '--cpu=1'
-      - '--timeout=900'
-      - '--execution-environment=gen2'
-
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: deploy-dream
+    id: postgres-boundaries
     entrypoint: bash
     args:
       - -c
       - |
-        gcloud run jobs deploy engram-dream \
-          --image=gcr.io/$PROJECT_ID/engram:$BUILD_ID \
-          --region=${_REGION} \
-          --service-account=engram-runtime@$PROJECT_ID.iam.gserviceaccount.com \
-          --set-cloudsql-instances=$PROJECT_ID:${_REGION}:engram-pg \
-          --set-secrets=ENGRAM_DB_URL_TEMPLATE=engram-db-url-template:latest,TYPESAFE_API_KEY=typesafe-api-key:latest \
-          --set-env-vars=GBRAIN_HOMES_DIR=/tmp/gbrain-homes,ENGRAM_CLOUDSQL_INSTANCE=$PROJECT_ID:${_REGION}:engram-pg,ENGRAM_JOB=dream,REFLEX_MODEL=jev-latest \
-          --memory=2Gi \
-          --cpu=1 \
-          --task-timeout=900s \
-          --max-retries=1 \
-          || echo "dream job skipped"
-        ENGRAM_PROJECT=$PROJECT_ID ENGRAM_REGION=${_REGION} deploy/setup-scheduler.sh \
-          || echo "scheduler setup skipped"
+        set -euo pipefail
+        trap 'docker rm -f engram-test-postgres >/dev/null 2>&1 || true' EXIT
+        docker run -d --name engram-test-postgres --network cloudbuild \
+          -e POSTGRES_USER=engram_test -e POSTGRES_PASSWORD=engram_test \
+          -e POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256 \
+          -e POSTGRES_HOST_AUTH_METHOD=scram-sha-256 \
+          -e POSTGRES_DB=engram_gateway pgvector/pgvector:pg16 -p 15432
+        ready=0
+        for attempt in $$(seq 1 60); do
+          if docker exec engram-test-postgres pg_isready -h 127.0.0.1 -U engram_test -d engram_gateway -p 15432; then ready=1; break; fi
+          sleep 1
+        done
+        test "$$ready" = 1
+        docker run --rm --network container:engram-test-postgres \
+          -v /workspace:/workspace -w /workspace \
+          -e ENGRAM_TEST_DB_URL_TEMPLATE=postgresql://engram_test:engram_test@127.0.0.1:15432/__DB__ \
+          oven/bun:1.3.10-debian sh -c 'bun test/integration-postgres.ts && bun test/integration-tenant-security.ts && bun test/integration-managed-provisioner.ts'
 
-# A build that names its own service account must say where logs go, or it is
-# rejected before the first step runs. `gcloud builds submit` never hit this,
-# because it uses the default Cloud Build account and inherits its bucket; the
-# trigger names the account explicitly and so must choose.
+  - name: 'gcr.io/cloud-builders/docker'
+    id: build-image
+    env: ['DOCKER_BUILDKIT=1']
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/engram:$BUILD_ID', '-t', 'engram:hardening', '.']
+
+  # Uses the actual pinned engine, restricted tenant roles, private worker
+  # network, host/metadata boundaries and CAS tests; no AI provider is called.
+  # .ci-bun is the Linux binary from the pinned unit-test image. The Docker
+  # builder supplies its CLI/socket; test temporary binds live in /workspace.
+  # The harness must share the daemon host's network: its disposable PostgreSQL
+  # server publishes loopback:15433 there, not in the Cloud Build step namespace.
+  - name: 'gcr.io/cloud-builders/docker'
+    id: actual-engine-isolation
+    entrypoint: bash
+    env:
+      - 'TMPDIR=/workspace/.integration-tmp'
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        mkdir -p /workspace/.integration-tmp
+        docker pull pgvector/pgvector:pg16
+        docker run --rm --network host --entrypoint bash \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v /workspace:/workspace -w /workspace \
+          -e TMPDIR=/workspace/.integration-tmp \
+          gcr.io/cloud-builders/docker -c \
+          'set -euo pipefail
+          /workspace/.ci-bun --version
+          docker version --format "{{.Server.Version}}"
+          /workspace/.ci-bun test/integration-startup-docker.ts
+          /workspace/.ci-bun test/integration-gbrain-docker.ts'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: push-reviewed-image
+    args: ['push', 'gcr.io/$PROJECT_ID/engram:$BUILD_ID']
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: release-automation-tests
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        python3 test/release-automation.py
+        python3 test/billing-verification.py
+        python3 test/edge-configuration.py
+
+  # This step creates no credentials or IAM grants. It stops at a tagged
+  # candidate with existing traffic pinned to its old revision. Missing approved
+  # credential resources or authority boundaries fail the preflight.
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: stage-candidate
+    entrypoint: bash
+    env:
+      - 'PROJECT_ID=$PROJECT_ID'
+      - 'REGION=${_REGION}'
+      - 'BUILD_ID=$BUILD_ID'
+      - 'ENGRAM_PUBLIC_URL=${_PUBLIC_URL}'
+      - 'ENGRAM_BACKUP_ID=${_BACKUP_ID}'
+      - 'ENGRAM_RELEASE_COMMAND=${_RELEASE_COMMAND}'
+      - 'ENGRAM_RELEASE_STATE=/workspace/release-state.json'
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        python3 deploy/release.py plan --project "$PROJECT_ID" --region "${_REGION}" \
+          --image "gcr.io/$PROJECT_ID/engram:$BUILD_ID" --public-url "${_PUBLIC_URL}" > /workspace/release-plan.json
+        deploy/cloudbuild-release.sh
+
 options:
   logging: CLOUD_LOGGING_ONLY
 
+timeout: 3600s
 substitutions:
   _REGION: us-central1
-
+  _PUBLIC_URL: https://engram.ani.computer
+  _RELEASE_COMMAND: plan
+  # An operator supplies a successful backup from the last24hours for each stage.
+  _BACKUP_ID: ''
 images:
   - 'gcr.io/$PROJECT_ID/engram:$BUILD_ID'
-  - 'gcr.io/$PROJECT_ID/engram:latest'
+artifacts:
+  objects:
+    location: 'gs://${PROJECT_ID}_cloudbuild/engram-releases/$BUILD_ID/'
+    paths: ['release-*.json']

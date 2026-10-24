@@ -1,3 +1,5 @@
+import { parseReportedSource } from "./agent-source";
+
 export type ActorRole = "owner" | "member" | "agent";
 export type CredentialKind = "token" | "session" | "oauth";
 export type ReviewApprovers = "owners" | "members";
@@ -12,6 +14,7 @@ export interface TokenRecord {
   kind: CredentialKind;
   email: string | null;
   scopes: string[];
+  source?: { harness: string; label: string | null; kind: "registered" };
 }
 
 export interface OrgPolicies {
@@ -21,6 +24,7 @@ export interface OrgPolicies {
   reviewApprovers: ReviewApprovers;
   acceptShares: boolean;
   maxShareLevel: ShareLevel;
+  externalAiProcessing: boolean;
 }
 
 export const SHARE_LEVELS: ShareLevel[] = ["digest", "digest_transcript", "transcript"];
@@ -32,6 +36,7 @@ export const DEFAULT_POLICIES: OrgPolicies = {
   reviewApprovers: "members",
   acceptShares: true,
   maxShareLevel: "digest",
+  externalAiProcessing: false,
 };
 
 const SHARE_RANK: Record<ShareLevel, number> = {
@@ -56,6 +61,7 @@ const WRITE_TOOLS = new Set([
   "add_link",
   "add_timeline_entry",
   "remember",
+  "record_action",
 ]);
 
 const DELETE_TOOLS = new Set(["delete_page", "restore_page"]);
@@ -71,21 +77,31 @@ export function parsePolicies(value: unknown): OrgPolicies {
     reviewApprovers: raw.reviewApprovers === "owners" ? "owners" : "members",
     acceptShares: raw.acceptShares !== false,
     maxShareLevel: parseShareLevel(raw.maxShareLevel, "digest"),
+    externalAiProcessing: raw.externalAiProcessing === true,
   };
 }
 
 export function normalizeToken(token: { name: string } & Partial<TokenRecord>): TokenRecord {
+  if (!Number.isSafeInteger(token.orgId) || Number(token.orgId) < 1) {
+    throw new Error("An authenticated workspace ID is required");
+  }
   const role: ActorRole = token.role === "owner" || token.role === "member" || token.role === "agent"
     ? token.role
     : "agent";
+  let source: TokenRecord["source"];
+  if (token.source?.kind === "registered") {
+    const parsed = parseReportedSource(token.source.harness, token.source.label);
+    if (parsed.harness) source = { harness: parsed.harness, label: parsed.sourceLabel, kind: "registered" };
+  }
   return {
     name: token.name,
-    orgId: Number.isFinite(token.orgId) ? Number(token.orgId) : 1,
+    orgId: Number(token.orgId),
     role,
     canWrite: token.canWrite !== false,
     kind: token.kind === "session" || token.kind === "oauth" ? token.kind : "token",
     email: token.email ?? null,
     scopes: token.scopes ?? [],
+    ...(source ? { source } : {}),
   };
 }
 

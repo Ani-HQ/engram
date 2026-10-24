@@ -1,12 +1,15 @@
 import { createHash, randomBytes } from "node:crypto";
-import { authenticateSecret, createLoginInvite, createSession } from "./auth";
+import { connectorBranding } from "../../shim/branding.js";
+import { authenticateSecret, createLoginInvite, createSession, type TokenRecord } from "./auth";
 import { parseSessionCookie, serializeSessionCookie } from "./cookies";
 import { sql } from "./db";
 import { sha256 } from "./hash";
-import { loginLinkText, sendMail } from "./mail";
+import { devLoginLinksAllowed, loginLinkText, sendMail } from "./mail";
 import { localJwks, oauthSigningEnabled, signJwt } from "./oauth-keys";
 import { canonicalResource, corsHeaders, oauthIssuer, resourceHost } from "./oauth";
-import { acceptInvite, findMemberByEmail, normalizeEmail } from "./orgs";
+import { renderOAuthAuthorizePage } from "./oauth-view";
+import { acceptInvite, findMemberByEmail, getOrg, memberInOrg, normalizeEmail } from "./orgs";
+import { isHuman } from "./policies";
 
 const CODE_TTL_MS = 5 * 60 * 1000;
 const REFRESH_TTL_DAYS = 30;
@@ -47,9 +50,13 @@ export function redirectAllowed(uri: string): boolean {
 }
 
 export function authorizationServerMetadata(host: string) {
+  const branding = connectorBranding(host);
   const issuer = oauthIssuer(host);
   return {
     issuer,
+    display_name: branding.title,
+    logo_uri: branding.icons[0].src,
+    service_documentation: branding.websiteUrl,
     authorization_endpoint: `${issuer}/oauth/authorize`,
     token_endpoint: `${issuer}/oauth/token`,
     registration_endpoint: `${issuer}/oauth/register`,
@@ -125,7 +132,7 @@ async function authorize(req: Request, url: URL): Promise<Response> {
     if (!email) return authorizePage(parsed, "Enter the email on your engram org.");
     return sendAuthorizeLink(req, parsed, email);
   }
-  const session = await sessionFromCookie(req);
+  const session = await connectorSession(req);
   if (session?.email) return completeAuthorize(req, parsed, session.email, session.orgId);
   return authorizePage(parsed);
 }
@@ -160,7 +167,11 @@ async function sendAuthorizeLink(
     text: loginLinkText(continueUrl),
   });
   if (delivery === "failed") return authorizePage(parsed, "Could not send the email.");
-  if (delivery === "skipped") return authorizePage(parsed, "", continueUrl);
+  if (delivery === "skipped") {
+    return devLoginLinksAllowed()
+      ? authorizePage(parsed, "", continueUrl)
+      : new Response("Email login is not configured.", { status: 503 });
+  }
   return authorizePage(parsed, "Check your email.");
 }
 
@@ -171,11 +182,11 @@ async function continueAuthorize(req: Request, url: URL): Promise<Response> {
   const accepted = await acceptInvite(invite);
   if (!accepted?.member.email) return new Response("That login link is not valid.", { status: 401 });
   const rows = await sql`
-    SELECT * FROM oauth_requests
-    WHERE id = ${rid} AND email = ${accepted.member.email} AND used_at IS NULL AND expires_at > now()`;
+    UPDATE oauth_requests SET used_at = now()
+    WHERE id = ${rid} AND email = ${accepted.member.email} AND used_at IS NULL AND expires_at > now()
+    RETURNING *`;
   if (!rows.length) return new Response("That sign-in request expired.", { status: 401 });
   const parsed = requestToParams(rows[0]);
-  await sql`UPDATE oauth_requests SET used_at = now() WHERE id = ${rid}`;
   const session = await createSession({
     orgId: accepted.org.id,
     name: accepted.member.email,
@@ -193,14 +204,17 @@ async function completeAuthorize(
   email: string,
   orgId: number,
 ): Promise<Response> {
+  const member = await memberInOrg(orgId, email);
+  if (!member || !await getOrg(orgId)) return oauthError("invalid_grant", "workspace access is no longer available", 400);
   const code = `oac_${randomBytes(24).toString("base64url")}`;
   await sql`
-    INSERT INTO oauth_codes (sha256_hash, client_id, email, org_id, redirect_uri, code_challenge, resource, scope, expires_at)
+    INSERT INTO oauth_codes (sha256_hash, client_id, email, org_id, membership_id, redirect_uri, code_challenge, resource, scope, expires_at)
     VALUES (
       ${sha256(code)},
       ${parsed.clientId},
       ${email},
       ${orgId},
+      ${member.id},
       ${parsed.redirectUri},
       ${parsed.challenge},
       ${parsed.resource},
@@ -237,11 +251,16 @@ async function issueToken(req: Request): Promise<Response> {
   if (!verifyPkce(verifier, String(row.code_challenge))) {
     return oauthError("invalid_grant", "pkce failed", 400);
   }
-  await sql`UPDATE oauth_codes SET used_at = now() WHERE id = ${row.id}`;
+  const claimed = await sql`
+    UPDATE oauth_codes SET used_at = now()
+    WHERE id = ${row.id} AND used_at IS NULL AND expires_at > now()
+    RETURNING id`;
+  if (!claimed.length) return oauthError("invalid_grant", "code is invalid", 400);
   return mintedTokens(req, {
     clientId,
     email: String(row.email),
     orgId: Number(row.org_id),
+    membershipId: Number(row.membership_id),
     resource: String(row.resource),
     scope: String(row.scope ?? ""),
   });
@@ -263,6 +282,7 @@ async function refreshAccess(req: Request, body: Record<string, unknown>): Promi
     clientId,
     email: String(row.email),
     orgId: Number(row.org_id),
+    membershipId: Number(row.membership_id),
     resource: String(row.resource),
     scope: String(row.scope ?? ""),
   }, false);
@@ -270,9 +290,19 @@ async function refreshAccess(req: Request, body: Record<string, unknown>): Promi
 
 async function mintedTokens(
   req: Request,
-  input: { clientId: string; email: string; orgId: number; resource: string; scope: string },
+  input: { clientId: string; email: string; orgId: number; membershipId: number; resource: string; scope: string },
   issueRefresh = true,
 ): Promise<Response> {
+  // Keep codes, refresh credentials and access JWTs bound to the exact live
+  // membership. Even a refresh selected just before removal cannot mint access
+  // into a later membership with the same email address.
+  if (!Number.isSafeInteger(input.membershipId) || input.membershipId < 1) {
+    return oauthError("invalid_grant", "workspace access is no longer available", 400);
+  }
+  const member = await memberInOrg(input.orgId, input.email);
+  if (!member || member.id !== input.membershipId || !await getOrg(input.orgId)) {
+    return oauthError("invalid_grant", "workspace access is no longer available", 400);
+  }
   const host = resourceHost(req);
   const issuer = oauthIssuer(host);
   const audience = input.resource || canonicalResource(host);
@@ -280,6 +310,7 @@ async function mintedTokens(
     sub: input.email,
     email: input.email,
     org_id: input.orgId,
+    membership_id: member.id,
     client_id: input.clientId,
     scope: input.scope || "openid email offline_access memory:read memory:write",
   }, { issuer, audience });
@@ -292,12 +323,13 @@ async function mintedTokens(
   if (issueRefresh) {
     const refresh = `orf_${randomBytes(24).toString("base64url")}`;
     await sql`
-      INSERT INTO oauth_refresh_tokens (sha256_hash, client_id, email, org_id, resource, scope, expires_at)
+      INSERT INTO oauth_refresh_tokens (sha256_hash, client_id, email, org_id, membership_id, resource, scope, expires_at)
       VALUES (
         ${sha256(refresh)},
         ${input.clientId},
         ${input.email},
         ${input.orgId},
+        ${member.id},
         ${audience},
         ${String(payload.scope)},
         ${new Date(Date.now() + REFRESH_TTL_DAYS * 86_400_000)}
@@ -377,9 +409,12 @@ export async function fetchCimd(clientId: string, fetchImpl: typeof fetch = fetc
   }
 }
 
-async function sessionFromCookie(req: Request) {
+export async function connectorSession(req: Request, authenticate = authenticateSecret): Promise<TokenRecord | null> {
   const raw = parseSessionCookie(req.headers.get("cookie"));
-  return raw ? authenticateSecret(raw) : null;
+  const actor = raw ? await authenticate(raw) : null;
+  // A delegated access token copied into a console cookie is not a fresh human
+  // login and must never authorize a new connector with broader scopes.
+  return actor?.kind === "session" && isHuman(actor) ? actor : null;
 }
 
 function authorizeError(error: { error: string; description: string; redirectUri?: string; state?: string }): Response {
@@ -394,52 +429,7 @@ function authorizeError(error: { error: string; description: string; redirectUri
 }
 
 function authorizePage(parsed: AuthorizeParams, message = "", link = ""): Response {
-  const fields = [
-    hidden("client_id", parsed.clientId),
-    hidden("redirect_uri", parsed.redirectUri),
-    hidden("code_challenge", parsed.challenge),
-    hidden("code_challenge_method", "S256"),
-    hidden("state", parsed.state),
-    hidden("resource", parsed.resource),
-    hidden("scope", parsed.scope),
-    hidden("response_type", "code"),
-  ].join("");
-  const extra = link
-    ? `<p>Local mailer is off. Open <a href="${escapeHtml(link)}">this link</a>.</p>`
-    : message ? `<p>${escapeHtml(message)}</p>` : "<p>We email a login link. Same one as the console.</p>";
-  const html = `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>engram</title>
-<style>
-  body { font: 16px/1.4 ui-sans-serif, system-ui; background: #111; color: #f4f1ea; margin: 0; }
-  main { max-width: 28rem; margin: 12vh auto; padding: 0 1.25rem; }
-  input, button { width: 100%; box-sizing: border-box; font: inherit; padding: 0.7rem 0.8rem; margin: 0.4rem 0; }
-  button { background: #f4f1ea; color: #111; border: 0; cursor: pointer; }
-</style></head>
-<body><main>
-  <h1>engram</h1>
-  ${extra}
-  <form method="post">
-    ${fields}
-    <label>email <input type="email" name="email" autocomplete="email" required></label>
-    <button type="submit">email a link</button>
-  </form>
-</main></body></html>`;
-  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
-}
-
-function hidden(name: string, value: string): string {
-  return `<input type="hidden" name="${escapeHtml(name)}" value="${escapeHtml(value)}">`;
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, ch => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  }[ch] ?? ch));
+  return renderOAuthAuthorizePage(parsed, message, link);
 }
 
 function oauthError(error: string, description: string, status: number): Response {

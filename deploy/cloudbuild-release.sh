@@ -1,74 +1,14 @@
 #!/usr/bin/env bash
-# Cloud Build release: service + dream job + nightly schedule.
-#
-# Provider keys are env "unset" on this path so a missing TypeSafe/Voyage
-# secret, or a secret the runtime SA cannot read, cannot block main.
-# setup-gcp.sh creates the secret names; remount them after IAM is granted.
+# No IAM mutations, secret generation, automatic traffic activation or provider
+# opt-in. Invoke with an approved image/backup and prepared least-privilege IAM.
 set -euo pipefail
-
-PROJECT="${PROJECT_ID:?PROJECT_ID is required}"
-REGION="${REGION:-us-central1}"
-IMAGE="gcr.io/${PROJECT}/engram:${BUILD_ID:?BUILD_ID is required}"
-SA="engram-runtime@${PROJECT}.iam.gserviceaccount.com"
-INSTANCE="${PROJECT}:${REGION}:engram-pg"
-
-ensure_secret() {
-  local name="$1"
-  if ! gcloud secrets describe "$name" --project "$PROJECT" >/dev/null 2>&1; then
-    printf 'unset' | gcloud secrets create "$name" --project "$PROJECT" --data-file=- || return 1
-  fi
-  gcloud secrets add-iam-policy-binding "$name" --project "$PROJECT" \
-    --member="serviceAccount:${SA}" --role="roles/secretmanager.secretAccessor" >/dev/null \
-    || echo "[release] accessor binding for ${name} already set or not grantable"
-}
-
-ensure_secret typesafe-api-key || echo "[release] typesafe-api-key not created"
-ensure_secret voyage-api-key || echo "[release] voyage-api-key not created"
-ensure_secret resend-api-key || echo "[release] resend-api-key not created"
-if ! gcloud secrets describe engram-oauth-private-key --project "$PROJECT" >/dev/null 2>&1; then
-  openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
-    | gcloud secrets create engram-oauth-private-key --project "$PROJECT" --data-file=- \
-    || echo "[release] engram-oauth-private-key not created"
-fi
-gcloud secrets add-iam-policy-binding engram-oauth-private-key --project "$PROJECT" \
-  --member="serviceAccount:${SA}" --role="roles/secretmanager.secretAccessor" >/dev/null \
-  || echo "[release] accessor binding for engram-oauth-private-key already set or not grantable"
-
-SECRETS="ENGRAM_DB_URL_TEMPLATE=engram-db-url-template:latest"
-ENV_VARS="GBRAIN_HOMES_DIR=/tmp/gbrain-homes,ENGRAM_CLOUDSQL_INSTANCE=${INSTANCE},REFLEX_MODEL=jev-latest,ENGRAM_EMBEDDING_MODEL=voyage:voyage-4-large,ENGRAM_EMBEDDING_DIMENSIONS=1024,TYPESAFE_API_KEY=unset,VOYAGE_API_KEY=unset"
-
-echo "[release] deploying service ${IMAGE}"
-gcloud run deploy engram \
-  --project="$PROJECT" \
-  --image="$IMAGE" \
-  --region="$REGION" \
-  --platform=managed \
-  --allow-unauthenticated \
-  --service-account="$SA" \
-  --add-cloudsql-instances="$INSTANCE" \
-  --set-secrets="$SECRETS" \
-  --set-env-vars="$ENV_VARS" \
-  --min-instances=0 \
-  --max-instances=1 \
-  --memory=2Gi \
-  --cpu=1 \
-  --timeout=900 \
-  --execution-environment=gen2
-
-echo "[release] deploying dream job"
-gcloud run jobs deploy engram-dream \
-  --project="$PROJECT" \
-  --image="$IMAGE" \
-  --region="$REGION" \
-  --service-account="$SA" \
-  --set-cloudsql-instances="$INSTANCE" \
-  --set-secrets="$SECRETS" \
-  --set-env-vars="${ENV_VARS},ENGRAM_JOB=dream" \
-  --memory=2Gi \
-  --cpu=1 \
-  --task-timeout=900s \
-  --max-retries=1 \
-  || echo "[release] dream job skipped"
-
-ENGRAM_PROJECT="$PROJECT" ENGRAM_REGION="$REGION" deploy/setup-scheduler.sh \
-  || echo "[release] scheduler setup skipped (re-run deploy/setup-scheduler.sh)"
+engram_project="${PROJECT_ID:?PROJECT_ID is required}"
+engram_region="${REGION:-us-central1}"
+engram_image="${ENGRAM_RELEASE_IMAGE:-gcr.io/${engram_project}/engram:${BUILD_ID:?BUILD_ID is required}}"
+engram_command="${ENGRAM_RELEASE_COMMAND:-plan}"
+engram_state="${ENGRAM_RELEASE_STATE:-release-state.json}"
+engram_args=("$engram_command" --project "$engram_project" --region "$engram_region" --image "$engram_image" --state-file "$engram_state" --public-url "${ENGRAM_PUBLIC_URL:-https://engram.ani.computer}")
+if [ -n "${ENGRAM_BACKUP_ID:-}" ]; then engram_args+=(--backup-id "$ENGRAM_BACKUP_ID"); fi
+if [ -n "${ENGRAM_SMOKE_TOKEN_SECRET:-}" ]; then engram_args+=(--smoke-token-secret "$ENGRAM_SMOKE_TOKEN_SECRET"); fi
+if [ "${ENGRAM_SMOKE_TOKEN_STDIN:-0}" = 1 ]; then engram_args+=(--smoke-token-stdin); fi
+exec python3 deploy/release.py "${engram_args[@]}"

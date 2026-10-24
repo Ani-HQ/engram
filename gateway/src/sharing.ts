@@ -1,4 +1,7 @@
+import { failureCode } from "./diagnostics";
 import { ensureBrain } from "./brain";
+import type postgres from "postgres";
+import { requireHostedWriteAccess } from "./billing";
 import { currentContext, currentOrg } from "./context";
 import { dataSql, sql } from "./db";
 import { listActiveEntries, type MemoryEntry } from "./memory-entries";
@@ -10,6 +13,7 @@ import {
 } from "./orgs";
 import {
   capShareLevel,
+  normalizeToken,
   parseShareLevel,
   type ShareLevel,
   type TokenRecord,
@@ -142,7 +146,7 @@ export async function createShareRule(input: {
     RETURNING *`;
   const rule = rowToRule(rows[0]);
   await backfillRule(rule).catch(e => {
-    console.error("[sharing] backfill failed:", String(e).slice(0, 160));
+    console.error("[sharing] backfill failed:", failureCode(e));
   });
   return rule;
 }
@@ -195,7 +199,7 @@ export async function shareAfterWrite(input: { kind: "trail"; trail: Trail } | {
     const target = await getOrg(rule.targetOrg);
     if (!target || target.kind !== "team" || !target.policies.acceptShares) continue;
     await mirror(input, rule, target).catch(e => {
-      console.error("[sharing] mirror failed:", String(e).slice(0, 160));
+      console.error("[sharing] mirror failed:", failureCode(e));
     });
   }
 }
@@ -270,10 +274,11 @@ export async function assertCanShare(email: string, source: Org, targetOrgId: nu
 }
 
 async function backfillRule(rule: ShareRule): Promise<void> {
-  const source = await getOrg(rule.sourceOrg);
   const target = await getOrg(rule.targetOrg);
-  if (!source || !target || rule.pausedAt || rule.revokedAt) return;
-  const { trails, entries } = await collectMatches(source, rule.match);
+  if (!target) return;
+  const authority = await resolveShareAuthority(rule, target);
+  if (!authority) return;
+  const { trails, entries } = await collectMatches(authority.source, rule.match, authority.sourceToken);
   for (const trail of trails) {
     await mirror({ kind: "trail", trail }, rule, target);
   }
@@ -282,9 +287,8 @@ async function backfillRule(rule: ShareRule): Promise<void> {
   }
 }
 
-async function collectMatches(source: Org, match: ShareMatch): Promise<{ trails: Trail[]; entries: MemoryEntry[] }> {
-  const ctx = currentContext();
-  const token = ctx?.token ?? { name: "share", orgId: source.id, role: "owner" as const, canWrite: true, kind: "session" as const, email: null, scopes: [] };
+async function collectMatches(source: Org, match: ShareMatch, token = currentContext()?.token): Promise<{ trails: Trail[]; entries: MemoryEntry[] }> {
+  if (!token || token.orgId !== source.id) throw new Error("source workspace authorization required");
   return withOrg(source, token, async () => {
     const trails = (await listAllTrails()).filter(trail => ruleMatches(match, itemFromTrail(trail)));
     const entries = (await listAllActiveEntries()).filter(entry => ruleMatches(match, itemFromEntry(entry)));
@@ -314,17 +318,41 @@ async function listAllActiveEntries(): Promise<MemoryEntry[]> {
   }
 }
 
+// A standing rule is consent, not a permanent copy of membership. Re-check both
+// ends for each mirror and construct a target-bound service actor only after the
+// current memberships are known. A source credential never becomes a target one.
+export async function resolveShareAuthority(rule: ShareRule, target: Org, db: postgres.Sql = sql): Promise<{
+  source: Org;
+  sourceToken: TokenRecord;
+  targetToken: TokenRecord;
+} | null> {
+  if (rule.pausedAt || rule.revokedAt || target.id !== rule.targetOrg
+    || target.kind !== "team" || !target.policies.acceptShares) return null;
+  const source = await getOrg(rule.sourceOrg, db);
+  if (!source || source.kind !== "personal" || source.id === target.id) return null;
+  const sourceMember = await memberInOrg(source.id, rule.ownerEmail, db);
+  const targetMember = await memberInOrg(target.id, rule.ownerEmail, db);
+  if (!sourceMember || sourceMember.role !== "owner" || !targetMember) return null;
+  const actor = { name: `share:${rule.id}`, kind: "session" as const, email: sourceMember.email, canWrite: true };
+  return {
+    source,
+    sourceToken: normalizeToken({ ...actor, orgId: source.id, role: sourceMember.role }),
+    targetToken: normalizeToken({ ...actor, orgId: target.id, role: targetMember.role }),
+  };
+}
+
 async function mirror(
   input: { kind: "trail"; trail: Trail } | { kind: "entry"; entry: MemoryEntry },
   rule: ShareRule,
   target: Org,
 ): Promise<void> {
-  const ctx = currentContext();
-  const token = ctx?.token;
-  if (!token) return;
+  const authority = await resolveShareAuthority(rule, target);
+  if (!authority) return;
+  const token = authority.targetToken;
   const effective = capShareLevel(rule.level, target.policies.maxShareLevel);
-  await ensureBrain(target);
   await withOrg(target, token, async () => {
+    await requireHostedWriteAccess(token);
+    await ensureBrain(target);
     if (input.kind === "trail") {
       const copied = await writeSharedTrail(input.trail, effective);
       await recordCopy(rule.id, "trail", input.trail.id, target.id, copied.digestSlug, copied.id);
@@ -384,8 +412,10 @@ async function writeSharedEntry(entry: MemoryEntry, token: TokenRecord): Promise
     text,
     topic: `shared/${entry.id}`,
   });
+  if (result.isError) throw new Error("could not share memory entry");
   const parsed = parseToolJson(result);
-  return typeof parsed?.slug === "string" ? parsed.slug : `shared/${entry.id}`;
+  if (typeof parsed?.slug !== "string" || !parsed.slug) throw new Error("could not share memory entry");
+  return parsed.slug;
 }
 
 async function recordCopy(
@@ -435,7 +465,12 @@ async function revokeCopy(copy: any): Promise<void> {
   const target = await getOrg(Number(copy.target_org));
   const token = currentContext()?.token;
   if (!target || !token) return;
-  await withOrg(target, token, async () => {
+  // Revocation removes the exact copies recorded for an authorized source rule.
+  // It remains available after payment/membership loss and grants no target read
+  // or general write access to the original source credential.
+  const cleanupToken = normalizeToken({ ...token, name: `share-revocation:${copy.rule_id}`, orgId: target.id, role: "agent", canWrite: false });
+  await withOrg(target, cleanupToken, async () => {
+    await ensureBrain(target);
     if (copy.target_slug) await deleteDigestPage(String(copy.target_slug));
     if (copy.source_kind === "trail") {
       await dataSql()`DELETE FROM trails WHERE id = ${String(copy.source_id)}`.catch(() => {});

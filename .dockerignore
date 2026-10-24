@@ -7,3 +7,4 @@ docs
 web/fixtures
 web/dev-server.ts
 web/*.test.ts
+launch-demo

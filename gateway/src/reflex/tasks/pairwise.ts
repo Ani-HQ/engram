@@ -1,5 +1,5 @@
 import { config } from "../../config";
-import { choiceOf } from "../answers";
+import { choiceOf, confidenceOf } from "../answers";
 import type { ReflexAnswer, ReflexClient, ReflexQuestion } from "../types";
 
 export const RELATIONS = ["duplicate", "contradict", "refine", "supersede", "unrelated"] as const;
@@ -38,7 +38,7 @@ export function parsePairwise(
   const answer = answers.relation;
   return {
     relation: raw && RELATIONS.includes(raw as MemoryRelation) ? raw as MemoryRelation : null,
-    confidence: answer && answer.type === "choice" ? answer.confidence ?? null : null,
+    confidence: confidenceOf(answer),
   };
 }
 
@@ -46,9 +46,9 @@ export async function judgePair(
   client: ReflexClient,
   a: string,
   b: string,
-): Promise<{ relation: MemoryRelation | null; confidence: number | null; model: string | null }> {
+): Promise<{ relation: MemoryRelation | null; confidence: number | null; model: string | null; requestedModel?: string; modelReported?: boolean }> {
   if (!client.available()) return { relation: null, confidence: null, model: null };
   const result = await client.evaluate(buildPairwiseQuestions(a, b));
   if (!result) return { relation: null, confidence: null, model: null };
-  return { ...parsePairwise(result.answers), model: result.model };
+  return { ...parsePairwise(result.answers), model: result.model, requestedModel: result.requestedModel, modelReported: result.modelReported };
 }

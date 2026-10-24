@@ -11,7 +11,7 @@ import { rerankRecallHits } from "../gateway/src/reflex/recall";
 import type { ReflexAnswer } from "../gateway/src/reflex/types";
 
 process.env.ENGRAM_DB_URL_TEMPLATE ??= "postgresql://postgres:postgres@localhost:1/__DB__";
-process.env.TYPESAFE_API_KEY = "test-key";
+const FIXTURE_MODEL = "jev-1.13.0";
 
 describe("reflex answers", () => {
   test("choiceOf requires confidence", () => {
@@ -67,7 +67,7 @@ describe("reflex parsers", () => {
       longevity: { type: "choice", choice: "durable", confidence: 0.8 },
       sensitivity: { type: "noul", noul: 0.1 },
       actionability: { type: "noul", noul: 0.9 },
-    }, "jev-latest", 0.55);
+    }, FIXTURE_MODEL, 0.55);
     expect(classified.kind).toBe("decision");
     expect(classified.longevity).toBe("durable");
     expect(parsePairwise({
@@ -90,22 +90,26 @@ describe("reflex parsers", () => {
 describe("reflex client", () => {
   test("retries 429 then succeeds", async () => {
     let calls = 0;
-    const client = new TypesafeReflexClient(async () => {
+    const models: string[] = [];
+    const client = new TypesafeReflexClient(async (_url, init) => {
       calls += 1;
+      models.push(JSON.parse(String(init?.body)).model);
       if (calls === 1) {
         return new Response("slow down", { status: 429, headers: { "retry-after": "0.01" } });
       }
       return Response.json({
-        model: "jev-latest",
+        model: FIXTURE_MODEL,
         answers: { kind: { type: "choice", choice: "fact", confidence: 0.9 } },
       });
-    }, Date.now, { apiKey: "test-key" });
+    }, Date.now, { apiKey: "test-key", model: FIXTURE_MODEL });
     const result = await client.evaluate({
       state: { memory: "x" },
       questions: { kind: { type: "choice", instructions: "x", criteria: { fact: "fact" } } },
     });
     expect(result?.answers.kind).toEqual({ type: "choice", choice: "fact", confidence: 0.9 });
     expect(calls).toBe(2);
+    expect(models).toEqual([FIXTURE_MODEL, FIXTURE_MODEL]);
+    expect(result?.requestedModel).toBe(FIXTURE_MODEL);
   });
 
   test("hard-disables on 401", async () => {

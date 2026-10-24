@@ -1,9 +1,12 @@
+import { failureCode } from "./diagnostics";
 import { randomBytes } from "node:crypto";
+import type postgres from "postgres";
 import type { ContextOrg } from "./context";
 import { runWithContext } from "./context";
-import { config } from "./config";
-import { ensureDatabase, poolFor, sql, migrateOrgDataTables } from "./db";
+import { config, databaseSecurity } from "./config";
+import { ensureDatabase, poolFor, sql, migrateTenantDataTables, usingOrgPool } from "./db";
 import { sha256 } from "./hash";
+import { triggerProvisioning } from "./provisioning-trigger";
 import {
   DEFAULT_POLICIES,
   parsePolicies,
@@ -15,6 +18,8 @@ import {
 
 export interface Org extends ContextOrg {
   createdAt: string;
+  provisioningStatus: "pending" | "provisioning" | "ready" | "failed";
+  provisioningError: string | null;
 }
 
 export const ANI_HQ_ORG: Org = {
@@ -27,6 +32,8 @@ export const ANI_HQ_ORG: Org = {
   dataDb: "engram_gateway",
   policies: DEFAULT_POLICIES,
   createdAt: "1970-01-01T00:00:00.000Z",
+  provisioningStatus: "ready",
+  provisioningError: null,
 };
 
 export interface OrgMember {
@@ -37,7 +44,7 @@ export interface OrgMember {
 }
 
 function rowToOrg(row: any): Org {
-  return {
+  const org: Org = {
     id: Number(row.id),
     name: String(row.name),
     slug: String(row.slug),
@@ -47,36 +54,59 @@ function rowToOrg(row: any): Org {
     dataDb: String(row.data_db),
     policies: parsePolicies(row.policies),
     createdAt: new Date(row.created_at).toISOString(),
+    provisioningStatus: row.provisioning_status === undefined || row.provisioning_status === "ready"
+      ? "ready" : row.provisioning_status === "pending" || row.provisioning_status === "provisioning" ? row.provisioning_status : "failed",
+    provisioningError: row.provisioning_error_code ? String(row.provisioning_error_code) : null,
   };
+  assertOrgStorage(org);
+  return org;
 }
 
-export async function getOrg(id: number): Promise<Org | null> {
-  try {
-    const rows = await sql`SELECT * FROM orgs WHERE id = ${id}`;
-    return rows[0] ? rowToOrg(rows[0]) : null;
-  } catch {
-    return id === 1 ? ANI_HQ_ORG : null;
+// Storage bindings are assigned by provisioning, never by a request. Reject a
+// partial provision or corrupt binding before it can point a tenant at another
+// tenant's database/home. Org 1 retains the installation's legacy databases.
+export function assertOrgStorage(org: Pick<ContextOrg, "id" | "brainDb" | "dataDb" | "homeDir">): void {
+  if (!Number.isSafeInteger(org.id) || org.id < 1) throw new Error("invalid org identity");
+  const expected = org.id === 1
+    ? { brainDb: config.brainDb, dataDb: "engram_gateway", homeDir: "brain" }
+    : { brainDb: `brain_org_${org.id}`, dataDb: `brain_org_${org.id}`, homeDir: `org-${org.id}` };
+  if (org.brainDb !== expected.brainDb || org.dataDb !== expected.dataDb || org.homeDir !== expected.homeDir) {
+    throw new Error(`invalid storage binding for org ${org.id}`);
   }
 }
 
-export async function listOrgs(): Promise<Org[]> {
-  try {
-    const rows = await sql`SELECT * FROM orgs ORDER BY id`;
-    return rows.map(rowToOrg);
-  } catch {
-    return [ANI_HQ_ORG];
-  }
+export async function getOrg(id: number, db: postgres.Sql = sql): Promise<Org | null> {
+  if (!Number.isSafeInteger(id) || id < 1) return null;
+  const rows = await db`SELECT * FROM orgs WHERE id = ${id}`;
+  return rows[0] ? rowToOrg(rows[0]) : null;
+}
+
+export async function listOrgs(db: postgres.Sql = sql): Promise<Org[]> {
+  const rows = await db`
+    SELECT * FROM orgs
+    WHERE brain_db != 'pending' AND data_db != 'pending' AND home_dir != 'pending'
+      AND provisioning_status = 'ready'
+    ORDER BY id`;
+  return rows.map(rowToOrg);
 }
 
 export async function resolveOrg(token: TokenRecord): Promise<Org> {
   const found = await getOrg(token.orgId);
   if (found) return found;
-  if (token.orgId === 1) return ANI_HQ_ORG;
   throw new Error(`unknown org ${token.orgId}`);
 }
 
 export async function withOrg<T>(org: ContextOrg, token: TokenRecord, fn: () => Promise<T>): Promise<T> {
-  return runWithContext({ org, token, dataSql: poolFor(org.dataDb) }, fn);
+  assertOrgStorage(org);
+  if (token.orgId !== org.id) throw new Error("Actor and workspace context must match");
+  if ("provisioningStatus" in org && org.provisioningStatus !== "ready") throw new WorkspaceProvisioningError();
+  return usingOrgPool(org.dataDb, dataSql => runWithContext({ org, token, dataSql }, fn));
+}
+
+export class WorkspaceProvisioningError extends Error {
+  readonly status = 503;
+  readonly code = "workspace_provisioning";
+  constructor() { super("Your workspace is being prepared. Please retry shortly."); }
 }
 
 export function slugFromName(name: string): string {
@@ -112,27 +142,37 @@ export async function createOrg(
   if (kind !== "team" && kind !== "personal") throw new Error("invalid org kind");
 
   const slug = await uniqueSlug(kind === "personal" ? personalSlugBase(email) : trimmed);
-  const inserted = await sql`
-    INSERT INTO orgs (name, slug, kind, brain_db, home_dir, data_db, policies)
-    VALUES (${trimmed}, ${slug}, ${kind}, 'pending', 'pending', 'pending', ${sql.json(DEFAULT_POLICIES)})
-    RETURNING *`;
-  const id = Number(inserted[0].id);
-  const brainDb = `brain_org_${id}`;
-  const homeDir = `org-${id}`;
-  await ensureDatabase(brainDb);
-  await migrateOrgDataTables(poolFor(brainDb));
-  const rows = await sql`
-    UPDATE orgs
-    SET brain_db = ${brainDb}, home_dir = ${homeDir}, data_db = ${brainDb}
-    WHERE id = ${id}
-    RETURNING *`;
+  // Assign deterministic bindings before queueing; ordinary requests cannot
+  // activate the store until the separate provisioner marks it ready.
+  const rows = await sql.begin(async tx => {
+    const inserted = await tx`
+      INSERT INTO orgs (name, slug, kind, brain_db, home_dir, data_db, policies)
+      VALUES (${trimmed}, ${slug}, ${kind}, 'pending', 'pending', 'pending', ${sql.json(DEFAULT_POLICIES)})
+      RETURNING id`;
+    const id = Number(inserted[0].id);
+    const brainDb = `brain_org_${id}`;
+    const homeDir = `org-${id}`;
+    const bound = await tx`
+      UPDATE orgs SET brain_db = ${brainDb}, home_dir = ${homeDir}, data_db = ${brainDb}, provisioning_status = 'pending'
+      WHERE id = ${id} RETURNING *`;
+    await tx`INSERT INTO org_members (org_id, email, role) VALUES (${id}, ${email}, 'owner')`;
+    return bound;
+  });
+  const id = Number(rows[0].id);
+  const brainDb = String(rows[0].brain_db);
+  if (databaseSecurity.authority !== "runtime") {
+    await ensureDatabase(brainDb);
+    await migrateTenantDataTables(brainDb);
+    await sql`UPDATE orgs SET provisioning_status = 'ready', provisioned_at = now(), provisioning_error_code = NULL WHERE id = ${id}`;
+    rows[0].provisioning_status = "ready";
+  }
   const org = rowToOrg(rows[0]);
-  await addMember(org.id, email, "owner");
   if (kind === "team") {
     await ensurePersonalOrg(email).catch(e => {
-      console.error("[org] personal org failed:", String(e).slice(0, 160));
+      console.error("[org] personal org failed:", failureCode(e));
     });
   }
+  if (databaseSecurity.authority === "runtime") await triggerProvisioning();
   return org;
 }
 
@@ -200,6 +240,50 @@ export async function listMembers(orgId: number): Promise<OrgMember[]> {
   return rows.map(rowToMember);
 }
 
+export async function removeMember(
+  orgId: number,
+  email: string,
+  db: postgres.Sql = sql,
+): Promise<"removed" | "owner" | "not-found"> {
+  const normalized = normalizeEmail(email);
+  if (!Number.isSafeInteger(orgId) || orgId < 1 || !normalized) return "not-found";
+  return db.begin(async transaction => {
+    const member = await transaction`
+      SELECT role FROM org_members
+      WHERE org_id = ${orgId} AND email = ${normalized}
+      FOR UPDATE`;
+    if (!member.length) return "not-found" as const;
+    // An owner needs an explicit ownership-transfer flow, not a destructive
+    // member control that could leave the tenant without an administrator.
+    if (member[0].role === "owner") return "owner" as const;
+    await transaction`DELETE FROM org_members WHERE org_id = ${orgId} AND email = ${normalized} AND role = 'member'`;
+    await transaction`
+      UPDATE sessions SET revoked_at = now()
+      WHERE org_id = ${orgId} AND email = ${normalized} AND revoked_at IS NULL`;
+    await transaction`
+      UPDATE tokens SET revoked_at = now()
+      WHERE org_id = ${orgId} AND issued_by_email = ${normalized} AND revoked_at IS NULL`;
+    await transaction`
+      UPDATE oauth_refresh_tokens SET revoked_at = now()
+      WHERE org_id = ${orgId} AND email = ${normalized} AND revoked_at IS NULL`;
+    // A previously mailed invite must not restore access just removed here.
+    await transaction`
+      DELETE FROM invites
+      WHERE org_id = ${orgId} AND email = ${normalized} AND accepted_at IS NULL`;
+    return "removed" as const;
+  }) as Promise<"removed" | "owner" | "not-found">;
+}
+
+export async function cancelInvites(orgId: number, email: string, db: postgres.Sql = sql): Promise<number> {
+  const normalized = normalizeEmail(email);
+  if (!Number.isSafeInteger(orgId) || orgId < 1 || !normalized) return 0;
+  const rows = await db`
+    DELETE FROM invites
+    WHERE org_id = ${orgId} AND email = ${normalized} AND accepted_at IS NULL
+    RETURNING id`;
+  return rows.length;
+}
+
 export async function findMemberByEmail(email: string): Promise<OrgMember | null> {
   const normalized = normalizeEmail(email);
   if (!normalized) return null;
@@ -215,10 +299,10 @@ export async function findMemberByEmail(email: string): Promise<OrgMember | null
   return rows[0] ? rowToMember(rows[0]) : null;
 }
 
-export async function memberInOrg(orgId: number, email: string): Promise<OrgMember | null> {
+export async function memberInOrg(orgId: number, email: string, db: postgres.Sql = sql): Promise<OrgMember | null> {
   const normalized = normalizeEmail(email);
-  if (!normalized) return null;
-  const rows = await sql`
+  if (!Number.isSafeInteger(orgId) || orgId < 1 || !normalized) return null;
+  const rows = await db`
     SELECT * FROM org_members WHERE org_id = ${orgId} AND email = ${normalized}`;
   return rows[0] ? rowToMember(rows[0]) : null;
 }
@@ -254,12 +338,15 @@ export async function createInvite(
   return { raw, url: joinUrl(publicUrl, raw) };
 }
 
-export async function acceptInvite(raw: string): Promise<{ org: Org; member: OrgMember } | null> {
-  const rows = await sql`
-    SELECT * FROM invites
+export async function acceptInvite(raw: string, db: postgres.Sql = sql): Promise<{ org: Org; member: OrgMember } | null> {
+  // Claim a one-use link atomically. Two requests must never both provision a
+  // workspace or revive a membership from the same login link.
+  const rows = await db`
+    UPDATE invites SET accepted_at = now()
     WHERE sha256_hash = ${sha256(raw)}
       AND accepted_at IS NULL
-      AND expires_at > now()`;
+      AND expires_at > now()
+    RETURNING *`;
   if (!rows.length) return null;
   const invite = rows[0];
   const pendingName = invite.pending_name ? String(invite.pending_name) : "";
@@ -267,15 +354,21 @@ export async function acceptInvite(raw: string): Promise<{ org: Org; member: Org
     const org = await createOrg(pendingName, String(invite.email));
     const member = await memberInOrg(org.id, String(invite.email));
     if (!member) return null;
-    await sql`UPDATE invites SET accepted_at = now(), org_id = ${org.id} WHERE id = ${invite.id}`;
+    await db`UPDATE invites SET org_id = ${org.id} WHERE id = ${invite.id}`;
     return { org, member };
   }
-  const org = await getOrg(Number(invite.org_id));
+  const org = await getOrg(Number(invite.org_id), db);
   if (!org) return null;
+  if (invite.created_by === "login") {
+    // A login link proves email ownership, not a grant of the role that was
+    // current when it was mailed. Removal/demotion must take effect immediately.
+    const member = await memberInOrg(org.id, String(invite.email), db);
+    return member ? { org, member } : null;
+  }
+  if (org.kind === "personal") return null;
   const member = await addMember(org.id, String(invite.email), invite.role === "owner" ? "owner" : "member");
-  await sql`UPDATE invites SET accepted_at = now() WHERE id = ${invite.id}`;
   await ensurePersonalOrg(member.email).catch(e => {
-    console.error("[org] personal org failed:", String(e).slice(0, 160));
+    console.error("[org] personal org failed:", failureCode(e));
   });
   return { org, member };
 }
@@ -314,9 +407,19 @@ export async function orgHasPage(org: ContextOrg): Promise<boolean> {
   }
 }
 
-export async function orgHasAgentToken(orgId: number): Promise<boolean> {
+// Historical successful page evidence for metadata-only onboarding. This is
+// not a current inventory guarantee: a page may later be deleted, and imported
+// content predating audit receipts cannot be inferred without tenant access.
+export async function orgHasRecordedPage(orgId: number, db: postgres.Sql = sql): Promise<boolean> {
+  const rows = await db`
+    SELECT 1 FROM audit_log WHERE org_id = ${orgId} AND outcome = 'ok'
+      AND tool IN ('remember', 'put_page', 'get_page') LIMIT 1`;
+  return rows.length > 0;
+}
+
+export async function orgHasAgentToken(orgId: number, db: postgres.Sql = sql): Promise<boolean> {
   try {
-    const rows = await sql`
+    const rows = await db`
       SELECT 1 FROM tokens
       WHERE org_id = ${orgId} AND role = 'agent' AND revoked_at IS NULL
       LIMIT 1`;
@@ -327,14 +430,15 @@ export async function orgHasAgentToken(orgId: number): Promise<boolean> {
 }
 
 export function onboardingStep(input: {
-  hasToken: boolean;
-  hasPage: boolean;
+  checks: { agentConnected: boolean; memorySaved: boolean; memoryRecalled: boolean };
+  hasToken?: boolean;
+  hasPage?: boolean;
   kind?: OrgKind;
-}): "connect" | "remember" | "invite" | "done" {
-  if (!input.hasToken) return "connect";
-  if (!input.hasPage) return "remember";
-  if (input.kind === "personal") return "done";
-  return "invite";
+}): "connect" | "remember" | "recall" | "done" {
+  if (!input.checks.agentConnected) return "connect";
+  if (!input.checks.memorySaved) return "remember";
+  if (!input.checks.memoryRecalled) return "recall";
+  return "done";
 }
 
 export function publicUrlFrom(req: Request): string {

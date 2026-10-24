@@ -49,9 +49,11 @@ or `gcloud run jobs execute engram-dream --region us-central1`.
 
 ## Review
 
-The console **review** view lists pending items. Approve may add a link or tag,
-write a derived meta page, or mark a sidecar entry superseded. Reject and defer
-only change queue state. Source-page deletes stay a human console action.
+The authenticated `/api/review` endpoints list and resolve pending items. The
+minimal Activity / Memory / Connect frontend does not expose the review queue.
+Approve may add a link or tag, write a derived meta page, or mark a sidecar entry
+superseded. Reject and defer only change queue state. Human page deletion and
+restoration remain available through the authenticated page API.
 
 ## Providers
 
@@ -61,13 +63,14 @@ only change queue state. Source-page deletes stay a human console action.
 | `VOYAGE_API_KEY` / `voyage-api-key` | `voyage-4-large` at 1024 dims |
 | `RESEND_API_KEY` / `resend-api-key` | Magic-link and invite email |
 | `ENGRAM_MAIL_FROM` | Default `engram@updates.ani.computer` |
-| `REFLEX_MODEL` | default `jev-latest` |
+| `REFLEX_MODEL` | default `jev-1.13.0`; hosted analysis rejects floating aliases |
 
-`typesafe-api-key` is mounted as `TYPESAFE_API_KEY` on the Cloud Run service
-and the `engram-dream` job. Voyage stays unmounted until a real
-`voyage-api-key` exists; a missing Voyage key cannot block main. The nightly
-scheduler is applied in the same build (`deploy/setup-scheduler.sh`); a
-permission miss there does not block the service deploy.
+The staged release binds configured provider secrets to the Cloud Run service
+and `engram-dream` job; keys alone do not enable optional processing without the
+workspace owner's consent. `deploy/setup-scheduler.sh` separately configures the
+nightly invocation. It is an explicit operator setup step, not an automatic
+effect of a merge or the default Cloud Build plan. Follow [RELEASE.md](RELEASE.md)
+for candidate verification, job updates and traffic activation.
 
 If the live brain already has a different embedding width, `maybeEnableVoyage`
 resizes `content_chunks.embedding` after clearing old vectors, then re-inits

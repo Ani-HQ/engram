@@ -1,9 +1,19 @@
-import { spawnSync } from "node:child_process";
-import { config, dbUrl } from "./config";
+import { config } from "./config";
+import { tenantDbUrl } from "./tenant-db";
+import { runBrainCommand } from "./brain";
+import { withMemoryWriteLock } from "./write-coordination";
 import postgres from "postgres";
+import { currentOrg } from "./context";
+import { externalAiAllowed, brainEnvironment } from "./privacy";
+
+function embeddingOrg() {
+  const org = currentOrg();
+  if (!org || !externalAiAllowed(org)) throw new Error("Embedding setup requires an opted-in workspace context");
+  return org;
+}
 
 export async function currentEmbeddingWidth(): Promise<number | null> {
-  const sql = postgres(dbUrl(config.brainDb), { max: 1, onnotice: () => {} });
+  const sql = postgres(tenantDbUrl(embeddingOrg().brainDb), { max: 1, onnotice: () => {} });
   try {
     const rows = await sql`
       SELECT atttypmod AS dims
@@ -19,7 +29,7 @@ export async function currentEmbeddingWidth(): Promise<number | null> {
 }
 
 export async function resizeEmbeddingColumn(dims: number): Promise<void> {
-  const sql = postgres(dbUrl(config.brainDb), { max: 1, onnotice: () => {} });
+  const sql = postgres(tenantDbUrl(embeddingOrg().brainDb), { max: 1, onnotice: () => {} });
   try {
     await sql.begin(async tx => {
       await tx`DROP INDEX IF EXISTS idx_chunks_embedding`;
@@ -34,14 +44,8 @@ export async function resizeEmbeddingColumn(dims: number): Promise<void> {
   }
 }
 
-export function initVoyageBrain() {
-  const env = {
-    ...(process.env as Record<string, string>),
-    GBRAIN_HOME: `${config.gbrainHomesDir}/brain`,
-    GBRAIN_DATABASE_URL: dbUrl(config.brainDb),
-    VOYAGE_API_KEY: config.voyage.apiKey,
-  };
-  const result = spawnSync(config.gbrainBin, [
+export async function initVoyageBrain() {
+  await runBrainCommand(embeddingOrg(), [
     "init",
     "--non-interactive",
     "--force",
@@ -50,38 +54,20 @@ export function initVoyageBrain() {
     config.voyage.model,
     "--embedding-dimensions",
     String(config.voyage.dimensions),
-  ], {
-    env,
-    timeout: 180_000,
-    encoding: "utf8",
-  });
-  if (result.status !== 0) {
-    throw new Error(
-      `voyage init failed (status=${result.status}): ${(result.stderr || result.stdout || "").slice(-400)}`,
-    );
-  }
+  ], 180_000);
 }
 
 export async function maybeEnableVoyage(): Promise<{ changed: boolean; width: number | null }> {
+  if (!externalAiAllowed()) return { changed: false, width: null };
   if (!config.voyage.apiKey) return { changed: false, width: await currentEmbeddingWidth() };
   const width = await currentEmbeddingWidth();
   if (width && width !== config.voyage.dimensions) {
     console.error(`[embed] resizing content_chunks.embedding from ${width} to ${config.voyage.dimensions}`);
     await resizeEmbeddingColumn(config.voyage.dimensions);
   }
-  initVoyageBrain();
-  const embed = spawnSync(config.gbrainBin, ["embed", "--stale"], {
-    env: {
-      ...(process.env as Record<string, string>),
-      GBRAIN_HOME: `${config.gbrainHomesDir}/brain`,
-      GBRAIN_DATABASE_URL: dbUrl(config.brainDb),
-      VOYAGE_API_KEY: config.voyage.apiKey,
-    },
-    timeout: 300_000,
-    encoding: "utf8",
+  await withMemoryWriteLock(async () => {
+    await initVoyageBrain();
+    await runBrainCommand(embeddingOrg(), ["embed", "--stale"],300_000);
   });
-  if (embed.status !== 0) {
-    console.warn("[embed] stale re-embed skipped:", (embed.stderr || embed.stdout || "").slice(0, 200));
-  }
   return { changed: width !== config.voyage.dimensions, width: config.voyage.dimensions };
 }

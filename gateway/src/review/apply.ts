@@ -1,10 +1,10 @@
 import { audit } from "../audit";
 import type { TokenRecord } from "../auth";
 import { brainClient } from "../brain";
-import { currentOrg } from "../context";
-import { ANI_HQ_ORG } from "../orgs";
-import { canApproveReview, normalizeToken } from "../policies";
+import { requireContext } from "../context";
+import { canApproveReview, hasOauthScope } from "../policies";
 import { getMemoryEntry, setEntryStatus } from "../memory-entries";
+import { withMemoryWriteLock } from "../write-coordination";
 import { getReviewItem, setReviewState, type ReviewItem } from "./store";
 
 const SAFE_KINDS = new Set([
@@ -34,22 +34,30 @@ export async function resolveReview(
   id: number,
   action: "approve" | "reject" | "defer",
 ): Promise<{ item: ReviewItem | null; error?: string }> {
+  const ctx = requireContext();
+  if (token.orgId !== ctx.org.id || token.name !== ctx.token.name) throw new Error("Review actor and workspace context must match");
+  // Permission comes from the authenticated context, never a caller's role copy.
+  if (!canApproveReview(ctx.token, ctx.org.policies) || !hasOauthScope(ctx.token, "memory:write")) return { item: null, error: "forbidden" };
+  if (!Number.isSafeInteger(id) || id < 1 || !["approve", "reject", "defer"].includes(action)) return { item: null, error: "bad request" };
+  // A workspace-wide transaction lock serializes competing resolutions across
+  // gateway instances and spans the review log's entire read/modify/write. Engine
+  // mutations acquire this same lock reentrantly.
+  return withMemoryWriteLock(() => resolveReviewLocked(ctx.token, id, action));
+}
+
+async function resolveReviewLocked(token: TokenRecord, id: number, action: "approve" | "reject" | "defer"): Promise<{ item: ReviewItem | null; error?: string }> {
   const current = await getReviewItem(id);
   if (!current) return { item: null, error: "not found" };
   if (current.state !== "pending") return { item: current, error: "already resolved" };
-  if (!canApproveReview(normalizeToken(token), (currentOrg() ?? ANI_HQ_ORG).policies)) {
-    return { item: current, error: "forbidden" };
-  }
-
   if (action === "reject") {
     const item = await setReviewState(id, "rejected", token.name);
     await audit(token.name, "review_reject", JSON.stringify({ id }), item ? "ok" : "error", slugFrom(current));
-    return { item };
+    return item ? { item } : { item: current, error: "Review decision could not be saved" };
   }
   if (action === "defer") {
     const item = await setReviewState(id, "deferred", token.name);
     await audit(token.name, "review_defer", JSON.stringify({ id }), item ? "ok" : "error", slugFrom(current));
-    return { item };
+    return item ? { item } : { item: current, error: "Review decision could not be saved" };
   }
 
   if (!SAFE_KINDS.has(current.kind)) {
@@ -58,52 +66,63 @@ export async function resolveReview(
 
   try {
     await applySafeAction(token, current);
-  } catch (e) {
+  } catch {
     await audit(token.name, "review_approve", JSON.stringify({ id }), "error", slugFrom(current));
-    return { item: current, error: String(e).slice(0, 160) };
+    return { item: current, error: "The proposed memory change could not be applied" };
   }
 
   const item = await setReviewState(id, "applied", token.name);
-  await audit(token.name, "review_approve", JSON.stringify({ id, kind: current.kind }), "ok", slugFrom(current));
-  return { item };
+  await audit(token.name, "review_approve", JSON.stringify({ id, kind: current.kind }), item ? "ok" : "error", slugFrom(current));
+  return item ? { item } : { item: current, error: "The memory change was applied, but its review state could not be saved. Inspect memory before retrying." };
+}
+
+export function safeReviewSlug(value: unknown): value is string {
+  return typeof value === "string" && value.length <= 240 && /^[\p{L}\p{N}][\p{L}\p{N}._/-]*$/u.test(value)
+    && value.split("/").every(part => part && part !== "." && part !== "..");
+}
+
+export function clusterReviewTarget(payload: Record<string, unknown>): string {
+  const topic = textField(payload, "topic") ?? textField(payload, "clusterSlug") ?? textField(payload, "slug");
+  const slug = topic?.startsWith("meta/") ? topic : `meta/clusters/${topic ?? ""}`;
+  if (!safeReviewSlug(slug) || !slug.startsWith("meta/clusters/") || slug === "meta/clusters") throw new Error("Invalid cluster target");
+  return slug;
+}
+
+async function changeMemory(name: string, args: Record<string, unknown>) {
+  const result = await brainClient().callTool({ name, arguments: args });
+  if (result?.isError) throw new Error("Memory engine rejected the change");
+  return result;
 }
 
 async function applySafeAction(token: TokenRecord, item: ReviewItem): Promise<void> {
   const entry = item.entryId ? await getMemoryEntry(item.entryId) : null;
   const otherSlug = textField(item.payload, "otherSlug");
-  const topic = textField(item.payload, "topic") ?? textField(item.payload, "clusterSlug");
+  if (entry && !safeReviewSlug(entry.slug)) throw new Error("Invalid source page");
+  if (otherSlug && !safeReviewSlug(otherSlug)) throw new Error("Invalid related page");
+  if (["duplicate", "refine", "contradict"].includes(item.kind) && (!entry || !otherSlug)) throw new Error("Relationship evidence is incomplete");
+  if (["supersede", "stale"].includes(item.kind) && !entry) throw new Error("Source entry is unavailable");
 
   if ((item.kind === "duplicate" || item.kind === "refine" || item.kind === "contradict") && entry && otherSlug) {
-    await brainClient().callTool({
-      name: "add_link",
-      arguments: { from: entry.slug, to: otherSlug, relation: item.kind },
-    }).catch(() => brainClient().callTool({
-      name: "add_link",
-      arguments: { source: entry.slug, target: otherSlug },
-    }));
+    await changeMemory("add_link", { from: entry.slug, to: otherSlug, relation: item.kind })
+      .catch(() => changeMemory("add_link", { source: entry.slug, target: otherSlug, relation: item.kind }));
   }
 
   if (item.kind === "supersede" && entry) {
     await setEntryStatus(entry.id, "superseded");
     if (otherSlug) {
-      await brainClient().callTool({
-        name: "add_tag",
-        arguments: { slug: entry.slug, tag: "superseded" },
-      }).catch(() => {});
+      await changeMemory("add_tag", { slug: entry.slug, tag: "superseded" });
     }
   }
 
   if (item.kind === "stale" && entry) {
-    await brainClient().callTool({
-      name: "add_tag",
-      arguments: { slug: entry.slug, tag: "stale" },
-    }).catch(() => {});
+    await changeMemory("add_tag", { slug: entry.slug, tag: "stale" });
   }
 
-  if (item.kind === "cluster" && topic) {
-    const slug = topic.startsWith("meta/") ? topic : `meta/clusters/${topic}`;
+  if (item.kind === "cluster") {
+    const slug = clusterReviewTarget(item.payload);
     const title = textField(item.payload, "title") ?? slug;
     const members = Array.isArray(item.payload.members) ? item.payload.members : [];
+    if (!members.length || members.length > 200 || members.some(member => !safeReviewSlug(member))) throw new Error("Invalid cluster members");
     const body = [
       `---`,
       `title: ${JSON.stringify(title)}`,
@@ -113,10 +132,7 @@ async function applySafeAction(token: TokenRecord, item: ReviewItem): Promise<vo
       ``,
       ...members.map((member: unknown) => `- [[${String(member)}]]`),
     ].join("\n");
-    await brainClient().callTool({
-      name: "put_page",
-      arguments: { slug, content: body },
-    });
+    await changeMemory("put_page", { slug, content: body });
   }
 
   const note = [

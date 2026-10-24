@@ -1,3 +1,4 @@
+import { failureCode } from "../diagnostics";
 import { brainClient } from "../brain";
 import { config } from "../config";
 import { currentOrg } from "../context";
@@ -10,7 +11,8 @@ import { enqueueReviewItem } from "../review/store";
 import { reflexClient } from "./client";
 import { classifyMemory } from "./tasks/classify";
 import { judgePair, type MemoryRelation } from "./tasks/pairwise";
-import { routeTopic, type TopicCandidate } from "./tasks/topic-route";
+import { enqueueMemoryInsight } from "../insights-queue";
+import type { ReflexClient } from "./types";
 
 function parseToolJson(result: any): any {
   if (result?.isError) return null;
@@ -23,30 +25,10 @@ function parseToolJson(result: any): any {
   }
 }
 
-export async function suggestTopic(text: string): Promise<string | null> {
-  try {
-    const hits = parseToolJson(await brainClient().callTool({
-      name: "search",
-      arguments: { query: text.slice(0, 160), limit: 12 },
-    }));
-    const candidates: TopicCandidate[] = [];
-    const seen = new Set<string>();
-    for (const hit of Array.isArray(hits) ? hits : []) {
-      const slug = typeof hit?.slug === "string" ? hit.slug.replace(/-archive$/, "") : "";
-      if (!slug || seen.has(slug) || slug.startsWith("notes/") || slug.startsWith("meta/")) continue;
-      seen.add(slug);
-      candidates.push({
-        slug,
-        title: typeof hit?.title === "string" && hit.title.trim() ? hit.title : slug,
-      });
-      if (candidates.length >= 8) break;
-    }
-    const routed = await routeTopic(reflexClient(), text, candidates);
-    return routed.topic;
-  } catch (e) {
-    console.warn("[reflex] topic route skipped:", String(e).slice(0, 160));
-    return null;
-  }
+export async function suggestTopic(_text: string): Promise<string | null> {
+  // Selecting a memory destination stays explicit. Background review may propose
+  // a relationship later, without moving or rewriting the saved entry.
+  return null;
 }
 
 export async function afterRemember(input: {
@@ -56,22 +38,33 @@ export async function afterRemember(input: {
   topic?: string;
 }): Promise<void> {
   if (!input.entry) return;
+  try { await enqueueMemoryInsight(input.entry.id); }
+  catch { console.warn("[reflex] memory review enqueue unavailable"); }
+}
+
+export async function processRemember(input: {
+  entry: MemoryEntry | null; text: string; slug: string; topic?: string;
+}, client: ReflexClient = reflexClient()): Promise<void> {
+  if (!input.entry) return;
   if (!(currentOrg() ?? ANI_HQ_ORG).policies.jevMayPropose) return;
+  if (!client.available()) return;
   try {
-    const classification = await classifyMemory(reflexClient(), input.text);
+    const classification = await classifyMemory(client, input.text);
     if (classification) {
       await recordReflexDecision({
         entryId: input.entry.id,
         sheet: "classify",
         payload: classification as unknown as Record<string, unknown>,
         modelRef: classification.model,
-        confidence: classification.importance,
+        confidence: classification.confidence,
       });
     }
 
     const neighbors = await neighborHits(input.text, input.slug);
     for (const neighbor of neighbors) {
-      const judged = await judgePair(reflexClient(), input.text, neighbor.text);
+      const judged = await judgePair(client, input.text, neighbor.text);
+      // An unavailable provider is not evidence of an uncertain relationship.
+      if (!judged.model) continue;
       if (!judged.relation) {
         await enqueueReviewItem({
           entryId: input.entry.id,
@@ -85,7 +78,7 @@ export async function afterRemember(input: {
       await recordReflexDecision({
         entryId: input.entry.id,
         sheet: "pairwise",
-        payload: { otherSlug: neighbor.slug, otherText: neighbor.text, relation: judged.relation },
+        payload: { otherSlug: neighbor.slug, otherText: neighbor.text, relation: judged.relation, requestedModel: judged.requestedModel, modelReported: judged.modelReported, questionVersion: "pairwise-1" },
         modelRef: judged.model,
         confidence: judged.confidence,
       });
@@ -100,7 +93,7 @@ export async function afterRemember(input: {
       }
     }
   } catch (e) {
-    console.warn("[reflex] afterRemember skipped:", String(e).slice(0, 160));
+    console.warn("[reflex] afterRemember skipped:", failureCode(e));
   }
 }
 

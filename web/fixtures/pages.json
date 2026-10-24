@@ -1,687 +1,142 @@
 {
   "pages": [
     {
-      "slug": "weight-recency",
-      "title": "Weight follows recency",
+      "slug": "deployment-approvals",
+      "title": "Production deployments need approval",
+      "body": "Prepare a preview and share the test results before requesting approval for a production deployment.",
+      "scope": "shared",
       "type": "note",
-      "source_id": "dev",
-      "scope": "shared",
-      "updated_at": "2026-08-18T07:30:00Z",
-      "provenance": {
-        "origin": {
-          "by": "mac-claude",
-          "at": "2026-01-10T09:00:00.000Z"
-        },
-        "contributors": [
-          {
-            "name": "mac-claude",
-            "first": "2026-01-10T09:00:00.000Z",
-            "last": "2026-09-10T09:00:00.000Z",
-            "writes": 1
-          }
-        ]
-      }
-    },
-    {
-      "slug": "console-layout",
-      "title": "Console layout",
-      "type": "page",
-      "source_id": "design",
-      "scope": "shared",
-      "updated_at": "2026-08-17T10:15:00Z",
+      "source_id": "demo",
+      "updated_at": "2026-10-21T07:58:00.000Z",
       "provenance": {
         "origin": {
           "by": "codex",
-          "at": "2026-02-10T09:00:00.000Z"
+          "at": "2026-10-21T07:58:00.000Z"
         },
         "contributors": [
           {
             "name": "codex",
-            "first": "2026-02-10T09:00:00.000Z",
-            "last": "2026-09-10T09:00:00.000Z",
-            "writes": 4
-          },
-          {
-            "name": "baymax",
-            "first": "2026-02-11T09:00:00.000Z",
-            "last": "2026-09-11T09:00:00.000Z",
-            "writes": 5
+            "first": "2026-10-21T07:58:00.000Z",
+            "last": "2026-10-21T07:58:00.000Z",
+            "writes": 1
           }
         ]
       }
     },
     {
-      "slug": "capture-strip",
-      "title": "Capture strip",
-      "type": "capture",
-      "source_id": "dev",
+      "slug": "action-evidence",
+      "title": "Keep action evidence explicit",
+      "body": "An observed action has execution evidence from an integration. A reported action is supplied by an agent. Preserve this distinction when explaining what happened.",
       "scope": "shared",
-      "updated_at": "2026-08-14T15:00:00Z",
-      "provenance": {
-        "origin": {
-          "by": "baymax",
-          "at": "2026-03-10T09:00:00.000Z"
-        },
-        "contributors": [
-          {
-            "name": "baymax",
-            "first": "2026-03-10T09:00:00.000Z",
-            "last": "2026-09-10T09:00:00.000Z",
-            "writes": 7
-          },
-          {
-            "name": "carolyn",
-            "first": "2026-03-11T09:00:00.000Z",
-            "last": "2026-09-11T09:00:00.000Z",
-            "writes": 8
-          },
-          {
-            "name": "midi",
-            "first": "2026-03-12T09:00:00.000Z",
-            "last": "2026-09-12T09:00:00.000Z",
-            "writes": 9
-          }
-        ]
-      }
-    },
-    {
-      "slug": "quiet-keyboard",
-      "title": "Quiet keyboard movement",
       "type": "note",
-      "source_id": "dev",
-      "scope": "shared",
-      "updated_at": "2026-08-01T12:00:00Z",
-      "provenance": {
-        "origin": null,
-        "contributors": []
-      }
-    },
-    {
-      "slug": "reader-pane",
-      "title": "Reader pane",
-      "type": "page",
-      "source_id": "design",
-      "scope": "shared",
-      "updated_at": "2026-07-10T09:00:00Z",
-      "provenance": {
-        "origin": {
-          "by": "midi",
-          "at": "2026-05-10T09:00:00.000Z"
-        },
-        "contributors": [
-          {
-            "name": "midi",
-            "first": "2026-05-10T09:00:00.000Z",
-            "last": "2026-09-10T09:00:00.000Z",
-            "writes": 13
-          }
-        ]
-      }
-    },
-    {
-      "slug": "linked-memory",
-      "title": "Links between memories",
-      "type": "note",
-      "source_id": "design",
-      "scope": "shared",
-      "updated_at": "2026-06-01T09:00:00Z",
-      "provenance": {
-        "origin": {
-          "by": "grok-bot",
-          "at": "2026-06-10T09:00:00.000Z"
-        },
-        "contributors": [
-          {
-            "name": "grok-bot",
-            "first": "2026-06-10T09:00:00.000Z",
-            "last": "2026-09-10T09:00:00.000Z",
-            "writes": 2
-          },
-          {
-            "name": "mac-claude",
-            "first": "2026-06-11T09:00:00.000Z",
-            "last": "2026-09-11T09:00:00.000Z",
-            "writes": 3
-          }
-        ]
-      }
-    },
-    {
-      "slug": "timeline-motion",
-      "title": "Timeline motion",
-      "type": "note",
-      "source_id": "dev",
-      "scope": "shared",
-      "updated_at": "2026-04-20T18:40:00Z",
+      "source_id": "demo",
+      "updated_at": "2026-10-21T07:41:00.000Z",
       "provenance": {
         "origin": {
           "by": "mac-claude",
-          "at": "2026-07-10T09:00:00.000Z"
+          "at": "2026-10-21T07:41:00.000Z"
         },
         "contributors": [
           {
             "name": "mac-claude",
-            "first": "2026-07-10T09:00:00.000Z",
-            "last": "2026-09-10T09:00:00.000Z",
-            "writes": 5
-          },
-          {
-            "name": "codex",
-            "first": "2026-07-11T09:00:00.000Z",
-            "last": "2026-09-11T09:00:00.000Z",
-            "writes": 6
-          },
-          {
-            "name": "baymax",
-            "first": "2026-07-12T09:00:00.000Z",
-            "last": "2026-09-12T09:00:00.000Z",
-            "writes": 7
-          }
-        ]
-      }
-    },
-    {
-      "slug": "markdown-boundary",
-      "title": "Markdown boundary",
-      "type": "page",
-      "source_id": "security",
-      "scope": "shared",
-      "updated_at": "2026-03-02T07:00:00Z",
-      "provenance": {
-        "origin": {
-          "by": "codex",
-          "at": "2026-08-10T09:00:00.000Z"
-        },
-        "contributors": [
-          {
-            "name": "codex",
-            "first": "2026-08-10T09:00:00.000Z",
-            "last": "2026-09-10T09:00:00.000Z",
-            "writes": 8
-          },
-          {
-            "name": "baymax",
-            "first": "2026-08-11T09:00:00.000Z",
-            "last": "2026-09-11T09:00:00.000Z",
-            "writes": 9
-          },
-          {
-            "name": "carolyn",
-            "first": "2026-08-12T09:00:00.000Z",
-            "last": "2026-09-12T09:00:00.000Z",
-            "writes": 10
-          },
-          {
-            "name": "midi",
-            "first": "2026-08-13T09:00:00.000Z",
-            "last": "2026-09-13T09:00:00.000Z",
-            "writes": 11
-          }
-        ]
-      }
-    },
-    {
-      "slug": "search-bleed",
-      "title": "Search rows bleed in",
-      "type": "note",
-      "source_id": "design",
-      "scope": "shared",
-      "updated_at": "2026-01-15T22:10:00Z",
-      "provenance": {
-        "origin": {
-          "by": "baymax",
-          "at": "2026-01-10T09:00:00.000Z"
-        },
-        "contributors": [
-          {
-            "name": "baymax",
-            "first": "2026-01-10T09:00:00.000Z",
-            "last": "2026-09-10T09:00:00.000Z",
-            "writes": 11
-          }
-        ]
-      }
-    },
-    {
-      "slug": "identity-mark",
-      "title": "Hanko identity marks",
-      "type": "note",
-      "source_id": "dev",
-      "scope": "shared",
-      "updated_at": "2025-11-30T13:30:00Z",
-      "provenance": {
-        "origin": {
-          "by": "carolyn",
-          "at": "2026-02-10T09:00:00.000Z"
-        },
-        "contributors": [
-          {
-            "name": "carolyn",
-            "first": "2026-02-10T09:00:00.000Z",
-            "last": "2026-09-10T09:00:00.000Z",
-            "writes": 14
-          },
-          {
-            "name": "midi",
-            "first": "2026-02-11T09:00:00.000Z",
-            "last": "2026-09-11T09:00:00.000Z",
+            "first": "2026-10-21T07:41:00.000Z",
+            "last": "2026-10-21T07:41:00.000Z",
             "writes": 1
           }
         ]
       }
     },
     {
-      "slug": "scope-tags",
-      "title": "Scope tags remain text",
-      "type": "note",
-      "source_id": "dev",
-      "scope": "private",
-      "updated_at": "2025-09-18T11:00:00Z",
-      "provenance": {
-        "origin": null,
-        "contributors": []
-      }
-    },
-    {
-      "slug": "surface-contrast",
-      "title": "Surface and contrast",
-      "type": "note",
-      "source_id": "design",
+      "slug": "engram-direction",
+      "title": "One history across agents and tools",
+      "body": "Engram connects agent identity, task intent, tool execution, and affected resources. The same history should be accessible to connected agents and the web app.",
       "scope": "shared",
-      "updated_at": "2025-07-04T08:30:00Z",
+      "type": "note",
+      "source_id": "demo",
+      "updated_at": "2026-10-20T16:22:00.000Z",
       "provenance": {
         "origin": {
-          "by": "grok-bot",
-          "at": "2026-04-10T09:00:00.000Z"
+          "by": "codex",
+          "at": "2026-10-20T16:22:00.000Z"
         },
         "contributors": [
           {
-            "name": "grok-bot",
-            "first": "2026-04-10T09:00:00.000Z",
-            "last": "2026-09-10T09:00:00.000Z",
-            "writes": 6
-          },
-          {
-            "name": "mac-claude",
-            "first": "2026-04-11T09:00:00.000Z",
-            "last": "2026-09-11T09:00:00.000Z",
-            "writes": 7
-          },
-          {
             "name": "codex",
-            "first": "2026-04-12T09:00:00.000Z",
-            "last": "2026-09-12T09:00:00.000Z",
-            "writes": 8
-          },
-          {
-            "name": "baymax",
-            "first": "2026-04-13T09:00:00.000Z",
-            "last": "2026-09-13T09:00:00.000Z",
-            "writes": 9
+            "first": "2026-10-20T16:22:00.000Z",
+            "last": "2026-10-20T16:22:00.000Z",
+            "writes": 1
           }
         ]
       }
     },
     {
-      "slug": "negative-space",
-      "title": "Whitespace as layout",
+      "slug": "weekly-update",
+      "title": "Weekly update format",
+      "body": "Keep the weekly update concise: completed work, decisions, and open questions. Save an email draft for review before sending.",
+      "scope": "personal",
       "type": "note",
-      "source_id": "design",
-      "scope": "shared",
-      "updated_at": "2025-04-22T16:20:00Z",
+      "source_id": "demo",
+      "updated_at": "2026-10-20T11:03:00.000Z",
       "provenance": {
         "origin": {
           "by": "mac-claude",
-          "at": "2026-05-10T09:00:00.000Z"
+          "at": "2026-10-20T11:03:00.000Z"
         },
         "contributors": [
           {
             "name": "mac-claude",
-            "first": "2026-05-10T09:00:00.000Z",
-            "last": "2026-09-10T09:00:00.000Z",
-            "writes": 9
+            "first": "2026-10-20T11:03:00.000Z",
+            "last": "2026-10-20T11:03:00.000Z",
+            "writes": 1
           }
         ]
       }
     },
     {
-      "slug": "token-gate",
-      "title": "Token gate",
-      "type": "page",
-      "source_id": "gateway",
+      "slug": "preview-environment",
+      "title": "Preview environment",
+      "body": "Use the preview environment to review changes before production. A started deployment is incomplete until its final result is recorded.",
       "scope": "shared",
-      "updated_at": "2025-01-05T12:20:00Z",
-      "provenance": {
-        "origin": {
-          "by": "codex",
-          "at": "2026-06-10T09:00:00.000Z"
-        },
-        "contributors": [
-          {
-            "name": "codex",
-            "first": "2026-06-10T09:00:00.000Z",
-            "last": "2026-09-10T09:00:00.000Z",
-            "writes": 12
-          },
-          {
-            "name": "baymax",
-            "first": "2026-06-11T09:00:00.000Z",
-            "last": "2026-09-11T09:00:00.000Z",
-            "writes": 13
-          }
-        ]
-      }
-    },
-    {
-      "slug": "recall-fanout",
-      "title": "Recall fan-out",
       "type": "note",
-      "source_id": "gateway",
-      "scope": "private",
-      "updated_at": "2024-10-10T21:00:00Z",
+      "source_id": "demo",
+      "updated_at": "2026-10-19T10:12:00.000Z",
       "provenance": {
         "origin": {
           "by": "baymax",
-          "at": "2026-07-10T09:00:00.000Z"
+          "at": "2026-10-19T10:12:00.000Z"
         },
         "contributors": [
           {
             "name": "baymax",
-            "first": "2026-07-10T09:00:00.000Z",
-            "last": "2026-09-10T09:00:00.000Z",
+            "first": "2026-10-19T10:12:00.000Z",
+            "last": "2026-10-19T10:12:00.000Z",
             "writes": 1
-          },
-          {
-            "name": "carolyn",
-            "first": "2026-07-11T09:00:00.000Z",
-            "last": "2026-09-11T09:00:00.000Z",
-            "writes": 2
-          },
-          {
-            "name": "midi",
-            "first": "2026-07-12T09:00:00.000Z",
-            "last": "2026-09-12T09:00:00.000Z",
-            "writes": 3
           }
         ]
       }
     },
     {
-      "slug": "capture-permission",
-      "title": "Capture permission boundary",
+      "slug": "review-context",
+      "title": "Engineering review context",
+      "body": "The engineering review covers action capture, identity, resource history, and the minimal Engram web app. Link decisions back to the originating task.",
+      "scope": "shared",
       "type": "note",
-      "source_id": "gateway",
-      "scope": "shared",
-      "updated_at": "2024-07-19T04:10:00Z",
-      "provenance": {
-        "origin": {
-          "by": "carolyn",
-          "at": "2026-08-10T09:00:00.000Z"
-        },
-        "contributors": [
-          {
-            "name": "carolyn",
-            "first": "2026-08-10T09:00:00.000Z",
-            "last": "2026-09-10T09:00:00.000Z",
-            "writes": 4
-          },
-          {
-            "name": "midi",
-            "first": "2026-08-11T09:00:00.000Z",
-            "last": "2026-09-11T09:00:00.000Z",
-            "writes": 5
-          },
-          {
-            "name": "grok-bot",
-            "first": "2026-08-12T09:00:00.000Z",
-            "last": "2026-09-12T09:00:00.000Z",
-            "writes": 6
-          },
-          {
-            "name": "mac-claude",
-            "first": "2026-08-13T09:00:00.000Z",
-            "last": "2026-09-13T09:00:00.000Z",
-            "writes": 7
-          }
-        ]
-      }
-    },
-    {
-      "slug": "session-drop",
-      "title": "Session drop on unauthorized",
-      "type": "note",
-      "source_id": "gateway",
-      "scope": "shared",
-      "updated_at": "2024-05-02T17:45:00Z",
-      "provenance": {
-        "origin": {
-          "by": "midi",
-          "at": "2026-01-10T09:00:00.000Z"
-        },
-        "contributors": [
-          {
-            "name": "midi",
-            "first": "2026-01-10T09:00:00.000Z",
-            "last": "2026-09-10T09:00:00.000Z",
-            "writes": 7
-          }
-        ]
-      }
-    },
-    {
-      "slug": "static-shell",
-      "title": "Static shell served by gateway",
-      "type": "page",
-      "source_id": "gateway",
-      "scope": "shared",
-      "updated_at": "2024-02-14T09:30:00Z",
-      "provenance": {
-        "origin": null,
-        "contributors": []
-      }
-    },
-    {
-      "slug": "no-external-references",
-      "title": "No external references",
-      "type": "note",
-      "source_id": "security",
-      "scope": "shared",
-      "updated_at": "2023-12-20T14:00:00Z",
+      "source_id": "demo",
+      "updated_at": "2026-10-19T08:30:00.000Z",
       "provenance": {
         "origin": {
           "by": "mac-claude",
-          "at": "2026-03-10T09:00:00.000Z"
+          "at": "2026-10-19T08:30:00.000Z"
         },
         "contributors": [
           {
             "name": "mac-claude",
-            "first": "2026-03-10T09:00:00.000Z",
-            "last": "2026-09-10T09:00:00.000Z",
-            "writes": 13
-          },
-          {
-            "name": "codex",
-            "first": "2026-03-11T09:00:00.000Z",
-            "last": "2026-09-11T09:00:00.000Z",
-            "writes": 14
-          },
-          {
-            "name": "baymax",
-            "first": "2026-03-12T09:00:00.000Z",
-            "last": "2026-09-12T09:00:00.000Z",
+            "first": "2026-10-19T08:30:00.000Z",
+            "last": "2026-10-19T08:30:00.000Z",
             "writes": 1
-          }
-        ]
-      }
-    },
-    {
-      "slug": "dark-paper",
-      "title": "Ink at night",
-      "type": "note",
-      "source_id": "design",
-      "scope": "shared",
-      "updated_at": "2023-10-03T20:20:00Z",
-      "provenance": {
-        "origin": {
-          "by": "codex",
-          "at": "2026-04-10T09:00:00.000Z"
-        },
-        "contributors": [
-          {
-            "name": "codex",
-            "first": "2026-04-10T09:00:00.000Z",
-            "last": "2026-09-10T09:00:00.000Z",
-            "writes": 2
-          },
-          {
-            "name": "baymax",
-            "first": "2026-04-11T09:00:00.000Z",
-            "last": "2026-09-11T09:00:00.000Z",
-            "writes": 3
-          },
-          {
-            "name": "carolyn",
-            "first": "2026-04-12T09:00:00.000Z",
-            "last": "2026-09-12T09:00:00.000Z",
-            "writes": 4
-          },
-          {
-            "name": "midi",
-            "first": "2026-04-13T09:00:00.000Z",
-            "last": "2026-09-13T09:00:00.000Z",
-            "writes": 5
-          }
-        ]
-      }
-    },
-    {
-      "slug": "first-brush",
-      "title": "First brush",
-      "type": "note",
-      "source_id": "dev",
-      "scope": "shared",
-      "updated_at": "2023-08-18T07:30:00Z",
-      "provenance": {
-        "origin": {
-          "by": "baymax",
-          "at": "2026-05-10T09:00:00.000Z"
-        },
-        "contributors": [
-          {
-            "name": "baymax",
-            "first": "2026-05-10T09:00:00.000Z",
-            "last": "2026-09-10T09:00:00.000Z",
-            "writes": 5
-          }
-        ]
-      }
-    },
-    {
-      "slug": "old-agent-note",
-      "title": "Old agent note",
-      "type": "note",
-      "source_id": "agent",
-      "scope": "private",
-      "updated_at": "2023-06-01T06:00:00Z",
-      "provenance": {
-        "origin": {
-          "by": "carolyn",
-          "at": "2026-06-10T09:00:00.000Z"
-        },
-        "contributors": [
-          {
-            "name": "carolyn",
-            "first": "2026-06-10T09:00:00.000Z",
-            "last": "2026-09-10T09:00:00.000Z",
-            "writes": 8
-          },
-          {
-            "name": "midi",
-            "first": "2026-06-11T09:00:00.000Z",
-            "last": "2026-09-11T09:00:00.000Z",
-            "writes": 9
-          }
-        ]
-      }
-    },
-    {
-      "slug": "archive-routing",
-      "title": "Archive routing",
-      "type": "note",
-      "source_id": "gateway",
-      "scope": "shared",
-      "updated_at": "2023-03-11T19:00:00Z",
-      "provenance": {
-        "origin": {
-          "by": "midi",
-          "at": "2026-07-10T09:00:00.000Z"
-        },
-        "contributors": [
-          {
-            "name": "midi",
-            "first": "2026-07-10T09:00:00.000Z",
-            "last": "2026-09-10T09:00:00.000Z",
-            "writes": 11
-          },
-          {
-            "name": "grok-bot",
-            "first": "2026-07-11T09:00:00.000Z",
-            "last": "2026-09-11T09:00:00.000Z",
-            "writes": 12
-          },
-          {
-            "name": "mac-claude",
-            "first": "2026-07-12T09:00:00.000Z",
-            "last": "2026-09-12T09:00:00.000Z",
-            "writes": 13
-          }
-        ]
-      }
-    },
-    {
-      "slug": "three-year-memory",
-      "title": "Three year memory",
-      "type": "note",
-      "source_id": "archive",
-      "scope": "shared",
-      "updated_at": "2023-01-20T10:00:00Z",
-      "provenance": {
-        "origin": {
-          "by": "grok-bot",
-          "at": "2026-08-10T09:00:00.000Z"
-        },
-        "contributors": [
-          {
-            "name": "grok-bot",
-            "first": "2026-08-10T09:00:00.000Z",
-            "last": "2026-09-10T09:00:00.000Z",
-            "writes": 14
-          },
-          {
-            "name": "mac-claude",
-            "first": "2026-08-11T09:00:00.000Z",
-            "last": "2026-09-11T09:00:00.000Z",
-            "writes": 1
-          },
-          {
-            "name": "codex",
-            "first": "2026-08-12T09:00:00.000Z",
-            "last": "2026-09-12T09:00:00.000Z",
-            "writes": 2
-          },
-          {
-            "name": "baymax",
-            "first": "2026-08-13T09:00:00.000Z",
-            "last": "2026-09-13T09:00:00.000Z",
-            "writes": 3
           }
         ]
       }
     }
-  ],
-  "scopes": [
-    "shared",
-    "private"
-  ],
-  "more": true
+  ]
 }

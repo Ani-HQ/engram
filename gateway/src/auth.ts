@@ -1,6 +1,9 @@
+import { failureCode } from "./diagnostics";
 import { randomBytes } from "node:crypto";
+import type postgres from "postgres";
 import { sql } from "./db";
 import { sha256 } from "./hash";
+import { parseReportedSource } from "./agent-source";
 import { authenticateJwt, canonicalResource, isJwt, resourceHost } from "./oauth";
 import { findMemberByEmail, normalizeEmail } from "./orgs";
 import { normalizeToken, type ActorRole, type TokenRecord } from "./policies";
@@ -25,48 +28,70 @@ export async function authenticateSecret(raw: string, audience?: string): Promis
     try {
       return await authenticateJwt(raw, audience ?? "");
     } catch (e) {
-      console.error("[auth] jwt failed:", String(e).slice(0, 160));
+      console.error("[auth] jwt failed:", failureCode(e));
       return null;
     }
   }
-  const hash = sha256(raw);
-  const token = await lookupToken(hash);
-  if (token) return token;
-  return lookupSession(hash);
+  return authenticateStoredSecret(raw);
 }
 
-async function lookupToken(hash: string): Promise<TokenRecord | null> {
+// Opaque credentials never choose a tenant from request parameters. Sessions
+// also re-check live membership so a revoked owner cannot keep managing billing
+// or other workspace settings until their old cookie expires.
+export async function authenticateStoredSecret(raw: string, db: postgres.Sql = sql): Promise<TokenRecord | null> {
+  if (!raw) return null;
+  const hash = sha256(raw);
+  const token = await lookupToken(hash, db);
+  if (token) return token;
+  return lookupSession(hash, db);
+}
+
+function validOrgId(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+async function lookupToken(hash: string, db: postgres.Sql): Promise<TokenRecord | null> {
   try {
-    const rows = await sql`
-      SELECT name, org_id, role, can_write
-      FROM tokens
-      WHERE sha256_hash = ${hash} AND revoked_at IS NULL`;
-    if (!rows.length) return null;
-    sql`UPDATE tokens SET last_used_at = now() WHERE sha256_hash = ${hash}`.catch(() => {});
+    const rows = await db`
+      SELECT t.name, t.org_id, t.role, t.can_write, t.harness, t.source_label
+      FROM tokens t
+      LEFT JOIN org_members m ON m.id = t.issued_by_member_id
+        AND m.org_id = t.org_id AND m.email = t.issued_by_email
+      WHERE t.sha256_hash = ${hash} AND t.revoked_at IS NULL
+        AND (t.issuer_kind IN ('operator', 'legacy') OR
+          (t.issuer_kind = 'member' AND m.id IS NOT NULL AND m.role IN ('owner', 'member')))`;
+    if (rows.length !== 1) return null;
+    const orgId = Number(rows[0].org_id);
+    if (!validOrgId(orgId)) return null;
+    db`UPDATE tokens SET last_used_at = now() WHERE sha256_hash = ${hash} AND org_id = ${orgId} AND revoked_at IS NULL`.catch(() => {});
     return normalizeToken({
       name: String(rows[0].name),
-      orgId: Number(rows[0].org_id ?? 1),
+      orgId,
       role: rows[0].role,
       canWrite: rows[0].can_write !== false,
       kind: "token",
+      ...(rows[0].harness ? { source: { harness: String(rows[0].harness), label: rows[0].source_label ? String(rows[0].source_label) : null, kind: "registered" as const } } : {}),
     });
   } catch {
     return null;
   }
 }
 
-async function lookupSession(hash: string): Promise<TokenRecord | null> {
+async function lookupSession(hash: string, db: postgres.Sql): Promise<TokenRecord | null> {
   try {
-    const rows = await sql`
-      SELECT name, org_id, role, email
-      FROM sessions
-      WHERE sha256_hash = ${hash}
-        AND revoked_at IS NULL
-        AND expires_at > now()`;
+    const rows = await db`
+      SELECT s.name, s.org_id, m.role, s.email
+      FROM sessions s
+      JOIN org_members m ON m.org_id = s.org_id AND m.email = s.email
+      WHERE s.sha256_hash = ${hash}
+        AND s.revoked_at IS NULL
+        AND s.expires_at > now()`;
     if (!rows.length) return null;
+    const orgId = Number(rows[0].org_id);
+    if (!validOrgId(orgId) || !rows[0].email || !["owner", "member"].includes(rows[0].role)) return null;
     return normalizeToken({
       name: String(rows[0].name),
-      orgId: Number(rows[0].org_id),
+      orgId,
       role: rows[0].role,
       canWrite: true,
       kind: "session",
@@ -86,35 +111,70 @@ export async function issueToken(
   orgId: number,
   name: string,
   canWrite = true,
+  issuerEmail: string | null = null,
+  db: postgres.Sql = sql,
+  source?: { harness: string; label?: string | null },
 ): Promise<string> {
+  if (!validOrgId(orgId)) throw new Error("valid workspace required");
+  const parsedSource = parseReportedSource(source?.harness, source?.label);
+  if (parsedSource.sourceLabel && !parsedSource.harness) throw new Error("harness is required for a source label");
   const trimmed = name.trim();
   if (!trimmed) throw new Error("token name required");
   const raw = `eng_${randomBytes(32).toString("base64url")}`;
-  await sql`
-    INSERT INTO tokens (name, sha256_hash, scopes, secrets_acl, org_id, role, can_write)
+  const email = issuerEmail === null ? null : normalizeEmail(issuerEmail);
+  if (issuerEmail !== null && !email) throw new Error("issuer email required");
+  await db.begin(async tx => {
+    // Lock the membership against removal while issuing. Rejoining creates a
+    // different member ID and cannot restore credentials from an earlier stay.
+    const members = email ? await tx`
+      SELECT id FROM org_members WHERE org_id = ${orgId} AND email = ${email} FOR UPDATE` : [];
+    if (email && !members.length) throw new Error("issuer is not a current workspace member");
+    await tx`
+    INSERT INTO tokens (name, sha256_hash, scopes, secrets_acl, org_id, role, can_write, issuer_kind, issued_by_email, issued_by_member_id, harness, source_label)
     VALUES (
       ${trimmed},
       ${sha256(raw)},
-      ${sql.json({})},
-      ${sql.json(false)},
+      ${db.json({})},
+      ${db.json(false)},
       ${orgId},
       'agent',
-      ${canWrite}
+      ${canWrite},
+      ${email ? "member" : "operator"},
+      ${email},
+      ${email ? members[0].id : null},
+      ${parsedSource.harness},
+      ${parsedSource.sourceLabel}
     )`;
+  });
   return raw;
 }
 
 export async function listTokens(orgId: number) {
   const rows = await sql`
-    SELECT name, can_write, created_at, revoked_at, last_used_at
+    SELECT name, can_write, created_at, revoked_at, last_used_at, issuer_kind, issued_by_email, harness, source_label
     FROM tokens WHERE org_id = ${orgId} ORDER BY created_at`;
   return rows.map(row => ({
     name: String(row.name),
+    issuedBy: row.issued_by_email ? String(row.issued_by_email) : null,
+    issuerKind: String(row.issuer_kind),
     canWrite: row.can_write !== false,
+    harness: row.harness ? String(row.harness) : null,
+    sourceLabel: row.source_label ? String(row.source_label) : null,
     createdAt: new Date(row.created_at).toISOString(),
     revokedAt: row.revoked_at ? new Date(row.revoked_at).toISOString() : null,
     lastUsedAt: row.last_used_at ? new Date(row.last_used_at).toISOString() : null,
   }));
+}
+
+export async function setTokenSource(orgId: number, name: string, source: { harness?: unknown; sourceLabel?: unknown }, db: postgres.Sql = sql) {
+  if (!validOrgId(orgId) || typeof name !== "string" || !name.trim()) throw new Error("A workspace and connection name are required");
+  const parsed = parseReportedSource(source.harness, source.sourceLabel);
+  if (parsed.sourceLabel && !parsed.harness) throw new Error("harness is required for a source label");
+  const rows = await db`
+    UPDATE tokens SET harness = ${parsed.harness}, source_label = ${parsed.sourceLabel}
+    WHERE org_id = ${orgId} AND name = ${name.trim()} AND revoked_at IS NULL
+    RETURNING name, harness, source_label`;
+  return rows[0] ? { name: String(rows[0].name), harness: rows[0].harness ? String(rows[0].harness) : null, sourceLabel: rows[0].source_label ? String(rows[0].source_label) : null } : null;
 }
 
 export async function revokeToken(orgId: number, name: string): Promise<boolean> {

@@ -1,5 +1,11 @@
 import { config } from "../config";
+import { currentOrg } from "../context";
+import { externalAiAllowed } from "../privacy";
 import { retryDelayMs } from "./retry";
+import { validateAnswers } from "./answers";
+import { sanitizeProviderInput } from "./sanitize";
+import { reserveWorkspaceInference } from "../insights-budget";
+import { readAiResponse } from "./http";
 import type { ReflexAnswer, ReflexClient, ReflexQuestion, ReflexResult, ReflexTransport } from "./types";
 
 const CIRCUIT_AFTER = 5;
@@ -10,6 +16,7 @@ function sleep(ms: number) {
 }
 
 export class TypesafeReflexClient implements ReflexClient {
+  private static inFlight = 0;
   private hardDisabled = false;
   private circuitOpenUntil = 0;
   private consecutiveFailures = 0;
@@ -17,10 +24,15 @@ export class TypesafeReflexClient implements ReflexClient {
   constructor(
     private readonly transport: ReflexTransport = fetch,
     private readonly now: () => number = Date.now,
-    private readonly opts: { apiKey?: string; model?: string; endpoint?: string; timeoutMs?: number } = {},
+    private readonly opts: { apiKey?: string; model?: string; endpoint?: string; timeoutMs?: number; maxAttempts?: number } = {},
   ) {}
 
   enabled(): boolean {
+    // Explicitly injected clients are also used by isolated transport tests.
+    // Every actual workspace request, including background jobs, needs consent.
+    if (currentOrg() && !externalAiAllowed()) return false;
+    if (!currentOrg() && this.opts.apiKey === undefined) return false;
+    if (this.opts.apiKey === undefined && !/^jev-\d+\.\d+\.\d+$/.test(this.opts.model ?? config.reflex.model)) return false;
     return Boolean(this.opts.apiKey ?? config.reflex.apiKey);
   }
 
@@ -37,13 +49,25 @@ export class TypesafeReflexClient implements ReflexClient {
   async evaluate(input: {
     state: unknown;
     questions: Record<string, ReflexQuestion>;
+    signal?: AbortSignal;
+    maxAttempts?: number;
   }): Promise<ReflexResult | null> {
     if (!this.available()) return null;
     const key = this.opts.apiKey ?? config.reflex.apiKey;
-    const maxAttempts = 3;
+    const maxAttempts = Math.max(1, Math.min(3, input.maxAttempts ?? this.opts.maxAttempts ?? 3));
+    const requestedModel = this.opts.model ?? config.reflex.model;
+    // Bound and redact every outbound memory path, including pre-existing tasks.
+    const safeInput = sanitizeProviderInput({ state: input.state, questions: input.questions }) as { state: unknown; questions: unknown };
+    if (JSON.stringify(safeInput).length > 32_000 || Object.keys(input.questions).length > 32) return null;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      if (input.signal?.aborted) return null;
+      if (TypesafeReflexClient.inFlight >= Math.min(32, Math.max(1, config.reflex.concurrency))) return null;
+      TypesafeReflexClient.inFlight++;
       try {
+        const org = currentOrg();
+        if (this.opts.apiKey === undefined && (!org || !await reserveWorkspaceInference(org.id))) return null;
+        if (input.signal?.aborted) return null;
         const res = await this.transport(this.opts.endpoint ?? config.reflex.endpoint, {
           method: "POST",
           headers: {
@@ -51,11 +75,11 @@ export class TypesafeReflexClient implements ReflexClient {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            state: input.state,
-            model: this.opts.model ?? config.reflex.model,
-            questions: input.questions,
+            state: safeInput.state,
+            model: requestedModel,
+            questions: safeInput.questions,
           }),
-          signal: AbortSignal.timeout(this.opts.timeoutMs ?? config.reflex.timeoutMs),
+          signal: input.signal ? AbortSignal.any([input.signal, AbortSignal.timeout(this.opts.timeoutMs ?? config.reflex.timeoutMs)]) : AbortSignal.timeout(this.opts.timeoutMs ?? config.reflex.timeoutMs),
         });
         if (res.status === 401) {
           this.markFail("HTTP 401", true);
@@ -71,31 +95,39 @@ export class TypesafeReflexClient implements ReflexClient {
           continue;
         }
         if (!res.ok) {
-          const body = await res.text().catch(() => "");
-          console.warn(`[reflex] HTTP ${res.status} ${body.slice(0, 160)}`);
+          // Provider error bodies can echo tenant inputs. Never log them.
+          console.warn(`[reflex] HTTP ${res.status}`);
           this.markFail(`HTTP ${res.status}`);
           return null;
         }
-        const json = (await res.json()) as {
+        const body = await readAiResponse(res, 128_000);
+        const json = JSON.parse(body) as {
           model?: string;
           answers?: Record<string, ReflexAnswer>;
         };
-        if (!json.answers || Object.keys(json.answers).length === 0) {
-          this.markFail("empty answers");
+        const answers = validateAnswers(json.answers, input.questions);
+        if (!answers) {
+          this.markFail("invalid answers");
           return null;
         }
         this.markOk();
-        return { model: json.model ?? config.reflex.model, answers: json.answers };
+        const reported = typeof json.model === "string" && /^[a-zA-Z0-9._:/-]{1,120}$/.test(json.model);
+        if (reported && /^jev-\d+\.\d+\.\d+$/.test(requestedModel) && json.model !== requestedModel) {
+          this.markFail("model version mismatch"); return null;
+        }
+        return { model: reported ? json.model! : requestedModel, requestedModel, modelReported: reported, answers };
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
         const timedOut = error instanceof Error && error.name === "TimeoutError";
+        if (input.signal?.aborted) return null;
         if (timedOut && attempt < maxAttempts) {
           console.warn("[reflex] timeout (retrying)");
           continue;
         }
-        console.warn(`[reflex] ${message}`);
-        this.markFail(message);
+        console.warn("[reflex] request failed");
+        this.markFail(timedOut ? "timeout" : "request failed");
         return null;
+      } finally {
+        TypesafeReflexClient.inFlight--;
       }
     }
     return null;

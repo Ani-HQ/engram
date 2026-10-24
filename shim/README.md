@@ -8,17 +8,81 @@ One-command MCP harness connector and stdio-to-HTTP proxy for engram.
 npm install -g @ani-hq/engram-mcp
 ```
 
-## Environment
+## Guided setup
 
-`ENGRAM_HOST` is the base URL of your engram gateway, for example
-`https://engram.example.com`.
+Run this in your terminal:
+
+```bash
+engram-mcp setup
+```
+
+Choose your agent and Engram hosted or your self-hosted server. Hosted setup uses
+`https://engram.ani.computer`. Create an access token in the workspace’s
+**Connections** screen, then paste it at the hidden prompt. The token is not echoed
+or included in your command history. You can choose the agent directly:
+
+```bash
+engram-mcp setup claude
+engram-mcp setup codex
+engram-mcp setup cursor --host https://engram.ani.computer
+```
+
+Setup first checks live token identity and tool discovery. If either fails, it
+leaves the agent config unchanged and explains the next action. The endpoint must
+use HTTPS; HTTP is accepted only for a loopback self-hosted server.
+
+On success, setup shows the exact config path, backs up any existing file, and
+updates its Engram entry. Other agent servers and settings are preserved. Config
+and backup files are private to your user; existing owner-only permissions are
+preserved, and group/world access is removed when a token is saved. Existing
+backups are retained. Symbolic-link config files are rejected so a token is not
+written into a linked dotfiles repository.
+
+Restart your agent or refresh its MCP connections. Setup prints a unique prompt
+you can paste into the agent to save and recall one connection-check memory.
+This is a separate, explicit test: setup itself never reads or writes memories,
+enables capture hooks, or reports a task on your behalf.
+
+## Check a connection
+
+```bash
+engram-mcp doctor codex
+engram-mcp doctor cursor
+engram-mcp doctor --host https://engram.ani.computer
+```
+
+With an agent name, `doctor` reads the native HTTP connection from that agent’s
+user config. Without one, it uses the hidden token prompt or `ENGRAM_TOKEN`.
+`verify` is an alias for `doctor`. These commands call only `whoami` and
+`tools/list`, do not change config or cache files, and never read stored memories
+or perform a write. Successful discovery proves live identity and catalog access;
+it does not prove that your agent has loaded its config, or that a memory write
+will be permitted by workspace policy or billing. Use the printed test prompt
+from the agent to verify the full journey.
+
+## Automation and environment
+
+`ENGRAM_HOST` is the base URL of your engram gateway. Guided setup and doctor
+default to `https://engram.ani.computer` when it is omitted.
 
 `ENGRAM_TOKEN` is the bearer token issued for this harness.
 
 The stdio proxy uses both variables when an MCP client launches `engram-mcp` with
 no subcommand.
 
-## Connect a Harness
+For noninteractive setup, specify an agent and supply `ENGRAM_TOKEN` securely
+through your process environment, or pipe the token with `--token-stdin`:
+
+```bash
+your-secret-reader | engram-mcp setup codex --host https://engram.ani.computer --token-stdin
+```
+
+`your-secret-reader` stands for your own password/secret manager command. Setup
+and doctor reject `--token` arguments to keep credentials out of history. Missing
+input outside a terminal exits with an actionable error and does not wait for a
+prompt.
+
+## Existing connect command
 
 ```bash
 engram-mcp connect <harness> --host https://engram.example.com --token tok_...
@@ -35,7 +99,10 @@ engram-mcp connect --list
 
 Running `engram-mcp connect` with no harness prints the same list.
 
-Every file write first copies the existing config to `<file>.engram-backup`.
+The existing `connect` command remains available for scripts. It writes config
+before attempting discovery, so its success alone does not prove live access.
+Prefer `setup` for guided, verified onboarding. Every file write first copies the
+existing config to `<file>.engram-backup`; later backups get unique suffixes.
 
 ## Cold Starts
 
@@ -43,16 +110,36 @@ engram runs scale-to-zero, so an idle service is asleep and the first request pa
 full container start. That is longer than a harness allows an MCP server to come up,
 and the harness reports it as a server that failed to connect.
 
-The proxy answers `initialize` locally, so `tools/list` is the only network call in
-the handshake. It is served from a cache at
-`$XDG_CACHE_HOME/engram-mcp/tools-<host>.json` and refreshed behind the reply, which
-means a sleeping engram is invisible at startup. The wake-up lands under the first
-real tool call instead, which is far more patient, and `connect` fills the cache up
-front so even a first run is instant.
+The proxy answers `initialize` locally with the same bounded memory and task-reporting
+instructions as the HTTP gateway. No upstream response is needed for initialization.
+These instructions ask the agent to report real work; connecting does not capture
+other tools automatically or backfill old tasks.
+
+`tools/list` prefers a fresh upstream catalog. When a cached catalog exists, it waits
+up to 750 ms for the fresh result before using the cache. A later change sends the
+MCP tool-list-changed notification so supporting clients can refresh in the same
+session. Without a cache, discovery needs the upstream response and remains bounded
+by `ENGRAM_TIMEOUT_MS`. A failed discovery can refresh again after a successful real
+tool call. An explicit upstream authorization rejection removes that credential's
+disk cache and is returned, rather than presenting cached tools as current access.
+If a fallback list was already shown, one change notification clears it to an empty
+catalog marked `authorization_required`; reconnect after repairing access.
+
+Catalogs live at `$XDG_CACHE_HOME/engram-mcp/tools-v2-<digest>.json` (or under
+`~/.cache`), keyed by the endpoint and credential together. Bearer values are never
+written to the catalog or filename; files are replaced atomically with mode 0600.
+Old host-only caches are ignored. `connect` seeds the new cache when the service is
+reachable. Clients that do not honor tool-list changes may still need a reconnect.
 
 The proxy also pings `/health` when it starts, so the container is waking while you
 are still typing. Set `ENGRAM_TIMEOUT_MS` to change the per-request ceiling, which
 defaults to 90 seconds.
+
+Automatic retries require an explicitly idempotent operation. Tool calls, including
+task reports, do not retry automatically after an uncertain response or HTTP error;
+an error status cannot establish that a write was not applied. For an uncertain
+`record_action` delivery, an agent may retry the identical payload with its original
+`eventId` so the gateway can deduplicate it.
 
 ## Supported Harnesses
 
@@ -62,8 +149,9 @@ defaults to 90 seconds.
 claude mcp add --scope user --transport http engram https://engram.example.com/mcp --header "Authorization: Bearer tok_..."
 ```
 
-If the `claude` binary is missing, `engram-mcp connect claude` prints the command
-to run by hand.
+`connect claude` requires the Claude Code CLI. Guided `setup claude` writes the
+native HTTP entry to `~/.claude.json` directly and does not need to pass a token
+to a child command.
 
 `codex` writes `~/.codex/config.toml` under `[mcp_servers.engram]`.
 

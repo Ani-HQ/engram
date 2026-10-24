@@ -96,6 +96,7 @@ async function judgeEntry(entry: MemoryEntry, runId: number | null, stats: Recor
       sheet: "dream-classify",
       payload: classification as unknown as Record<string, unknown>,
       modelRef: classification.model,
+      confidence: classification.confidence,
     });
     stats.decisions += 1;
     if (classification.longevity === "ephemeral") {

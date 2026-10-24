@@ -30,5 +30,15 @@ export function currentOrg(): ContextOrg | undefined {
 }
 
 export function runWithContext<T>(ctx: RequestContext, fn: () => T): T {
+  if (!Number.isSafeInteger(ctx.org.id) || ctx.org.id < 1 || ctx.token.orgId !== ctx.org.id) {
+    throw new Error("Actor and workspace context must match");
+  }
   return storage.run(ctx, fn);
+}
+
+export function requireContext(): RequestContext {
+  const ctx = currentContext();
+  if (!ctx) throw new Error("A workspace context is required");
+  if (ctx.token.orgId !== ctx.org.id) throw new Error("Actor and workspace context must match");
+  return ctx;
 }
