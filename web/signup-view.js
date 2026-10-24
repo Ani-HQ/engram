@@ -35,7 +35,7 @@ export function signupView({ mode = "email", policy, message = "", api, changeMo
   const element = h("main", { class: "auth" }, h("a", { class: "wordmark", href: "/" }, h("img", { class: "brand-mark", src: "/brand/engram-mark.svg", width: 27, height: 27, alt: "" }), "engram"),
     h("h1", {}, create && inviteOnly ? "Have an invite?" : create ? "A home for your agents." : "Your agents. One place."),
     h("p", {}, create && inviteOnly ? "Engram is in a closed beta. Use the email address your invite was issued for." : "Activity and shared memory across the agents you use."),
-    create && inviteOnly && h("p", { class: "signup-promise" }, "Free early access until revoked. No card required. Verify your email to get started."),
+    create && inviteOnly && h("p", { class: "signup-promise" }, "No card required. Verify your email to get started."),
     create && !policy && h("p", { class: "notice" }, "Signup availability could not be checked. You can still sign in. ", action("Try again", retryPolicy, { class: "text small" })), form,
     create && inviteOnly && h("p", { class: "detail-note" }, h("a", { href: "mailto:ani@odstdio.com?subject=Engram%20early%20access" }, "Don’t have a code? Ask for an invite")),
     h("div", { class: "auth-switch" }, action(mode === "token" ? "Sign in with email" : "Use an access token", () => changeMode(mode === "token" ? "email" : "token"), { class: "text small" }), " · ",

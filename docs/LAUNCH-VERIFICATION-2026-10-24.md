@@ -3,24 +3,25 @@
 ## Current invite-only beta
 
 The hosted site now requires an email-bound invitation and inbox verification.
-Ready revision `engram-r-1792861276` serves 100% of observed traffic; build
-`b3faa700-6651-4eaa-9711-1a5af0b48e2c` passed all seven gates. Candidate and
+Ready revision `engram-r-1792862781` serves 100% of observed traffic; build
+`5f6ae618-f580-4417-beb2-ab3f2ed06b8c` passed all seven gates for the copy-only
+follow-up removing the free-access revocation phrase from the invite screen. Candidate and
 canonical checks passed 142 exact assets/page routes and their security headers;
 all 12 final image, identity, traffic and isolation configuration checks passed.
 
-The approved-inbox live test passed 38 checks covering issue, mail verification,
+The preceding beta implementation's approved-inbox live test passed 38 checks covering issue, mail verification,
 single use, non-expiring free access, protected administration, revocation,
 unchanged original billing and temporary-session cleanup. The existing personal
 workspace was reused. First-time account creation is covered by actual database
 tests rather than an additional live inbox. Local regression passed 439 tests;
 PostgreSQL passed 339 main, 77 restricted-role and 22 managed/concurrency checks.
-Independent security review passed. The exact-image private Cloud Run isolation
+Independent security review passed. That implementation image's private Cloud Run isolation
 probe passed and its service was deleted. Actual browser inspection confirmed
 free access, trial restoration, existing login and the live invite-only landing.
 
 Codes expire after seven days if unused. Admitted personal workspaces are free
 until access is revoked, without a card. See [invitation management](BETA_INVITES.md)
-and the [current release record](RELEASE.md#verified-invite-only-beta-release--24-october-2026).
+and the [current release record](RELEASE.md#verified-invite-copy-update--24-october-2026).
 Backup and rollback records are archived; no friend invitations or public
 announcement have been sent. Stripe and npm verification below remain valid.
 

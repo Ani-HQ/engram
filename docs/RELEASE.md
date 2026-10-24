@@ -4,6 +4,26 @@ Private operator captures and verification records described in the historical
 release entries are retained outside the public source release. Their local
 paths and raw contents are not published here.
 
+## Verified invite copy update — 24 October 2026
+
+The invite screen now reads: “No card required. Verify your email to get started.”
+Build `5f6ae618-f580-4417-beb2-ab3f2ed06b8c` passed all seven gates for copy commit
+`7e828144312aafd4a68115690d9fc41b75415c90`. Ready revision
+`engram-r-1792862781` serves 100% of observed traffic using image
+`gcr.io/ani-hq/engram@sha256:b14208db802e2f35de48ff07b5f1f5777b8f704bbed9c0f26dbe1a9dd3a6717d`.
+The 10 focused signup-view tests passed. Candidate smoke passed and revoked its
+temporary read credential with no cleanup required. Candidate and canonical
+checks passed all 142 assets/page routes and security headers, plus all 12 final
+control checks. The revised sentence was observed in both candidate and canonical
+browsers; the canonical screenshot was visually inspected.
+
+This follow-up changes screen copy only. The beta implementation and its email,
+admission, grant and revocation evidence are recorded below. Successful backup
+`1792859988777` was reused within its 24-hour validity window; rollback preserves
+`engram-r-1792861276`. [Source PR 28](https://github.com/Ani-HQ/engram/pull/28)
+contains the copy change and release record. The activated state was archived at
+`gs://ani-hq_cloudbuild/engram-releases/5f6ae618-f580-4417-beb2-ab3f2ed06b8c/release-state.json`.
+
 ## Verified invite-only beta release — 24 October 2026
 
 Hosted signup is now invite-only. The installation operator can issue email-bound,
