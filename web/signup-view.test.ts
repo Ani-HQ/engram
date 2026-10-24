@@ -60,7 +60,7 @@ describe("email-bound beta signup", () => {
     expect(calls).toEqual([{ email: "friend@example.com", inviteCode: "example-invite" }]);
     expect(sessions).toHaveLength(0);
     expect(view.textContent).toContain("Check friend@example.com for a verification link");
-    expect(view.textContent).toContain("Free early access until revoked. No card required.");
+    expect(view.textContent).toContain("No card required. Verify your email to get started.");
     expect(find(view, item => item.attrs.href === "mailto:ani@odstdio.com?subject=Engram%20early%20access").textContent).toBe("Don’t have a code? Ask for an invite");
     expect(input(view, "password").value).toBe("");
   });
