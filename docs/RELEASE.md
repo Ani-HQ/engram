@@ -4,7 +4,55 @@ Private operator captures and verification records described in the historical
 release entries are retained outside the public source release. Their local
 paths and raw contents are not published here.
 
-## Verified hosted launch release — 24 October 2026
+## Verified invite-only beta release — 24 October 2026
+
+Hosted signup is now invite-only. The installation operator can issue email-bound,
+single-use codes through **Workspace → Early access invitations** or
+`POST /api/admin/signup-invites`; see [operator instructions](BETA_INVITES.md).
+Email verification is required before admission. The separate provisioner grants
+the admitted personal workspace complimentary access until revoked, with no card
+or scheduled access expiry. Existing members retain normal login, and original
+trials and Stripe relationships remain independent.
+
+Cloud Build `b3faa700-6651-4eaa-9711-1a5af0b48e2c` passed all seven gates for
+implementation commit `d5ac66a4e839b8605e84efa654ce83aa5d6c2cbd`. Ready revision
+`engram-r-1792861276` serves 100% of observed production traffic using
+`gcr.io/ani-hq/engram@sha256:67478b78c68849e3585c1821adc5425cf7620d85f9609cb5625c24652e0acb9f`.
+Candidate and canonical checks passed 142/142 exact web assets/page routes with
+CSP/nosniff intact. All 12 canonical image, identity, traffic and isolation
+configuration checks passed. The exact-image private Cloud Run isolation check
+passed and its temporary service was deleted. Authenticated candidate smoke
+revoked its temporary read credential with `cleanupRequired: false`.
+
+The live approved-inbox test passed 38 checks: protected code issuance, exact
+email binding, delivery and acceptance of a separate verification proof, replay
+denial, no expiry free access applied by the job, non-operator rejection,
+revocation and restoration of the original trial. Both temporary sessions were
+revoked and rejected afterward; no new workspace, membership or charge was
+created, and the original entire billing row remained unchanged. Live browser
+inspection confirmed complimentary access with no expiry and then its trial
+restoration. A fresh canonical browser load preserved the existing login; after
+sign-out the canonical landing showed invite entry and the request-invite link.
+The canonical API requires a code, rejects invalid codes and hides invitation
+management from anonymous callers. No friend invitations or social posts were
+sent; the test used only the previously authorized inbox.
+
+Local verification passed 439 tests and 3,699 assertions, with one Cloud Run-only
+skip. Actual PostgreSQL passed 339 admission/billing checks, 77 restricted-role
+checks and 22 managed/concurrency checks. Independent security review found no
+remaining actionable findings. First-time account creation is covered by those
+database checks; the live mailbox already owned a personal workspace and the
+test verified reuse of that workspace.
+
+Successful recovery backup `1792859988777` completed at 16:41:20 UTC before staging.
+Rollback preserves prior revision `engram-r-1792853391`. The activated state was
+archived at
+`gs://ani-hq_cloudbuild/engram-releases/b3faa700-6651-4eaa-9711-1a5af0b48e2c/release-state.json`.
+[Source PR 27](https://github.com/Ani-HQ/engram/pull/27) contains the feature and
+operator documentation. The npm shim and verified Stripe integration are
+unchanged. Self-hosted installations remain open by default.
+
+## Historical prior hosted launch release — 24 October 2026
 
 Cloud Build `665db6d2-72b3-4cb3-9cc3-9002f40dc127` passed all seven gates for
 repair commit `4f697721edc6ea43a909a2bd39e5b56f5f044b8b`. Production revision
