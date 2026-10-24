@@ -4,6 +4,7 @@ import { config, databaseSecurity, dbUrl, provisionerDbUrl } from "./config";
 import { assertTenantDatabaseReady, prepareGatewayDatabase, protectGatewayMetadata, provisionerPool, provisionTenantDatabase, tenantDbUrl } from "./tenant-db";
 import { ensureInsightSchema } from "./insights-schema";
 import { ensureComplimentaryAccessSchema } from "./billing-schema";
+import { ensureHostedSignupInvitesSchema } from "./signup-invites-schema";
 import { assertRuntimeSchema, ensureProvisioningSchema, markSchemaReady } from "./provisioning-schema";
 
 export const sql = postgres(dbUrl("engram_gateway"), {
@@ -507,6 +508,7 @@ export async function migrate() {
   await sql`ALTER TABLE oauth_refresh_tokens ADD COLUMN IF NOT EXISTS membership_id bigint`;
   await ensureInsightSchema(sql);
   await ensureComplimentaryAccessSchema(sql);
+  await ensureHostedSignupInvitesSchema(sql);
   await protectGatewayMetadata(sql);
   await markSchemaReady(sql);
   if (databaseSecurity.authority === "inline") {

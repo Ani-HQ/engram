@@ -92,7 +92,7 @@ def service_body(service, args, revision):
 
 
 def runtime_environment(args):
-    return {"ENGRAM_DEPLOYMENT_MODE": "hosted", "ENGRAM_DATABASE_AUTHORITY": "runtime", "ENGRAM_WORKER_ISOLATION": "cloudrun", "GBRAIN_HOMES_DIR": "/tmp/gbrain-homes", "ENGRAM_CLOUDSQL_INSTANCE": f"{args.project}:{args.region}:engram-pg", "ENGRAM_WORKER_CONNECTOR_SERVICE_ACCOUNT": f"engram-db-connector@{args.project}.iam.gserviceaccount.com", "ENGRAM_PROVISION_JOB": f"projects/{args.project}/locations/{args.region}/jobs/engram-provision", "ENGRAM_PUBLIC_URL": args.public_url, "ENGRAM_OAUTH_AUDIENCE": args.public_url + "/mcp", "ENGRAM_DEV_LOGIN_LINKS": "0", "ENGRAM_INSECURE_COOKIE": "0", "REFLEX_MODEL": "jev-1.13.0"}
+    return {"ENGRAM_DEPLOYMENT_MODE": "hosted", "ENGRAM_SIGNUP_MODE": "invite-only", "ENGRAM_DATABASE_AUTHORITY": "runtime", "ENGRAM_WORKER_ISOLATION": "cloudrun", "GBRAIN_HOMES_DIR": "/tmp/gbrain-homes", "ENGRAM_CLOUDSQL_INSTANCE": f"{args.project}:{args.region}:engram-pg", "ENGRAM_WORKER_CONNECTOR_SERVICE_ACCOUNT": f"engram-db-connector@{args.project}.iam.gserviceaccount.com", "ENGRAM_PROVISION_JOB": f"projects/{args.project}/locations/{args.region}/jobs/engram-provision", "ENGRAM_PUBLIC_URL": args.public_url, "ENGRAM_OAUTH_AUDIENCE": args.public_url + "/mcp", "ENGRAM_DEV_LOGIN_LINKS": "0", "ENGRAM_INSECURE_COOKIE": "0", "REFLEX_MODEL": "jev-1.13.0"}
 
 
 def write_state(path, state):
@@ -181,7 +181,7 @@ def verify_provision_trigger(args):
 
 
 def provision(args):
-    env = {"ENGRAM_DEPLOYMENT_MODE": "hosted", "ENGRAM_DATABASE_AUTHORITY": "provisioner", "ENGRAM_JOB": "provision", "ENGRAM_CLOUDSQL_INSTANCE": f"{args.project}:{args.region}:engram-pg", "GBRAIN_HOMES_DIR": "/tmp/gbrain-homes"}
+    env = {"ENGRAM_DEPLOYMENT_MODE": "hosted", "ENGRAM_SIGNUP_MODE": "invite-only", "ENGRAM_DATABASE_AUTHORITY": "provisioner", "ENGRAM_JOB": "provision", "ENGRAM_CLOUDSQL_INSTANCE": f"{args.project}:{args.region}:engram-pg", "GBRAIN_HOMES_DIR": "/tmp/gbrain-homes"}
     secrets = ",".join(f"{name}={secret}:latest" for name, secret in PROVISIONER_SECRETS.items())
     cloud(args, ["run", "jobs", "deploy", "engram-provision", f"--image={args.image}", f"--region={args.region}", f"--service-account=engram-provisioner@{args.project}.iam.gserviceaccount.com", f"--set-cloudsql-instances={args.project}:{args.region}:engram-pg", "--set-env-vars=" + ",".join(f"{key}={value}" for key, value in env.items()), "--set-secrets=" + secrets, "--memory=2Gi", "--cpu=1", "--tasks=1", "--max-retries=1", "--task-timeout=900s"])
     cloud(args, ["run", "jobs", "execute", "engram-provision", f"--region={args.region}", "--wait"])

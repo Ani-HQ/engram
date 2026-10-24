@@ -25,6 +25,8 @@ const deploymentMode = process.env.ENGRAM_DEPLOYMENT_MODE ?? "self-hosted";
 if (deploymentMode !== "hosted" && deploymentMode !== "self-hosted") {
   throw new Error("ENGRAM_DEPLOYMENT_MODE must be hosted or self-hosted");
 }
+const signupMode = process.env.ENGRAM_SIGNUP_MODE ?? (deploymentMode === "hosted" ? "invite-only" : "open");
+if (signupMode !== "invite-only" && signupMode !== "open") throw new Error("ENGRAM_SIGNUP_MODE must be invite-only or open");
 
 // The compatibility path is an explicit operator decision, never the hosted
 // default. Provisioning credentials are used only by the parent gateway.
@@ -82,6 +84,7 @@ if (databaseSecurity.workerUrlTemplate) templateUrl(databaseSecurity.workerUrlTe
 export const config = {
   // A self-hosted install never contacts a billing service or requires a licence.
   deploymentMode,
+  signupMode,
   port: Number(process.env.PORT ?? 8080),
   brainDb: process.env.ENGRAM_BRAIN_DB ?? "brain_shared",
   gbrainBin: process.env.GBRAIN_BIN ?? `${process.env.HOME}/.bun/bin/gbrain`,

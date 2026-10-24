@@ -16,6 +16,7 @@ import { getMemoryEntry, upsertMemoryEntry } from "./memory-entries";
 import { authenticateRequest } from "./auth";
 import { handleOrgApi, handlePublicOrgApi, ingestTrailRequest, onboardingState, sessionActor } from "./org-api";
 import { resolveOrg, withOrg } from "./orgs";
+import { signupPolicy } from "./signup-invites";
 import { canDelete, normalizeToken } from "./policies";
 import { callTool } from "./proxy";
 import { resolveReview } from "./review/apply";
@@ -180,6 +181,9 @@ async function routeWeb(req: Request): Promise<Response> {
   if (url.pathname === "/api/plans" && ["GET", "HEAD"].includes(req.method)) {
     return new Response(req.method === "HEAD" ? null : JSON.stringify(publicPlans()), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
   }
+  if (url.pathname === "/api/signup-policy" && ["GET", "HEAD"].includes(req.method)) {
+    return new Response(req.method === "HEAD" ? null : JSON.stringify(signupPolicy()), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+  }
   const showcase = await handlePublicShowcase(req);
   if (showcase) return showcase;
   if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
@@ -305,7 +309,8 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   else if (req.method === "POST" && url.pathname === "/api/review/approve") route = postReviewApprove;
   else if (req.method === "POST" && url.pathname === "/api/review/reject") route = postReviewReject;
   else if (req.method === "POST" && url.pathname === "/api/review/defer") route = postReviewDefer;
-  const token = await authenticateCookie(req);
+  const adminSignup = url.pathname === "/api/admin/signup-invites" || url.pathname.startsWith("/api/admin/signup-invites/");
+  const token = adminSignup && req.headers.get("authorization") ? await authenticateRequest(req) : await authenticateCookie(req);
   if (!token) {
     if (!route) return Response.json({ error: "not found" }, { status: 404 });
     return Response.json({ error: "unauthorized" }, { status: 401 });
@@ -321,7 +326,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   // A switch reads account metadata for a different authorized workspace. Keep
   // it outside the source tenant context, even when that source is ready; target
   // onboarding checks must not inherit the source workspace's isolation scope.
-  if (req.method === "POST" && url.pathname === "/api/session/switch") {
+  if ((req.method === "POST" && url.pathname === "/api/session/switch") || adminSignup) {
     return await handleOrgApi(req, url, actor, storedOrg) ?? Response.json({ error: "not found" }, { status: 404 });
   }
   if (req.method === "GET" && (url.pathname === "/api/me" || url.pathname === "/api/provisioning")) {

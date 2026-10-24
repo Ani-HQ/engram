@@ -44,6 +44,30 @@ describe("local static branding", () => {
 });
 
 describe("local activity demo", () => {
+  test("previews email-bound signup and operator-only code management without sending mail", async () => {
+    const policy = await (await request("/api/signup-policy", { headers: { Cookie: "engram_dev=0" } })).json();
+    expect(policy).toMatchObject({ mode: "invite-only", inviteCodeRequired: true, verificationRequired: true, complimentary: true });
+    expect((await request("/api/invites/accept", { method: "POST", body: JSON.stringify({ token: "svf_demo_expired" }) })).status).toBe(400);
+    expect((await (await request("/api/me")).json()).capabilities.manageSignupInvites).toBe(true);
+    const issue = await request("/api/admin/signup-invites", { method: "POST", headers: { "X-Engram-Workspace": "1" }, body: JSON.stringify({ email: "beta-demo@example.com" }) });
+    const issued = await issue.json(); expect(issue.status).toBe(201); expect(issued.inviteCode).toMatch(/^demo_signup_/);
+    const metadata = await (await request("/api/admin/signup-invites")).json();
+    expect(metadata.invites.find((item: any) => item.id === issued.invite.id)).toEqual(issued.invite);
+    expect(JSON.stringify(metadata)).not.toContain(issued.inviteCode);
+    expect((await request("/api/orgs", { method: "POST", body: JSON.stringify({ email: "beta-demo@example.com" }) })).status).toBe(400);
+    expect((await request("/api/orgs", { method: "POST", body: JSON.stringify({ email: "different@example.com", inviteCode: issued.inviteCode }) })).status).toBe(400);
+    const verification = await (await request("/api/orgs", { method: "POST", body: JSON.stringify({ email: "beta-demo@example.com", inviteCode: issued.inviteCode }) })).json();
+    expect(verification.sent).toBe(false); expect(verification.demo).toBe(true); expect(verification.url).not.toContain(issued.inviteCode);
+    expect((await (await request("/api/admin/signup-invites")).json()).invites.find((item: any) => item.id === issued.invite.id).redeemedAt).toBeNull();
+    const revoked = await (await request(`/api/admin/signup-invites/${issued.invite.id}/revoke`, { method: "POST", body: "{}" })).json(); expect(revoked.revocationPending).toBe(false);
+    expect((await request("/api/invites/accept", { method: "POST", body: JSON.stringify({ token: new URL(verification.url).hash.slice(6) }) })).status).toBe(400);
+    try {
+      const other = await (await request("/api/session/switch", { method: "POST", body: JSON.stringify({ orgId: 2 }) })).json();
+      expect(other.capabilities.manageSignupInvites).toBe(false);
+      expect((await request("/api/admin/signup-invites")).status).toBe(403);
+      expect((await request("/api/admin/signup-invites", { headers: { "X-Engram-Workspace": "1" } })).status).toBe(409);
+    } finally { await request("/api/session/switch", { method: "POST", body: JSON.stringify({ orgId: 1 }) }); }
+  });
   test("exposes simulated getting started evidence with workspace scoping", async () => {
     const response = await request("/api/onboarding", { headers: { "X-Engram-Workspace": "1" } });
     const data = await response.json();

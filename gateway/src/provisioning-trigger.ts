@@ -1,10 +1,10 @@
 // The web identity can execute this one job. It cannot update the job, read its
 // provisioner secret, or administer database roles itself.
 let lastAttempt = 0;
-export async function triggerProvisioning(): Promise<void> {
+export async function triggerProvisioning(options: { force?: boolean } = {}): Promise<void> {
   const job = process.env.ENGRAM_PROVISION_JOB;
   if (!job || !/^projects\/[a-z0-9-]+\/locations\/[a-z0-9-]+\/jobs\/engram-provision$/.test(job)) return;
-  if (Date.now()-lastAttempt < 15_000) return;
+  if (!options.force && Date.now()-lastAttempt < 15_000) return;
   lastAttempt = Date.now();
   try {
     const response = await fetch("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",{headers:{"Metadata-Flavor":"Google"},signal:AbortSignal.timeout(5000)});

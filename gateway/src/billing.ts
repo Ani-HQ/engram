@@ -224,8 +224,16 @@ async function checkout(token: TokenRecord, plan: unknown, input: BillingDepende
   await ensureRow(actor.orgId, deps.db);
   return deps.db.begin(async tx => {
     const db = tx as unknown as postgres.Sql;
-    let row = await getRow(actor.orgId, db, true);
+    await getRow(actor.orgId, db, true);
+    // A complimentary grant may commit while this request waits for the row
+    // lock. A separate read observes that grant before any provider operation.
+    let row = await getRow(actor.orgId, db);
     if (complimentaryAccess(row, deps.now())?.active) throw new BillingError("This workspace already has complimentary access. No subscription is required.", 409, "complimentary_access");
+    if (config.signupMode === "invite-only") {
+      const admission = await db`SELECT id FROM hosted_signup_invites
+        WHERE redeemed_org_id = ${actor.orgId} AND redeemed_at IS NOT NULL AND revoked_at IS NULL AND complimentary_revoked_at IS NULL LIMIT 1`;
+      if (admission.length) throw new BillingError("Your invitation includes complimentary access. Setup is still being completed.", 409, "complimentary_pending");
+    }
     const price = await stripe(deps, `prices/${encodeURIComponent(deps.settings.cloudMonthlyPriceId)}`);
     const catalog = PLANS.find(item => item.id === "cloud")!;
     if (price.id !== deps.settings.cloudMonthlyPriceId || price.active !== true || price.currency !== catalog.currency || price.unit_amount !== catalog.monthlyPrice * 100 ||

@@ -8,7 +8,7 @@ One history. Every agent. Activity and shared memory across the tools you use.
 
 engram is shared memory for an organization. Claude, Cursor, ChatGPT, Codex, Grok, and any other MCP client read and write that org's brain. Each person also gets a personal brain. Conversations and notes land there first. Share rules copy matching slices into the team. A second org gets its own database. Inside an org, a token names who called.
 
-Self-host it for free, or use a hosted Cloud workspace for **$19 USD/month** at launch. Each hosted workspace gets a 14-day trial without a card. Pricing and privacy pages are at `/pricing` and `/privacy`.
+Self-host it for free, or request access to the hosted invite-only beta. Invited personal workspaces are free until access is revoked, with no card required. Standard Cloud pricing is **$19 USD/month**. Pricing and privacy pages are at `/pricing` and `/privacy`.
 
 ## Quick start
 
@@ -53,7 +53,7 @@ Wiring for Claude Code, Cursor, and stdio-only harnesses is in [docs/WIRING.md](
 
 ## Hosted
 
-The hosted implementation supports independent workspaces, owner-managed Stripe subscriptions, a 14-day trial, and a $19/month Cloud plan. Existing data remains readable and exportable after write access ends. Hosted billing must be configured and verified before accepting customers; see [docs/BILLING.md](docs/BILLING.md).
+The hosted beta requires an email-bound invitation and inbox verification. Operators can issue and revoke codes through the console or [invitation API](docs/BETA_INVITES.md). The implementation also supports independent workspaces, owner-managed Stripe subscriptions, a 14-day trial, and a $19/month Cloud plan. Existing data remains readable and exportable after write access ends; see [docs/BILLING.md](docs/BILLING.md).
 
 Self-hosted mode has no hosted billing calls, trial expiry, or licence check. Setup, owner recovery, TLS, and backups are in [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md).
 
@@ -138,6 +138,7 @@ Jev proposes memory changes. Humans resolve them through the review API; source 
 ## Docs
 
 - [Cloud pricing, subscription setup, and payment verification](docs/BILLING.md)
+- [Hosted beta invitations and operator API](docs/BETA_INVITES.md)
 - [Self-hosting and owner recovery](docs/SELF_HOSTING.md)
 - [Privacy and data flow](docs/PRIVACY.md)
 - [Security controls and limits](SECURITY.md)
