@@ -46,7 +46,7 @@ describe("local static branding", () => {
 describe("local activity demo", () => {
   test("previews email-bound signup and operator-only code management without sending mail", async () => {
     const policy = await (await request("/api/signup-policy", { headers: { Cookie: "engram_dev=0" } })).json();
-    expect(policy).toMatchObject({ mode: "invite-only", inviteCodeRequired: true, verificationRequired: true, complimentary: true });
+    expect(policy).toMatchObject({ mode: "invite-only", inviteCodeRequired: true, verificationRequired: true, complimentary: true, tokenSignInAllowed: false });
     expect((await request("/api/invites/accept", { method: "POST", body: JSON.stringify({ token: "svf_demo_expired" }) })).status).toBe(400);
     expect((await (await request("/api/me")).json()).capabilities.manageSignupInvites).toBe(true);
     const issue = await request("/api/admin/signup-invites", { method: "POST", headers: { "X-Engram-Workspace": "1" }, body: JSON.stringify({ email: "beta-demo@example.com" }) });
@@ -192,11 +192,15 @@ describe("local activity demo", () => {
   test("keeps a signed-out preview signed out", async () => {
     const response = await request("/api/me", { headers: { Cookie: "engram_dev=0" } });
     expect(response.status).toBe(401);
-    const login = await request("/api/session", { method: "POST", body: JSON.stringify({ token: "demo" }) });
+    const tokenLogin = await request("/api/session", { method: "POST", body: JSON.stringify({ token: "demo" }) });
+    expect(tokenLogin.status).toBe(403); expect(tokenLogin.headers.get("set-cookie")).toBeNull();
+    expect((await tokenLogin.json()).code).toBe("token_sign_in_disabled");
+    const email = await (await request("/api/login/email", { method: "POST", body: JSON.stringify({ email: "ada@example.com" }) })).json();
+    const login = await request("/api/invites/accept", { method: "POST", body: JSON.stringify({ token: new URL(email.url).hash.slice(6) }) });
     expect(login.status).toBe(200);
     expect(login.headers.get("set-cookie")).toContain("engram_dev=1");
     const malformed = await request("/api/session", { method: "POST", body: JSON.stringify({ token: 123 }) });
-    expect(malformed.status).toBe(400);
+    expect(malformed.status).toBe(403);
   });
 
   test("uses the session identity and reports unverified agent submissions honestly", async () => {

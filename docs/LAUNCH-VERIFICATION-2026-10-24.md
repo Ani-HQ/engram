@@ -3,11 +3,17 @@
 ## Current invite-only beta
 
 The hosted site now requires an email-bound invitation and inbox verification.
-Ready revision `engram-r-1792862781` serves 100% of observed traffic; build
-`5f6ae618-f580-4417-beb2-ab3f2ed06b8c` passed all seven gates for the copy-only
-follow-up removing the free-access revocation phrase from the invite screen. Candidate and
+Hosted console sign-in now uses email; token-based console login is disabled.
+Agent bearer access and self-hosted owner recovery remain supported.
+Ready revision `engram-r-1792863937` serves 100% of observed traffic; build
+`81a0c517-563b-4ee1-b2e2-d346c91bd2fc` passed all seven gates. Candidate and
 canonical checks passed 142 exact assets/page routes and their security headers;
 all 12 final image, identity, traffic and isolation configuration checks passed.
+
+The email-only release passed 444 local tests and 21 real approved-inbox checks,
+including secure email login, valid agent token rejected for console sign-in but
+accepted as a bearer, and complete temporary-credential cleanup. All six canonical
+authentication checks passed. Both hosted browser screens omit the token option.
 
 The preceding beta implementation's approved-inbox live test passed 38 checks covering issue, mail verification,
 single use, non-expiring free access, protected administration, revocation,
@@ -21,7 +27,7 @@ free access, trial restoration, existing login and the live invite-only landing.
 
 Codes expire after seven days if unused. Admitted personal workspaces are free
 until access is revoked, without a card. See [invitation management](BETA_INVITES.md)
-and the [current release record](RELEASE.md#verified-invite-copy-update--24-october-2026).
+and the [current release record](RELEASE.md#verified-email-only-hosted-console--24-october-2026).
 Backup and rollback records are archived; no friend invitations or public
 announcement have been sent. Stripe and npm verification below remain valid.
 

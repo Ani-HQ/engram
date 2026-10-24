@@ -15,7 +15,7 @@ import { aiConfiguration, attentionResults } from "./insights-view.js";
 import { confidenceLabel, reviewAllowed, reviewPlan } from "./insight-model.js";
 import { onboardingGuide } from "./onboarding-view.js";
 import { agentConnectionGuide, accessKeyConfiguration, onboardingProgress, shouldOfferOnboarding, createOnboardingReader } from "./onboarding-model.js";
-import { parseSignupPolicy, signupEntryMode, emailLinkRecovery } from "./signup-model.js";
+import { parseSignupPolicy, signupAuthMode, signupEntryMode, emailLinkRecovery } from "./signup-model.js";
 import { signupView } from "./signup-view.js";
 import { signupAdminPanel } from "./signup-admin.js";
 
@@ -1070,6 +1070,7 @@ function expired(message = "") {
   clearTimeout(searchTimer); clearTimeout(insightTimer); ++generation; closeDetail(); state.session = null; state.activities = []; state.activityStats = {}; state.freshIds = new Set(); state.memories = []; state.tokens = []; state.connections = null; state.connectionError = ""; state.connectionFetchedAt = 0; connectionDraft = null; connectionFocusPending = null; state.agents = []; state.tools = []; state.showcase = null; state.showcaseDraft = null; state.insights = null; state.insightsQuery = ""; state.insightsActivityId = ""; state.insightBusy = false; state.insightError = ""; state.reviews = []; pendingInsightRun = false; renderAuth("email", message);
 }
 function renderAuth(mode = "email", message = "") {
+  mode = signupAuthMode(mode, signupPolicy);
   authPanel?.dispose(); signupAdmin?.dispose(); signupAdmin = null;
   authPanel = signupView({ mode, policy: signupPolicy, message, api,
     changeMode: next => { history.replaceState(null, "", next === "create" ? "#invite" : "#signin"); renderAuth(next); },

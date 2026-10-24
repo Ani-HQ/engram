@@ -11,7 +11,7 @@ export class SignupInviteError extends Error {
 }
 
 export function signupPolicy(mode = config.signupMode) {
-  return { mode, complimentary: true, verificationRequired: true, inviteCodeRequired: mode === "invite-only" };
+  return { mode, complimentary: true, verificationRequired: true, inviteCodeRequired: mode === "invite-only", tokenSignInAllowed: config.deploymentMode === "self-hosted" };
 }
 
 export async function canManageSignupInvites(token: TokenRecord, db: postgres.Sql = sql): Promise<boolean> {

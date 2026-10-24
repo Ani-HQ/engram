@@ -23,6 +23,7 @@ const { parseInsightRequest } = await import("../gateway/src/insights");
 const { oauthActorName } = await import("../gateway/src/oauth");
 
 const PORT = Number(Bun.env.PORT || 8099);
+const demoSelfHosted = Bun.env.ENGRAM_DEMO_SELF_HOSTED === "1";
 const root = new URL("./", import.meta.url);
 const session = { ...await fixture("session.json"), demo: true };
 const workspacePolicies = new Map<number, ReturnType<typeof parsePolicies>>(session.orgs.map((org: any) => [org.id, parsePolicies(org.id === session.org.id ? session.org.policies : {})]));
@@ -98,7 +99,8 @@ export async function devFetch(req: Request): Promise<Response> {
 async function handleApi(req: Request, url: URL): Promise<Response> {
   const route = `${req.method} ${url.pathname}`;
   if (route === "GET /api/plans") return json({ mode: "hosted", trialDays: 14, currency: "usd", checkoutAvailable: false, plans: PLANS, demo: true });
-  if (route === "GET /api/signup-policy") return json({ mode: "invite-only", complimentary: true, verificationRequired: true, inviteCodeRequired: true, demo: true });
+  if (route === "GET /api/signup-policy") return json({ mode: demoSelfHosted ? "open" : "invite-only", complimentary: true, verificationRequired: true, inviteCodeRequired: !demoSelfHosted, tokenSignInAllowed: demoSelfHosted, demo: true });
+  if (route === "POST /api/session" && !demoSelfHosted) return json({ error: "Sign in with an email link. Access tokens connect agents only.", code: "token_sign_in_disabled" }, 403);
   if (route === "POST /api/session" || route === "POST /api/invites/accept") {
     const body = await bodyObject(req);
     if (!string(body?.token)) return json({ error: "A token is required." }, 400);
@@ -116,7 +118,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   if (route === "POST /api/login/email" || route === "POST /api/orgs") {
     const body = await bodyObject(req);
     if (typeof body?.email !== "string" || !body.email.includes("@")) return json({ error: "An email is required." }, 400);
-    if (route === "POST /api/orgs" && (body.inviteCode || body.email.toLowerCase() !== session.email.toLowerCase())) {
+    if (route === "POST /api/orgs" && !demoSelfHosted && (body.inviteCode || body.email.toLowerCase() !== session.email.toLowerCase())) {
       const id = signupCodes.get(String(body.inviteCode || "")), invite = id && signupInvitations.get(id);
       if (!invite || invite.email !== body.email.trim().toLowerCase() || invite.revokedAt || Date.parse(invite.expiresAt) <= Date.now() || invite.redeemedAt) return json({ error: "Use an unexpired invite code issued for this email address.", code: "invite_invalid" }, 400);
       const token = `svf_demo_${crypto.randomUUID()}`; signupLinks.set(token, invite.id);

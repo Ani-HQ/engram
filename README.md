@@ -68,7 +68,7 @@ Memories are pages. `remember` appends a dated line to a topic page. `recall` se
 | `remember` | Append one note to a topic. Pages roll to an archive when they get long. The entry keeps its identity. |
 | `recall` | Up to 20 candidates, at most 5 snippets back. Jev can rerank. If Jev is down, search order stands. |
 | Pages | Markdown in Postgres. Tags, links, and a timeline. |
-| Console | Black-and-white Activity, Memory, Connections, Public profile, Workspace, and Plan & billing views. Sign in by email or access token. |
+| Console | Black-and-white Activity, Memory, Connections, Public profile, Workspace, and Plan & billing views. Hosted sign-in uses email verification. Self-hosted installs also support owner access tokens. |
 | Actions | `record_action` and `list_actions`, also available at `/api/actions`. Authenticated identity, resource, run, result, and evidence. |
 | Audit | Every call records who, which tool, and which page. |
 | Reflex | Jev judges routing, duplicates, and conflicts. A nightly pass proposes clusters. A person resolves them through the review API. Source pages are not rewritten. |

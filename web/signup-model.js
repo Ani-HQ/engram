@@ -2,7 +2,12 @@ export function parseSignupPolicy(value) {
   if (!value || !["open", "invite-only"].includes(value.mode) || value.verificationRequired !== true || typeof value.inviteCodeRequired !== "boolean" || value.inviteCodeRequired !== (value.mode === "invite-only") || (value.mode === "invite-only" && value.complimentary !== true)) {
     throw new Error("Signup availability could not be checked. You can still sign in.");
   }
-  return { mode: value.mode, complimentary: value.complimentary === true, verificationRequired: true, inviteCodeRequired: value.inviteCodeRequired };
+  return { mode: value.mode, complimentary: value.complimentary === true, verificationRequired: true, inviteCodeRequired: value.inviteCodeRequired, tokenSignInAllowed: value.tokenSignInAllowed === true };
+}
+
+export function signupAuthMode(mode, policy) {
+  if (mode === "create") return "create";
+  return mode === "token" && policy?.tokenSignInAllowed === true ? "token" : "email";
 }
 
 export function signupEntryMode(policy, hash, pathname = "/app") {

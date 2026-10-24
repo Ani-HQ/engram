@@ -62,16 +62,9 @@ export async function verifyOwnerCandidate(options: CandidateSettings, signal: A
   requireCheck(ownerSmokeState(options).candidateRevision === state.candidateRevision, "release_state_changed");
 }
 
-export function secureOwnerCookie(header: string | null, raw: string): string {
-  requireCheck(!!header && /(?:^|;)\s*HttpOnly\s*(?:;|$)/i.test(header) && /(?:^|;)\s*Secure\s*(?:;|$)/i.test(header) && /(?:^|;)\s*SameSite=Strict\s*(?:;|$)/i.test(header) && /(?:^|;)\s*Path=\/\s*(?:;|$)/i.test(header) && !/(?:^|;)\s*Domain=/i.test(header), "unsafe_cookie");
-  const pair = header.split(";", 1)[0];
-  requireCheck(pair === `engram_session=${raw}`, "unexpected_cookie");
-  return pair;
-}
-
 export function ownerSmokeRequest(path: string, method: string, body: unknown, cookie: string, workspace: string, signal: AbortSignal, transport: typeof httpsRequest = httpsRequest): Promise<{ status: number; setCookie: string | null; data: any }> {
   requireCheck(!signal.aborted, "interrupted");
-  requireCheck((method === "POST" && path === "/api/session") || (method === "GET" && ["/api/me", "/api/billing", "/api/policies", "/api/showcase", "/api/connections"].includes(path)), "unauthorized_smoke_route");
+  requireCheck(method === "GET" && body === undefined && ["/api/me", "/api/billing", "/api/policies", "/api/showcase", "/api/connections"].includes(path), "unauthorized_smoke_route");
   return new Promise((resolve, reject) => {
     let settled = false;
     let request: ReturnType<typeof httpsRequest> | undefined;
@@ -110,19 +103,18 @@ export function ownerSmokeRequest(path: string, method: string, body: unknown, c
   });
 }
 
-async function ownerReads(raw: string, allowBilling: boolean, signal: AbortSignal, ownerEmail: string): Promise<Checks> {
-  let cookie = "";
-  const call = (path: string, method = "GET", body?: unknown, workspace = "1") => ownerSmokeRequest(path, method, body, cookie, workspace, signal);
+export async function ownerReads(raw: string, allowBilling: boolean, signal: AbortSignal, ownerEmail: string, request = ownerSmokeRequest): Promise<Checks> {
+  requireCheck(/^ens_[A-Za-z0-9_-]{32}$/.test(raw), "invalid_owner_session");
+  // The operator already committed this genuine, email-bound session. Hosted
+  // sign-in no longer exchanges arbitrary bearer credentials for browser cookies.
+  let cookie = `engram_session=${raw}`;
+  const call = (path: string, method = "GET", body?: unknown, workspace = "1") => request(path, method, body, cookie, workspace, signal);
   const checks: Checks = {};
   try {
-    const session = await call("/api/session", "POST", { token: raw });
-    requireCheck(session.status === 200, "session_unavailable");
-    cookie = secureOwnerCookie(session.setCookie, raw);
-    checks.secureCookie = true;
     const me = await call("/api/me");
     requireCheck(me.status === 200 && me.data.email === ownerEmail && me.data.role === "owner" && me.data.org?.id === 1 && me.data.org.provisioningStatus === "ready", "owner_identity_mismatch");
     requireCheck(typeof me.data.onboarding?.step === "string" && typeof me.data.onboarding.hasToken === "boolean" && typeof me.data.onboarding.hasPage === "boolean", "onboarding_unavailable");
-    checks.ownerMatches = checks.workspaceReady = checks.onboardingReadable = true;
+    checks.emailSessionAuthenticated = checks.ownerMatches = checks.workspaceReady = checks.onboardingReadable = true;
     if (allowBilling) {
       const billing = await call("/api/billing");
       requireCheck(billing.status === 200 && billing.data.mode === "hosted" && typeof billing.data.canWrite === "boolean", "billing_unavailable");
