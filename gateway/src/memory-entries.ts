@@ -1,3 +1,4 @@
+import { failureCode } from "./diagnostics";
 import { createHash } from "node:crypto";
 import { dataSql } from "./db";
 import { splitTopicEntries } from "./topic-page";
@@ -107,7 +108,7 @@ export async function upsertMemoryEntry(input: {
       RETURNING *`;
     return rows[0] ? rowToEntry(rows[0]) : null;
   } catch (e) {
-    console.error("[memory-entries] upsert failed:", String(e).slice(0, 200));
+    console.error("[memory-entries] upsert failed:", failureCode(e));
     return null;
   }
 }
@@ -122,7 +123,7 @@ export async function markRolledEntries(liveSlug: string, archiveSlug: string, m
         SET archive_slug = ${archiveSlug}, updated_at = now()
         WHERE fingerprint = ${fingerprint}`;
     } catch (e) {
-      console.error("[memory-entries] rollover update failed:", String(e).slice(0, 200));
+      console.error("[memory-entries] rollover update failed:", failureCode(e));
     }
   }
 }
@@ -151,7 +152,7 @@ export async function getMemoryEntry(id: string): Promise<MemoryEntry | null> {
     const rows = await dataSql()`SELECT * FROM memory_entries WHERE id = ${id}`;
     return rows[0] ? rowToEntry(rows[0]) : null;
   } catch (e) {
-    console.error("[memory-entries] get failed:", String(e).slice(0, 200));
+    console.error("[memory-entries] get failed:", failureCode(e));
     return null;
   }
 }
@@ -171,17 +172,13 @@ export async function listActiveEntries(limit = 200, afterId?: string): Promise<
           LIMIT ${limit}`;
     return rows.map(rowToEntry);
   } catch (e) {
-    console.error("[memory-entries] list failed:", String(e).slice(0, 200));
+    console.error("[memory-entries] list failed:", failureCode(e));
     return [];
   }
 }
 
 export async function setEntryStatus(id: string, status: EntryStatus): Promise<void> {
-  try {
-    await dataSql()`UPDATE memory_entries SET status = ${status}, updated_at = now() WHERE id = ${id}`;
-  } catch (e) {
-    console.error("[memory-entries] status update failed:", String(e).slice(0, 200));
-  }
+  await dataSql()`UPDATE memory_entries SET status = ${status}, updated_at = now() WHERE id = ${id}`;
 }
 
 export async function recordReflexDecision(input: {
@@ -202,7 +199,7 @@ export async function recordReflexDecision(input: {
         ${input.confidence ?? null}
       )`;
   } catch (e) {
-    console.error("[memory-entries] decision write failed:", String(e).slice(0, 200));
+    console.error("[memory-entries] decision write failed:", failureCode(e));
   }
 }
 

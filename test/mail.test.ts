@@ -9,6 +9,7 @@ const {
   mailConfigured,
   mailFrom,
   sendMail,
+  devLoginLinksAllowed,
 } = await import("../gateway/src/mail");
 
 describe("mail config", () => {
@@ -40,11 +41,21 @@ describe("login link response", () => {
     });
   });
 
-  test("returns the url only when no mailer is configured", () => {
-    expect(loginLinkResponse("skipped", "https://local.example")).toEqual({
+  test("reveals a local development URL only with explicit opt-in", () => {
+    expect(loginLinkResponse("skipped", "https://local.example", { ENGRAM_DEV_LOGIN_LINKS: "1" })).toEqual({
       status: 200,
       body: { sent: false, url: "https://local.example" },
     });
+  });
+
+  test("hosted mode never exposes a magic link even when the dev flag is set", () => {
+    const env = { ENGRAM_DEPLOYMENT_MODE: "hosted", ENGRAM_DEV_LOGIN_LINKS: "1" };
+    expect(devLoginLinksAllowed(env)).toBe(false);
+    expect(loginLinkResponse("skipped", "https://secret.example", env)).toEqual({
+      status: 503,
+      body: { error: "email login is not configured" },
+    });
+    expect(loginLinkResponse("skipped", "https://secret.example", {}).body).not.toHaveProperty("url");
   });
 
   test("fails closed without leaking the url", () => {

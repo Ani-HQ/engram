@@ -1,32 +1,148 @@
 {
   "results": [
     {
-      "slug": "weight-recency",
-      "title": "Weight follows recency",
+      "slug": "deployment-approvals",
+      "title": "Production deployments need approval",
+      "body": "Prepare a preview and share the test results before requesting approval for a production deployment.",
       "scope": "shared",
-      "updated_at": "2026-08-18T07:30:00Z",
-      "snippet": "Fresh pages carry full weight, while older pages fade only within a contrast-safe range."
+      "type": "note",
+      "source_id": "demo",
+      "updated_at": "2026-10-21T07:58:00.000Z",
+      "provenance": {
+        "origin": {
+          "by": "codex",
+          "at": "2026-10-21T07:58:00.000Z"
+        },
+        "contributors": [
+          {
+            "name": "codex",
+            "first": "2026-10-21T07:58:00.000Z",
+            "last": "2026-10-21T07:58:00.000Z",
+            "writes": 1
+          }
+        ]
+      },
+      "snippet": "Prepare a preview and share the test results before requesting approval for a production deployment."
     },
     {
-      "slug": "search-bleed",
-      "title": "Search rows bleed in",
+      "slug": "action-evidence",
+      "title": "Keep action evidence explicit",
+      "body": "An observed action has execution evidence from an integration. A reported action is supplied by an agent. Preserve this distinction when explaining what happened.",
       "scope": "shared",
-      "updated_at": "2026-01-15T22:10:00Z",
-      "snippet": "Rows arrive with a slight blur, a small upward drift, and a damp-paper stagger."
+      "type": "note",
+      "source_id": "demo",
+      "updated_at": "2026-10-21T07:41:00.000Z",
+      "provenance": {
+        "origin": {
+          "by": "mac-claude",
+          "at": "2026-10-21T07:41:00.000Z"
+        },
+        "contributors": [
+          {
+            "name": "mac-claude",
+            "first": "2026-10-21T07:41:00.000Z",
+            "last": "2026-10-21T07:41:00.000Z",
+            "writes": 1
+          }
+        ]
+      },
+      "snippet": "An observed action has execution evidence from an integration. A reported action is supplied by an agent. Preserve this distinction when explaining what happened."
     },
     {
-      "slug": "linked-memory",
-      "title": "Links between memories",
+      "slug": "engram-direction",
+      "title": "One history across agents and tools",
+      "body": "Engram connects agent identity, task intent, tool execution, and affected resources. The same history should be accessible to connected agents and the web app.",
       "scope": "shared",
-      "updated_at": "2026-06-01T09:00:00Z",
-      "snippet": "Gold paths should feel like repair seams, not a graph."
+      "type": "note",
+      "source_id": "demo",
+      "updated_at": "2026-10-20T16:22:00.000Z",
+      "provenance": {
+        "origin": {
+          "by": "codex",
+          "at": "2026-10-20T16:22:00.000Z"
+        },
+        "contributors": [
+          {
+            "name": "codex",
+            "first": "2026-10-20T16:22:00.000Z",
+            "last": "2026-10-20T16:22:00.000Z",
+            "writes": 1
+          }
+        ]
+      },
+      "snippet": "Engram connects agent identity, task intent, tool execution, and affected resources. The same history should be accessible to connected agents and the web app."
     },
     {
-      "slug": "identity-mark",
-      "title": "Hanko identity marks",
+      "slug": "weekly-update",
+      "title": "Weekly update format",
+      "body": "Keep the weekly update concise: completed work, decisions, and open questions. Save an email draft for review before sending.",
+      "scope": "personal",
+      "type": "note",
+      "source_id": "demo",
+      "updated_at": "2026-10-20T11:03:00.000Z",
+      "provenance": {
+        "origin": {
+          "by": "mac-claude",
+          "at": "2026-10-20T11:03:00.000Z"
+        },
+        "contributors": [
+          {
+            "name": "mac-claude",
+            "first": "2026-10-20T11:03:00.000Z",
+            "last": "2026-10-20T11:03:00.000Z",
+            "writes": 1
+          }
+        ]
+      },
+      "snippet": "Keep the weekly update concise: completed work, decisions, and open questions. Save an email draft for review before sending."
+    },
+    {
+      "slug": "preview-environment",
+      "title": "Preview environment",
+      "body": "Use the preview environment to review changes before production. A started deployment is incomplete until its final result is recorded.",
       "scope": "shared",
-      "updated_at": "2025-11-30T13:30:00Z",
-      "snippet": "Each source gets a deterministic vermillion seal built from blocky pseudo-glyphs."
+      "type": "note",
+      "source_id": "demo",
+      "updated_at": "2026-10-19T10:12:00.000Z",
+      "provenance": {
+        "origin": {
+          "by": "baymax",
+          "at": "2026-10-19T10:12:00.000Z"
+        },
+        "contributors": [
+          {
+            "name": "baymax",
+            "first": "2026-10-19T10:12:00.000Z",
+            "last": "2026-10-19T10:12:00.000Z",
+            "writes": 1
+          }
+        ]
+      },
+      "snippet": "Use the preview environment to review changes before production. A started deployment is incomplete until its final result is recorded."
+    },
+    {
+      "slug": "review-context",
+      "title": "Engineering review context",
+      "body": "The engineering review covers action capture, identity, resource history, and the minimal Engram web app. Link decisions back to the originating task.",
+      "scope": "shared",
+      "type": "note",
+      "source_id": "demo",
+      "updated_at": "2026-10-19T08:30:00.000Z",
+      "provenance": {
+        "origin": {
+          "by": "mac-claude",
+          "at": "2026-10-19T08:30:00.000Z"
+        },
+        "contributors": [
+          {
+            "name": "mac-claude",
+            "first": "2026-10-19T08:30:00.000Z",
+            "last": "2026-10-19T08:30:00.000Z",
+            "writes": 1
+          }
+        ]
+      },
+      "snippet": "The engineering review covers action capture, identity, resource history, and the minimal Engram web app. Link decisions back to the originating task."
     }
   ]
 }

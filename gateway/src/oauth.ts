@@ -1,7 +1,10 @@
 import { createPublicKey, createVerify } from "node:crypto";
+import type postgres from "postgres";
 import { config } from "./config";
+import { connectorBranding } from "../../shim/branding.js";
+import { sql } from "./db";
 import { localJwks, oauthSigningEnabled } from "./oauth-keys";
-import { findMemberByEmail, getOrg } from "./orgs";
+import { getOrg, memberInOrg, type OrgMember } from "./orgs";
 import { normalizeToken, type TokenRecord } from "./policies";
 
 export interface JwtClaims {
@@ -13,6 +16,10 @@ export interface JwtClaims {
   email?: string;
   preferred_username?: string;
   scope?: string;
+  client_id?: string;
+  azp?: string;
+  org_id?: number;
+  membership_id?: number;
 }
 
 interface Jwk {
@@ -46,13 +53,16 @@ export function canonicalResource(host: string): string {
 }
 
 export function protectedResourceMetadata(host: string) {
+  const branding = connectorBranding(host);
   const issuer = oauthIssuer(host);
   return {
     resource: canonicalResource(host),
     authorization_servers: oauthEnabled() ? [issuer] : [],
     scopes_supported: ["openid", "email", "offline_access", "memory:read", "memory:write"],
     bearer_methods_supported: ["header"],
-    resource_documentation: `${host.replace(/\/$/, "")}/`,
+    resource_name: branding.title,
+    resource_documentation: branding.websiteUrl,
+    logo_uri: branding.icons[0].src,
   };
 }
 
@@ -115,9 +125,13 @@ export function decodeJwt(raw: string): { header: any; payload: JwtClaims; signi
   const parts = raw.split(".");
   if (parts.length !== 3) return null;
   try {
+    const header = JSON.parse(base64urlJson(parts[0]));
+    const payload = JSON.parse(base64urlJson(parts[1]));
+    if (!header || typeof header !== "object" || Array.isArray(header)
+      || !payload || typeof payload !== "object" || Array.isArray(payload)) return null;
     return {
-      header: JSON.parse(base64urlJson(parts[0])),
-      payload: JSON.parse(base64urlJson(parts[1])),
+      header,
+      payload,
       signingInput: `${parts[0]}.${parts[1]}`,
       signature: Buffer.from(parts[2], "base64url"),
     };
@@ -141,9 +155,9 @@ export async function verifyJwt(
   if (payload.iss !== options.issuer) return null;
   if (!audienceMatches(payload.aud, options.audience)) return null;
   const now = options.now ?? Math.floor(Date.now() / 1000);
-  if (typeof payload.exp === "number" && now >= payload.exp) return null;
-  if (typeof payload.nbf === "number" && now < payload.nbf) return null;
-  if (!payload.sub) return null;
+  if (typeof payload.exp !== "number" || !Number.isFinite(payload.exp) || now >= payload.exp) return null;
+  if (payload.nbf !== undefined && (typeof payload.nbf !== "number" || !Number.isFinite(payload.nbf) || now < payload.nbf)) return null;
+  if (typeof payload.sub !== "string" || !payload.sub.trim()) return null;
 
   const jwk = options.jwks.find(key => !header.kid || key.kid === header.kid);
   if (!jwk?.n || !jwk?.e) return null;
@@ -158,7 +172,7 @@ export async function verifyJwt(
 }
 
 function audienceMatches(aud: string | string[] | undefined, expected: string): boolean {
-  if (!expected) return true;
+  if (!expected) return false;
   if (typeof aud === "string") return aud === expected;
   return Array.isArray(aud) && aud.includes(expected);
 }
@@ -183,24 +197,21 @@ export function resetJwksCache() {
 
 export async function authenticateJwt(raw: string, audience: string): Promise<TokenRecord | null> {
   if (!oauthEnabled()) return null;
+  const expectedAudience = config.oauth.audience || audience || (config.publicUrl ? canonicalResource(config.publicUrl) : "");
+  if (!expectedAudience) return null;
   const jwks = await loadJwks();
   const issuer = (config.oauth.issuer || config.publicUrl || audience.replace(/\/mcp\/?$/, "")).replace(/\/$/, "");
   if (!issuer) return null;
   const claims = await verifyJwt(raw, {
     issuer,
-    audience: config.oauth.audience || audience,
+    audience: expectedAudience,
     jwks,
   });
   if (!claims?.sub) return null;
-  const email = typeof claims.email === "string"
-    ? claims.email
-    : typeof claims.preferred_username === "string" ? claims.preferred_username : "";
-  const member = email ? await findMemberByEmail(email) : null;
+  const member = await oauthMemberForClaims(claims);
   if (!member) return null;
-  const org = await getOrg(member.orgId);
-  if (!org) return null;
   return normalizeToken({
-    name: `oauth:${claims.sub}`,
+    name: oauthActorName(claims),
     orgId: member.orgId,
     role: member.role,
     canWrite: true,
@@ -208,6 +219,31 @@ export async function authenticateJwt(raw: string, audience: string): Promise<To
     email: member.email,
     scopes: typeof claims.scope === "string" ? claims.scope.split(/\s+/).filter(Boolean) : [],
   });
+}
+
+export async function oauthMemberForClaims(claims: JwtClaims, db: postgres.Sql = sql): Promise<OrgMember | null> {
+  const orgId = claims.org_id;
+  if (typeof orgId !== "number" || !Number.isSafeInteger(orgId) || orgId < 1) return null;
+  const membershipId = claims.membership_id;
+  // Email ownership is insufficient after removal and rejoining: the new
+  // membership must never reactivate an access token from the previous stay.
+  // Unbound pre-upgrade JWTs require a fresh connector authorization.
+  if (typeof membershipId !== "number" || !Number.isSafeInteger(membershipId) || membershipId < 1) return null;
+  const email = typeof claims.email === "string"
+    ? claims.email
+    : typeof claims.preferred_username === "string" ? claims.preferred_username : "";
+  if (!email) return null;
+  // Keep the workspace chosen at authorization. A later invite or membership
+  // ordering change must not redirect an existing connected client elsewhere.
+  const member = await memberInOrg(orgId, email, db);
+  if (!member || member.id !== membershipId || !await getOrg(orgId, db)) return null;
+  return member;
+}
+
+export function oauthActorName(claims: JwtClaims): string {
+  const client = typeof claims.client_id === "string" ? claims.client_id
+    : typeof claims.azp === "string" ? claims.azp : null;
+  return client ? `oauth:${encodeURIComponent(claims.sub ?? "")}:${encodeURIComponent(client)}` : `oauth:${claims.sub}`;
 }
 
 export function parseScopes(value: unknown): string[] {

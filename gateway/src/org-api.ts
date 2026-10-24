@@ -1,3 +1,8 @@
+import { failureCode } from "./diagnostics";
+import type postgres from "postgres";
+import { agentOnboardingChecks, handleConnectionsApi } from "./connections";
+import { parseReportedSource } from "./agent-source";
+import { sql } from "./db";
 import {
   authenticateSecret,
   createLoginInvite,
@@ -7,6 +12,7 @@ import {
   listTokens,
   revokeToken,
   setTokenWrite,
+  setTokenSource,
   type TokenRecord,
 } from "./auth";
 import {
@@ -16,13 +22,15 @@ import {
   getOrg,
   listInvites,
   listMembers,
+  removeMember,
+  cancelInvites,
   listMemberships,
   mcpUrlFrom,
   memberInOrg,
   normalizeEmail,
   onboardingStep,
   orgHasAgentToken,
-  orgHasPage,
+  orgHasRecordedPage,
   publicUrlFrom,
   updatePolicies,
   type Org,
@@ -74,6 +82,8 @@ export function publicActor(token: TokenRecord, org: Org, extra: Record<string, 
       slug: org.slug,
       kind: org.kind,
       policies: org.policies,
+      provisioningStatus: org.provisioningStatus ?? "ready",
+      provisioningError: org.provisioningError ?? null,
     },
     orgs: extra.orgs ?? [],
     ...extra,
@@ -81,7 +91,7 @@ export function publicActor(token: TokenRecord, org: Org, extra: Record<string, 
 }
 
 export async function sessionActor(token: TokenRecord, org: Org, extra: Record<string, unknown> = {}) {
-  const orgs = token.email
+  const orgs = isConsolePerson(token) && token.email
     ? (await listMemberships(token.email)).map(item => ({
       id: item.id,
       name: item.name,
@@ -93,11 +103,14 @@ export async function sessionActor(token: TokenRecord, org: Org, extra: Record<s
   return publicActor(token, org, { orgs, ...extra });
 }
 
-export async function onboardingState(org: Org) {
-  const hasToken = await orgHasAgentToken(org.id);
-  const hasPage = await orgHasPage(org);
-  const step = onboardingStep({ hasToken, hasPage, kind: org.kind });
-  return { step, hasToken, hasPage };
+export async function onboardingState(org: Org, db: postgres.Sql = sql) {
+  if (org.provisioningStatus && org.provisioningStatus !== "ready") return {
+    step: "provisioning", provisioning: true, hasToken: false, hasPage: false,
+    checks: { agentConnected: false, memorySaved: false, memoryRecalled: false, taskReported: false },
+  };
+  const [hasToken, hasPage, checks] = await Promise.all([orgHasAgentToken(org.id, db), orgHasRecordedPage(org.id, db), agentOnboardingChecks(org.id, db)]);
+  const step = onboardingStep({ checks });
+  return { step, provisioning: false, hasToken, hasPage, checks };
 }
 
 async function jsonObject(req: Request): Promise<Record<string, unknown> | null> {
@@ -129,31 +142,38 @@ export async function handleOrgApi(
   token: TokenRecord,
   org: Org,
 ): Promise<Response | null> {
+  if (token.orgId !== org.id) return Response.json({ error: "forbidden" }, { status: 403 });
   if (req.method === "GET" && url.pathname === "/api/onboarding") {
     return Response.json(await onboardingState(org));
   }
+  if (url.pathname === "/api/connections") return handleConnectionsApi(req, token);
   if (req.method === "GET" && url.pathname === "/api/tokens") {
+    if (!isConsolePerson(token)) return forbidden();
     return Response.json({ tokens: await listTokens(org.id), mcp: mcpUrlFrom(req) });
   }
   if (req.method === "POST" && url.pathname === "/api/tokens") return postToken(req, token, org);
   if (req.method === "POST" && url.pathname === "/api/tokens/revoke") return postRevokeToken(req, token, org);
   if (req.method === "POST" && url.pathname === "/api/tokens/write") return postTokenWrite(req, token, org);
+  if (req.method === "POST" && url.pathname === "/api/tokens/source") return postTokenSource(req, token, org);
   if (req.method === "GET" && url.pathname === "/api/policies") {
     return Response.json({ policies: org.policies });
   }
   if (req.method === "PUT" && url.pathname === "/api/policies") return putPolicies(req, token, org);
   if (req.method === "GET" && url.pathname === "/api/members") {
+    if (!isConsolePerson(token)) return forbidden();
     return Response.json({
       members: await listMembers(org.id),
       invites: await listInvites(org.id),
     });
   }
+  if (req.method === "DELETE" && url.pathname === "/api/members") return deleteMember(req, token, org);
   if (req.method === "POST" && url.pathname === "/api/invites") return postInvite(req, token, org);
+  if (req.method === "DELETE" && url.pathname === "/api/invites") return deleteInvites(req, token, org);
   if (req.method === "GET" && url.pathname === "/api/wiring") {
     return Response.json(wiringPayload(req, null));
   }
   if (req.method === "GET" && url.pathname === "/api/orgs") {
-    const orgs = token.email
+    const orgs = isConsolePerson(token) && token.email
       ? (await listMemberships(token.email)).map(item => ({
         id: item.id,
         name: item.name,
@@ -219,7 +239,7 @@ async function postOrg(req: Request): Promise<Response> {
     const result = loginLinkResponse(delivery, invite.url);
     return Response.json(result.body, { status: result.status });
   } catch (e) {
-    console.error("[org] create failed:", String(e).slice(0, 200));
+    console.error("[org] create failed:", failureCode(e));
     return Response.json({ error: "could not create org" }, { status: 400 });
   }
 }
@@ -258,34 +278,60 @@ async function postAcceptInvite(req: Request): Promise<Response> {
     kind: "session",
     email: accepted.member.email,
   }), accepted.org, { onboarding: await onboardingState(accepted.org) }), {
+    status: accepted.org.provisioningStatus === "ready" ? 200 : 202,
     headers: { "Set-Cookie": serializeSessionCookie(session) },
   });
 }
 
 async function postToken(req: Request, token: TokenRecord, org: Org): Promise<Response> {
-  if (!canManageOrg(token) && !isHuman(token)) {
+  if (!isConsolePerson(token)) {
     return Response.json({ error: "forbidden" }, { status: 403 });
   }
   const body = await jsonObject(req);
   const name = text(body, "name");
   if (!name) return Response.json({ error: "bad request" }, { status: 400 });
   const canWrite = body?.canWrite !== false;
+  let source: ReturnType<typeof parseReportedSource>;
   try {
-    const raw = await issueToken(org.id, name, canWrite);
+    source = parseReportedSource(body?.harness, body?.sourceLabel);
+    if (source.sourceLabel && !source.harness) throw new Error("harness is required for a source label");
+  } catch {
+    return Response.json({ error: "Invalid connection source" }, { status: 400 });
+  }
+  try {
+    // Console issuance always belongs to the current person. Only the direct
+    // operator CLI may deliberately create an unbound service credential.
+    if (!token.email) return forbidden();
+    const raw = await issueToken(org.id, name, canWrite, token.email, sql, source.harness ? { harness: source.harness, label: source.sourceLabel } : undefined);
     return Response.json({
       name,
       canWrite,
+      harness: source.harness,
+      sourceLabel: source.sourceLabel,
       token: raw,
       ...wiringPayload(req, raw),
     });
   } catch (e) {
-    console.error("[org] token issue failed:", String(e).slice(0, 160));
+    console.error("[org] token issue failed:", failureCode(e));
     return Response.json({ error: "could not mint token" }, { status: 400 });
   }
 }
 
+async function postTokenSource(req: Request, token: TokenRecord, org: Org): Promise<Response> {
+  if (!canManageOrg(token) || !isConsolePerson(token)) return forbidden();
+  const body = await jsonObject(req), name = text(body, "name");
+  if (!name) return Response.json({ error: "Connection name is required" }, { status: 400 });
+  let source: ReturnType<typeof parseReportedSource>;
+  try {
+    source = parseReportedSource(body?.harness, body?.sourceLabel);
+    if (source.sourceLabel && !source.harness) throw new Error("harness is required for a source label");
+  } catch { return Response.json({ error: "Invalid connection source" }, { status: 400 }); }
+  const updated = await setTokenSource(org.id, name, source);
+  return updated ? Response.json(updated) : Response.json({ error: "Connection not found" }, { status: 404 });
+}
+
 async function postRevokeToken(req: Request, token: TokenRecord, org: Org): Promise<Response> {
-  if (!canManageOrg(token)) return Response.json({ error: "forbidden" }, { status: 403 });
+  if (!canManageOrg(token) || !isConsolePerson(token)) return forbidden();
   const name = text(await jsonObject(req), "name");
   if (!name) return Response.json({ error: "bad request" }, { status: 400 });
   const ok = await revokeToken(org.id, name);
@@ -293,7 +339,7 @@ async function postRevokeToken(req: Request, token: TokenRecord, org: Org): Prom
 }
 
 async function postTokenWrite(req: Request, token: TokenRecord, org: Org): Promise<Response> {
-  if (!canManageOrg(token)) return Response.json({ error: "forbidden" }, { status: 403 });
+  if (!canManageOrg(token) || !isConsolePerson(token)) return forbidden();
   const body = await jsonObject(req);
   const name = text(body, "name");
   if (!name) return Response.json({ error: "bad request" }, { status: 400 });
@@ -302,7 +348,7 @@ async function postTokenWrite(req: Request, token: TokenRecord, org: Org): Promi
 }
 
 async function putPolicies(req: Request, token: TokenRecord, org: Org): Promise<Response> {
-  if (!canManageOrg(token)) return Response.json({ error: "forbidden" }, { status: 403 });
+  if (!canManageOrg(token) || !isConsolePerson(token)) return forbidden();
   const body = await jsonObject(req);
   const next = parsePolicies({ ...DEFAULT_POLICIES, ...org.policies, ...(body?.policies ?? body ?? {}) });
   const updated = await updatePolicies(org.id, next);
@@ -311,7 +357,7 @@ async function putPolicies(req: Request, token: TokenRecord, org: Org): Promise<
 }
 
 async function postInvite(req: Request, token: TokenRecord, org: Org): Promise<Response> {
-  if (!canManageOrg(token)) return Response.json({ error: "forbidden" }, { status: 403 });
+  if (!canManageOrg(token) || !isConsolePerson(token)) return forbidden();
   const body = await jsonObject(req);
   const email = normalizeEmail(text(body, "email") ?? "");
   if (!email) return Response.json({ error: "bad request" }, { status: 400 });
@@ -326,9 +372,27 @@ async function postInvite(req: Request, token: TokenRecord, org: Org): Promise<R
     if (delivery === "sent") return Response.json({ email, role, sent: true });
     return Response.json({ email, role, sent: false, url: invite.url });
   } catch (e) {
-    console.error("[org] invite failed:", String(e).slice(0, 160));
+    console.error("[org] invite failed:", failureCode(e));
     return Response.json({ error: "could not invite" }, { status: 400 });
   }
+}
+
+async function deleteMember(req: Request, token: TokenRecord, org: Org): Promise<Response> {
+  if (!canManageOrg(token) || !isConsolePerson(token)) return forbidden();
+  const email = normalizeEmail(text(await jsonObject(req), "email") ?? "");
+  if (!email) return Response.json({ error: "email required" }, { status: 400 });
+  if (email === token.email) return Response.json({ error: "you cannot remove yourself" }, { status: 403 });
+  const result = await removeMember(org.id, email);
+  if (result === "owner") return Response.json({ error: "owners cannot be removed" }, { status: 403 });
+  if (result === "not-found") return Response.json({ error: "not found" }, { status: 404 });
+  return Response.json({ ok: true });
+}
+
+async function deleteInvites(req: Request, token: TokenRecord, org: Org): Promise<Response> {
+  if (!canManageOrg(token) || !isConsolePerson(token)) return forbidden();
+  const email = normalizeEmail(text(await jsonObject(req), "email") ?? "");
+  if (!email) return Response.json({ error: "email required" }, { status: 400 });
+  return Response.json({ ok: true, cancelled: await cancelInvites(org.id, email) });
 }
 
 export function wiringPayload(req: Request, token: string | null) {
@@ -362,10 +426,10 @@ export async function ingestTrailRequest(req: Request, token: TokenRecord, org: 
 }
 
 async function postSwitchOrg(req: Request, token: TokenRecord, _org: Org): Promise<Response> {
-  if (!token.email) return Response.json({ error: "forbidden" }, { status: 403 });
+  if (token.kind !== "session" || !isHuman(token) || !token.email) return forbidden();
   const body = await jsonObject(req);
   const orgId = Number(body?.orgId ?? body?.org_id);
-  if (!Number.isFinite(orgId) || orgId < 1) return Response.json({ error: "bad request" }, { status: 400 });
+  if (!Number.isSafeInteger(orgId) || orgId < 1) return Response.json({ error: "bad request" }, { status: 400 });
   const member = await memberInOrg(orgId, token.email);
   const next = await getOrg(orgId);
   if (!member || !next) return Response.json({ error: "not found" }, { status: 404 });
@@ -384,6 +448,17 @@ async function postSwitchOrg(req: Request, token: TokenRecord, _org: Org): Promi
   }), next, { onboarding: await onboardingState(next) }), {
     headers: { "Set-Cookie": serializeSessionCookie(session) },
   });
+}
+
+// Connected OAuth clients receive memory scopes. Those scopes must not turn
+// into console credentials capable of issuing broader tokens or switching the
+// client into a different workspace.
+function isConsolePerson(token: TokenRecord): boolean {
+  return isHuman(token) && token.kind !== "oauth";
+}
+
+function forbidden(): Response {
+  return Response.json({ error: "forbidden" }, { status: 403 });
 }
 
 async function getTrails(url: URL, _org: Org): Promise<Response> {
@@ -425,7 +500,7 @@ async function postTrail(req: Request, token: TokenRecord, org: Org): Promise<Re
     const trail = await ingestTrail(parsed, token.email);
     return Response.json({ trail: publicTrail(trail, true) });
   } catch (e) {
-    console.error("[trails] ingest failed:", String(e).slice(0, 200));
+    console.error("[trails] ingest failed:", failureCode(e));
     return Response.json({ error: "could not save trail" }, { status: 400 });
   }
 }

@@ -8,21 +8,50 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: engram_test
+          POSTGRES_PASSWORD: engram_test
+          POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+          POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+          POSTGRES_DB: engram_gateway
+        ports:
+          - 15432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U engram_test -d engram_gateway"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.10
       - run: bun install --frozen-lockfile
       - run: bun test
+      - name: offline release, billing and edge automation
+        run: |
+          python3 test/release-automation.py
+          python3 test/billing-verification.py
+          python3 test/edge-configuration.py
+      - name: real PostgreSQL tenant and billing isolation
+        env:
+          ENGRAM_TEST_DB_URL_TEMPLATE: postgresql://engram_test:engram_test@127.0.0.1:15432/__DB__
+        run: bun test/integration-postgres.ts
+      - name: restricted PostgreSQL authority and external provisioning
+        env:
+          ENGRAM_TEST_DB_URL_TEMPLATE: postgresql://engram_test:engram_test@127.0.0.1:15432/__DB__
+        run: bun test/integration-tenant-security.ts
+      - name: managed PostgreSQL provisioner without superuser
+        env:
+          ENGRAM_TEST_DB_URL_TEMPLATE: postgresql://engram_test:engram_test@127.0.0.1:15432/__DB__
+        run: bun test/integration-managed-provisioner.ts
       # The console must stay self-contained: it is served from a public URL, so a
       # remote script or font would be both a privacy leak and a CSP failure.
-      - name: no external references in the console
-        run: |
-          if grep -rnoE 'https?://[a-zA-Z0-9.-]+' web/ --include='*.html' --include='*.css' --include='*.js' \
-             | grep -vE 'localhost|127\.0\.0\.1|www\.w3\.org'; then
-            echo "external reference found in web/" && exit 1
-          fi
+      - name: no remote runtime assets in the console
+        run: bun test/check-runtime-assets.ts
       # connect must run on a bare checkout, with no dependencies installed.
       - name: shim connect works without node_modules
         run: node shim/index.js connect --list

@@ -2,9 +2,13 @@
 // Each POST is authenticated, handled, answered with application/json — no
 // server-side session state, so Cloud Run can recycle instances freely.
 import { authenticateRequest } from "./auth";
-import { brainHealth, ensureBrain } from "./brain";
-import { config } from "./config";
-import { migrate } from "./db";
+import { brainHealth, ensureBrain, stopBrains } from "./brain";
+import { config, databaseSecurity } from "./config";
+import { connectorBranding } from "../../shim/branding.js";
+import { migrate, closeDatabasePools } from "./db";
+import { closeWriteCoordinator } from "./write-coordination";
+import { startInsightWorker } from "./insights";
+import { verifyWorkerIsolation } from "./worker-preflight";
 import {
   insufficientScope,
   isAuthorizationServerPath,
@@ -29,6 +33,11 @@ import {
   SERVER_INSTRUCTIONS,
 } from "./proxy";
 import { handleWeb } from "./web";
+import { processingOrg } from "./privacy";
+
+if (config.deploymentMode === "hosted" && databaseSecurity.authority !== "runtime") {
+  throw new Error("Hosted HTTP requires the restricted runtime database identity");
+}
 
 function rpcResult(id: unknown, result: unknown) {
   return Response.json({ jsonrpc: "2.0", id, result });
@@ -69,18 +78,21 @@ async function handleMcp(req: Request): Promise<Response> {
     return insufficientScope(req);
   }
 
-  const org = await resolveOrg(actor);
-  await ensureBrain(org);
+  const org = await processingOrg(await resolveOrg(actor), actor);
 
   return withOrg(org, actor, async () => {
     try {
+      if (method === "tools/list" || (method === "tools/call" && !["record_action", "list_actions", "whoami"].includes(name ?? ""))) await ensureBrain(org);
       switch (method) {
         case "initialize": {
           const requested = msg.params?.protocolVersion;
+          const protocolVersion = negotiateProtocolVersion(requested);
+          const serverInfo = connectorBranding(resourceHost(req));
           return rpcResult(msg.id, {
-            protocolVersion: negotiateProtocolVersion(requested),
+            protocolVersion,
             capabilities: { tools: {} },
-            serverInfo: { name: "engram", version: "0.1.0" },
+            serverInfo,
+            ...(protocolVersion === "2026-07-28" ? { _meta: { "io.modelcontextprotocol/serverInfo": serverInfo } } : {}),
             instructions: SERVER_INSTRUCTIONS,
           });
         }
@@ -100,8 +112,8 @@ async function handleMcp(req: Request): Promise<Response> {
           return rpcError(msg.id, -32601, `Method not found: ${method}`);
       }
     } catch (e) {
-      console.error("[mcp] handler error:", e);
-      return rpcError(msg.id, -32603, `Internal error: ${String(e).slice(0, 300)}`);
+      console.error("[mcp] request failed");
+      return rpcError(msg.id, -32603, "Memory is temporarily unavailable. Please retry.");
     }
   });
 }
@@ -123,12 +135,16 @@ async function wellKnown(req: Request): Promise<Response | null> {
 }
 
 console.error("[engram] migrating gateway db...");
+await verifyWorkerIsolation();
 await migrate();
 console.error("[engram] brains start on first use");
 
-Bun.serve({
+const insights = startInsightWorker();
+const server = Bun.serve({
   port: config.port,
   idleTimeout: 120,
+  maxRequestBodySize: 1024 * 1024,
+  error() { console.error("[http] request failed"); return Response.json({error:"Temporarily unavailable"},{status:503}); },
   async fetch(req) {
     const url = new URL(req.url);
     const metadata = await wellKnown(req);
@@ -152,4 +168,20 @@ Bun.serve({
     return handleWeb(req);
   },
 });
+let closing = false;
+async function shutdown() {
+  if (closing) return;
+  closing = true;
+  const deadline = setTimeout(() => process.exit(0),8500);
+  deadline.unref?.();
+  const draining = server.stop();
+  await Promise.race([draining,new Promise(resolve => setTimeout(resolve,1000))]);
+  await server.stop(true);
+  await Promise.allSettled([insights.close(), stopBrains()]);
+  await closeWriteCoordinator();
+  await closeDatabasePools();
+  clearTimeout(deadline);
+}
+process.on("SIGTERM", () => { void shutdown(); });
+process.on("SIGINT", () => { void shutdown(); });
 console.error(`[engram] listening on :${config.port}`);

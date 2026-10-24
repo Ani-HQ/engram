@@ -1,3 +1,4 @@
+import { failureCode } from "../diagnostics";
 import { reflexClient } from "./client";
 import { rerankHits } from "./tasks/rerank";
 
@@ -13,7 +14,14 @@ export async function rerankRecallHits<T extends { snippet?: string; chunk_text?
         : typeof hit.chunk_text === "string" ? hit.chunk_text
           : ""
     ));
-    const ranked = await rerankHits(reflexClient(), query, snippets);
+    const signal = AbortSignal.timeout(400);
+    // The caller's latency is bounded even if a preflight database read stalls.
+    // The client retains its in-flight slot until that work actually settles,
+    // and checks the aborted signal before any eventual provider transmission.
+    const ranked = await Promise.race([
+      rerankHits(reflexClient(), query, snippets.slice(0, 24), { signal, maxAttempts: 1 }),
+      new Promise<null>(resolve => signal.addEventListener("abort", () => resolve(null), { once: true })),
+    ]);
     if (!ranked) return hits.slice(0, keep);
     const used = new Set<number>();
     const out: T[] = [];
@@ -30,7 +38,7 @@ export async function rerankRecallHits<T extends { snippet?: string; chunk_text?
     }
     return out;
   } catch (e) {
-    console.warn("[reflex] recall rerank skipped:", String(e).slice(0, 160));
+    console.warn("[reflex] recall rerank skipped:", failureCode(e));
     return hits.slice(0, keep);
   }
 }

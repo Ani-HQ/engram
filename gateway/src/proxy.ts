@@ -1,12 +1,16 @@
 // Nothing outside the curated gbrain allowlist ever reaches the child.
 import type { TokenRecord } from "./auth";
 import { audit } from "./audit";
+import { ActionError, listActions, recordAction } from "./actions";
 import { brainClient } from "./brain";
-import { currentOrg } from "./context";
-import { ANI_HQ_ORG } from "./orgs";
+import { currentContext } from "./context";
+import { withMemoryWriteLock } from "./write-coordination";
 import { canUseTool, hasOauthScope, normalizeToken } from "./policies";
-import { markRolledEntries, upsertMemoryEntry } from "./memory-entries";
+import { markRolledEntries, upsertMemoryEntry, type MemoryEntry } from "./memory-entries";
 import { afterRemember, rerankRecallHits, suggestTopic } from "./reflex";
+import { redactSecrets } from "./redact";
+import { BillingError, requireHostedWriteAccess } from "./billing";
+import { SERVER_INSTRUCTIONS } from "../../shim/instructions.js";
 import {
   ARCHIVE_POINTER,
   ARCHIVE_SUFFIX,
@@ -32,7 +36,7 @@ const ALLOWED_TOOLS = new Set<string>(FORWARDED_TOOLS);
 // engram's own verbs. They are not gbrain tools: each one is a small script over
 // the allowlisted primitives, so an agent gets one obvious way to write and one
 // obvious way to read instead of seven ways to do either.
-const SYNTHETIC_TOOLS = new Set(["whoami", "remember", "recall"]);
+const SYNTHETIC_TOOLS = new Set(["whoami", "remember", "recall", "record_action", "list_actions"]);
 
 // Response caps are enforced here, not suggested in a description, so an agent
 // cannot blow up its own context by asking for more.
@@ -51,18 +55,7 @@ const DEFAULT_PROTOCOL_VERSION = "2025-06-18";
 
 // Shipped in the initialize result so an agent learns the policy once, from the
 // server, instead of every harness having to repeat it in a system prompt.
-export const SERVER_INSTRUCTIONS = [
-  "engram is shared memory: one store across every agent, harness, and machine this user runs.",
-  "What you write here, another agent reads later.",
-  "",
-  "Call `recall` before substantive work on a named project or recurring topic, not on every session.",
-  "",
-  "Call `remember` when a decision is made, a correction is given, or work is handed off.",
-  "Record intent, decisions, and constraints: the things a repo cannot tell the next agent.",
-  "Do not record mechanical state (git status, file lists, test output) any agent can re-derive.",
-  "",
-  "Keep entries short, a sentence or two.",
-].join("\n");
+export { SERVER_INSTRUCTIONS };
 
 export function negotiateProtocolVersion(requested: unknown): string {
   return typeof requested === "string" && PROTOCOL_VERSIONS.has(requested)
@@ -118,7 +111,7 @@ export function readClientMeta(params: any): {
 
 let cachedToolDefs: any[] | null = null;
 
-// 2026-07-28 clients can share tools/list now: every token sees the same ten tools.
+// 2026-07-28 clients can share tools/list: every token sees the same tool surface.
 export function toolsListCacheHints(
   _token: TokenRecord,
   protocolVersion: string,
@@ -132,20 +125,23 @@ export function toolsListCacheHints(
 // rewrites it: the tool NAMES do the teaching, descriptions only disambiguate.
 const TOOL_DESCRIPTIONS: Record<string, string> = {
   search: "Raw keyword search over saved pages. Prefer recall, which returns compact results.",
-  get_page: "Fetch one page's full body by slug.",
+  get_page: "Fetch one page's full body and content_hash by slug. Use that hash for a versioned put_page update.",
   list_pages: "List stored pages. Use search or recall when you know what you are looking for.",
-  put_page: "Create or replace a whole page (markdown with YAML frontmatter). To add a note, use remember.",
+  put_page: "Atomically create or update a page. expected_hash: null is create-only; use get_page's content_hash to update. Prefer remember for notes.",
   add_tag: "Tag an existing page.",
   add_link: "Link one page to another.",
   add_timeline_entry: "Add a dated event to an existing page's timeline.",
   whoami: "Show this token's identity.",
   remember: "Save a decision, correction, or handoff to shared memory. Groups under a topic when given.",
   recall: "Search shared memory. Returns up to 5 short snippets.",
+  record_action: "Report a tool action, result, and resource. Engram assigns your identity and labels this as reported evidence.",
+  list_actions: "Search cross-agent action history, including reported external actions and directly observed Engram calls. Same results as the web app.",
 };
 
 const SERVED_TOOL_NAMES = new Set<string>([...FORWARDED_TOOLS, ...SYNTHETIC_TOOLS]);
 const TOOL_MENTION = /\b(?:get|find|list|put|add|set|code|query)_[a-z_]+\b/g;
 const MAX_PARAM_DESCRIPTION = 160;
+const EXPECTED_HASH_DESCRIPTION = "Atomic guard: null creates only if absent and cannot overwrite an existing page; use get_page's content_hash for updates. Stale hashes fail unchanged.";
 
 // A parameter description that runs long, or points at a gbrain tool engram does not
 // expose, costs context and teaches a call the agent cannot make. Drop it; the
@@ -171,6 +167,13 @@ function sanitizeSchema(name: string, schema: any): any {
   // Say the cap out loud where a caller would otherwise guess: it is clamped anyway.
   if (cleaned.limit && (name === "search" || name === "list_pages")) {
     cleaned.limit = { ...cleaned.limit, description: `Max results (capped at ${MAX_FORWARDED_LIMIT}).` };
+  }
+  if (name === "put_page") {
+    // Upstream retains legacy internal writes when this is omitted. Engram's
+    // public boundary requires an explicit guard; preserve its nullable type.
+    cleaned.expected_hash = { ...(cleaned.expected_hash ?? { type: ["string", "null"] }), description: EXPECTED_HASH_DESCRIPTION };
+    const required = Array.isArray(schema.required) ? schema.required : [];
+    return { ...schema, properties: cleaned, required: required.includes("expected_hash") ? [...required] : [...required, "expected_hash"] };
   }
   return { ...schema, properties: cleaned };
 }
@@ -215,10 +218,55 @@ function syntheticToolDefs(): any[] {
         required: ["query"],
       },
     },
+    {
+      name: "record_action",
+      description: TOOL_DESCRIPTIONS.record_action,
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          tool: { type: "string", maxLength: 160, description: "Tool or operation that ran, such as github.create_pull_request." },
+          summary: { type: "string", maxLength: 500 },
+          taskTitle: { type: "string", maxLength: 300, description: "Human-readable title of the originating task, when known. Do not invent a task for a standalone call." },
+          outcome: { type: "string", maxLength: 2000, description: "Concise reported result or outcome, when known." },
+          currentStep: { type: "string", maxLength: 500, description: "Current reported stage while running. Omit after completion." },
+          harness: { type: "string", maxLength: 80, description: "Reported source identifier, such as codex, claude-code, cursor, or grok-bot. Registered connection source takes precedence; never authentication or model verification." },
+          sourceLabel: { type: "string", maxLength: 100, description: "Optional reported display label for the source. Do not include credentials." },
+          resource: { type: "string", maxLength: 2000, description: "Stable identifier or URL of the affected resource." },
+          status: { type: "string", enum: ["completed", "failed", "running"], default: "completed" },
+          runId: { type: "string", maxLength: 200, description: "Originating task or run identifier, shared across related actions." },
+          actionKey: { type: "string", maxLength: 200, description: "Stable ID for one action. Reuse for running heartbeats and completion; use a new key for another attempt." },
+          eventId: { type: "string", maxLength: 200, description: "Unique ID for this report. Reuse only to retry the identical report; use a new ID for a heartbeat or status change." },
+          occurredAt: { type: "string", format: "date-time", description: "When this happened. Defaults to now." },
+          detail: { type: "string", maxLength: 20000, description: "Result or before/after context. Do not include credentials." },
+          approach: { type: "string", maxLength: 1000, description: "Concise high-level method used. Do not include hidden reasoning or credentials." },
+        },
+        required: ["tool", "summary"],
+      },
+    },
+    {
+      name: "list_actions",
+      description: TOOL_DESCRIPTIONS.list_actions,
+      inputSchema: {
+        type: "object",
+        properties: {
+          q: { type: "string", maxLength: 500 },
+          agent: { type: "string", description: "Exact authenticated agent name." },
+          tool: { type: "string" },
+          status: { type: "string", enum: ["completed", "failed", "running"] },
+          resource: { type: "string", description: "Literal substring of a resource identifier." },
+          runId: { type: "string" },
+          limit: { type: "integer", minimum: 1, maximum: 100, default: 40 },
+          offset: { type: "integer", minimum: 0, default: 0 },
+        },
+      },
+    },
   ];
 }
 
 export async function listTools(_token: TokenRecord): Promise<any[]> {
+  const ctx = currentContext();
+  if (!ctx || ctx.org.id !== _token.orgId) throw new Error("A matching workspace context is required");
   if (!cachedToolDefs) {
     const all = await brainClient().listTools();
     const byName = new Map(all.tools
@@ -241,7 +289,7 @@ function slugFromResult(result: any): string | null {
 }
 
 function summarizeArgs(args: Record<string, unknown>): string {
-  return JSON.stringify(args ?? {}).slice(0, 200);
+  return redactSecrets(JSON.stringify(args ?? {})).slice(0, 200);
 }
 
 // Cut on a word boundary, but not if that throws away most of the excerpt. The
@@ -310,6 +358,17 @@ function jsonResult(payload: unknown) {
   return { content: [{ type: "text", text: JSON.stringify(payload) }] };
 }
 
+function pageVersion(page: any | null): string | null {
+  if (!page) return null;
+  if (typeof page.content_hash !== "string" || !/^[a-f0-9]{64}$/.test(page.content_hash)) throw new Error("Memory engine does not support versioned writes");
+  return page.content_hash;
+}
+
+async function writeVersionedPage(slug: string, content: string, version: string | null): Promise<void> {
+  const result = await brainClient().callTool({ name:"put_page",arguments:{slug,content,expected_hash:version} });
+  if (result?.isError) throw new Error((result.content ?? []).some((c:any) => typeof c.text === "string" && c.text.includes("ENGRAM_CAS_CONFLICT")) ? "ENGRAM_CAS_CONFLICT" : "Memory engine refused the write");
+}
+
 function yamlHeader(title: string, frontmatter: unknown): string {
   const extra = frontmatter && typeof frontmatter === "object" && !Array.isArray(frontmatter)
     ? Object.entries(frontmatter as Record<string, unknown>).filter(([key]) => key !== "title")
@@ -322,26 +381,10 @@ function yamlHeader(title: string, frontmatter: unknown): string {
 // remember is read-modify-write, so two agents appending to the same topic at the
 // same moment would both read the prior content and the second write would drop the
 // first entry. Many agents sharing one brain is the entire point, so it is guarded
-// twice. The queue serializes appends inside one process. The read-back in
-// rememberUnsynchronized catches a writer the queue cannot see — the outgoing
-// revision still serving during a deploy, a console write, a put_page run by hand —
-// because gbrain offers no compare-and-swap to lock against.
-const appendQueue = new Map<string, Promise<unknown>>();
-
-function serializeBySlug<T>(slug: string, work: () => Promise<T>): Promise<T> {
-  const key = `${currentOrg()?.id ?? 1}:${slug}`;
-  const prior = appendQueue.get(key) ?? Promise.resolve();
-  const next = prior.catch(() => {}).then(work);
-  const settled = next.catch(() => {});
-  appendQueue.set(key, settled);
-  // Last one out clears the slot. Without this the map keeps a resolved promise for
-  // every topic the process has ever written, which leaks in a server up for weeks.
-  void settled.then(() => {
-    if (appendQueue.get(key) === settled) appendQueue.delete(key);
-  });
-  return next;
-}
-
+// across gateway revisions using a PostgreSQL advisory transaction. Atomic
+// expected_hash guards reject stale updates from writers outside that queue.
+// Read-back in rememberUnsynchronized confirms the saved entry and can detect
+// a later legacy unconditional write from an internal or older direct caller.
 // Each attempt restarts from whatever the last writer left, so the only way to
 // exhaust these is a page being rewritten continuously underneath us.
 const MAX_APPEND_ATTEMPTS = 3;
@@ -366,6 +409,7 @@ async function rollTopicPage(
   title: string,
   frontmatter: unknown,
   body: string,
+  version: string | null,
 ): Promise<string | null> {
   if (body.length <= TOPIC_ROLL_AT) return null;
   const { header, entries } = splitTopicEntries(body);
@@ -380,28 +424,23 @@ async function rollTopicPage(
       ? archive.compiled_truth.trimEnd()
       : null;
   const archiveTitle = (archive?.title?.trim?.() || `${title} — archive`).slice(0, 120);
-  const moved = move.map(entryText).join("\n\n");
+  // A prior attempt may have copied the archive successfully before the live
+  // page's CAS failed. Replaying that attempt must not duplicate its entries.
+  const priorEntries = new Set(splitTopicEntries(archivePrior ?? "").entries.map(entryText));
+  const moved = move.map(entryText).filter(text => !priorEntries.has(text)).join("\n\n");
   const archiveBody = archivePrior
     ? `${archivePrior}\n\n${moved}`
     : `# ${archiveTitle}\n\n${moved}`;
-  await brainClient().callTool({
-    name: "put_page",
-    arguments: {
-      slug: archiveSlug,
-      content: archivePrior?.startsWith("---")
+  await writeVersionedPage(archiveSlug,
+      archivePrior?.startsWith("---")
         ? `${archiveBody}\n`
-        : pageContent(archiveTitle, archive?.frontmatter, archiveBody),
-    },
-  });
+        : pageContent(archiveTitle, archive?.frontmatter, archiveBody),pageVersion(archive));
 
   // One pointer, rewritten rather than accumulated, because there is one archive per
   // topic and a reader only needs to be told where the rest went.
   const kept = header.filter(line => !line.startsWith(ARCHIVE_POINTER)).join("\n").trimEnd();
   const liveBody = `${kept}\n\n${ARCHIVE_POINTER} [[${archiveSlug}]]\n\n${keep.map(entryText).join("\n\n")}`;
-  await brainClient().callTool({
-    name: "put_page",
-    arguments: { slug, content: pageContent(title, frontmatter, liveBody) },
-  });
+  await writeVersionedPage(slug,pageContent(title, frontmatter, liveBody),version);
   return archiveSlug;
 }
 
@@ -432,11 +471,18 @@ async function remember(token: TokenRecord, args: Record<string, unknown>): Prom
   const explicit = typeof args.topic === "string" && args.topic.trim() ? args.topic : undefined;
   const routed = explicit ?? (text ? await suggestTopic(text) : null);
   const topic = explicit ?? routed ?? undefined;
-  const slugForLock = slugForRemember(text, topic);
-  return serializeBySlug(slugForLock, () => rememberUnsynchronized(token, { ...args, topic }));
+  let saved: MemoryEntry | null = null;
+  const result = await withMemoryWriteLock(() => rememberUnsynchronized(token, { ...args, topic }, entry => { saved = entry; }));
+  // Mirroring can acquire another workspace's lock. Finish the source write
+  // first, avoiding opposite-direction share rules holding each other hostage.
+  if (saved) {
+    const { shareAfterWrite } = await import("./sharing");
+    await shareAfterWrite({ kind: "entry", entry: saved }).catch(() => {});
+  }
+  return result;
 }
 
-async function rememberUnsynchronized(token: TokenRecord, args: Record<string, unknown>): Promise<any> {
+async function rememberUnsynchronized(token: TokenRecord, args: Record<string, unknown>, savedEntry: (entry: MemoryEntry) => void): Promise<any> {
   const text = typeof args.text === "string" ? args.text.trim() : "";
   if (!text) return toolError("remember requires a non-empty 'text'");
   const topic = typeof args.topic === "string" ? args.topic : undefined;
@@ -466,7 +512,8 @@ async function rememberUnsynchronized(token: TokenRecord, args: Record<string, u
       ? `${body}\n`
       : `---\n${yamlHeader(title, existing?.frontmatter)}\n---\n\n${body}\n`;
 
-    await brainClient().callTool({ name: "put_page", arguments: { slug, content } });
+    try { await writeVersionedPage(slug,content,pageVersion(existing)); }
+    catch (error) { if (error instanceof Error && error.message === "ENGRAM_CAS_CONFLICT") continue; throw error; }
 
     // Read back rather than trust the write: a racing writer that read the same prior
     // body will have clobbered this entry, and the page is the only evidence of it.
@@ -475,7 +522,7 @@ async function rememberUnsynchronized(token: TokenRecord, args: Record<string, u
     if (savedBody.includes(entry)) {
       // Deliberately after the entry is confirmed saved, and deliberately best effort:
       // rolling is an optimisation, so a failure here must still leave a correct page.
-      const archived = await rollTopicPage(slug, title, existing?.frontmatter, savedBody)
+      const archived = await rollTopicPage(slug, title, existing?.frontmatter, savedBody,pageVersion(saved))
         .catch(() => null);
       const recorded = await upsertMemoryEntry({
         slug,
@@ -492,10 +539,7 @@ async function rememberUnsynchronized(token: TokenRecord, args: Record<string, u
         await markRolledEntries(slug, archived, splitForRoll(rolled).move.map(entryText));
       }
       await afterRemember({ entry: recorded, text, slug, topic }).catch(() => {});
-      if (recorded) {
-        const { shareAfterWrite } = await import("./sharing");
-        await shareAfterWrite({ kind: "entry", entry: recorded }).catch(() => {});
-      }
+      if (recorded) savedEntry(recorded);
       return jsonResult({
         ok: true,
         slug,
@@ -591,17 +635,31 @@ export async function callTool(
   args: Record<string, unknown>,
 ): Promise<any> {
   const actor = normalizeToken(token);
-  const policies = (currentOrg() ?? ANI_HQ_ORG).policies;
+  const ctx = currentContext();
+  if (!ctx || ctx.org.id !== actor.orgId || ctx.token.orgId !== actor.orgId) throw new Error("A matching workspace context is required");
+  const policies = ctx.org.policies;
   const forwardedArgs = clampArgs(name, args ?? {});
 
   // Which page a call touched, where the call knows. whoami and recall touch none.
   const argSlug = typeof forwardedArgs.slug === "string" ? forwardedArgs.slug : null;
   const served = ALLOWED_TOOLS.has(name) || SYNTHETIC_TOOLS.has(name);
-  const writing = name === "remember" || (ALLOWED_TOOLS.has(name) && !["search", "get_page", "list_pages"].includes(name));
+  const writing = name === "remember" || name === "record_action" || (ALLOWED_TOOLS.has(name) && !["search", "get_page", "list_pages"].includes(name));
 
   if (served && (!canUseTool(actor, name, policies) || (writing && !hasOauthScope(actor, "memory:write")))) {
     await audit(actor.name, name, summarizeArgs(forwardedArgs), "denied", argSlug);
     return toolError(`denied: ${name} is not allowed for this token`);
+  }
+  if (served && writing) {
+    try { await requireHostedWriteAccess(actor); }
+    catch (error) {
+      if (error instanceof BillingError) return toolError(error.message);
+      throw error;
+    }
+  }
+
+  if (name === "put_page" && (!Object.prototype.hasOwnProperty.call(forwardedArgs, "expected_hash") ||
+      (forwardedArgs.expected_hash !== null && typeof forwardedArgs.expected_hash !== "string"))) {
+    return toolError("put_page requires expected_hash: null to create only if absent, or the content_hash from get_page to update an existing page.");
   }
 
   if (name === "whoami") {
@@ -612,6 +670,17 @@ export async function callTool(
         text: JSON.stringify({ token: token.name }),
       }],
     };
+  }
+
+  if (name === "record_action" || name === "list_actions") {
+    try {
+      return jsonResult(name === "record_action"
+        ? await recordAction(actor, args)
+        : await listActions(actor, args));
+    } catch (error) {
+      if (error instanceof ActionError) return toolError(error.message);
+      throw error;
+    }
   }
 
   if (SYNTHETIC_TOOLS.has(name)) {
@@ -643,7 +712,7 @@ export async function callTool(
 
   try {
     const result = await brainClient().callTool({ name, arguments: forwardedArgs });
-    await audit(token.name, name, summarizeArgs(forwardedArgs), "ok", argSlug);
+    await audit(token.name, name, summarizeArgs(forwardedArgs), result?.isError ? "error" : "ok", argSlug);
     return name === "search" ? capSearchResult(result) : result;
   } catch (e) {
     await audit(token.name, name, summarizeArgs(forwardedArgs), "error", argSlug);

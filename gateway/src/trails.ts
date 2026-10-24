@@ -1,3 +1,4 @@
+import { failureCode } from "./diagnostics";
 import { createHash } from "node:crypto";
 import { brainClient } from "./brain";
 import { dataSql } from "./db";
@@ -151,7 +152,7 @@ export async function generateDigest(input: {
       return { digest: variants[picked as keyof typeof variants], model: result?.model ?? null };
     }
   } catch (e) {
-    console.warn("[trails] jev digest skipped:", String(e).slice(0, 160));
+    console.warn("[trails] jev digest skipped:", failureCode(e));
   }
   return { digest: variants.work, model: null };
 }
@@ -238,11 +239,11 @@ export async function ingestTrail(input: TrailIngest, authorEmail?: string | nul
     RETURNING *`;
   const trail = rowToTrail(rows[0]);
   await writeDigestPage(trail, model).catch(e => {
-    console.error("[trails] digest page failed:", String(e).slice(0, 160));
+    console.error("[trails] digest page failed:", failureCode(e));
   });
   const { shareAfterWrite } = await import("./sharing");
   await shareAfterWrite({ kind: "trail", trail }).catch(e => {
-    console.error("[trails] share failed:", String(e).slice(0, 160));
+    console.error("[trails] share failed:", failureCode(e));
   });
   return trail;
 }
@@ -252,7 +253,7 @@ export async function getTrail(id: string): Promise<Trail | null> {
     const rows = await dataSql()`SELECT * FROM trails WHERE id = ${id}`;
     return rows[0] ? rowToTrail(rows[0]) : null;
   } catch (e) {
-    console.error("[trails] get failed:", String(e).slice(0, 160));
+    console.error("[trails] get failed:", failureCode(e));
     return null;
   }
 }
@@ -276,7 +277,7 @@ export async function listTrails(filter: {
       LIMIT ${limit} OFFSET ${offset}`;
     return rows.map(rowToTrail);
   } catch (e) {
-    console.error("[trails] list failed:", String(e).slice(0, 160));
+    console.error("[trails] list failed:", failureCode(e));
     return [];
   }
 }

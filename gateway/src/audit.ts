@@ -1,5 +1,7 @@
-import { currentOrg } from "./context";
+import { failureCode } from "./diagnostics";
+import { requireContext } from "./context";
 import { sql } from "./db";
+import { redactSecrets } from "./redact";
 
 // Writing a page is a contribution; reading or deleting one is not. Attribution is
 // about who taught the brain something, so the list is deliberately narrow.
@@ -18,13 +20,13 @@ export async function audit(
   outcome: string,
   slug?: string | null,
 ) {
+  const orgId = requireContext().org.id;
   try {
-    const orgId = currentOrg()?.id ?? 1;
     await sql`
       INSERT INTO audit_log (token_name, tool, arg_summary, outcome, slug, org_id)
-      VALUES (${tokenName}, ${tool}, ${argSummary}, ${outcome}, ${slug ?? null}, ${orgId})`;
+      VALUES (${tokenName}, ${tool}, ${redactSecrets(argSummary)}, ${outcome}, ${slug ?? null}, ${orgId})`;
   } catch (e) {
-    console.error("[audit] write failed:", String(e).slice(0, 200));
+    console.error("[audit] write failed:", failureCode(e));
   }
 }
 
@@ -57,6 +59,7 @@ function toProvenance(rows: any[]): Provenance {
 }
 
 export async function provenanceFor(slugs: string[]): Promise<Map<string, Provenance>> {
+  const orgId = requireContext().org.id;
   const out = new Map<string, Provenance>();
   if (!slugs.length) return out;
   try {
@@ -65,7 +68,7 @@ export async function provenanceFor(slugs: string[]): Promise<Map<string, Proven
              min(ts) AS first_at, max(ts) AS last_at, count(*)::int AS writes
       FROM audit_log
       WHERE slug = ANY(${slugs}) AND outcome = 'ok' AND tool = ANY(${CONTRIBUTING_TOOLS})
-        AND org_id = ${currentOrg()?.id ?? 1}
+        AND org_id = ${orgId}
       GROUP BY slug, token_name
       ORDER BY slug, min(ts)`;
     const bySlug = new Map<string, any[]>();
@@ -77,7 +80,7 @@ export async function provenanceFor(slugs: string[]): Promise<Map<string, Proven
     for (const [slug, group] of bySlug) out.set(slug, toProvenance(group));
   } catch (e) {
     // Provenance is decoration on top of the page. Losing it must never lose the page.
-    console.error("[audit] provenance read failed:", String(e).slice(0, 200));
+    console.error("[audit] provenance read failed:", failureCode(e));
   }
   return out;
 }
@@ -97,6 +100,7 @@ export interface Activity {
 // is using it. Reads count as well as writes here: an agent recalling a page is
 // using it, which is the thing worth seeing.
 export async function recentActivity(windowSeconds = 90, limit = 40): Promise<Activity[]> {
+  const orgId = requireContext().org.id;
   const seconds = Math.min(600, Math.max(5, Math.floor(windowSeconds)));
   try {
     const rows = await sql`
@@ -104,7 +108,7 @@ export async function recentActivity(windowSeconds = 90, limit = 40): Promise<Ac
       FROM audit_log
       WHERE slug IS NOT NULL
         AND outcome = 'ok'
-        AND org_id = ${currentOrg()?.id ?? 1}
+        AND org_id = ${orgId}
         AND ts > now() - make_interval(secs => ${seconds})
       ORDER BY slug, ts DESC
       LIMIT ${Math.min(200, Math.max(1, limit))}`;
@@ -116,7 +120,7 @@ export async function recentActivity(windowSeconds = 90, limit = 40): Promise<Ac
     }));
   } catch (e) {
     // Live decoration. If it fails the console simply shows nothing moving.
-    console.error("[audit] activity read failed:", String(e).slice(0, 200));
+    console.error("[audit] activity read failed:", failureCode(e));
     return [];
   }
 }

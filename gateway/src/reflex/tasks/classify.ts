@@ -1,5 +1,5 @@
 import { config } from "../../config";
-import { choiceOf, noulValue, scoreOf } from "../answers";
+import { choiceOf, confidenceOf, noulValue, scoreOf } from "../answers";
 import type { ReflexAnswer, ReflexClient, ReflexQuestion } from "../types";
 
 export const MEMORY_KINDS = [
@@ -20,6 +20,9 @@ export interface MemoryClassification {
   sensitivity: number | null;
   actionability: number | null;
   model: string | null;
+  confidence: number | null;
+  requestedModel?: string;
+  modelReported?: boolean;
 }
 
 export function buildClassifyQuestions(text: string): {
@@ -78,13 +81,14 @@ export function parseClassification(
   const longevityRaw = choiceOf(answers, "longevity", minConfidence);
   return {
     kind: kindRaw && MEMORY_KINDS.includes(kindRaw as MemoryKind) ? kindRaw as MemoryKind : null,
-    importance: scoreOf(answers, "importance", minConfidence),
+    importance: scoreOf(answers, "importance", minConfidence, 2),
     longevity: longevityRaw === "ephemeral" || longevityRaw === "seasonal" || longevityRaw === "durable"
       ? longevityRaw
       : null,
     sensitivity: noulValue(answers, "sensitivity", minConfidence),
     actionability: noulValue(answers, "actionability", minConfidence),
     model,
+    confidence: confidenceOf(answers.kind),
   };
 }
 
@@ -95,5 +99,5 @@ export async function classifyMemory(
   if (!client.available()) return null;
   const result = await client.evaluate(buildClassifyQuestions(text));
   if (!result) return null;
-  return parseClassification(result.answers, result.model);
+  return { ...parseClassification(result.answers, result.model), requestedModel: result.requestedModel, modelReported: result.modelReported };
 }

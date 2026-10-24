@@ -1,0 +1,23 @@
+[
+  {
+    "ref": "engram_self_contained_pages",
+    "description": "Engram: disable injected analytics and email rewriting",
+    "expression": "(http.host eq \"engram.ani.computer\")",
+    "action": "set_config",
+    "action_parameters": {
+      "disable_rum": true,
+      "email_obfuscation": false
+    },
+    "enabled": true
+  },
+  {
+    "ref": "engram_machine_clients",
+    "description": "Engram: allow API and MCP client user agents",
+    "expression": "(http.host eq \"engram.ani.computer\" and (http.request.uri.path in {\"/mcp\" \"/health\" \"/healthz\" \"/api\" \"/oauth/token\" \"/oauth/register\" \"/oauth/jwks\" \"/.well-known/jwks.json\" \"/.well-known/oauth-protected-resource\" \"/.well-known/oauth-protected-resource/mcp\" \"/.well-known/oauth-authorization-server\" \"/.well-known/oauth-authorization-server/mcp\" \"/.well-known/openid-configuration\" \"/.well-known/openid-configuration/mcp\"} or starts_with(http.request.uri.path, \"/api/\")))",
+    "action": "set_config",
+    "action_parameters": {
+      "bic": false
+    },
+    "enabled": true
+  }
+]

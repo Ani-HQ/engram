@@ -42,7 +42,7 @@ export function parseRerank(
 ): RankedHit[] | null {
   const ranked: RankedHit[] = [];
   for (let index = 0; index < count; index += 1) {
-    const score = scoreOf(answers, `h${index}`, minConfidence);
+    const score = scoreOf(answers, `h${index}`, minConfidence, 3);
     if (score === null) continue;
     ranked.push({ index, score });
   }
@@ -54,9 +54,10 @@ export async function rerankHits(
   client: ReflexClient,
   query: string,
   snippets: string[],
+  options: { signal?: AbortSignal; maxAttempts?: number } = {},
 ): Promise<RankedHit[] | null> {
   if (!client.available() || snippets.length === 0) return null;
-  const result = await client.evaluate(buildRerankQuestions(query, snippets));
+  const result = await client.evaluate({ ...buildRerankQuestions(query, snippets), ...options });
   if (!result) return null;
   return parseRerank(result.answers, snippets.length);
 }

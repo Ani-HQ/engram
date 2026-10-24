@@ -1,22 +1,35 @@
-#!/usr/bin/env bash
-# Container entrypoint. When ENGRAM_CLOUDSQL_INSTANCE is set (Cloud Run),
-# start cloud-sql-proxy on 127.0.0.1:5432 and wait for it before the gateway.
-# postgres.js cannot express a unix-socket path in URL form (the authority
-# parser rejects it and ?host= is ignored), so TCP-via-proxy it is.
-set -euo pipefail
+#!/bin/sh
+# Root is needed only by Cloud Run's host-side egress launcher. This wrapper
+# also handles normal command overrides, so self-hosted CLI commands drop first.
+set -eu
 
-if [ -n "${ENGRAM_CLOUDSQL_INSTANCE:-}" ]; then
-  /usr/local/bin/cloud-sql-proxy "$ENGRAM_CLOUDSQL_INSTANCE" --port 5432 &
-  for i in $(seq 1 60); do
-    if (exec 3<>/dev/tcp/127.0.0.1/5432) 2>/dev/null; then exec 3>&-; break; fi
-    [ "$i" = 60 ] && { echo "[entrypoint] cloud-sql-proxy never came up" >&2; exit 1; }
-    sleep 0.5
-  done
-  echo "[entrypoint] cloud-sql-proxy ready" >&2
+if [ "$#" -eq 0 ]; then set -- /usr/local/bin/engram-runtime; fi
+
+engram_mode="${ENGRAM_DEPLOYMENT_MODE-self-hosted}"
+case "$engram_mode" in
+  hosted) engram_default_isolation=cloudrun ;;
+  self-hosted) engram_default_isolation=process ;;
+  *) echo "[entrypoint] invalid deployment mode" >&2; exit 64 ;;
+esac
+engram_isolation="${ENGRAM_WORKER_ISOLATION-$engram_default_isolation}"
+case "$engram_isolation" in
+  process|docker|cloudrun) ;;
+  *) echo "[entrypoint] invalid worker isolation mode" >&2; exit 64 ;;
+esac
+case "${ENGRAM_JOB-}" in
+  ''|dream|provision) ;;
+  *) echo "[entrypoint] invalid job mode" >&2; exit 64 ;;
+esac
+
+if [ "$engram_isolation" = cloudrun ] && [ "${ENGRAM_JOB-}" != provision ]; then
+  if [ "$(id -u)" != 0 ]; then
+    echo "[entrypoint] Cloud Run sandbox networking requires a root launcher" >&2
+    exit 78
+  fi
+  exec "$@"
 fi
 
-if [ "${ENGRAM_JOB:-}" = "dream" ]; then
-  exec bun gateway/src/jobs/dream.ts
+if [ "$(id -u)" = 0 ]; then
+  exec /usr/bin/setpriv --reuid=1000 --regid=1000 --clear-groups --no-new-privs -- "$@"
 fi
-
-exec bun gateway/src/index.ts
+exec "$@"

@@ -1,3 +1,4 @@
+import { failureCode } from "../diagnostics";
 import { dataSql } from "../db";
 
 export const REVIEW_STATES = ["pending", "approved", "rejected", "deferred", "applied"] as const;
@@ -41,7 +42,7 @@ export async function enqueueReviewItem(input: {
       RETURNING *`;
     return rows[0] ? rowToItem(rows[0]) : null;
   } catch (e) {
-    console.error("[review] enqueue failed:", String(e).slice(0, 200));
+    console.error("[review] enqueue failed:", failureCode(e));
     return null;
   }
 }
@@ -69,7 +70,7 @@ export async function listReviewItems(input: {
           LIMIT ${limit} OFFSET ${offset}`;
     return rows.map(rowToItem);
   } catch (e) {
-    console.error("[review] list failed:", String(e).slice(0, 200));
+    console.error("[review] list failed:", failureCode(e));
     return [];
   }
 }
@@ -79,7 +80,7 @@ export async function getReviewItem(id: number): Promise<ReviewItem | null> {
     const rows = await dataSql()`SELECT * FROM review_items WHERE id = ${id}`;
     return rows[0] ? rowToItem(rows[0]) : null;
   } catch (e) {
-    console.error("[review] get failed:", String(e).slice(0, 200));
+    console.error("[review] get failed:", failureCode(e));
     return null;
   }
 }
@@ -99,7 +100,7 @@ export async function setReviewState(
       RETURNING *`;
     return rows[0] ? rowToItem(rows[0]) : null;
   } catch (e) {
-    console.error("[review] update failed:", String(e).slice(0, 200));
+    console.error("[review] update failed:", failureCode(e));
     return null;
   }
 }

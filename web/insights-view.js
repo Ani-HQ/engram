@@ -1,0 +1,55 @@
+import { h } from "./profile.js";
+import { icon } from "./icons.js";
+import { relativeTime } from "./activity-view.js";
+import { citedSources, confidenceLabel, methodLabel } from "./insight-model.js";
+
+const button = (label, action, attrs = {}) => h("button", { type: "button", onclick: action, ...attrs }, label);
+const badge = text => h("span", { class: "insight-badge" }, text);
+const method = value => badge(methodLabel(value));
+
+export function aiConfiguration(external = {}, { settings = true } = {}) {
+  return h("section", { class: "insight-privacy" },
+    h("div", {}, icon("shield-check", { size: 16 }), h("strong", {}, external.consented ? "External AI processing enabled" : "External AI processing off")),
+    h("p", {}, external.consented ? "This workspace permits configured providers to process relevant context. Rules and extractive summaries remain available." : "Checks run with local rules and extractive summaries. Your workspace owner can enable optional provider processing in Workspace."),
+    h("dl", { class: "insight-config" }, h("div", {}, h("dt", {}, "Analysis provider"), h("dd", {}, external.configured ? "Configured by operator" : "Not configured")), h("div", {}, h("dt", {}, "Text generation"), h("dd", {}, external.generativeConfigured ? "Configured by operator" : "Not configured"))),
+    settings && h("a", { href: "#workspace", class: "insight-settings-link" }, "Privacy settings", icon("arrow-up-right", { size: 12 })));
+}
+
+function sources(result, ids, onSource) {
+  const rows = citedSources(result, ids);
+  return h("details", { class: "insight-sources" }, h("summary", {}, icon("link", { size: 12 }), `${ids.length} source action${ids.length === 1 ? "" : "s"}`, icon("chevron-down", { size: 12 })),
+    rows.map(source => button([
+      h("span", {}, h("strong", {}, source.summary), h("small", {}, `${source.agent} · ${source.tool} · ${source.evidence === "observed" ? "Observed Engram action" : "Agent reported"}`)), icon("arrow-up-right", { size: 13 }),
+    ], () => onSource(source.activityId, source.id), { class: "insight-source", "aria-label": `Inspect source: ${source.summary}` })),
+    rows.length < ids.length && h("p", { class: "detail-note" }, "Some source previews are unavailable. Open the linked activity to inspect its work log."));
+}
+
+export function attentionResults(data, { onSource, onActivity, onCopy }) {
+  const result = data?.result;
+  if (!result) return h("div", { class: "insight-empty" }, icon("layers", { size: 24 }), h("h2", {}, "A second look at the work"), h("p", {}, "Run checks to find possible duplicate actions, conflicts, repeated failures, and work awaiting an update. Checks suggest what to inspect; they do not change your agents or memory."));
+  const findings = result.insights || [];
+  return h("div", { class: "attention-content" },
+    h("div", { class: "insight-result-meta" }, h("span", {}, `${findings.length} finding${findings.length === 1 ? "" : "s"}`), h("span", {}, "Checked ", relativeTime(result.generatedAt))),
+    result.coverage && h("p", { class: "insight-coverage" }, `${result.coverage.actionsChecked} recorded actions checked`, result.coverage.truncated ? ` · Limited to the latest ${result.coverage.maxActions}; older activity was not included.` : " · Activity outside Engram’s coverage is not included."),
+    result.search && h("section", { class: "insight-search-results" },
+      h("div", { class: "insight-section-heading" }, h("h2", {}, "Related work"), method(result.search.method)),
+      h("p", { class: "detail-note" }, result.search.method === "model" ? "Model-ranked matches for your intent. Inspect the cited actions before relying on the match." : "Text matches across recorded summaries, approaches, tools, and resources. External semantic search was not used."),
+      h("p", { class: "insight-query" }, result.search.query),
+      (result.search.matches || []).map(match => button([h("span", {}, match.summary), icon("arrow-up-right", { size: 13 })], () => onSource(match.activityId, match.actionId), { class: "insight-search-match" })),
+      !result.search.matches?.length && h("p", { class: "detail-note" }, "No matches in the checked activity. Try a more specific word or phrase.")),
+    h("section", { class: "insight-findings", "aria-label": "Findings to inspect" }, findings.length ? findings.map(finding => h("article", { class: "insight-card" },
+      h("div", { class: "insight-card-top" }, icon(finding.kind === "stalled" ? "clock" : finding.kind === "repeated_failure" ? "circle-x" : "layers", { size: 17 }),
+        h("div", {}, h("h2", {}, finding.title), h("div", { class: "insight-methods" }, method(finding.method), finding.method === "model" && confidenceLabel(finding.confidence) && badge(confidenceLabel(finding.confidence))))),
+      h("p", { class: "insight-description" }, finding.description),
+      finding.method === "model" && h("p", { class: "insight-caveat" }, "Confidence is the model’s judgment strength, not a verified probability."),
+      sources(result, finding.sources || [], onSource),
+      h("div", { class: "insight-card-actions" }, (finding.activityIds || []).map((id, index) => button(["Open activity", finding.activityIds.length > 1 ? ` ${index + 1}` : "", icon("arrow-up-right", { size: 12 })], () => onActivity(id), { class: "text small" }))),
+    )) : h("div", { class: "insight-clear" }, icon("circle-check", { size: 20 }), h("div", {}, h("h2", {}, "No findings in the checked activity"), h("p", {}, "This means the available checks found no matching patterns. Activity outside Engram’s coverage is not included.")))),
+    result.brief && h("section", { class: "insight-brief" }, h("div", { class: "insight-section-heading" }, h("h2", {}, "Handoff brief"), method(result.brief.method)),
+      h("p", { class: "detail-note" }, result.brief.method === "model" ? `Generated from cited actions${result.brief.model ? ` with ${result.brief.model}` : ""}. Verify it before sharing.` : "An extract from recorded work and results, without generated conclusions."),
+      h("p", { class: "insight-brief-text" }, result.brief.text), sources(result, result.brief.sources || [], onSource),
+      button([icon("copy", { size: 13 }), "Copy brief"], () => onCopy(result.brief.text), { class: "small" })),
+    result.provenance?.length > 0 && h("details", { class: "insight-provenance" }, h("summary", {}, "Model provenance"), result.provenance.map(record => h("dl", { class: "insight-config" },
+      h("div", {}, h("dt", {}, "Requested model"), h("dd", {}, record.requestedModel)), h("div", {}, h("dt", {}, "Response model"), h("dd", {}, record.modelReported ? record.reportedModel : "Provider did not report a model")), h("div", {}, h("dt", {}, "Question version"), h("dd", {}, record.questionVersion))))),
+    h("p", { class: "insight-private-note" }, icon("eye-off", { size: 13 }), "Findings, queries, source actions, and briefs stay private to this workspace. Public profiles show aggregate counts only."));
+}

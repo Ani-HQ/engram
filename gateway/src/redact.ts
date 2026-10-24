@@ -1,6 +1,8 @@
 export const TRANSCRIPT_CHAR_CAP = 200_000;
 
 const PATTERNS: Array<{ re: RegExp; label: string }> = [
+  { re: /("(?:password|passwd|secret|token|api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|authorization)"\s*:\s*)"(?:\\.|[^"\\])*"/gi, label: '$1"REDACTED"' },
+  { re: /([?&](?:password|secret|token|api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret)=)[^&#\s"']+/gi, label: "$1REDACTED" },
   { re: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, label: "REDACTED_PRIVATE_KEY" },
   { re: /\bsk-[A-Za-z0-9_-]{20,}\b/g, label: "REDACTED_API_KEY" },
   { re: /\bsk-ant-[A-Za-z0-9_-]{20,}\b/g, label: "REDACTED_API_KEY" },

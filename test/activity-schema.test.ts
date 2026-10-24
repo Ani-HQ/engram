@@ -1,0 +1,32 @@
+import { describe, expect, test } from "bun:test";
+import type postgres from "postgres";
+import { ACTIVITY_SCHEMA_VERSION, GATEWAY_SCHEMA_VERSION, assertRuntimeSchema, ensureProvisioningSchema, markSchemaReady } from "../gateway/src/provisioning-schema";
+import { BILLING_SCHEMA_VERSION } from "../gateway/src/billing-schema";
+
+const ready = { version: GATEWAY_SCHEMA_VERSION, activity_version: ACTIVITY_SCHEMA_VERSION, billing_version: BILLING_SCHEMA_VERSION, role:"engram_gateway_runtime", rolsuper:false,rolcreatedb:false,rolcreaterole:false,rolbypassrls:false,rolreplication:false,inherits_roles:false };
+function database(row:Record<string,unknown>|null=ready){
+  const calls:{query:string;values:unknown[]}[]=[];
+  const db=((parts:TemplateStringsArray,...values:unknown[])=>{const query=parts.join("?");calls.push({query,values});return Promise.resolve(query.includes("SELECT s.version")?(row?[row]:[]):[]);}) as unknown as postgres.Sql;
+  return {db,calls};
+}
+
+describe("additive activity schema readiness",()=>{
+  test("keeps the old authority marker while recording feature readiness separately",async()=>{
+    const {db,calls}=database();
+    expect(GATEWAY_SCHEMA_VERSION).toBe(2026102202);
+    expect(ACTIVITY_SCHEMA_VERSION).toBe(2026102301);
+    await ensureProvisioningSchema(db);
+    expect(calls.some(call=>call.query.includes("ADD COLUMN IF NOT EXISTS activity_version integer"))).toBe(true);
+    await markSchemaReady(db);
+    expect(calls.at(-1)?.values).toEqual([2026102202,2026102301,BILLING_SCHEMA_VERSION]);
+    expect(calls.at(-1)?.query).toContain("activity_version = EXCLUDED.activity_version");
+    await expect(assertRuntimeSchema(db)).resolves.toBeUndefined();
+  });
+  test("new runtime rejects absent or wrong feature readiness without weakening role constraints",async()=>{
+    for(const row of [null,{...ready,activity_version:undefined},{...ready,activity_version:null},{...ready,activity_version:2026102202},{...ready,activity_version:2026102302},{...ready,billing_version:undefined},{...ready,billing_version:BILLING_SCHEMA_VERSION-1},{...ready,version:2026102301},{...ready,rolsuper:true},{...ready,inherits_roles:true}]){
+      await expect(assertRuntimeSchema(database(row).db)).rejects.toThrow("run the separate provisioner job first");
+    }
+    const missingColumn=((...args:any[])=>Promise.reject(Object.assign(new Error("private SQL details"),{code:"42703"}))) as unknown as postgres.Sql;
+    await expect(assertRuntimeSchema(missingColumn)).rejects.toThrow("run the separate provisioner job first");
+  });
+});

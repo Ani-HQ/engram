@@ -1,5 +1,13 @@
 node_modules/
 .env
 .env.local
+.env.*
+!.env.example
 *.log
 .claude/settings.local.json
+__pycache__/
+*.pyc
+.engram-release*
+release-state*.json
+# Local launch captures, tool receipts and video working files.
+/launch-demo/

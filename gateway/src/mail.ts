@@ -67,11 +67,16 @@ export function inviteLinkText(input: { orgName: string; invitedBy: string; url:
   ].join("\n");
 }
 
-export function loginLinkResponse(delivery: MailDelivery, url: string): {
+export function devLoginLinksAllowed(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.ENGRAM_DEPLOYMENT_MODE !== "hosted" && env.ENGRAM_DEV_LOGIN_LINKS === "1";
+}
+
+export function loginLinkResponse(delivery: MailDelivery, url: string, env: NodeJS.ProcessEnv = process.env): {
   status: number;
   body: { sent: boolean; url?: string; error?: string };
 } {
   if (delivery === "sent") return { status: 200, body: { sent: true } };
-  if (delivery === "skipped") return { status: 200, body: { sent: false, url } };
+  if (delivery === "skipped" && devLoginLinksAllowed(env)) return { status: 200, body: { sent: false, url } };
+  if (delivery === "skipped") return { status: 503, body: { error: "email login is not configured" } };
   return { status: 502, body: { error: "could not send email" } };
 }

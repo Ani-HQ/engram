@@ -1,7 +1,7 @@
 {
   "name": "engram",
   "version": "0.1.0",
-  "description": "One shared brain for a small trusted team: an audited MCP gateway over gbrain, with a browser console",
+  "description": "Activity and shared memory across agents: an audited MCP gateway over gbrain, with a minimal web app",
   "license": "MIT",
   "private": true,
   "type": "module",
@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
+    "@resvg/resvg-js": "^2.6.2",
     "postgres": "^3.4.0"
   }
 }

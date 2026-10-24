@@ -1,21 +1,23 @@
-import { ensureBrain } from "../brain";
-import { migrate } from "../db";
+import { ensureBrain, stopBrains } from "../brain";
+import { migrate, closeDatabasePools } from "../db";
+import { closeWriteCoordinator } from "../write-coordination";
+import { verifyWorkerIsolation } from "../worker-preflight";
 import { runDreamCycle } from "../dream/reconcile";
-import { maybeEnableVoyage } from "../embed-setup";
+import { requireHostedWriteAccess } from "../billing";
 import { listOrgs, withOrg } from "../orgs";
 import { normalizeToken } from "../policies";
 
 export async function main() {
   console.error("[dream] migrating gateway db...");
   await migrate();
-  await maybeEnableVoyage().catch(e => {
-    console.warn("[dream] voyage setup skipped:", String(e).slice(0, 200));
-  });
   const orgs = await listOrgs();
   const results = [];
   for (const org of orgs) {
     const token = normalizeToken({ name: "dream", orgId: org.id, role: "owner" });
     const result = await withOrg(org, token, async () => {
+      if (!org.policies.externalAiProcessing) return { ok: true, stats: { skipped: 1 } };
+      try { await requireHostedWriteAccess(token); }
+      catch { return { ok: true, stats: { skipped: 1 } }; }
       console.error(`[dream] org ${org.id} ${org.slug}`);
       await ensureBrain(org);
       return runDreamCycle();
@@ -27,5 +29,6 @@ export async function main() {
 }
 
 if (import.meta.main) {
-  await main();
+  try { await verifyWorkerIsolation(); await main(); }
+  finally { await stopBrains(); await closeWriteCoordinator(); await closeDatabasePools(); }
 }

@@ -1,0 +1,13 @@
+{
+  "name": "Engram",
+  "short_name": "Engram",
+  "description": "Shared memory and activity across your agents.",
+  "start_url": "/app",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#171717",
+  "icons": [
+    { "src": "/brand/engram-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/brand/engram-mark.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

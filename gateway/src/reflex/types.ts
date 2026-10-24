@@ -40,6 +40,8 @@ export type ReflexAnswer = ReflexChoiceAnswer | ReflexNoulAnswer | ReflexScoreAn
 
 export type ReflexResult = {
   model: string;
+  requestedModel?: string;
+  modelReported?: boolean;
   answers: Record<string, ReflexAnswer>;
 };
 
@@ -49,6 +51,8 @@ export interface ReflexClient {
   evaluate(input: {
     state: unknown;
     questions: Record<string, ReflexQuestion>;
+    signal?: AbortSignal;
+    maxAttempts?: number;
   }): Promise<ReflexResult | null>;
 }
 
