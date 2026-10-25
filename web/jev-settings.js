@@ -38,7 +38,7 @@ export function jevUsageSummary(data, { error = "", refresh } = {}) {
       !selfHosted && h("p", { class: "ds-hint" }, `${count(data.usage?.calls)} calls · ${tokens(data.usage?.inputTokens)} input tokens · ${tokens(data.usage?.outputTokens)} output tokens · ${count(data.usage?.pendingCalls)} pending calls.`),
       !selfHosted && data.usage?.unknownCalls > 0 && h("p", { class: "ds-notice" }, `${count(data.usage.unknownCalls)} calls have unavailable usage cost. Unknown usage is excluded from customer billing.`),
       !selfHosted && h("p", { class: "ds-hint" }, "This is a soft stop, not a guaranteed maximum charge. Calls already in flight can complete and take the total over budget. Pending calls are not included in settled spend."),
-      h("a", { href: "#workspace" }, "Manage Jev in Workspace settings →")));
+      h("a", { href: "#workspace" }, "Manage Jev in Workspace settings")));
 }
 
 export function createJevSettingsPanel({ data, error = "", api, saved, fail, refresh, isCurrent = () => true }) {
@@ -93,9 +93,9 @@ export function createJevSettingsPanel({ data, error = "", api, saved, fail, ref
     h("div", { class: "ds-card ds-stack" }, h("div", { class: "ds-row" }, h("span", { class: "ds-badge", "data-tone": data.available ? "success" : "neutral" }, stateLabel(data)), h("span", { class: "ds-badge", "data-tone": "lilac" }, "TypeSafe"), h("span", { class: "ds-badge" }, data.configured ? "Server configured" : "Not configured")),
       h("p", { class: "ds-hint" }, explanation(data)),
       !canManage && h("p", { class: "ds-notice" }, "Only a workspace owner signed in with email can change Jev settings."),
-      data.eligibility === "subscription-required" && h("a", { href: "#billing" }, "Review your Cloud subscription →"),
+      data.eligibility === "subscription-required" && h("a", { href: "#billing" }, "Review your Cloud subscription"),
       form,
-      h("p", { class: "ds-hint" }, h("a", { href: "#billing" }, "View current Jev usage and cost →")),
+      h("p", { class: "ds-hint" }, h("a", { href: "#billing" }, "View current Jev usage and cost")),
       selfHosted && h("p", { class: "ds-hint" }, "Configure the provider key in the server environment or Compose settings. Keys are never entered or returned in this browser.")));
   return { element, dispose() { active = false; } };
 }

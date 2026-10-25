@@ -83,3 +83,25 @@ copyright and trademark ownership stay with the respective product owners.
 Neither asset is covered by the LobeHub MIT or Simple Icons CC0 notices above.
 Both load from local files at runtime; no visitor request goes to their source
 websites.
+
+## Additional ecosystem marks
+
+Retrieved unchanged on 25 October 2026 for the public agent ecosystem list.
+These examples are separate from the authenticated agent-source allowlist and
+do not claim a tested MCP integration or endorsement.
+
+- **Visual Studio Code** (`vscode.png`): official stable blue icon from
+  https://code.visualstudio.com/assets/branding/code-stable.png . Brand guidance:
+  https://code.visualstudio.com/brand . Original proportions and colors are
+  preserved; Microsoft retains its trademark rights. SHA-256:
+  `7ac29e00cd66e549acc2ea6a99a813f92cb23a6d165293be6959845670f0c5a4`.
+- **Aider** (`aider.png`): original 180×180 app icon linked by the official
+  website at https://aider.chat/assets/icons/apple-touch-icon.png . Project:
+  https://github.com/Aider-AI/aider . The project is Apache-2.0 licensed;
+  no separate trademark grant is claimed. SHA-256:
+  `6efbd1fc700f455630b59d233aa37bfc764cffb0bcb255a42e73837f12497a2b`.
+
+`web/public-agent-catalog.js` is the fixed public catalog. The homepage includes
+every named console source, guided setup client and additional named diagram
+example. Its "MCP support and setup vary by client" caption preserves the
+distinction between an ecosystem product and verified Engram compatibility.

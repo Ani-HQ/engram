@@ -46,7 +46,7 @@ function render(data) {
     h("a", { class: "ds-button ds-skip-link", href: "#main" }, "Skip to content"),
     h("header", { class: "public-header" }, h("a", { class: "wordmark", href: "/", "aria-label": "Engram home" }, h("img", { class: "brand-mark", src: "/brand/engram-mark.svg", width: 32, height: 32, alt: "" }), "engram"), share),
     h("main", { class: "public-page", id: "main", tabindex: "-1" }, connection, card,
-      h("div", { class: "public-links" }, h("span", {}, "One history. Every agent."), streamCopy, h("a", { href: jsonUrl }, icon("code", { size: 14 }), "JSON"), h("a", { href: `${jsonUrl}/card.svg`, target: "_blank", rel: "noopener" }, icon("external-link", { size: 14 }), "Share card"))),
+      h("div", { class: "public-links" }, h("span", {}, "One history. Every agent."), streamCopy, h("a", { href: jsonUrl }, icon("code", { size: 14 }), "JSON"), h("a", { href: `${jsonUrl}/card.svg`, target: "_blank", rel: "noopener" }, "Share card"))),
     h("footer", { class: "public-bottom" }, "Highlights are chosen by the profile owner. Activity uses broad labels with observed or agent-reported sources. Fresh running reports are from the last 15 minutes; times use UTC.")].filter(Boolean);
   root.replaceChildren(...view);
   clearInterval(timeRefresh);

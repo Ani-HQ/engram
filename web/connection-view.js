@@ -18,10 +18,10 @@ export function agentOverview(data, { onManage, onFilter, selectedAgent = "", er
   const visible = [...connections].sort((a, b) => Number(b.status === "authorized") - Number(a.status === "authorized") || (Date.parse(lastConnectionContact(b, now) || b.createdAt) || 0) - (Date.parse(lastConnectionContact(a, now) || a.createdAt) || 0)).slice(0, 5);
   return h("aside", { class: "agent-overview ds-card", "aria-label": "Agent connections" },
     h("div", { class: "agent-overview-heading" }, h("div", {}, h("h2", {}, "Your agents"), h("span", {}, summary.recent ? `${summary.recent} seen recently` : summary.authorized ? `${summary.authorized} authorized · No recent contact` : connections.length ? "Connections need attention" : "Connect your first agent")),
-      button(["Connections", icon("arrow-up-right", { size: 12 })], onManage, { class: "text small" })),
+      button("Connections", onManage, { class: "text small" })),
     visible.length > 0 && h("div", { class: "agent-presence-list" }, visible.map(connection => {
       const state = connectionState(connection, now, data.recentWindowSeconds);
-      return button([avatar(connection), h("span", { class: "agent-presence-copy" }, h("strong", {}, name(connection)), h("span", {}, state.label)), icon(state.state === "reconnect" ? "info" : "chevron-right", { size: 12 })],
+      return button([avatar(connection), h("span", { class: "agent-presence-copy" }, h("strong", {}, name(connection)), h("span", {}, state.label)), state.state === "reconnect" && icon("info", { size: 12 })],
         () => state.state === "reconnect" ? onManage?.(connection) : onFilter?.(connection.agent === selectedAgent ? "" : connection.agent),
         { class: `agent-presence ${state.state}`, title: `${name(connection)} · ${state.explanation}`, "aria-pressed": String(connection.agent === selectedAgent), "data-connection-id": connection.id });
     })),

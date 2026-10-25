@@ -256,7 +256,7 @@ function highlightCard(item, index) {
       h("h3", { class: "ds-highlight-title" }, item.title),
       h("p", { class: "ds-highlight-description profile-highlight-preview", hidden: !item.body }, notePreview(item.body)),
       h("details", { class: "ds-highlight-disclosure", hidden: item.body.length <= 160 }, h("summary", {}, "Read full note", icon("chevron-down", { size: 14, className: "ds-disclosure-indicator" })), h("p", { class: "ds-highlight-description profile-highlight-body" }, item.body)),
-      h("div", { class: "ds-highlight-actions", hidden: !item.url }, h("a", { class: "profile-highlight-link", href: item.url || undefined, target: "_blank", rel: "noopener noreferrer" }, "Open link", icon("arrow-up-right", { size: 15 })))));
+      h("div", { class: "ds-highlight-actions", hidden: !item.url }, h("a", { class: "profile-highlight-link", href: item.url || undefined, target: "_blank", rel: "noopener noreferrer" }, "Open link"))));
 }
 function updateHighlights(section, profile) {
   const items = profileHighlights(profile), list = section.querySelector(".profile-highlight-list");

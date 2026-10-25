@@ -38,7 +38,7 @@ export function signupView({ mode = "email", policy, message = "", api, changeMo
         if (!linked) code.value = "";
         if (create) inviteSubmitted();
         feedback.setAttribute("data-tone", "success");
-        feedback.replaceChildren(result.url ? h("a", { href: result.url, class: "ds-touch-target" }, "Continue to verify your email →") : `Check ${address} for a verification link. Open it to ${create ? "finish joining your workspace" : "sign in"}.`);
+        feedback.replaceChildren(result.url ? h("a", { href: result.url, class: "ds-touch-target" }, "Continue to verify your email") : `Check ${address} for a verification link. Open it to ${create ? "finish joining your workspace" : "sign in"}.`);
       }
     } catch (error) { if (active) { feedback.setAttribute("role", "alert"); feedback.setAttribute("aria-live", "assertive"); feedback.setAttribute("data-tone", "danger"); feedback.textContent = error.message || "The request could not be completed. Please try again."; if ([submit, document.body].includes(document.activeElement)) feedback.focus?.(); } }
     finally { pending = false; if (active) { form.removeAttribute("aria-busy"); submit.disabled = create && !policy; submit.removeAttribute("aria-busy"); submit.textContent = label; } }
@@ -52,9 +52,9 @@ export function signupView({ mode = "email", policy, message = "", api, changeMo
       h("h2", {}, "Your agents. ", h("br"), h("em", {}, "Same page.")),
       h("p", {}, "Give disconnected agents a common place for notes, decisions, and project context. Keep personal memory separate, and share selected memories with your team.")),
     h("div", { class: "auth-orbit" }, memoryOrbit({ motion: introMotion, compact: true, className: "ds-orbit--on-ink" }), h("span", { class: "auth-orbit-caption" }, "SAVE SOMETHING. CONNECT THE DOTS.")),
-    h("div", { class: "auth-story-foot" }, h("a", { href: "/how-it-works#sharing", class: "ds-touch-target" }, "How sharing works ↗"), h("a", { href: "/self-host", class: "ds-touch-target" }, "Open source ↗")));
+    h("div", { class: "auth-story-foot" }, h("a", { href: "/how-it-works#sharing", class: "ds-touch-target" }, "How sharing works"), h("a", { href: "/self-host", class: "ds-touch-target" }, "Open source")));
   const panel = h("section", { class: "auth-panel", "aria-labelledby": "auth-title" },
-    h("div", { class: "auth-panel-heading ds-heading-group" }, h("div", { class: "auth-panel-kicker ds-heading-label" }, h("span", { class: "ds-badge", "data-tone": create ? "lilac" : "lime" }, create ? inviteOnly ? "CLOSED BETA" : "NEW WORKSPACE" : "WELCOME BACK"), h("a", { href: "/", class: "auth-back ds-touch-target" }, "← Back to Engram")),
+    h("div", { class: "auth-panel-heading ds-heading-group" }, h("div", { class: "auth-panel-kicker ds-heading-label" }, h("span", { class: "ds-badge", "data-tone": create ? "lilac" : "lime" }, create ? inviteOnly ? "CLOSED BETA" : "NEW WORKSPACE" : "WELCOME BACK"), h("a", { href: "/", class: "auth-back ds-touch-target" }, "Back to Engram")),
     h("h1", { id: "auth-title" }, create && inviteOnly ? "Your invite starts here." : create ? "Make room for good work." : "Pick up the thread."),
     h("p", { class: "auth-intro" }, create && inviteOnly ? "Open your invite link or enter a code, then choose the email address you want to verify. An email-bound invitation needs its invited address." : create ? "Give your agents a shared place for useful context and a history of their work." : "Sign in to your workspace. Your agents’ activity and shared memory are waiting.")),
     create && inviteOnly && h("p", { class: "signup-promise" }, "60 days of unlimited knowledge transfers start after email verification. No card required. Jev is separate."),

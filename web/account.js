@@ -56,7 +56,7 @@ export function billingPanel({ billing, catalog, jev, jevError, api, notify, fai
     catch (error) { if (isCurrent()) { fail(error); feedback.setAttribute("role", "alert"); feedback.textContent = error.message || "Billing could not open. Please try again."; button.disabled = false; button.removeAttribute("aria-busy"); button.replaceChildren(...original); if ([button, document.body].includes(document.activeElement)) feedback.focus?.(); } }
   };
   const subscribe = action("Subscribe to Cloud · $19 / month", event => redirect(event.currentTarget, () => api.checkout("cloud")), { class: "primary", disabled: !billing.checkoutAvailable });
-  const manage = action([icon("external-link", { size: 14 }), "Manage subscription"], event => redirect(event.currentTarget, api.billingPortal), { disabled: !billing.portalAvailable });
+  const manage = action("Manage subscription", event => redirect(event.currentTarget, api.billingPortal), { disabled: !billing.portalAvailable });
   const returnState = new URLSearchParams(location.search).get("billing");
   return h("div", { class: "account-content" },
     returnState === "success" && h("div", { class: "notice", role: "status" }, "Checkout returned successfully. Your plan updates after payment confirmation.", action("Refresh plan", refresh, { class: "text small" })),

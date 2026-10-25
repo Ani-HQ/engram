@@ -84,8 +84,8 @@ export function createProfilePresentationEditor({ profile, onChange = () => {}, 
     const count = h('p', { class: 'ds-hint', id: `${id}-body-hint` }, `${body.value.length} / 600`);
     const heading = h('h3', { id: `${id}-heading` });
     const remove = h('button', { type: 'button', class: 'text small' }, 'Remove');
-    const up = h('button', { type: 'button', class: 'ds-icon-button' }, icon('arrow-up', { size: 14 }));
-    const down = h('button', { type: 'button', class: 'ds-icon-button' }, icon('arrow-down', { size: 14 }));
+    const up = h('button', { type: 'button', class: 'small' }, 'Up');
+    const down = h('button', { type: 'button', class: 'small' }, 'Down');
     const row = { title, body, url, heading, remove, up, down, errors: [[title, titleError], [body, bodyError], [url, urlError]] };
     row.element = h('section', { class: 'ds-panel profile-highlight-editor', 'aria-labelledby': `${id}-heading` },
       h('div', { class: 'ds-panel-header' }, heading, h('div', { class: 'ds-row' }, up, down, remove)),

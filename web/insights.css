@@ -83,10 +83,9 @@
   .insight-toolbar button, .review-actions button, .insight-sources > summary { min-height: 40px; }
   .insight-config { display: grid; }
   .memory-tabs button { min-height: 44px; }
-  .review-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--ds-space-2) var(--ds-space-3); }
+  .review-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--ds-space-2); }
   .review-row > span:first-child { grid-column: 1; }
   .review-row .review-state { grid-column: 1; grid-row: 2; }
-  .review-row > svg { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
   .activity-search-filters .activity-intent-button { min-height: 38px; }
 }
 @media (prefers-reduced-motion: reduce) { .insight-source, .insight-search-match, .review-row { transition: none !important; } }

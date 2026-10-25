@@ -16,6 +16,8 @@
 .workspace-picker { gap: var(--ds-space-2); padding: var(--ds-space-2); margin-bottom: var(--ds-space-4); border: 1px solid var(--ds-line-strong); border-radius: var(--ds-radius-control); background: var(--ds-paper); color: var(--ds-ink); }
 .workspace-initial { width: 28px; height: 28px; border: 1px solid var(--ds-line); border-radius: var(--ds-radius-control); background: var(--ds-surface-soft); font-family: var(--ds-font-sans); font-size: 12px; }
 .workspace-picker select { min-height: 28px; font-size: 12px; }
+.workspace-picker > .ds-select { flex: 1; min-width: 0; }
+.field > .ds-select, .setup-stage .ds-select { width: 100%; }
 .nav { gap: var(--ds-space-1); }
 .nav-group { display: grid; gap: var(--ds-space-1); }
 .nav-group + .nav-group { margin-top: var(--ds-space-4); padding-top: var(--ds-space-2); border-top: 1px solid var(--ds-line); }
@@ -51,6 +53,7 @@
 .heading-side { color: var(--ds-muted); font-size: var(--ds-text-xs); }
 .page-eyebrow { display: inline-block; margin-bottom: var(--ds-space-2); }
 .filters { gap: var(--ds-space-2); }
+.filters > .ds-select { min-width: 102px; max-width: 185px; }
 .filters:has(+ .ds-results) { margin-bottom: 0; }
 #friend-access-slot:not(:empty) { margin-bottom: var(--ds-space-6); }
 .search-field { max-width: 420px; }
@@ -305,6 +308,13 @@ html[data-design-system] :is(.connection-avatar, .activity-avatar, .activity-too
   .task-reporting-setup .task-reporting-connection:hover { background: var(--ds-surface-soft); border-color: var(--ds-line); }
   .auth-switch button.text:hover { background: transparent; color: var(--ds-ink); }
 }
+@media (max-width: 1100px) {
+  .filters > .ds-select { flex: 1; width: 0; min-width: 0; max-width: none; }
+  .activity-search-filters > .ds-select { flex: 0 1 150px; width: auto; max-width: 150px; }
+}
+@media (max-width: 840px) {
+  .activity-search-filters > .ds-select { flex: 1; width: 0; max-width: none; }
+}
 @media (max-width: 1080px) {
   .sidebar { width: 200px; }
   .workspace, .app-topbar { padding-inline: var(--ds-space-6); }
@@ -324,6 +334,7 @@ html[data-design-system] :is(.connection-avatar, .activity-avatar, .activity-too
   .auth-panel { padding: var(--ds-space-8) var(--ds-space-6); }
 }
 @media (max-width: 620px) {
+  .filters.activity-search-filters > .ds-select { width: 100%; min-width: 0; max-width: none; }
   .app-shell { display: block; }
   .sidebar, .demo + .app-shell .sidebar { position: static; display: grid; grid-template-columns: auto minmax(0, 1fr) 44px; align-items: center; gap: var(--ds-space-2); width: 100%; height: auto; padding: var(--ds-space-3) max(var(--ds-space-4), env(safe-area-inset-right)) var(--ds-space-3) max(var(--ds-space-4), env(safe-area-inset-left)); background: var(--ds-surface); border: 0; border-bottom: 1px solid var(--ds-line); }
   .sidebar .wordmark { margin: 0; padding: 0; font-size: 20px; }
