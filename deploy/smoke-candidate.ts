@@ -6,7 +6,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { constants, openSync, closeSync, fstatSync, readFileSync, writeFileSync, renameSync, mkdtempSync, rmSync, chmodSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { OwnerCheckError, settings as databaseSettings, withOperatorDatabase, type OwnerCheckSettings } from "./check-owners";
+import { cloudRead, OwnerCheckError, settings as databaseSettings, withOperatorDatabase, type OwnerCheckSettings } from "./check-owners";
 
 export interface CandidateSettings extends OwnerCheckSettings { image: string; stateFile: string; tag: string; python: string }
 export function settings(args: string[]): CandidateSettings {
@@ -30,15 +30,20 @@ export type SmokeOutcome = { ok: boolean; reason: string; tokenRevoked: boolean;
 const release = fileURLToPath(new URL("./release.py",import.meta.url));
 function stopped(signal: AbortSignal) { if (signal.aborted) throw new OwnerCheckError("interrupted"); }
 
-async function lockOwner(tx: postgres.Sql) {
+type CandidateEnvironmentProof = { revision: string; imageDigest: string };
+async function lockOwner(tx: postgres.Sql, proof?: CandidateEnvironmentProof, priorOwners?: number[]) {
   // NO KEY UPDATE blocks consent/policy changes but permits FK KEY SHARE from
   // lazy billing/audit rows used by ordinary candidate read requests.
   const orgs=await tx`SELECT id, policies FROM orgs WHERE id=1 FOR NO KEY UPDATE`;
   if (orgs.length !== 1) throw new OwnerCheckError("org1_missing");
-  if (orgs[0].policies?.externalAiProcessing === true) throw new OwnerCheckError("provider_processing_enabled");
+  if ((orgs[0].policies?.externalAiProcessing === true || orgs[0].policies?.jevProcessing === true) && !proof) throw new OwnerCheckError("provider_processing_enabled");
   const owners=await tx`SELECT id FROM org_members WHERE org_id=1 AND role='owner'
     AND email=lower(email) AND email ~ '^[^[:space:]@]+@[^[:space:]@]+[.][^[:space:]@]+$' FOR NO KEY UPDATE`;
   if (!owners.length) throw new OwnerCheckError("owner_required");
+  const ownerIds=owners.map(row=>Number(row.id));
+  if(ownerIds.some(id=>!Number.isSafeInteger(id)||id<1)) throw new OwnerCheckError("owner_required");
+  if(priorOwners && !ownerIds.some(id=>priorOwners.includes(id))) throw new OwnerCheckError("owner_changed");
+  return ownerIds;
 }
 
 export async function revokeCredential(db: postgres.Sql, credential: Credential): Promise<boolean> {
@@ -56,14 +61,19 @@ export async function revokeCredential(db: postgres.Sql, credential: Credential)
 }
 
 export async function withSmokeCredential(db: postgres.Sql, smoke: (raw:string)=>Promise<void>, signal=new AbortController().signal): Promise<SmokeOutcome> {
+  // Arbitrary callbacks receive no exception to the saved-consent guard.
+  return withCredential(db,smoke,signal);
+}
+async function withCredential(db: postgres.Sql, smoke: (raw:string)=>Promise<void>, signal: AbortSignal, proof?: CandidateEnvironmentProof): Promise<SmokeOutcome> {
   const raw=`eng_${randomBytes(32).toString("base64url")}`;
   const credential={name:`operator-candidate-smoke-${randomUUID()}`,raw,hash:createHash("sha256").update(raw).digest("hex")};
   let attempted=false, revoked=false, reason="smoke_unavailable", passed=false;
+  let ownerIds:number[]=[];
   try {
     stopped(signal);
     await db.begin(async tx=>{
       await tx`SELECT pg_advisory_xact_lock(hashtextextended(${credential.name},0))`;
-      await lockOwner(tx);
+      ownerIds=await lockOwner(tx,proof);
       stopped(signal);
       // Set before SQL execution: an unknown commit outcome still needs cleanup.
       attempted=true;
@@ -74,7 +84,7 @@ export async function withSmokeCredential(db: postgres.Sql, smoke: (raw:string)=
     // its owner/consent prerequisite stable without blocking FK references.
     await db.begin(async tx=>{
       await tx`SET LOCAL idle_in_transaction_session_timeout='300s'`;
-      await lockOwner(tx);
+      await lockOwner(tx,proof,ownerIds);
       stopped(signal);
       await smoke(raw);
       stopped(signal);
@@ -127,6 +137,48 @@ function validateState(options:CandidateSettings,state:any) {
       typeof state.candidateRevision!=="string" || !/^engram-[a-z0-9-]+$/.test(state.candidateRevision) || !/^https:\/\/[a-z0-9.-]+\.run\.app$/.test(state.candidateURL ?? "")) throw new OwnerCheckError("release_state_mismatch");
   reviewedJevFlags(state);
 }
+
+const UNSAFE_RUNTIME_ENV = new Set(["VOYAGE_API_KEY","GBRAIN_BIN","ENGRAM_SANDBOX_BIN","ENGRAM_WORKER_IMAGE","NODE_OPTIONS","BUN_OPTIONS","BUN_PRELOAD","LD_PRELOAD","LD_LIBRARY_PATH","PYTHONPATH","PYTHONHOME"]);
+/** Pure validation; this object cannot be supplied to the credential helper. */
+export function validateCandidateSmokeEnvironment(options:CandidateSettings,state:any,service:any,revision:any,image:any): CandidateEnvironmentProof {
+  validateState(options,state);
+  const fail=()=>{throw new OwnerCheckError("candidate_environment_unverified");};
+  const digest = options.image.includes("@sha256:") ? options.image.split("@")[1] : image?.image_summary?.digest;
+  if(typeof digest!=="string" || !/^sha256:[a-f0-9]{64}$/.test(digest)) return fail();
+  const expected=`gcr.io/${options.project}/engram@${digest}`;
+  const labels=revision?.metadata?.labels, spec=revision?.spec, containers=spec?.containers;
+  if(revision?.kind!=="Revision" || revision?.metadata?.name!==state.candidateRevision ||
+      labels?.["serving.knative.dev/service"]!=="engram" || labels?.["serving.knative.dev/configuration"]!=="engram" || labels?.["serving.knative.dev/route"]!=="engram" || labels?.["cloud.googleapis.com/location"]!==options.region ||
+      !Array.isArray(containers) || containers.length!==1 || containers[0]?.image!==expected || revision?.status?.imageDigest!==expected ||
+      !Array.isArray(revision?.status?.conditions) || !revision.status.conditions.some((row:any)=>row?.type==="Ready"&&row.status==="True")) return fail();
+  const traffic=service?.status?.traffic;
+  if(service?.metadata?.name!=="engram" || !Array.isArray(traffic)) return fail();
+  const tagged=traffic.filter((row:any)=>row?.tag===options.tag);
+  if(tagged.length!==1 || tagged[0].revisionName!==state.candidateRevision || tagged[0].url!==state.candidateURL) return fail();
+  const container=containers[0];
+  for(const override of [container.command,container.args,container.volumeMounts,spec.volumes,container.envFrom,spec.envFrom]) if(override!==undefined && (!Array.isArray(override)||override.length)) return fail();
+  if(container.workingDir!==undefined) return fail();
+  if(!Array.isArray(container.env)) return fail();
+  const names=new Set<string>();
+  for(const entry of container.env) {
+    if(!entry || typeof entry!=="object" || typeof entry.name!=="string" || !/^[A-Z_][A-Z0-9_]*$/.test(entry.name) || names.has(entry.name) || UNSAFE_RUNTIME_ENV.has(entry.name)) return fail();
+    names.add(entry.name);
+    if(entry.name==="ENGRAM_WORKER_ISOLATION" && entry.value!=="cloudrun") return fail();
+  }
+  if(!names.has("ENGRAM_WORKER_ISOLATION")) return fail();
+  return {revision:state.candidateRevision,imageDigest:expected};
+}
+async function verifyCandidateEnvironment(options:CandidateSettings,state:any,signal:AbortSignal,read:typeof cloudRead):Promise<CandidateEnvironmentProof> {
+  const parse=async(args:string[])=>{
+    const raw=await read(options.project,args,signal,"candidate_environment_unverified",262144);
+    try {const value=JSON.parse(raw);if(!value||typeof value!=="object"||Array.isArray(value))throw new Error();return value;}
+    catch{throw new OwnerCheckError("candidate_environment_unverified");}
+  };
+  const service=await parse(["run","services","describe","engram","--region",options.region,"--format=json"]);
+  const revision=await parse(["run","revisions","describe",state.candidateRevision,"--region",options.region,"--format=json"]);
+  const image=options.image.includes("@sha256:")?null:await parse(["container","images","describe",options.image,"--format=json"]);
+  return validateCandidateSmokeEnvironment(options,state,service,revision,image);
+}
 export async function releaseSmoke(options:CandidateSettings,stateFile:string,raw:string,signal:AbortSignal):Promise<void> {
   stopped(signal);
   const state=readState(stateFile).state;validateState(options,state);
@@ -145,22 +197,26 @@ export async function releaseSmoke(options:CandidateSettings,stateFile:string,ra
   } finally { clearTimeout(timer);signal.removeEventListener("abort",stop); }
 }
 
-export async function run(options:CandidateSettings, signal=new AbortController().signal, dependencies:{connect?:typeof withOperatorDatabase;smoke?:typeof releaseSmoke}={}):Promise<SmokeOutcome> {
+export async function run(options:CandidateSettings, signal=new AbortController().signal, dependencies:{connect?:typeof withOperatorDatabase;smoke?:typeof releaseSmoke;read?:typeof cloudRead}={}):Promise<SmokeOutcome> {
   if (!options.run) throw new OwnerCheckError("explicit_execution_required");
   const initial=readState(options.stateFile);validateState(options,initial.state);
   // Do not publish an activation proof until the temporary credential is gone.
-  const pending={...initial.state,publicSmoke:false,privateSmoke:false};delete pending.smokeAt;
+  const pending={...initial.state,publicSmoke:false,privateSmoke:false};delete pending.smokeAt;delete pending.smokeEnvironment;
   writeState(options.stateFile,pending);
   const baseline=readState(options.stateFile).text;
   const directory=mkdtempSync("/tmp/engram-candidate-smoke-");chmodSync(directory,0o700);
   const scratch=join(directory,"release-state.json");writeState(scratch,pending);
   try {
+    const environment=await verifyCandidateEnvironment(options,pending,signal,dependencies.read ?? cloudRead);
+    // The exception applies only to the reviewed release.py request sequence.
+    // Custom callbacks or interpreters retain the standalone consent guard.
+    const proof=dependencies.smoke===undefined && dependencies.read===undefined && options.python==="python3" ? environment : undefined;
     // Do not pass the abort signal to the proxy: cancellation must not remove
     // the revocation path while a temporary credential may still exist.
     let lastOutcome:SmokeOutcome|undefined, result:SmokeOutcome;
     try {
       result=await (dependencies.connect ?? withOperatorDatabase)(options,"write",async db=>{
-        lastOutcome=await withSmokeCredential(db,raw=>(dependencies.smoke ?? releaseSmoke)(options,scratch,raw,signal),signal);
+        lastOutcome=await withCredential(db,raw=>(dependencies.smoke ?? releaseSmoke)(options,scratch,raw,signal),signal,proof);
         return lastOutcome;
       });
     } catch(error) {
@@ -172,7 +228,7 @@ export async function run(options:CandidateSettings, signal=new AbortController(
       const proof=readState(scratch).state;validateState(options,proof);
       if(proof.publicSmoke!==true || proof.privateSmoke!==true || typeof proof.smokeAt!=="string" || !Number.isFinite(Date.parse(proof.smokeAt))) throw new OwnerCheckError("smoke_proof_missing");
       if(readState(options.stateFile).text!==baseline) throw new OwnerCheckError("release_state_changed");
-      writeState(options.stateFile,{...pending,publicSmoke:true,privateSmoke:true,smokeAt:proof.smokeAt});
+      writeState(options.stateFile,{...pending,publicSmoke:true,privateSmoke:true,smokeAt:proof.smokeAt,smokeEnvironment:environment});
     }
     return result;
   } finally { rmSync(directory,{recursive:true,force:true}); }

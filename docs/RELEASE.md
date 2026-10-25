@@ -284,16 +284,41 @@ Responses and bearer values are never printed. Use a temporary operator-issued
 credential and revoke it after the smoke. Prefer `--smoke-token-stdin` to pipe
 that value directly from a trusted operator process; do not place it in arguments,
 files, build logs or a persistent release
-credential merely for automation. Payment, provider processing and publication
-are never triggered. An absent private credential leaves activation blocked.
+credential merely for automation. The probe requests no model inference,
+content writes, payments or publication changes. An absent private credential
+leaves activation blocked.
 
 The operator helper `bun deploy/smoke-candidate.ts --project ani-hq --image
 gcr.io/ani-hq/engram:BUILD_ID --state-file release-state.json` prints an offline
 plan. After ownership recovery and staging, append `--run` to issue a temporary
 workspace-1 agent credential with writes disabled, pass it only through the
 release process's stdin, and revoke it in `finally`. It requires an existing
-owner and refuses enabled external AI processing. The public/private activation
-proof is published only after revocation is confirmed. A cleanup failure
+owner. Before opening the operator database, it reads Cloud Run and registry
+metadata to bind the exact candidate tag URL to the ready revision and the
+reviewed image's resolved digest. It requires one application container with
+matching spec/status image identity, no command or working-directory overrides,
+no environment imports or mounted volumes, no loader/worker executable
+overrides, and no `VOYAGE_API_KEY` environment entry, including an empty value
+or a secret reference. These reads use bounded output and finite timeouts;
+neither environment values nor responses are printed.
+
+The standalone credential helper still refuses enabled external-AI or Jev
+consent. Only the complete operator command's fixed `release.py` smoke sequence,
+using its default `python3` interpreter and the freshly verified immutable
+candidate configuration, can preserve an existing enabled preference while
+running the probe. There is no CLI bypass. Custom callbacks and interpreters
+retain the strict consent guard. In the reviewed image, the absent Voyage key
+forces worker initialization without embeddings; initialization and tool-catalog
+requests do not invoke Jev, and the worker never receives its key. The probe
+does not call memory tools or insight endpoints. This is a proof about those
+fixed requests, not a promise that unrelated authorized background jobs cannot
+process their existing queues.
+
+The helper retains the owner and policy locks during the read sequence and
+requires an original owner membership to remain present after issuance. It
+never changes a saved processing preference. The public/private activation
+proof and verified revision/image digest are published only after revocation
+is confirmed. A cleanup failure
 reports the credential's name and workspace for operator revocation, never its
 bearer value, and leaves activation blocked. Abrupt host loss still requires
 checking for an unrevoked `operator-candidate-smoke-*` credential before
