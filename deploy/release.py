@@ -33,7 +33,7 @@ RUNTIME_SECRETS = {
 }
 PROVISIONER_SECRETS = {key: RUNTIME_SECRETS[key] for key in ("ENGRAM_DB_URL_TEMPLATE", "ENGRAM_TENANT_CREDENTIAL_KEY")}
 PROVISIONER_SECRETS["ENGRAM_PROVISIONER_DB_URL_TEMPLATE"] = "engram-provisioner-db-url-template"
-REMOVE_RUNTIME = {"ENGRAM_PROVISIONER_DB_URL_TEMPLATE", "ENGRAM_DB_PASSWORD", "PGPASSWORD", "ENGRAM_ALLOW_LEGACY_DB_CREDENTIALS", "ENGRAM_WORKER_DB_URL_TEMPLATE", "ENGRAM_JOB", "REFLEX_API_KEY", "TYPESAFE_API_KEY", "REFLEX_ENDPOINT", "ENGRAM_JEV_MARKUP_BPS", "ENGRAM_JEV_OPERATOR_EMAIL", "ENGRAM_JEV_OPERATOR_MONTHLY_BUDGET_USD", "ENGRAM_JEV_BILLING_WORKER_ENABLED"}
+REMOVE_RUNTIME = {"ENGRAM_PROVISIONER_DB_URL_TEMPLATE", "ENGRAM_DB_PASSWORD", "PGPASSWORD", "ENGRAM_ALLOW_LEGACY_DB_CREDENTIALS", "ENGRAM_WORKER_DB_URL_TEMPLATE", "ENGRAM_JOB", "REFLEX_API_KEY", "TYPESAFE_API_KEY", "REFLEX_ENDPOINT", "ENGRAM_JEV_MARKUP_BPS", "ENGRAM_JEV_OPERATOR_EMAIL", "ENGRAM_JEV_OPERATOR_WORKSPACE_ID", "ENGRAM_JEV_OPERATOR_MONTHLY_BUDGET_USD", "ENGRAM_JEV_BILLING_WORKER_ENABLED"}
 
 
 def environment(existing, desired, secrets, remove=()):
@@ -190,6 +190,8 @@ def provision(args):
     if getattr(args, "jev_owner_email", ""):
         env["ENGRAM_JEV_OPERATOR_EMAIL"] = args.jev_owner_email
         env["ENGRAM_JEV_OPERATOR_MONTHLY_BUDGET_USD"] = getattr(args, "jev_operator_budget_usd", "1")
+        if getattr(args, "jev_owner_workspace", None) is not None:
+            env["ENGRAM_JEV_OPERATOR_WORKSPACE_ID"] = args.jev_owner_workspace
     secrets = ",".join(f"{name}={secret}:latest" for name, secret in PROVISIONER_SECRETS.items())
     cloud(args, ["run", "jobs", "deploy", "engram-provision", f"--image={args.image}", f"--region={args.region}", f"--service-account=engram-provisioner@{args.project}.iam.gserviceaccount.com", f"--set-cloudsql-instances={args.project}:{args.region}:engram-pg", "--set-env-vars=" + ",".join(f"{key}={value}" for key, value in env.items()), "--set-secrets=" + secrets, "--memory=2Gi", "--cpu=1", "--tasks=1", "--max-retries=1", "--task-timeout=900s"])
     cloud(args, ["run", "jobs", "execute", "engram-provision", f"--region={args.region}", "--wait"])
@@ -359,6 +361,7 @@ def main():
     parser.add_argument("--state-file", default="release-state.json")
     parser.add_argument("--backup-id", default="")
     parser.add_argument("--jev-owner-email", default=os.environ.get("ENGRAM_JEV_OPERATOR_EMAIL", ""))
+    parser.add_argument("--jev-owner-workspace", type=int, default=os.environ.get("ENGRAM_JEV_OPERATOR_WORKSPACE_ID") or None)
     parser.add_argument("--jev-operator-budget-usd", default="1")
     parser.add_argument("--jev-enable-customer-billing", action="store_true")
     parser.add_argument("--jev-markup-bps", type=int)
@@ -374,6 +377,8 @@ def main():
         raise RuntimeError("Use a canonical HTTPS origin")
     if args.jev_owner_email and not re.fullmatch(r"[^\s@,]+@[^\s@,]+\.[^\s@,]+", args.jev_owner_email):
         raise RuntimeError("Use one exact verified owner email for the Jev default")
+    if args.jev_owner_workspace is not None and (not args.jev_owner_email or not 1 <= args.jev_owner_workspace <= 2147483647):
+        raise RuntimeError("An explicit Jev workspace requires one exact owner email and a positive workspace ID")
     if not re.fullmatch(r"[0-9]+(?:\.[0-9]{1,2})?", args.jev_operator_budget_usd) or not Decimal("1") <= Decimal(args.jev_operator_budget_usd) <= Decimal("100"):
         raise RuntimeError("Use an operator Jev budget between 1 and 100 USD")
     if args.jev_markup_bps is not None and not 0 <= args.jev_markup_bps <= 10000:

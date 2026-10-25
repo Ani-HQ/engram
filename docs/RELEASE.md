@@ -232,8 +232,10 @@ roles. No secret value appears in state files, subprocess arguments or output.
 Prepare the reviewed onboarding mail job as described in [Email](EMAIL.md).
 The Jev release also requires its dedicated provider key and resource-scoped
 secret grant; follow [Jev release preparation](BILLING.md#prepare-and-review-the-jev-release).
-An exact owner selector is passed only to the provisioner; its default never
-applies to a team or an unverified/missing account. Customer Jev processing and
+An exact owner selector is passed only to the provisioner. Email-only selection
+requires an existing personal workspace; an expressly authorized team also
+requires `--jev-owner-workspace WORKSPACE_ID` and the same exact sole owner.
+Missing or ambiguous owners fail closed. Customer Jev processing and
 its private billing exporter remain disabled until a rate is explicitly
 approved. To enable customer use, prepare the paused billing worker, update and
 verify the existing Stripe webhook event list, and carry the same explicit

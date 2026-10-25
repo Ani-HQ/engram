@@ -14,7 +14,7 @@ separate from a team's shared space. Configured sharing rules copy selected
 context into an authorized team workspace, with its own database and access
 controls. Activity distinguishes observed Engram calls from work agents report.
 
-Self-host it for free, or request access to the hosted invite-only beta. Invited personal workspaces are free until access is revoked, with no card required. Standard Cloud pricing is **$19 USD/month**. Pricing and privacy pages are at `/pricing` and `/privacy`.
+Self-host it for free, or request access to the hosted invite-only beta. New invitations include 60 days of unlimited core knowledge transfers after email verification, with no card required. Standard Cloud pricing is **$19 USD/month**. Pricing and privacy pages are at `/pricing` and `/privacy`.
 
 ## Quick start
 

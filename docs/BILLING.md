@@ -130,7 +130,10 @@ helper reads the clipboard locally and sends the value through stdin to the
 same secret; it never prints the value or puts it in command arguments.
 
 An approved release may pass `--jev-owner-email owner@example.test` to select
-one existing personal workspace's sole owner. The provisioner applies the
+one existing personal workspace's sole owner. For an explicitly authorized
+existing team workspace, also pass `--jev-owner-workspace WORKSPACE_ID`; both
+the exact workspace and its sole owner must match. An email-only selector
+never selects a team. The provisioner applies the
 one-time default with `--jev-operator-budget-usd 1`; no private owner address is
 committed. The request runtime and tenant engines never receive this selector.
 
@@ -157,11 +160,14 @@ preserving its ID and signing secret; live configuration also requires
 result using `verify-billing.py`; no live Jev invoice roundtrip is established
 by the offline or PostgreSQL tests.
 
-An expressly authorized personal operator workspace has a separate,
+An expressly authorized operator workspace has a separate,
 provisioner-owned funding record. Its one-time default is Jev enabled with a
 $1 USD monthly soft budget, measured against known provider cost; its customer
-charge is zero. The helper requires one exact existing personal owner selected
-by the operator, does not create/promote an owner, and does not embed a personal
+charge is zero. The helper requires one exact existing sole owner selected
+by the operator, and a team additionally requires an explicit workspace ID.
+The funding record distinguishes this explicit approval from a personal-only
+default, so converting a personal workspace does not silently extend its grant.
+The helper does not create/promote an owner or embed a personal
 email in source. Repeating provisioning does not reactivate a later opt-out or
 revoked funding record. This exception does not enable other accounts or AI
 providers. The runtime can read, but cannot grant or rewrite, operator funding.

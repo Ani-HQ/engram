@@ -1,6 +1,6 @@
 import type postgres from "postgres";
 
-export const JEV_SCHEMA_VERSION = 2026102501;
+export const JEV_SCHEMA_VERSION = 2026102502;
 export const JEV_OPERATOR_ONLY_TABLES = new Set(["jev_operator_access"]);
 
 export async function ensureJevSchema(db: postgres.Sql): Promise<void> {
@@ -23,6 +23,8 @@ export async function ensureJevSchema(db: postgres.Sql): Promise<void> {
     operator_role text NOT NULL,
     default_applied_at timestamptz NOT NULL DEFAULT now()
   )`;
+  // Older personal grants must not become team approvals after a kind change.
+  await db`ALTER TABLE jev_operator_access ADD COLUMN IF NOT EXISTS explicit_workspace_approved boolean NOT NULL DEFAULT false`;
   await db`CREATE TABLE IF NOT EXISTS jev_invoice_batches (
     id uuid PRIMARY KEY,
     org_id integer NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,

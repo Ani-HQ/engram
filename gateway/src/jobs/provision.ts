@@ -6,12 +6,14 @@ import { failureCode } from "../diagnostics";
 export async function main(): Promise<void> {
   if (databaseSecurity.authority !== "provisioner") throw new Error("Separate provisioner authority is required for this job");
   try {
-    await migrate();
     const jevOwnerEmail = process.env.ENGRAM_JEV_OPERATOR_EMAIL?.trim();
+    const rawWorkspaceId = process.env.ENGRAM_JEV_OPERATOR_WORKSPACE_ID?.trim();
+    if (rawWorkspaceId && (!jevOwnerEmail || !/^[1-9]\d{0,9}$/.test(rawWorkspaceId) || Number(rawWorkspaceId) > 2147483647)) throw new Error('Invalid Jev operator workspace selector');
+    await migrate();
     if (jevOwnerEmail) {
       const { configureJevOperatorDefault } = await import("../jev");
-      const configured = await configureJevOperatorDefault(sql, { email: jevOwnerEmail });
-      if (configured.reason === 'owner-not-found' || configured.reason === 'ambiguous-owner') throw new Error('Jev operator owner is unavailable');
+      const configured = await configureJevOperatorDefault(sql, { email: jevOwnerEmail, ...(rawWorkspaceId ? { workspaceId: Number(rawWorkspaceId) } : {}) });
+      if (configured.reason === 'owner-not-found' || configured.reason === 'ambiguous-owner' || configured.reason === 'configuration-conflict') throw new Error('Jev operator owner is unavailable');
     }
     // Maintenance-only command: the public job invoker cannot override job
     // arguments. Stop traffic/workers before credential rotation and restart
