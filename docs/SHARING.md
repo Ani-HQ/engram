@@ -12,15 +12,20 @@ Capture and `remember` should use a token from that personal brain. Team tokens 
 
 ## Capture
 
-Hooks watch Claude Code, Cursor, and Codex on your machine:
+Optional capture hooks support Claude Code, Cursor, and Codex on your machine.
+Before installing, securely load your personal workspace key into exported `ENGRAM_TOKEN`
+through a hidden terminal prompt or your secret manager. Do not paste a key into
+the command line or source it from a checked-in file. The commands below assume
+that environment variable is already set:
 
 ```bash
-ENGRAM_HOST='https://<engram-url>' \
-ENGRAM_TOKEN='<personal-token>' \
+export ENGRAM_HOST='https://<engram-url>'
 npx @ani-hq/engram-mcp hooks install claude
 
 npx @ani-hq/engram-mcp hooks install cursor
 npx @ani-hq/engram-mcp hooks install codex
+
+unset ENGRAM_TOKEN
 ```
 
 Each install writes `~/.config/engram/capture.json` and a hook in the harness config. A conversation that keeps going updates the same trail.
@@ -51,8 +56,18 @@ The team owner sets `maxShareLevel`. The rule's level is lowered to that cap, ne
 
 Unsharing soft-deletes the copies. The console says so: teammates' agents may already have read them.
 
-## Console
+## Current setup and console
 
-On a personal brain: Sharing lists rules, previews a match, and lets you share or unshare one conversation.
+The current console presents memory pages and activity. A dedicated visual editor
+for sharing rules and trails is not included in this version. Configure selective
+sharing through the authenticated API: `GET/POST /api/share/rules`,
+`POST /api/share/preview`, and the rule-specific update, pause, resume and delete
+routes. An individual trail can be shared or unshared through
+`POST /api/trails/:id/share` and `POST /api/trails/:id/unshare`.
 
-On a team brain: Trails lists what people have shared, filtered by teammate, repo, and harness. `recall` returns those digests with the author and harness attached.
+On hosted Engram, these console API routes require an authenticated email session, the
+`X-Engram-Console: 1` header and the correct workspace selection. Membership and
+the receiving team's sharing policy still apply. Rules copy supported matching
+context into a separate team workspace; they do not give the team access to all
+personal memory. Everyone authorized in the team workspace can read its shared
+memory. See the handlers in `gateway/src/org-api.ts` for the current request shapes.

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en" data-design-system="signal">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow"><meta name="engram-demo" content="sample-data">
+  <title>Engram email studio · Local review</title>
+  <link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/design-system.css"><link rel="stylesheet" href="/__mail-preview.css">
+  <script type="module" src="/__mail-preview.js"></script>
+</head>
+<body>
+  <div class="mail-shell">
+    <header class="mail-header"><a class="mail-brand" href="/design-system"><img src="/brand/engram-mark.svg" width="32" height="32" alt="">engram <span>mail studio</span></a><div class="ds-row"><span class="ds-badge" data-tone="lilac">LOCAL REVIEW</span><a href="/__review">Product review ↗</a></div></header>
+    <section class="mail-intro ds-heading-group"><span class="ds-eyebrow">THE NEXT USEFUL STEP</span><h1>A little care.<br><span class="ds-editorial">Right in the inbox.</span></h1><p>Real email templates. Made-up examples. Review the words, the plain-text version, and how the same message fits a phone.</p></section>
+    <div class="ds-notice mail-local-note"><strong>Preview only.</strong> No emails are sent here. Sample action links open an inert local example. Delivery timing and progress rules below describe the local sequence; the preview never schedules a send.</div>
+    <div class="mail-layout">
+      <aside class="mail-picker" aria-label="Choose an email"><div id="mail-template-list" aria-busy="true"><p class="ds-hint"><span class="ds-spinner" aria-hidden="true"></span> Loading templates…</p></div></aside>
+      <main class="mail-main" id="mail-main" aria-labelledby="mail-title">
+        <div id="mail-error" class="ds-notice" data-tone="danger" role="alert" hidden></div>
+        <section class="ds-card mail-envelope"><div class="ds-heading-group"><div class="ds-heading-label"><span class="ds-badge" data-tone="lime" id="mail-kind">EMAIL EXAMPLE</span><span class="mail-count" id="mail-count"></span></div><h2 id="mail-title">Loading the first message…</h2><p id="mail-purpose" class="ds-hint"></p></div><dl class="mail-metadata"><div><dt>Subject</dt><dd id="mail-subject">—</dd></div><div><dt>Preview text</dt><dd id="mail-preheader">—</dd></div></dl></section>
+        <div class="mail-toolbar"><div class="mail-segment" role="group" aria-label="Message format"><button type="button" data-format="html" aria-pressed="true">Email design</button><button type="button" data-format="text" aria-pressed="false">Plain text</button></div><div class="mail-segment" role="group" aria-label="Preview width" id="mail-width-controls"><button type="button" data-width="desktop" aria-pressed="true">Desktop · 640px</button><button type="button" data-width="phone" aria-pressed="false">Phone · 390px</button><button type="button" data-width="both" aria-pressed="false">Both</button></div></div>
+        <div class="mail-frames" data-width="desktop" id="mail-frames" aria-busy="true"><section class="mail-frame-wrap" data-frame="desktop"><h3>Desktop <span>640px viewport</span></h3><iframe id="mail-desktop" width="640" height="960" title="Desktop email preview at 640 pixels" sandbox="" referrerpolicy="no-referrer"></iframe></section><section class="mail-frame-wrap" data-frame="phone" hidden><h3>Phone <span>390px viewport · actual size</span></h3><iframe id="mail-phone" width="390" height="1060" title="Phone email preview at 390 pixels" sandbox="" referrerpolicy="no-referrer"></iframe></section></div>
+        <section class="ds-card mail-text" id="mail-text-panel" hidden><h3>Plain-text email</h3><p class="ds-hint">The text alternative from the same renderer, without hidden preview text or layout markup.</p><pre id="mail-text"></pre></section>
+        <section class="ds-card mail-rules" aria-labelledby="mail-rules-title"><div class="ds-heading-group"><span class="ds-eyebrow">WHEN IT EARNS A PLACE IN THE INBOX</span><h2 id="mail-rules-title">Timing &amp; progress rules</h2></div><dl class="mail-rules-grid"><div><dt>Trigger</dt><dd id="mail-trigger">—</dd></div><div><dt>Cadence</dt><dd id="mail-cadence">—</dd></div><div><dt>Skip / exit</dt><dd id="mail-skip">—</dd></div></dl><p class="mail-rule-note">Global exit conditions: stop on unsubscribe, removal or demotion of the exact owner, or revoked invite/operator access. No login, team, legacy-signup, or historical-user enrollment. Opening an email, copying a prompt, and creating a key do not prove successful agent setup.</p></section>
+        <p class="mail-status ds-sr-only" id="mail-status" role="status" aria-live="polite"></p>
+      </main>
+    </div>
+    <section class="ds-card mail-browser-pages"><div class="ds-heading-group"><span class="ds-eyebrow">BEYOND THE EMAIL</span><h2>A clear way to opt out.</h2><p class="ds-hint">The browser preference pages use the same design system. These examples have no real preference link or account attached.</p></div><nav class="ds-row" aria-label="Sample email preference pages"><a class="ds-button" href="/__mail-preview/preference/confirm">Confirmation</a><a class="ds-button" href="/__mail-preview/preference/unsubscribed">Success</a><a class="ds-button" href="/__mail-preview/preference/unavailable">Unavailable link</a></nav></section>
+    <footer class="mail-footer"><span>Rendered locally with the actual Engram email renderer.</span><a href="/design-system">Back to the design system ↗</a></footer>
+  </div>
+</body>
+</html>

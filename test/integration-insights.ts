@@ -23,6 +23,7 @@ export async function checkInsights(input: { db: postgres.Sql; orgA: Org; orgB: 
   equal(queued.status, 202, "A real authenticated workspace queues durable activity checks without provider consent");
   const queuedBody = await queued.json();
   equal(queuedBody.external.consented, false, "External processing stays disabled by default");
+  equal(queuedBody.external.jevConsented, false, "Jev consent is independently disabled by default");
   const coalesced = await withOrg(orgA, actorA, () => handleInsightsApi(request({ q: "package" }), actorA, db));
   equal((await coalesced.json()).job.id, queuedBody.job.id, "Identical concurrent workspace checks reuse one durable job");
   const foreign = await withOrg(orgB, actorB, () => handleInsightsApi(new Request(`http://localhost/api/insights?jobId=${queuedBody.job.id}`), actorB, db));
@@ -57,18 +58,24 @@ export async function checkInsights(input: { db: postgres.Sql; orgA: Org; orgB: 
   const policies = (await db`SELECT policies FROM orgs WHERE id=${orgA.id}`)[0].policies;
   await db`UPDATE orgs SET policies=${db.json({ ...policies, externalAiProcessing: true })} WHERE id=${orgA.id}`;
   try {
+    equal(await reserveWorkspaceInference(orgA.id, db, "jev"), false, "Legacy external-AI consent does not authorize Jev");
     const memory = await withOrg(orgA, actorA, () => upsertMemoryEntry({ slug: "projects/insight-recovery", rawText: "A committed memory whose process stopped before enqueue.", tokenName: actorA.name }));
     ok(memory, "A real tenant memory is committed independently of its outbox job");
+    await reconcileMemoryInsights({ db, configured: true });
+    equal(Number((await db`SELECT count(*) AS count FROM insight_jobs WHERE org_id=${orgA.id} AND kind='memory' AND dedup_key=${memory!.id}`)[0].count), 0, "Legacy consent does not queue Jev memory analysis");
+    await db`UPDATE orgs SET policies=${db.json({ ...policies, externalAiProcessing: false, jevProcessing: true })} WHERE id=${orgA.id}`;
     await reconcileMemoryInsights({ db, configured: true });
     equal(Number((await db`SELECT count(*) AS count FROM insight_jobs WHERE org_id=${orgA.id} AND kind='memory' AND dedup_key=${memory!.id}`)[0].count), 1, "A bounded reconciliation pass recovers a post-commit enqueue gap");
     await reconcileMemoryInsights({ db, configured: true });
     equal(Number((await db`SELECT count(*) AS count FROM insight_jobs WHERE org_id=${orgA.id} AND kind='memory' AND dedup_key=${memory!.id}`)[0].count), 1, "Repeated reconciliation remains delivery-idempotent");
     ok((await db`SELECT scanned_id FROM insight_memory_cursors WHERE org_id=${orgA.id}`)[0]?.scanned_id, "A durable tenant cursor advances beyond processed memory rows");
-    const reservations = await Promise.all(Array.from({ length: config.insights.dailyProviderCalls + 4 }, () => reserveWorkspaceInference(orgA.id, db)));
+    await db`UPDATE orgs SET policies=${db.json({ ...policies, externalAiProcessing: false, jevProcessing: true, jevMayPropose: false })} WHERE id=${orgA.id}`;
+    equal(await reserveWorkspaceInference(orgA.id, db), false, "Jev consent does not authorize a legacy embedding/brief provider");
+    const reservations = await Promise.all(Array.from({ length: config.insights.dailyProviderCalls + 4 }, () => reserveWorkspaceInference(orgA.id, db, "jev")));
     equal(reservations.filter(Boolean).length, config.insights.dailyProviderCalls, "Concurrent workers share one exact durable daily provider budget");
-    equal(await reserveWorkspaceInference(orgB.id, db), false, "Another workspace never inherits consent or budget state");
+    equal(await reserveWorkspaceInference(orgB.id, db, "jev"), false, "Another workspace never inherits Jev consent or budget state");
     await db`UPDATE orgs SET policies=${db.json(policies)} WHERE id=${orgA.id}`;
-    equal(await reserveWorkspaceInference(orgA.id, db), false, "Revocation is read again immediately before the next provider reservation");
+    equal(await reserveWorkspaceInference(orgA.id, db, "jev"), false, "Jev revocation is read again immediately before the next provider reservation");
     ok(!(await db`SELECT 1 FROM insight_jobs WHERE org_id=${orgB.id}`).length, "Private checks never enqueue foreign tenant work");
   } finally {
     await db`UPDATE orgs SET policies=${db.json(policies)} WHERE id=${orgA.id}`;

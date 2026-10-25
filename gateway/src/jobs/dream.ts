@@ -6,6 +6,7 @@ import { runDreamCycle } from "../dream/reconcile";
 import { requireHostedWriteAccess } from "../billing";
 import { listOrgs, withOrg } from "../orgs";
 import { normalizeToken } from "../policies";
+import { reflexClient } from "../reflex/client";
 
 export async function main() {
   console.error("[dream] migrating gateway db...");
@@ -15,7 +16,7 @@ export async function main() {
   for (const org of orgs) {
     const token = normalizeToken({ name: "dream", orgId: org.id, role: "owner" });
     const result = await withOrg(org, token, async () => {
-      if (!org.policies.externalAiProcessing) return { ok: true, stats: { skipped: 1 } };
+      if (!org.policies.jevProcessing || !org.policies.jevMayPropose || !reflexClient().available()) return { ok: true, stats: { skipped: 1 } };
       try { await requireHostedWriteAccess(token); }
       catch { return { ok: true, stats: { skipped: 1 } }; }
       console.error(`[dream] org ${org.id} ${org.slug}`);

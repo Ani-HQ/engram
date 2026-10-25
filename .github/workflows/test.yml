@@ -34,6 +34,11 @@ jobs:
       - name: offline release, billing and edge automation
         run: |
           python3 test/release-automation.py
+          python3 test/mail-infrastructure.py
+          python3 test/jev-billing-infrastructure.py
+          python3 test/jev-configuration.py
+          python3 test/stripe-jev-events.py
+          python3 test/jev-secret-setup.py
           python3 test/billing-verification.py
           python3 test/edge-configuration.py
       - name: real PostgreSQL tenant and billing isolation

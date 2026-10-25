@@ -12,7 +12,8 @@ function assertProvisioner(): void {
 }
 
 function accessEventHash(operation: "grant" | "revoke", invite: any, grantId: string): string {
-  return createHash("sha256").update(JSON.stringify([operation, String(invite.id), Number(invite.redeemed_org_id), Number(invite.redeemed_owner_member_id), grantId])).digest("hex");
+  return createHash("sha256").update(JSON.stringify([operation, String(invite.id), Number(invite.redeemed_org_id), Number(invite.redeemed_owner_member_id), grantId,
+    invite.access_duration_days ?? null, invite.access_expires_at ? new Date(invite.access_expires_at).toISOString() : null])).digest("hex");
 }
 
 async function applySignupInviteAccessInTransaction(tx: postgres.TransactionSql, orgId?: number, lease?: string, inviteId?: string): Promise<SignupAccessResult> {
@@ -67,11 +68,12 @@ async function applySignupInviteAccessInTransaction(tx: postgres.TransactionSql,
     if (billing?.stripe_customer_id || billing?.stripe_subscription_id || billing?.checkout_session_id) throw new Error("Signup complimentary access cannot replace a payment relationship");
     if (current?.active) throw new Error("Signup complimentary access cannot replace an active independent grant");
     const grantId = randomUUID();
-    await tx`INSERT INTO workspace_complimentary_access (id, org_id, owner_member_id, expires_at) VALUES (${grantId}, ${targetId}, ${ownerId}, NULL)
+    const grantStartsAt = invite.redeemed_at, grantExpiresAt = invite.access_expires_at;
+    await tx`INSERT INTO workspace_complimentary_access (id, org_id, owner_member_id, granted_at, expires_at) VALUES (${grantId}, ${targetId}, ${ownerId}, ${grantStartsAt}, ${grantExpiresAt})
       ON CONFLICT (org_id) DO UPDATE SET id = EXCLUDED.id, owner_member_id = EXCLUDED.owner_member_id,
-        granted_at = now(), expires_at = NULL, revoked_at = NULL`;
+        granted_at = EXCLUDED.granted_at, expires_at = EXCLUDED.expires_at, revoked_at = NULL`;
     await tx`INSERT INTO complimentary_access_events (id, org_id, grant_id, owner_member_id, operation, request_id, payload_hash, operator_role, reason, expires_at)
-      VALUES (${randomUUID()}, ${targetId}, ${grantId}, ${ownerId}, 'grant', ${`signup-invite:${invite.id}:grant`}, ${accessEventHash("grant", invite, grantId)}, current_user, 'Hosted private beta invite redeemed', NULL)`;
+      VALUES (${randomUUID()}, ${targetId}, ${grantId}, ${ownerId}, 'grant', ${`signup-invite:${invite.id}:grant`}, ${accessEventHash("grant", invite, grantId)}, current_user, 'Hosted private beta invite redeemed', ${grantExpiresAt})`;
     await tx`UPDATE hosted_signup_invites SET complimentary_applied_at = now(), complimentary_grant_id = ${grantId}, complimentary_error_code = NULL, complimentary_retry_at = NULL WHERE id = ${invite.id}`;
     result.applied++;
   }

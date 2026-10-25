@@ -16,10 +16,10 @@ import type { ReflexClient } from "./reflex/types";
 import { reserveWorkspaceInference } from "./insights-budget";
 import { reconcileMemoryInsights } from "./insights-reconcile";
 import { readAiResponse } from "./reflex/http";
+import { isJevModel } from "./jev-model";
 import { analyzeActions, enrichInsights, logicalActivityId, providerSnippet, type InsightAction, type InsightResult } from "./insights-engine";
 
 const HEADERS = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
-const PIN = /^jev-\d+\.\d+\.\d+$/;
 type JobRequest = { q: string | null; activityId: string | null };
 export function parseInsightRequest(raw: unknown): JobRequest {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ActionError("Expected an object");
@@ -31,7 +31,11 @@ export function parseInsightRequest(raw: unknown): JobRequest {
 }
 export function insightExternalStatus() {
   return { consented: currentOrg()?.policies.externalAiProcessing === true,
-    configured: !!config.reflex.apiKey && PIN.test(config.reflex.model),
+    jevConsented: currentOrg()?.policies.jevProcessing === true,
+    jevConfigured: !!config.reflex.apiKey && isJevModel(config.reflex.model),
+    generativeConsented: currentOrg()?.policies.externalAiProcessing === true,
+    embeddingConfigured: !!config.voyage.apiKey,
+    configured: !!config.reflex.apiKey && isJevModel(config.reflex.model),
     generativeConfigured: !!config.insights.briefApiKey && !!config.insights.briefModel && /-\d{4}-\d{2}-\d{2}$/.test(config.insights.briefModel) };
 }
 function jobSummary(row: any) {
@@ -85,20 +89,20 @@ export interface InsightWorkerDependencies {
   process?: (job: { orgId: number; request: JobRequest }) => Promise<InsightResult>;
 }
 
-async function processMemoryJob(orgId: number, entryId: string, deps: InsightWorkerDependencies): Promise<void> {
+async function processMemoryJob(orgId: number, entryId: string, deps: InsightWorkerDependencies, operationId: string): Promise<void> {
   const db = deps.db ?? sql, org = await getOrg(orgId, db);
-  if (!org || !org.policies.jevMayPropose || !org.policies.externalAiProcessing || !config.reflex.apiKey || !PIN.test(config.reflex.model)) return;
+  if (!org || !org.policies.jevMayPropose || !org.policies.jevProcessing || !config.reflex.apiKey || !isJevModel(config.reflex.model)) return;
   const actor = workerActor(orgId);
   await requireHostedWriteAccess(actor, { db });
   await withOrg(org, actor, async () => {
     const entry = await getMemoryEntry(entryId);
     if (!entry || entry.status !== "active") return;
-    const provider = new TypesafeReflexClient(deps.fetch ?? fetch, Date.now, { timeoutMs: config.insights.timeoutMs, maxAttempts: 1 });
+    const provider = new TypesafeReflexClient(deps.fetch ?? fetch, Date.now, { timeoutMs: config.insights.timeoutMs, maxAttempts: 1, operationId });
     const budgeted: ReflexClient = {
       enabled: () => provider.enabled(), available: () => provider.available(),
       async evaluate(input) {
         const fresh = await getOrg(orgId, db);
-        if (!fresh?.policies.externalAiProcessing || !fresh.policies.jevMayPropose) return null;
+        if (!fresh?.policies.jevProcessing || !fresh.policies.jevMayPropose) return null;
         return withOrg(fresh, actor, () => provider.evaluate(input));
       },
     };
@@ -141,7 +145,7 @@ async function generateBrief(result: InsightResult, transport: typeof fetch): Pr
   result.brief = { ...result.brief, text: redactSecrets(output), method: "model", model: json.model, sources: [...new Set(citations)] };
   result.provenance.push({ requestedModel: config.insights.briefModel, reportedModel: json.model, modelReported: true, questionVersion: "brief-1" });
 }
-async function processJob(job: { orgId: number; request: JobRequest }, deps: InsightWorkerDependencies): Promise<InsightResult> {
+async function processJob(job: { orgId: number; request: JobRequest; operationId: string }, deps: InsightWorkerDependencies): Promise<InsightResult> {
   const db = deps.db ?? sql, org = await getOrg(job.orgId, db);
   if (!org) throw new Error("workspace removed");
   const actor = workerActor(org.id);
@@ -149,10 +153,10 @@ async function processJob(job: { orgId: number; request: JobRequest }, deps: Ins
   return withOrg(org, actor, async () => {
     const { actions, truncated } = await loadActions(org.id, job.request, db);
     let result = analyzeActions({ actions, q: job.request.q, truncated, now: deps.now?.() });
-    if (PIN.test(config.reflex.model) && config.reflex.apiKey && org.policies.externalAiProcessing) {
+    if (isJevModel(config.reflex.model) && config.reflex.apiKey && org.policies.jevProcessing) {
       const fresh = await getOrg(org.id, db);
-      if (fresh?.policies.externalAiProcessing) result = await withOrg(fresh, actor, () => enrichInsights(result, actions,
-        new TypesafeReflexClient(deps.fetch ?? fetch, Date.now, { timeoutMs: config.insights.timeoutMs, maxAttempts: 1 })));
+      if (fresh?.policies.jevProcessing) result = await withOrg(fresh, actor, () => enrichInsights(result, actions,
+        new TypesafeReflexClient(deps.fetch ?? fetch, Date.now, { timeoutMs: config.insights.timeoutMs, maxAttempts: 1, operationId: job.operationId })));
     }
     if (config.insights.briefApiKey && /-\d{4}-\d{2}-\d{2}$/.test(config.insights.briefModel) && await reserveWorkspaceInference(org.id, db)) {
       try { await generateBrief(result, deps.fetch ?? fetch); } catch { /* deterministic brief survives provider failure */ }
@@ -188,8 +192,11 @@ export async function runInsightWorkerOnce(deps: InsightWorkerDependencies = {})
     let result: InsightResult | null = null;
     if (row.kind === "memory") {
       if (typeof row.request?.entryId !== "string" || row.request.entryId.length > 200) throw new Error("Invalid memory job");
-      await processMemoryJob(Number(row.org_id), row.request.entryId, deps);
-    } else result = await (deps.process ?? (job => processJob(job, deps)))({ orgId: Number(row.org_id), request: parseInsightRequest(row.request) });
+      await processMemoryJob(Number(row.org_id), row.request.entryId, deps, String(row.id));
+    } else {
+      const job = { orgId: Number(row.org_id), request: parseInsightRequest(row.request) };
+      result = deps.process ? await deps.process(job) : await processJob({ ...job, operationId: String(row.id) }, deps);
+    }
     if (!expired) await db`UPDATE insight_jobs SET status='completed', result=${db.json(result as any)}, lease_until=NULL, lease_token=NULL, updated_at=clock_timestamp()
       WHERE id=${row.id} AND lease_token=${lease} AND status='running'`;
   } catch {

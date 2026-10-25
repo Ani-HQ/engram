@@ -14,7 +14,21 @@ import urllib.parse
 import urllib.request
 
 VERSION = "2026-09-30.endive"
-EVENTS = ["checkout.session.completed", "checkout.session.async_payment_succeeded", "customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted", "invoice.paid", "invoice.payment_failed"]
+EVENTS = ["checkout.session.completed", "checkout.session.async_payment_succeeded", "customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted", "invoice.created", "invoice.paid", "invoice.payment_failed"]
+
+
+def upgrade_invoice_events(hook, endpoint_url, mode, stripe):
+    """Upgrade only the known Engram event contract, preserving hook/secret."""
+    if hook.get("url") != endpoint_url or hook.get("metadata", {}).get("app") != "engram" or \
+            hook.get("status") != "enabled" or hook.get("api_version") != VERSION or \
+            hook.get("livemode") is not (mode == "live"):
+        raise RuntimeError("Existing webhook identity must match the reviewed Engram endpoint")
+    events = set(hook.get("enabled_events", []))
+    if events == set(EVENTS):
+        return hook
+    if events != set(EVENTS) - {"invoice.created"}:
+        raise RuntimeError("Existing webhook event list differs from the known Engram contract")
+    return stripe("webhook_endpoints/" + hook["id"], {"enabled_events[]": EVENTS}, "engram-jev-events-v2-" + hook["id"])
 
 
 def main():
@@ -102,6 +116,7 @@ def main():
         if not hook.get("secret"):
             raise RuntimeError("Webhook signing secret unavailable; configure a safe rotation in Stripe")
         persist("engram-stripe-webhook-secret", hook["secret"])
+    hook = upgrade_invoice_events(hook, endpoint_url, mode, stripe)
     if hook.get("status") != "enabled" or hook.get("api_version") != VERSION or set(hook.get("enabled_events", [])) != set(EVENTS):
         raise RuntimeError("Engram webhook settings do not match the server contract")
     report.update({"applied": True, "product": product["id"], "price": price["id"], "portalConfiguration": portal["id"], "webhook": hook["id"], "webhookURL": endpoint_url, "apiVersion": VERSION, "chargesCreated": 0, "testPaymentVerified": False, "secrets": ["engram-stripe-secret-key", "engram-stripe-cloud-monthly-price-id", "engram-stripe-portal-configuration-id", "engram-stripe-webhook-secret"]})

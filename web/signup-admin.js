@@ -1,5 +1,5 @@
 import { h } from "./profile.js";
-import { signupInviteStatus } from "./signup-model.js";
+import { parseInviteEntry, signupInviteStatus } from "./signup-model.js";
 
 const action = (label, onclick, attrs = {}) => h("button", { type: "button", onclick, ...attrs }, label);
 const date = value => {
@@ -16,29 +16,32 @@ export function signupAdminPanel({ session, api, fail = () => {}, copy, isCurren
   const feedback = h("p", { class: "form-feedback", role: "status", "aria-live": "polite" });
   const codeRegion = h("div", { class: "signup-issued", "aria-live": "polite" });
   const list = h("div", { class: "signup-invite-list" });
-  const email = h("input", { type: "email", required: true, autocomplete: "email", placeholder: "friend@example.com", maxlength: 254 });
-  const issue = h("button", { type: "submit", class: "small primary" }, "Generate invite code");
+  const email = h("input", { type: "email", autocomplete: "email", placeholder: "friend@example.com", maxlength: 254 });
+  const issue = h("button", { type: "submit", class: "small primary" }, "Generate invite link");
   const clearSecret = () => {
     secret = "";
     if (secretInput) { secretInput.value = ""; secretInput.removeAttribute("value"); }
     secretInput = null; codeRegion.replaceChildren();
   };
-  const showSecret = (code, address) => {
-    clearSecret(); secret = code; code = "";
-    secretInput = h("input", { type: "password", readonly: true, autocomplete: "off", "aria-label": "One-time invite code", spellcheck: "false" });
+  const showSecret = (code, address, rawUrl) => {
+    let inviteUrl = "";
+    try { const url = new URL(rawUrl); if ((url.protocol === "https:" || (url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname))) && !url.username && !url.password && url.pathname === "/app" && !url.search && parseInviteEntry(url.hash)?.code === code) inviteUrl = url.href; } catch {}
+    const isLink = Boolean(inviteUrl), noun = isLink ? "link" : "code";
+    clearSecret(); secret = inviteUrl || code; code = ""; inviteUrl = "";
+    secretInput = h("input", { type: "password", readonly: true, autocomplete: "off", "aria-label": `One-time invite ${noun}`, spellcheck: "false" });
     secretInput.value = secret;
-    const reveal = action("Show code", () => {
+    const reveal = action(`Show ${noun}`, () => {
       if (!secret || !secretInput) return;
       const show = secretInput.type === "password";
-      secretInput.type = show ? "text" : "password"; reveal.textContent = show ? "Hide code" : "Show code";
+      secretInput.type = show ? "text" : "password"; reveal.textContent = `${show ? "Hide" : "Show"} ${noun}`;
     }, { class: "small" });
-    const copyCode = action("Copy code", async () => {
+    const copyCode = action(`Copy ${noun}`, async () => {
       if (!current() || !secret) return;
-      try { await copy(secret); if (current() && secret) feedback.textContent = "Invite code copied. Share it privately with this email address."; }
-      catch { if (current()) feedback.textContent = "Could not copy. Show the code, then select and copy it."; }
+      try { await copy(secret); if (current() && secret) feedback.textContent = `Invite ${noun} copied. Share it privately${address ? ` with ${address}` : "; the first verified email claims it"}.`; }
+      catch { if (current()) feedback.textContent = `Could not copy. Show the ${noun}, then select and copy it.`; }
     }, { class: "small" });
-    codeRegion.replaceChildren(h("strong", {}, `Invite for ${address}`), h("p", {}, "Copy this code now. It is shown only once. Share it privately with the invited person; generating a code does not send an email."), secretInput,
-      h("div", { class: "form-actions" }, reveal, copyCode, action("Done · clear code", clearSecret, { class: "text small" })));
+    codeRegion.replaceChildren(h("strong", {}, address ? `Bound to ${address}` : "Single-use link · not bound to an email yet"), h("p", {}, `Copy this ${noun} now. It is shown only once. ${address ? "Only this email address may verify and claim it." : "The first person to verify an email address claims it; entering an email alone does not reserve it."} Generating an invitation does not send an email.`), secretInput,
+      h("div", { class: "form-actions" }, reveal, copyCode, action(`Done · clear ${noun}`, clearSecret, { class: "text small" })));
   };
   const renderList = more => {
     list.replaceChildren(...(invites.length ? invites.map(invite => {
@@ -54,7 +57,7 @@ export function signupAdminPanel({ session, api, fail = () => {}, copy, isCurren
           feedback.textContent = result.revocationPending ? "Revocation is pending. The code is revoked; free access removal is still queued. Refresh or retry to check completion." : "Invite code and its free access have been revoked.";
         } catch (error) { if (current()) { fail(error); feedback.textContent = error.message || "Revocation could not be confirmed. Refresh and try again."; button.disabled = false; } }
       }, { class: "text small" });
-      return h("div", { class: "token-row signup-invite-row" }, h("div", {}, h("span", {}, invite.email), h("small", {}, signupInviteStatus(invite)), h("small", {}, invite.redeemedAt ? `Redeemed ${date(invite.redeemedAt)}` : `Unused code expires ${date(invite.expiresAt)}`)), (!invite.revokedAt || pending) && revoke);
+      return h("div", { class: "token-row signup-invite-row" }, h("div", {}, h("span", {}, invite.email || "Unbound invitation"), h("small", {}, invite.email ? "Bound to this email" : "First verified email claims it"), h("small", {}, signupInviteStatus(invite)), h("small", {}, invite.redeemedAt ? `Redeemed ${date(invite.redeemedAt)}${invite.accessExpiresAt ? ` · Access ends ${date(invite.accessExpiresAt)}` : ""}` : `Unused invitation expires ${date(invite.expiresAt)}`)), (!invite.revokedAt || pending) && revoke);
     }) : [h("p", { class: "detail-note" }, "No early access invitations yet.")]), ...(more ? [h("p", { class: "field-hint" }, "Showing the 100 newest invitations. Older invitations are not shown here.")] : []));
   };
   const refresh = async () => {
@@ -71,20 +74,20 @@ export function signupAdminPanel({ session, api, fail = () => {}, copy, isCurren
     const id = ++request;
     issue.disabled = true; feedback.textContent = ""; clearSecret();
     try {
-      const result = await api.issueSignupInvite({ email: email.value.trim() });
+      const address = email.value.trim(), result = await api.issueSignupInvite(address ? { email: address } : {});
       if (!current() || !panel.open || id !== request) return;
       if (typeof result.inviteCode !== "string" || !result.inviteCode) throw new Error("The code was not returned. Refresh the list before trying again.");
       const updated = [result.invite, ...invites.filter(item => item.id !== result.invite.id)];
       hasMore = hasMore || updated.length > 100; invites = updated.slice(0, 100); renderList(hasMore);
-      showSecret(result.inviteCode, result.invite.email); email.value = ""; feedback.textContent = "Invite created. The recipient must verify the same email address before access begins.";
+      showSecret(result.inviteCode, result.invite.email, result.inviteUrl); email.value = ""; feedback.textContent = result.invite.email ? "Invite created. Only the bound email can verify and claim it. The 60-day access period starts after verification." : "Single-use invitation created. The first verified email claims it and starts 60 days of unlimited knowledge transfers. Jev is separate.";
     } catch (error) { if (current() && panel.open && id === request) { fail(error); feedback.textContent = error.message || "The invite could not be created."; } }
     finally { issue.disabled = false; }
-  } }, h("label", { class: "field" }, "Invited email", email), issue);
+  } }, h("label", { class: "field" }, "Bind to an email (optional)", email), h("p", { class: "field-hint" }, "Leave blank for a single-use link the first verified email can claim. Enter an email to restrict the invitation to that address."), issue);
   const panel = h("details", { class: "account-section signup-admin", ontoggle: () => {
     if (!panel.open) { clearSecret(); ++request; }
     else if (!loaded) refresh();
   } }, h("summary", {}, "Early access invitations"), h("div", { class: "signup-admin-content stack" },
-    h("p", { class: "detail-note" }, "Operator access · Invite one email address at a time. Friends get a personal workspace free until access is revoked, with no card required. An unused code expires after seven days. Email verification is required."), form, codeRegion, feedback,
+    h("p", { class: "detail-note" }, "Operator access · Friends get 60 days of unlimited knowledge transfers in a personal workspace after email verification, with no card required. Jev has separate permission and usage costs. An unused invitation expires after seven days."), form, codeRegion, feedback,
     h("div", { class: "form-actions" }, action("Refresh invitations", () => { clearSecret(); refresh(); }, { class: "small" })), list));
   return { element: panel, clearSecrets() { ++request; clearSecret(); }, dispose() { active = false; ++request; clearSecret(); email.value = ""; } };
 }

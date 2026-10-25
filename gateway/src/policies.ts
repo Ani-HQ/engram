@@ -25,6 +25,7 @@ export interface OrgPolicies {
   acceptShares: boolean;
   maxShareLevel: ShareLevel;
   externalAiProcessing: boolean;
+  jevProcessing: boolean;
 }
 
 export const SHARE_LEVELS: ShareLevel[] = ["digest", "digest_transcript", "transcript"];
@@ -37,6 +38,7 @@ export const DEFAULT_POLICIES: OrgPolicies = {
   acceptShares: true,
   maxShareLevel: "digest",
   externalAiProcessing: false,
+  jevProcessing: false,
 };
 
 const SHARE_RANK: Record<ShareLevel, number> = {
@@ -78,6 +80,7 @@ export function parsePolicies(value: unknown): OrgPolicies {
     acceptShares: raw.acceptShares !== false,
     maxShareLevel: parseShareLevel(raw.maxShareLevel, "digest"),
     externalAiProcessing: raw.externalAiProcessing === true,
+    jevProcessing: raw.jevProcessing === true,
   };
 }
 

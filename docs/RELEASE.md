@@ -229,6 +229,23 @@ pre-existing secrets and service accounts, and a fresh state-file path. It check
 that the runtime lacks direct access to the provisioner secret or broad project
 roles. No secret value appears in state files, subprocess arguments or output.
 
+Prepare the reviewed onboarding mail job as described in [Email](EMAIL.md).
+The Jev release also requires its dedicated provider key and resource-scoped
+secret grant; follow [Jev release preparation](BILLING.md#prepare-and-review-the-jev-release).
+An exact owner selector is passed only to the provisioner; its default never
+applies to a team or an unverified/missing account. Customer Jev processing and
+its private billing exporter remain disabled until a rate is explicitly
+approved. To enable customer use, prepare the paused billing worker, update and
+verify the existing Stripe webhook event list, and carry the same explicit
+Jev billing flags through stage, smoke and activate. These setup operations are
+separate from an offline release plan. No current local test establishes a live
+Jev inference or invoice roundtrip.
+
+Activation first verifies prepared workers. After traffic is active, a retry
+allows matching workers that already enabled, then completes missing enables;
+image, identity, IAM and secret bindings must still match. Rollback pauses both
+worker schedules and leaves durable usage and delivery state for reconciliation.
+
 The legacy `engram-db-url-template` also contains administrative authority. Its
 existing runtime secret-access grant must be removed before `stage` can pass.
 Coordinate that removal with the cutover: the old revision may fail a cold start

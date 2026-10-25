@@ -2,7 +2,6 @@ import { failureCode } from "../diagnostics";
 import { brainClient } from "../brain";
 import { config } from "../config";
 import { currentOrg } from "../context";
-import { ANI_HQ_ORG } from "../orgs";
 import {
   recordReflexDecision,
   type MemoryEntry,
@@ -46,10 +45,11 @@ export async function processRemember(input: {
   entry: MemoryEntry | null; text: string; slug: string; topic?: string;
 }, client: ReflexClient = reflexClient()): Promise<void> {
   if (!input.entry) return;
-  if (!(currentOrg() ?? ANI_HQ_ORG).policies.jevMayPropose) return;
+  const policies = currentOrg()?.policies;
+  if (!policies?.jevProcessing || !policies.jevMayPropose) return;
   if (!client.available()) return;
   try {
-    const classification = await classifyMemory(client, input.text);
+    const classification = await classifyMemory(client, input.text, input.entry.id);
     if (classification) {
       await recordReflexDecision({
         entryId: input.entry.id,
@@ -62,7 +62,7 @@ export async function processRemember(input: {
 
     const neighbors = await neighborHits(input.text, input.slug);
     for (const neighbor of neighbors) {
-      const judged = await judgePair(client, input.text, neighbor.text);
+      const judged = await judgePair(client, input.text, neighbor.text, `${input.entry.id}:${neighbor.slug}`);
       // An unavailable provider is not evidence of an uncertain relationship.
       if (!judged.model) continue;
       if (!judged.relation) {

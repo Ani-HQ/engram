@@ -11,4 +11,7 @@ engram_args=("$engram_command" --project "$engram_project" --region "$engram_reg
 if [ -n "${ENGRAM_BACKUP_ID:-}" ]; then engram_args+=(--backup-id "$ENGRAM_BACKUP_ID"); fi
 if [ -n "${ENGRAM_SMOKE_TOKEN_SECRET:-}" ]; then engram_args+=(--smoke-token-secret "$ENGRAM_SMOKE_TOKEN_SECRET"); fi
 if [ "${ENGRAM_SMOKE_TOKEN_STDIN:-0}" = 1 ]; then engram_args+=(--smoke-token-stdin); fi
+if [ "${ENGRAM_JEV_BILLING_ENABLED:-0}" = 1 ]; then engram_args+=(--jev-enable-customer-billing); fi
+if [ -n "${ENGRAM_JEV_MARKUP_BPS:-}" ]; then engram_args+=(--jev-markup-bps "$ENGRAM_JEV_MARKUP_BPS"); fi
+if [ -n "${ENGRAM_JEV_OPERATOR_MONTHLY_BUDGET_USD:-}" ]; then engram_args+=(--jev-operator-budget-usd "$ENGRAM_JEV_OPERATOR_MONTHLY_BUDGET_USD"); fi
 exec python3 deploy/release.py "${engram_args[@]}"

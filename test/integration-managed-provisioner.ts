@@ -45,6 +45,8 @@ export async function checkManagedProvisioner(template: string): Promise<number>
       await tx`INSERT INTO public.acl_probe VALUES (1)`;
       await tx`CREATE TABLE public.workspace_complimentary_access (id integer PRIMARY KEY)`;
       await tx`INSERT INTO public.workspace_complimentary_access VALUES (1)`;
+      await tx`CREATE TABLE public.jev_operator_access (id integer PRIMARY KEY)`;
+      await tx`INSERT INTO public.jev_operator_access VALUES (1)`;
     });
     await fixture.end(); fixture = undefined;
     const runtimeUrl = new URL(template), provisionerUrl = new URL(template);
@@ -115,6 +117,9 @@ export async function checkManagedProvisioner(template: string): Promise<number>
         assert.deepEqual(await Promise.all(outcomes),[{ok:true,n:1},{ok:true,n:1}]); checks++;
         assert.equal((await readers[0]\`SELECT count(*)::integer AS n FROM public.acl_probe\`)[0].n,1); checks++;
         await assert.rejects(()=>readers[0]\`UPDATE public.workspace_complimentary_access SET id=2\`,error=>error.code==='42501'); checks++;
+        assert.equal((await readers[0]\`SELECT count(*)::integer AS n FROM public.jev_operator_access\`)[0].n,1); checks++;
+        await assert.rejects(()=>readers[0]\`INSERT INTO public.jev_operator_access VALUES (2)\`,error=>error.code==='42501'); checks++;
+        await assert.rejects(()=>readers[0]\`UPDATE public.jev_operator_access SET id=2\`,error=>error.code==='42501'); checks++;
         const aborted=instrument(gatewayClient,async query=>{if(match(query)===1)throw Object.assign(new Error('intentional_acl_refresh_abort'),{code:'TEST_ABORT'});});
         await assert.rejects(()=>protectGatewayMetadata(aborted),error=>error.code==='TEST_ABORT'); checks++;
         assert.equal((await readers[1]\`SELECT count(*)::integer AS n FROM public.acl_probe\`)[0].n,1,'Failed refresh must preserve the prior grant and policy'); checks++;

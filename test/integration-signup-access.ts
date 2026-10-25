@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import type postgres from "postgres";
 import { applySignupInviteAccess } from "../gateway/src/provisioning";
+import { ensureHostedSignupInvitesSchema } from "../gateway/src/signup-invites-schema";
 
 export async function checkSignupInviteAccess(db: postgres.Sql): Promise<number> {
   const marker = (await db`SELECT purpose FROM _engram_integration_sandbox WHERE id = 1`)[0];
@@ -20,8 +21,12 @@ export async function checkSignupInviteAccess(db: postgres.Sql): Promise<number>
     const owner = owners.get(orgId)!;
     const id = randomUUID();
     invites.push(id);
-    await db`INSERT INTO hosted_signup_invites (id, code_hash, email, created_by_member_id, expires_at, redeemed_at, redeemed_org_id, redeemed_owner_member_id, revoked_at)
-      VALUES (${id}, ${createHash("sha256").update(id).digest("hex")}, ${change.email ?? owner.email}, ${change.creatorId ?? operatorId!}, now() + interval '1 day', now(), ${orgId}, ${change.ownerId ?? owner.id}, ${change.revoked ? new Date() : null})`;
+    // Exercise an older runtime's exact write shape after additive migration:
+    // it does not know the new term columns when issuing or verifying a code.
+    await db`INSERT INTO hosted_signup_invites (id, code_hash, email, created_by_member_id, expires_at)
+      VALUES (${id}, ${createHash("sha256").update(id).digest("hex")}, ${change.email ?? owner.email}, ${change.creatorId ?? operatorId!}, now() + interval '1 day')`;
+    await db`UPDATE hosted_signup_invites SET redeemed_at = now(), redeemed_org_id = ${orgId},
+      redeemed_owner_member_id = ${change.ownerId ?? owner.id}, revoked_at = ${change.revoked ? new Date() : null} WHERE id = ${id}`;
     return id;
   };
   try {
@@ -37,6 +42,8 @@ export async function checkSignupInviteAccess(db: postgres.Sql): Promise<number>
     }
     const billingBefore = await db`SELECT org_id, row_to_json(b) AS value FROM workspace_billing b WHERE org_id IN ${db(orgIds)} ORDER BY org_id`;
     const firstInvite = await addInvite(orgIds[0]);
+    equal((await db`SELECT access_duration_days, access_expires_at FROM hosted_signup_invites WHERE id = ${firstInvite}`)[0], { access_duration_days: null, access_expires_at: null }, "Old issuance and redemption SQL keep their original terms while a new runtime is staged");
+    equal((await db`SELECT signup_version FROM engram_schema_state WHERE id = true`)[0].signup_version, 2026102401, "The old runtime's exact signup readiness marker stays compatible");
     const firstRuns = await Promise.all([applySignupInviteAccess(db), applySignupInviteAccess(db)]);
     equal(firstRuns.reduce((sum, result) => sum + result.applied, 0), 1, "Concurrent reconciliation applies one grant");
     const first = (await db`SELECT * FROM workspace_complimentary_access WHERE org_id = ${orgIds[0]}`)[0];
@@ -44,6 +51,9 @@ export async function checkSignupInviteAccess(db: postgres.Sql): Promise<number>
     equal((await db`SELECT complimentary_grant_id FROM hosted_signup_invites WHERE id = ${firstInvite}`)[0].complimentary_grant_id, first.id, "Invite records its stable grant UUID");
     equal(Number((await db`SELECT count(*) AS n FROM complimentary_access_events WHERE org_id = ${orgIds[0]}`)[0].n), 1, "Exact retries produce one grant receipt");
     equal(await applySignupInviteAccess(db), { applied: 0, revoked: 0, failed: 0 }, "Applied invitations stay idempotent");
+    await ensureHostedSignupInvitesSchema(db);
+    equal((await db`SELECT expires_at FROM workspace_complimentary_access WHERE org_id = ${orgIds[0]}`)[0].expires_at, null, "Repeated migrations never shorten a legacy non-expiring grant");
+    equal((await db`SELECT access_duration_days, access_expires_at FROM hosted_signup_invites WHERE id = ${firstInvite}`)[0], { access_duration_days: null, access_expires_at: null }, "Older invitation terms remain unchanged after the new default");
     equal(await db`SELECT org_id, row_to_json(b) AS value FROM workspace_billing b WHERE org_id IN ${db(orgIds)} ORDER BY org_id`, billingBefore, "Grant leaves every Stripe and original trial field unchanged");
 
     for (const [orgId, change, message] of [

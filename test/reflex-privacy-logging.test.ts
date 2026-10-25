@@ -4,7 +4,7 @@ import { TypesafeReflexClient } from "../gateway/src/reflex/client";
 test("provider parsing failures cannot copy private echoed content into circuit-breaker logs", async () => {
   const privateText = "TENANT_PRIVATE_DEPLOYMENT_ROADMAP";
   const client = new TypesafeReflexClient(async () => new Response(privateText), Date.now,
-    { apiKey: "fixture-only", maxAttempts: 1 });
+    { apiKey: "fixture-only", model: "jev-1.13.0", maxAttempts: 1 });
   const logged: string[] = [];
   const original = console.warn;
   console.warn = (...args: unknown[]) => { logged.push(args.map(String).join(" ")); };

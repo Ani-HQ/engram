@@ -1,8 +1,8 @@
 import { currentOrg } from "../context";
 import { dataSql } from "../db";
 import { recordReflexDecision, type MemoryEntry } from "../memory-entries";
-import { ANI_HQ_ORG } from "../orgs";
-import { reflexClient } from "../reflex/client";
+import { reflexClient, TypesafeReflexClient } from "../reflex/client";
+import type { ReflexClient } from "../reflex/types";
 import { classifyMemory } from "../reflex/tasks/classify";
 import { judgePair } from "../reflex/tasks/pairwise";
 import { enqueueReviewItem } from "../review/store";
@@ -20,8 +20,8 @@ export interface DreamResult {
 
 export async function runDreamCycle(now = new Date()): Promise<DreamResult> {
   const key = nightKey(now);
-  const policies = (currentOrg() ?? ANI_HQ_ORG).policies;
-  if (!policies.jevMayPropose) {
+  const policies = currentOrg()?.policies;
+  if (!policies?.jevProcessing || !policies.jevMayPropose || !reflexClient().available()) {
     return { ok: true, nightKey: key, locked: false, stats: { skipped: 1 } };
   }
   const locked = await tryDreamLock();
@@ -51,8 +51,9 @@ export async function runDreamCycle(now = new Date()): Promise<DreamResult> {
     stats.entries = scanned.entries.length;
     cursor = { offset: scanned.nextOffset, done: scanned.done };
 
+    const provider = new TypesafeReflexClient(fetch, Date.now, { operationId: `dream:${key}`, maxAttempts: 1 });
     for (const entry of scanned.entries) {
-      await judgeEntry(entry, runId, stats);
+      await judgeEntry(entry, runId, stats, provider);
     }
 
     for (const cluster of deriveClusters(scanned.entries)) {
@@ -88,8 +89,8 @@ export async function runDreamCycle(now = new Date()): Promise<DreamResult> {
   }
 }
 
-async function judgeEntry(entry: MemoryEntry, runId: number | null, stats: Record<string, number>) {
-  const classification = await classifyMemory(reflexClient(), entry.rawText);
+async function judgeEntry(entry: MemoryEntry, runId: number | null, stats: Record<string, number>, provider: ReflexClient) {
+  const classification = await classifyMemory(provider, entry.rawText, entry.id);
   if (classification) {
     await recordReflexDecision({
       entryId: entry.id,
@@ -112,7 +113,7 @@ async function judgeEntry(entry: MemoryEntry, runId: number | null, stats: Recor
   }
 
   for (const neighbor of await neighborSlugs(entry.rawText, entry.slug)) {
-    const judged = await judgePair(reflexClient(), entry.rawText, neighbor.text);
+    const judged = await judgePair(provider, entry.rawText, neighbor.text, `${entry.id}:${neighbor.slug}`);
     if (!judged.relation) continue;
     await recordReflexDecision({
       entryId: entry.id,

@@ -12,7 +12,7 @@ import { normalizeToken } from "../gateway/src/policies";
 import { canManageSignupInvites, createSignupVerification, issueSignupInvite, listSignupInvites, revokeSignupInvite, signupPolicy } from "../gateway/src/signup-invites";
 import { applySignupInviteAccess, provisionPendingWorkspaces } from "../gateway/src/provisioning";
 import { handleWeb } from "../gateway/src/web";
-import { handleBillingApi } from "../gateway/src/billing";
+import { getBillingSummary, getWorkspaceAccessSummary, handleBillingApi, requireHostedWriteAccess } from "../gateway/src/billing";
 import { triggerProvisioning } from "../gateway/src/provisioning-trigger";
 
 export async function checkSignupInvites(db: postgres.Sql): Promise<number> {
@@ -60,9 +60,12 @@ export async function checkSignupInvites(db: postgres.Sql): Promise<number> {
     equal(Number((await db`SELECT count(*) AS n FROM orgs`)[0].n), beforePublicSignup, "Denied public signup creates no workspace");
 
     const first = await issue("new");
-    const stored = (await db`SELECT code_hash, expires_at, created_at FROM hosted_signup_invites WHERE id = ${first.invite.id}`)[0];
+    const stored = (await db`SELECT code_hash, expires_at, created_at, access_duration_days, access_expires_at FROM hosted_signup_invites WHERE id = ${first.invite.id}`)[0];
     equal(stored.code_hash, sha256(first.inviteCode), "Only the code hash is persisted");
     equal(Math.round((new Date(stored.expires_at).getTime() - new Date(stored.created_at).getTime()) / 86_400_000), 7, "Codes default to seven days");
+    equal([stored.access_duration_days, stored.access_expires_at, first.invite.accessDurationDays], [60, null, 60], "New invitation terms promise sixty days without starting the clock at issuance");
+    await assert.rejects(async () => { await db`UPDATE hosted_signup_invites SET access_duration_days = 365 WHERE id = ${first.invite.id}`; }, (error: any) => error.code === "23514"); checks++;
+    await assert.rejects(async () => { await db`UPDATE hosted_signup_invites SET access_expires_at = now() + interval '60 days' WHERE id = ${first.invite.id}`; }, (error: any) => error.code === "23514"); checks++;
     equal(JSON.stringify(await listSignupInvites(actor(), db)).includes(first.inviteCode), false, "Operator inventory never repeats raw codes");
     await reject(() => createSignupVerification("wrong@example.test", "Wrong", first.inviteCode, "https://signup.example", db), "invite_invalid");
     const verification = await createSignupVerification(first.invite.email, "A friend's memory", first.inviteCode, "https://signup.example", db);
@@ -70,15 +73,91 @@ export async function checkSignupInvites(db: postgres.Sql): Promise<number> {
     equal(Number((await db`SELECT count(*) AS n FROM org_members WHERE email = ${first.invite.email}`)[0].n), 0, "Code redemption does not create membership before email proof");
     equal((await db`SELECT redeemed_at FROM hosted_signup_invites WHERE id = ${first.invite.id}`)[0].redeemed_at, null, "Email delivery failure or delay cannot consume the code");
     await reject(() => createSignupVerification(first.invite.email, "Retry", first.inviteCode, "https://signup.example", db), "signup_rate_limited");
+    await db`UPDATE hosted_signup_verifications SET created_at = now() - interval '61 seconds' WHERE signup_invite_id = ${first.invite.id}`;
+    const replacementProof = await createSignupVerification(first.invite.email!, "Retry", first.inviteCode, "https://signup.example", db);
+    equal((await db`SELECT accepted_at FROM hosted_signup_verifications WHERE token_hash = ${sha256(verification.raw)}`)[0].accepted_at, null, "A same-email resend keeps the original inbox proof valid even if new delivery fails");
     const claims = await Promise.all([acceptInvite(verification.raw, db), acceptInvite(verification.raw, db)]);
     equal(claims.filter(Boolean).length, 1, "Concurrent verification accepts the one-use code once");
+    equal(await acceptInvite(replacementProof.raw, db), null, "After the original delivered proof wins, its replacement cannot create a second admission");
     const accepted = claims.find(Boolean)!; orgIds.push(accepted.org.id);
     equal([accepted.org.kind, accepted.org.provisioningStatus, accepted.member.email], ["personal", "pending", first.invite.email], "Verified signup creates one exact pending personal workspace");
     equal(Number((await db`SELECT count(*) AS n FROM org_members WHERE email = ${first.invite.email}`)[0].n), 1, "Signup creates no second automatic team/personal workspace");
     equal(Number((await db`SELECT count(*) AS n FROM workspace_complimentary_access WHERE org_id = ${accepted.org.id}`)[0].n), 0, "The request runtime does not write the free grant");
+    const redemption = (await db`SELECT redeemed_at, access_expires_at FROM hosted_signup_invites WHERE id = ${first.invite.id}`)[0];
+    equal(new Date(redemption.access_expires_at).getTime() - new Date(redemption.redeemed_at).getTime(), 60 * 86_400_000, "Only verified redemption starts an exact sixty-day benefit");
     await provisionPendingWorkspaces(10);
-    const ready = (await db`SELECT o.provisioning_status, c.expires_at, c.revoked_at FROM orgs o JOIN workspace_complimentary_access c ON c.org_id = o.id WHERE o.id = ${accepted.org.id}`)[0];
-    equal(ready, { provisioning_status: "ready", expires_at: null, revoked_at: null }, "Provisioning exposes readiness with its audited non-expiring grant");
+    const ready = (await db`SELECT o.provisioning_status, c.granted_at, c.expires_at, c.revoked_at FROM orgs o JOIN workspace_complimentary_access c ON c.org_id = o.id WHERE o.id = ${accepted.org.id}`)[0];
+    equal(ready, { provisioning_status: "ready", granted_at: redemption.redeemed_at, expires_at: redemption.access_expires_at, revoked_at: null }, "Provisioning exposes readiness with the exact verified sixty-day grant");
+    equal((await db`SELECT expires_at FROM complimentary_access_events WHERE org_id = ${accepted.org.id} AND operation = 'grant'`)[0].expires_at, redemption.access_expires_at, "The audited receipt records the real benefit expiry");
+    await applySignupInviteAccess(db);
+    equal((await db`SELECT expires_at FROM workspace_complimentary_access WHERE org_id = ${accepted.org.id}`)[0].expires_at, redemption.access_expires_at, "Reconciliation retries cannot extend the countdown");
+    const hostedSettings = { mode: "hosted" as const, publicUrl: "https://signup.example", secretKey: "", webhookSecret: "", cloudMonthlyPriceId: "" };
+    const friend = actor(first.invite.email!, "owner", "session", accepted.org.id);
+    const summary = await getBillingSummary(friend, { db, settings: hostedSettings, now: () => new Date(redemption.redeemed_at) });
+    equal(summary.complimentary, { active: true, grantedAt: new Date(redemption.redeemed_at).toISOString(), expiresAt: new Date(redemption.access_expires_at).toISOString(), revokedAt: null, source: "invite", durationDays: 60, unlimitedKnowledgeTransfers: true, extensionUrl: "https://x.com/anirudh_twt" }, "Workspace billing displays the actual grant, unlimited core transfers, and extension contact");
+    const expiredDeps = { db, settings: hostedSettings, now: () => new Date(redemption.access_expires_at) };
+    const expiredAccess = await getWorkspaceAccessSummary(friend, expiredDeps);
+    equal([expiredAccess.canWrite, expiredAccess.complimentary?.active, expiredAccess.complimentary?.unlimitedKnowledgeTransfers, expiredAccess.complimentary?.expiresAt], [false, false, false, new Date(redemption.access_expires_at).toISOString()], "The benefit remains visible but expires exactly at its server-side boundary");
+    await reject(() => requireHostedWriteAccess(friend, expiredDeps), "subscription_required");
+    equal((await getWorkspaceAccessSummary(actor(first.invite.email!, "member", "session", accepted.org.id), { db, settings: hostedSettings })).complimentary?.durationDays, 60, "Current workspace members can see the benefit without billing-owner privileges");
+    let recoveryRequests = 0;
+    const recoveredCheckout = await handleBillingApi(new Request("https://signup.example/api/billing/checkout", { method: "POST", body: JSON.stringify({ plan: "cloud" }) }), friend, {
+      ...expiredDeps, settings: { ...hostedSettings, secretKey: "sk_test_fixture", webhookSecret: "whsec_fixture", cloudMonthlyPriceId: "price_fixture" },
+      fetch: (async () => { recoveryRequests++; throw new Error("Only the intercepted recovery price check is permitted"); }) as typeof fetch,
+    });
+    equal([recoveredCheckout.status, (await recoveredCheckout.json()).code, recoveryRequests], [503, "billing_unavailable", 1], "An expired, applied invitation cannot leave payment recovery permanently blocked as pending setup");
+
+    // A link may be issued before the operator knows the recipient's mailbox.
+    // Unverified requests never bind it, invalidate another mailbox's proof, or
+    // create a workspace. The first verified claim is the only winner.
+    const unboundResponse = await handleWeb(request("/api/admin/signup-invites", operatorSession, {}));
+    equal(unboundResponse.status, 201, "The operator may mint a single-use link without choosing an email");
+    const unbound = await unboundResponse.json(); inviteIds.push(unbound.invite.id);
+    equal([unbound.invite.email, unbound.invite.emailBound, new URL(unbound.inviteUrl).search, new URL(unbound.inviteUrl).hash], [null, false, "", `#invite=${unbound.inviteCode}`], "The returned link contains its one-time code only in the URL fragment");
+    const unboundEmails = [`${prefix}-unbound-first@example.test`, `${prefix}-unbound-second@example.test`];
+    const unboundProofs = await Promise.all(unboundEmails.map(email => createSignupVerification(email, "", unbound.inviteCode, "https://signup.example", db)));
+    equal((await db`SELECT email, redeemed_at FROM hosted_signup_invites WHERE id = ${unbound.invite.id}`)[0], { email: null, redeemed_at: null }, "Requesting verification neither binds nor consumes an unbound link");
+    equal(Number((await db`SELECT count(*) AS n FROM hosted_signup_verifications WHERE signup_invite_id = ${unbound.invite.id} AND accepted_at IS NULL`)[0].n), 2, "Another unverified mailbox cannot invalidate the first recipient's proof");
+    await db`UPDATE hosted_signup_verifications SET created_at = now() - interval '61 seconds' WHERE signup_invite_id = ${unbound.invite.id}`;
+    const unboundResend = await createSignupVerification(unboundEmails[0], "", unbound.inviteCode, "https://signup.example", db);
+    equal(Number((await db`SELECT count(*) AS n FROM hosted_signup_verifications WHERE signup_invite_id = ${unbound.invite.id} AND accepted_at IS NULL`)[0].n), 3, "Even a resend to the same mailbox cannot invalidate its already-delivered proof");
+    const unboundClaims = await Promise.all([...unboundProofs, unboundResend].map(proof => acceptInvite(proof.raw, db)));
+    equal(unboundClaims.filter(Boolean).length, 1, "Concurrent verified mailboxes consume an unbound code once");
+    const unboundWinner = unboundClaims.find(Boolean)!; orgIds.push(unboundWinner.org.id);
+    const bound = (await db`SELECT email, redeemed_owner_member_id, access_expires_at, redeemed_at FROM hosted_signup_invites WHERE id = ${unbound.invite.id}`)[0];
+    equal([bound.email, Number(bound.redeemed_owner_member_id)], [unboundWinner.member.email, unboundWinner.member.id], "The first verified mailbox becomes the exact persisted recipient");
+    await assert.rejects(async () => { await db`UPDATE hosted_signup_invites SET email = NULL WHERE id = ${unbound.invite.id}`; }, (error: any) => error.code === "23514"); checks++;
+    equal(new Date(bound.access_expires_at).getTime() - new Date(bound.redeemed_at).getTime(), 60 * 86_400_000, "Unbound invitations receive the same sixty-day term after verification");
+    const losingEmail = unboundEmails.find(email => email !== unboundWinner.member.email)!;
+    equal(Number((await db`SELECT count(*) AS n FROM org_members WHERE email = ${losingEmail}`)[0].n), 0, "The losing verified claimant receives no workspace or membership");
+    await reject(() => createSignupVerification(losingEmail, "", unbound.inviteCode, "https://signup.example", db), "invite_invalid");
+    const inventory = JSON.stringify(await listSignupInvites(actor(), db));
+    equal(inventory.includes(unbound.inviteCode) || inventory.includes(unbound.inviteUrl), false, "Invitation inventory cannot reconstruct the raw shared credential");
+
+    const paidId = personalId + 2, paidEmail = `${prefix}-paid-private@example.test`;
+    await db`INSERT INTO orgs (id,name,slug,kind,brain_db,data_db,home_dir,provisioning_status)
+      VALUES (${paidId}, 'Private paid workspace', ${`${prefix}-paid`}, 'personal', ${`brain_org_${paidId}`}, ${`brain_org_${paidId}`}, ${`org-${paidId}`}, 'ready')`; orgIds.push(paidId);
+    await db`INSERT INTO org_members (org_id,email,role) VALUES (${paidId},${paidEmail},'owner')`;
+    await db`INSERT INTO workspace_billing (org_id,trial_ends_at,stripe_customer_id,stripe_subscription_id,plan_id,status,current_period_ends_at)
+      VALUES (${paidId},now()-interval '1 day','cus_private_signup','sub_private_signup','cloud','active',now()+interval '30 days')`;
+    const paidBefore = (await db`SELECT row_to_json(b) AS value FROM workspace_billing b WHERE org_id = ${paidId}`)[0].value;
+    const privateCode = await issueSignupInvite(actor(), null, undefined, db); inviteIds.push(privateCode.invite.id);
+    const paidProof = await createSignupVerification(paidEmail, "", privateCode.inviteCode, "https://signup.example", db);
+    const compBefore = (await db`SELECT row_to_json(c) AS value FROM workspace_complimentary_access c WHERE org_id = ${accepted.org.id}`)[0].value;
+    const complimentaryProof = await createSignupVerification(first.invite.email!, "", privateCode.inviteCode, "https://signup.example", db);
+    const eligibleProof = await createSignupVerification(`${prefix}-private-code-eligible@example.test`, "", privateCode.inviteCode, "https://signup.example", db);
+    equal(Object.keys(paidProof), Object.keys(eligibleProof), "Unbound verification requests have the same successful response shape for paid and eligible mailboxes");
+    equal(Object.keys(complimentaryProof), Object.keys(eligibleProof), "An existing complimentary mailbox has the same pre-verification response shape too");
+    equal(/^svf_[A-Za-z0-9_-]{32}$/.test(paidProof.raw), true, "A paid mailbox receives the normal verification proof without a pre-verification eligibility error");
+    await reject(() => acceptInvite(paidProof.raw, db), "signup_account_ineligible");
+    equal((await db`SELECT email, redeemed_at FROM hosted_signup_invites WHERE id = ${privateCode.invite.id}`)[0], { email: null, redeemed_at: null }, "A denied verified paid claim neither binds nor consumes the invitation");
+    equal((await db`SELECT row_to_json(b) AS value FROM workspace_billing b WHERE org_id = ${paidId}`)[0].value, paidBefore, "The verified denial preserves the complete existing payment relationship");
+    equal(Number((await db`SELECT count(*) AS n FROM workspace_complimentary_access WHERE org_id = ${paidId}`)[0].n), 0, "The denied paid account receives no complimentary grant");
+    await reject(() => acceptInvite(complimentaryProof.raw, db), "signup_account_ineligible");
+    equal((await db`SELECT row_to_json(c) AS value FROM workspace_complimentary_access c WHERE org_id = ${accepted.org.id}`)[0].value, compBefore, "Verified denial cannot replace or extend an existing complimentary grant");
+    const privateWinner = await acceptInvite(eligibleProof.raw, db);
+    equal(privateWinner?.member.email, `${prefix}-private-code-eligible@example.test`, "After an ineligible verified claim, the same unbound code still admits an eligible verified mailbox");
+    orgIds.push(privateWinner!.org.id);
 
     // Two separately authorized codes for one email cannot create duplicate
     // personal stores or independently queue competing complimentary grants.

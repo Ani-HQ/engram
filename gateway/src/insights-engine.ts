@@ -126,7 +126,7 @@ export async function enrichInsights(result: InsightResult, actions: InsightActi
       criteria: { conflict: "Reports explicitly describe mutually incompatible intended changes.", duplicate: "Reports describe the same intended work.", unrelated: "Different or compatible work.", uncertain: "Insufficient evidence." } };
   });
   if (!Object.keys(questions).length) return result;
-  const response = await client.evaluate({ state: { task: "private_activity_judgments_v1" }, questions });
+  const response = await client.evaluate({ state: { task: "private_activity_judgments_v1" }, questions, task: "activity" });
   if (!response) return result;
   result.model = response.model;
   result.provenance.push({ requestedModel: response.requestedModel ?? response.model, reportedModel: response.model, modelReported: response.modelReported ?? false, questionVersion: "activity-1" });

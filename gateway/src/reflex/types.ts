@@ -43,7 +43,10 @@ export type ReflexResult = {
   requestedModel?: string;
   modelReported?: boolean;
   answers: Record<string, ReflexAnswer>;
+  usage?: { inputTokens: number; outputTokens: number };
 };
+
+export type ReflexTask = "evaluation" | "classify" | "pairwise" | "topic-route" | "rerank" | "activity" | "trail-digest";
 
 export interface ReflexClient {
   enabled(): boolean;
@@ -53,6 +56,8 @@ export interface ReflexClient {
     questions: Record<string, ReflexQuestion>;
     signal?: AbortSignal;
     maxAttempts?: number;
+    task?: ReflexTask;
+    operationKey?: string;
   }): Promise<ReflexResult | null>;
 }
 

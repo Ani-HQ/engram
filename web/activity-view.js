@@ -35,7 +35,7 @@ export function activityStatus(activity, { compact = false } = {}) {
   const state = ["running", "failed", "completed"].includes(activity.status) ? activity.status : "unknown";
   const stale = state === "running" && !activity.workingActions && activity.staleActions > 0;
   const label = stale ? "Awaiting update" : { running: "In progress", completed: "Completed", failed: "Needs attention", unknown: "Unknown" }[state];
-  return h("span", { class: `activity-status ${state}${stale ? " stale" : ""}${compact ? " compact" : ""}`, title: label, "aria-label": label },
+  return h("span", { class: `activity-status ds-badge ${state}${stale ? " stale" : ""}${compact ? " compact" : ""}`, "data-tone": stale ? "warning" : { running: "info", completed: "success", failed: "danger", unknown: "neutral" }[state], title: label, "aria-label": label },
     icon(stale ? "clock" : { running: compact ? "circle-dot" : "loader-circle", completed: "check-check", failed: "circle-x", unknown: "circle-help" }[state], { size: 13, class: state === "running" && activity.workingActions > 0 && !compact ? "working-spinner" : "" }), label);
 }
 export function agentAvatar(name, { working = false, size = "", label = false, harness, sourceLabel, displayName } = {}) {
@@ -89,7 +89,7 @@ export function activityCard(activity, { onOpen, onFilter, onResource, filters =
   const tools = (activity.tools || []).filter(tool => { const visual = toolVisual(tool), key = `${visual.brand || visual.icon}:${visual.label}`; if (seen.has(key)) return false; seen.add(key); return true; });
   const agents = activity.agents || [], memory = presentation.kind === "memory";
   const context = !memory && presentation.lead;
-  return h("article", { class: `activity-card activity-row activity-${presentation.kind}${activity.status === "running" ? " is-running" : ""}${context ? " has-context" : ""}`, "data-activity-id": activity.id },
+  return h("article", { class: `activity-card activity-row ds-card activity-${presentation.kind}${activity.status === "running" ? " is-running" : ""}${context ? " has-context" : ""}`, "data-activity-id": activity.id },
     rowMark(activity, tools, onFilter),
     h("div", { class: "activity-row-main" },
       button([h("span", { class: "activity-title" }, presentation.title), icon("chevron-right", { size: 13, class: "activity-open-arrow" })], () => onOpen?.(activity),

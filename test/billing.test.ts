@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
 import type postgres from "postgres";
-import { getBillingSummary, handleBillingApi, handleBillingWebhook, publicPlans, requireHostedWriteAccess, verifyStripeSignature, type BillingSettings } from "../gateway/src/billing";
+import { getBillingSummary, getWorkspaceAccessSummary, handleBillingApi, handleBillingWebhook, publicPlans, requireHostedWriteAccess, verifyStripeSignature, type BillingSettings } from "../gateway/src/billing";
 import { runWithContext } from "../gateway/src/context";
 import { DEFAULT_POLICIES, normalizeToken } from "../gateway/src/policies";
 
@@ -103,6 +103,27 @@ describe("workspace plans and entitlements", () => {
     }
     const store = database({ ...trial, ...complimentary, complimentary_revoked_at: "2026-10-21T00:00:00Z", status: "active", plan_id: "cloud", stripe_customer_id: "cus_123", stripe_subscription_id: "sub_123", current_period_ends_at: "2026-11-01T00:00:00Z" });
     expect(await getBillingSummary(owner, { db: store.db, settings: hosted, now: () => now })).toMatchObject({ canWrite: true, entitlementSource: "subscription", status: "active", complimentary: { active: false } });
+  });
+
+  test("sixty-day invite visibility uses server time and survives expiry without exposing billing details", async () => {
+    const expiry = "2026-10-22T12:00:00.000Z";
+    const store = database({ ...trial, trial_ends_at: "2026-10-10T00:00:00Z", ...complimentary,
+      complimentary_granted_at: "2026-08-23T12:00:00Z", complimentary_expires_at: expiry,
+      complimentary_invite_id: "private-invite-identity", complimentary_invite_duration_days: 60,
+      stripe_customer_id: "cus_private", stripe_subscription_id: "sub_private" });
+    const remote = transport(); remote.fail();
+    const member = normalizeToken({ ...owner, role: "member", kind: "session" });
+    const deps = { db: store.db, settings: hosted, fetch: remote.fetcher, now: () => now };
+    const ended = await getWorkspaceAccessSummary(member, deps);
+    expect(ended).toEqual({ serverNow: now.toISOString(), canWrite: false, entitlementSource: "none", complimentary: {
+      active: false, grantedAt: "2026-08-23T12:00:00.000Z", expiresAt: expiry, revokedAt: null,
+      source: "invite", durationDays: 60, unlimitedKnowledgeTransfers: false, extensionUrl: "https://x.com/anirudh_twt",
+    } });
+    const before = await getWorkspaceAccessSummary(member, { ...deps, now: () => new Date(now.getTime() - 1) });
+    expect(before.complimentary).toMatchObject({ active: true, durationDays: 60, unlimitedKnowledgeTransfers: true });
+    expect(JSON.stringify(ended)).not.toContain("private");
+    expect(remote.calls).toHaveLength(0);
+    await expect(requireHostedWriteAccess(member, deps)).rejects.toMatchObject({ status: 402 });
   });
 
   test("complimentary overlays preserve paid billing visibility and tenant boundaries", async () => {

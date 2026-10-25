@@ -25,7 +25,7 @@ async function startup(env: Record<string, string> = {}, uid = "0", args = ["/us
 
 describe("container startup authority", () => {
   test("drops process, Docker and every provisioner path before command execution", async () => {
-    for (const env of [{}, { ENGRAM_DEPLOYMENT_MODE: "self-hosted", ENGRAM_JOB: "dream" }, { ENGRAM_DEPLOYMENT_MODE: "hosted", ENGRAM_WORKER_ISOLATION: "docker" }, { ENGRAM_DEPLOYMENT_MODE: "hosted", ENGRAM_JOB: "provision" }, { ENGRAM_WORKER_ISOLATION: "cloudrun", ENGRAM_JOB: "provision" }]) {
+    for (const env of [{}, { ENGRAM_DEPLOYMENT_MODE: "self-hosted", ENGRAM_JOB: "dream" }, { ENGRAM_DEPLOYMENT_MODE: "hosted", ENGRAM_WORKER_ISOLATION: "docker" }, { ENGRAM_DEPLOYMENT_MODE: "hosted", ENGRAM_JOB: "provision" }, { ENGRAM_WORKER_ISOLATION: "cloudrun", ENGRAM_JOB: "provision" }, { ENGRAM_DEPLOYMENT_MODE: "hosted", ENGRAM_JOB: "mail" }, { ENGRAM_WORKER_ISOLATION: "cloudrun", ENGRAM_JOB: "mail" }, { ENGRAM_DEPLOYMENT_MODE: "hosted", ENGRAM_JOB: "billing" }, { ENGRAM_WORKER_ISOLATION: "cloudrun", ENGRAM_JOB: "billing" }]) {
       const result = await startup(env);
       expect(result.code, result.stderr).toBe(0);
       expect(JSON.parse(result.stdout).drop).toEqual(["--reuid=1000", "--regid=1000", "--clear-groups", "--no-new-privs", "--", "/usr/bin/printf", "%s", "started"]);

@@ -4,6 +4,9 @@ import datetime
 import importlib.util
 import io
 import pathlib
+import copy
+import json
+import tempfile
 import types
 import unittest
 from unittest.mock import patch
@@ -239,6 +242,84 @@ class ReleaseTests(unittest.TestCase):
         with patch.object(release, "cloud", side_effect=AssertionError("Plan must not call cloud")), patch("sys.argv", ["release.py", "plan", "--project", "ani-hq", "--image", self.args.image]), contextlib.redirect_stdout(output):
             release.main()
         self.assertIn('"minInstances": 0', output.getvalue())
+
+    def test_jev_billing_is_disabled_and_stale_permissions_are_not_inherited(self):
+        existing = self.service["spec"]["template"]["spec"]["containers"][0]["env"]
+        existing.extend({"name": name, "value": "unsafe-stale"} for name in (
+            "ENGRAM_JEV_MARKUP_BPS", "ENGRAM_JEV_OPERATOR_EMAIL", "ENGRAM_JEV_OPERATOR_MONTHLY_BUDGET_USD",
+            "ENGRAM_JEV_BILLING_WORKER_ENABLED", "REFLEX_API_KEY", "TYPESAFE_API_KEY", "REFLEX_ENDPOINT"))
+        body = release.service_body(self.service, self.args, "engram-candidate")
+        env = {entry["name"]: entry for entry in body["spec"]["template"]["spec"]["containers"][0]["env"]}
+        self.assertEqual(env["ENGRAM_JEV_BILLING_ENABLED"]["value"], "0")
+        self.assertEqual(env["JEV_API_KEY"]["valueFrom"]["secretKeyRef"]["name"], "engram-jev-api-key")
+        self.assertTrue(all(row.get("value") != "unsafe-stale" for row in env.values()))
+        self.assertNotIn("JEV_API_KEY", release.PROVISIONER_SECRETS)
+        self.args.jev_enable_customer_billing = True
+        self.args.jev_markup_bps = 0
+        self.assertEqual(release.runtime_environment(self.args)["ENGRAM_JEV_MARKUP_BPS"], 0)
+
+    def test_jev_billing_requires_explicit_rate_without_disclosing_owner(self):
+        base = ["release.py", "plan", "--project", "ani-hq", "--image", self.args.image]
+        with patch("sys.argv", [*base, "--jev-enable-customer-billing"]), self.assertRaisesRegex(RuntimeError, "explicitly approved"):
+            release.main()
+        for flags in (["--jev-markup-bps", "-1"], ["--jev-markup-bps", "10001"], ["--jev-operator-budget-usd", "0"], ["--jev-owner-email", "multiple@example.com,other@example.com"]):
+            with patch("sys.argv", [*base, *flags]), self.assertRaises(RuntimeError): release.main()
+        output = io.StringIO()
+        with patch("sys.argv", [*base, "--jev-owner-email", "private-owner@example.com", "--jev-enable-customer-billing", "--jev-markup-bps", "0"]), contextlib.redirect_stdout(output):
+            release.main()
+        self.assertNotIn("private-owner@example.com", output.getvalue())
+        self.assertIn('"jevOwnerBootstrapRequested": true', output.getvalue())
+
+    def test_jev_worker_enable_approval_is_explicit_and_no_secret_is_read(self):
+        self.args.jev_enable_customer_billing = True
+        with patch.object(release.subprocess, "run", return_value=types.SimpleNamespace(returncode=0)) as operation:
+            release.jev_billing(self.args, "enable")
+        command = operation.call_args.args[0]
+        self.assertIn("--allow-customer-billing", command)
+        self.assertNotIn("access", command)
+
+    def test_activation_resumes_after_mail_enable_and_billing_worker_failure(self):
+        service = copy.deepcopy(self.service)
+        service.update(apiVersion="run.googleapis.com/v1", kind="Service")
+        service["status"]["latestReadyRevisionName"] = "engram-candidate"
+        worker = {"mail": False, "billing": False, "failedOnce": False}
+        checks = []
+        class Api:
+            def __init__(self, args): pass
+            def request(self, resource, name, method="GET", body=None):
+                if method == "PUT": service["spec"] = copy.deepcopy(body["spec"])
+                return copy.deepcopy(service)
+        def mail(args, command):
+            checks.append(("mail", command))
+            if command == "verify" and worker["mail"]: raise RuntimeError("already enabled")
+            if command == "enable": worker["mail"] = True
+        def billing(args, command):
+            checks.append(("billing", command))
+            if command == "enable":
+                if not worker["failedOnce"]:
+                    worker["failedOnce"] = True
+                    raise RuntimeError("simulated enable failure")
+                worker["billing"] = True
+        with tempfile.TemporaryDirectory() as directory:
+            state_file = pathlib.Path(directory) / "reviewed-state.json"
+            state_file.write_text(json.dumps({"project": self.args.project, "region": self.args.region, "service": self.args.service,
+                "image": self.args.image, "tag": "candidate", "candidateRevision": "engram-candidate", "backupId": "fixture",
+                "publicSmoke": True, "privateSmoke": True, "smokeAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "jev": {"customerBillingEnabled": True, "markupBps": 0}}))
+            argv = ["release.py", "activate", "--project", self.args.project, "--image", self.args.image,
+                "--state-file", str(state_file), "--jev-enable-customer-billing", "--jev-markup-bps", "0"]
+            with patch("sys.argv", argv), patch.object(release, "RunApi", Api), patch.object(release, "preflight"), \
+                    patch.object(release, "verify_provision_trigger"), patch.object(release, "dream"), \
+                    patch.object(release, "mail_series", side_effect=mail), patch.object(release, "jev_billing", side_effect=billing), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaisesRegex(RuntimeError, "simulated enable failure"): release.main()
+                self.assertTrue(worker["mail"])
+                self.assertFalse(worker["billing"])
+                release.main()
+            self.assertTrue(worker["billing"])
+            self.assertIn(("mail", "verify-active"), checks)
+            self.assertIn(("billing", "verify-active"), checks)
+            self.assertTrue(json.loads(state_file.read_text())["jevBillingWorkerEnabled"])
 
 
 if __name__ == "__main__":

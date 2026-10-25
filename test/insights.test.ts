@@ -34,16 +34,16 @@ describe("typed inference boundary", () => {
   });
   test("pins requested version, records model provenance and rejects a silently changed model", async () => {
     let sent: any;
-    const provider = new TypesafeReflexClient(async (_url, init) => { sent = JSON.parse(String(init?.body)); return Response.json({ model: "jev-1.13.0", answers: { x: { type: "noul", noul: 0.9 } } }); }, Date.now, { apiKey: "fixture-key", model: "jev-1.13.0" });
+    const provider = new TypesafeReflexClient(async (_url, init) => { sent = JSON.parse(String(init?.body)); return Response.json({ model: "jev-1.13.0", usage: { input_tokens: 100, output_tokens: 3 }, answers: { x: { type: "noul", noul: 0.9 } } }); }, Date.now, { apiKey: "fixture-key", model: "jev-1.13.0" });
     const result = await provider.evaluate({ state: { text: 'email me@example.com token {"password":"fixture-secret"}' }, questions: { x: { type: "noul", instructions: "x" } } });
     expect(sent.model).toBe("jev-1.13.0"); expect(JSON.stringify(sent)).not.toContain("fixture-secret");
     expect(result).toMatchObject({ model: "jev-1.13.0", requestedModel: "jev-1.13.0", modelReported: true });
-    const mismatch = new TypesafeReflexClient(async () => Response.json({ model: "jev-1.14.0", answers: { x: { type: "noul", noul: 0.9 } } }), Date.now, { apiKey: "fixture-key", model: "jev-1.13.0" });
+    const mismatch = new TypesafeReflexClient(async () => Response.json({ model: "jev-1.14.0", usage: { input_tokens: 100, output_tokens: 3 }, answers: { x: { type: "noul", noul: 0.9 } } }), Date.now, { apiKey: "fixture-key", model: "jev-1.13.0" });
     expect(await mismatch.evaluate({ state: {}, questions: { x: { type: "noul", instructions: "x" } } })).toBeNull();
   });
   test("does not transmit without workspace consent even when a key is present", async () => {
     let calls = 0;
-    const provider = new TypesafeReflexClient(async () => { calls++; return Response.json({}); }, Date.now, { apiKey: "fixture-key" });
+    const provider = new TypesafeReflexClient(async () => { calls++; return Response.json({}); }, Date.now, { apiKey: "fixture-key", model: "jev-1.13.0" });
     await runWithContext({ org: { id: 2, name: "A", slug: "a", kind: "team", brainDb: "brain_org_2", dataDb: "brain_org_2", homeDir: "org-2", policies: DEFAULT_POLICIES }, token: normalizeToken({ name: "a", orgId: 2 }), dataSql: {} as postgres.Sql }, async () => {
       expect(await provider.evaluate({ state: {}, questions: { x: { type: "noul", instructions: "x" } } })).toBeNull();
     });
@@ -55,7 +55,7 @@ describe("typed inference boundary", () => {
       calls++; signal = init!.signal as AbortSignal;
       await new Promise((_, reject) => signal!.addEventListener("abort", () => reject(signal!.reason), { once: true }));
       return Response.json({});
-    }, Date.now, { apiKey: "fixture-key" });
+    }, Date.now, { apiKey: "fixture-key", model: "jev-1.13.0" });
     expect(await provider.evaluate({ state: {}, questions: { x: { type: "noul", instructions: "x" } }, signal: AbortSignal.timeout(10), maxAttempts: 1 })).toBeNull();
     expect(signal?.aborted).toBe(true); expect(calls).toBe(1);
   });

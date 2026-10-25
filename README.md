@@ -1,12 +1,18 @@
 # engram
 
-One history. Every agent. Activity and shared memory across the tools you use.
+A shared drive for agent context. Carry memory across agents and share selected
+context with your team.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-black)](LICENSE)
 [![MCP](https://img.shields.io/badge/protocol-MCP-black)](https://modelcontextprotocol.io)
 [![Engine](https://img.shields.io/badge/engine-gbrain-black)](https://github.com/garrytan/gbrain)
 
-engram is shared memory for an organization. Claude, Cursor, ChatGPT, Codex, Grok, and any other MCP client read and write that org's brain. Each person also gets a personal brain. Conversations and notes land there first. Share rules copy matching slices into the team. A second org gets its own database. Inside an org, a token names who called.
+Engram gives MCP-connected agents a common place for memory pages, decisions and
+project notes. Keep working in Claude, Cursor, ChatGPT, Codex or another client;
+save useful context, then recall it from the next agent. Personal memory stays
+separate from a team's shared space. Configured sharing rules copy selected
+context into an authorized team workspace, with its own database and access
+controls. Activity distinguishes observed Engram calls from work agents report.
 
 Self-host it for free, or request access to the hosted invite-only beta. Invited personal workspaces are free until access is revoked, with no card required. Standard Cloud pricing is **$19 USD/month**. Pricing and privacy pages are at `/pricing` and `/privacy`.
 
@@ -20,7 +26,7 @@ docker compose exec engram bun cli/engram-admin.ts workspace create \
   --name "My workspace" --email you@example.com
 ```
 
-MCP is at `http://localhost:8080/mcp`. The console is at `http://localhost:8080/`.
+MCP is at `http://localhost:8080/mcp`. The console is at `http://localhost:8080/app`.
 
 Sign in using the temporary owner access token printed by the CLI. Mint one token per agent so the audit log can tell them apart. Use the workspace ID printed at bootstrap:
 
@@ -53,7 +59,7 @@ Wiring for Claude Code, Cursor, and stdio-only harnesses is in [docs/WIRING.md](
 
 ## Hosted
 
-The hosted beta requires an email-bound invitation and inbox verification. Operators can issue and revoke codes through the console or [invitation API](docs/BETA_INVITES.md). The implementation also supports independent workspaces, owner-managed Stripe subscriptions, a 14-day trial, and a $19/month Cloud plan. Existing data remains readable and exportable after write access ends; see [docs/BILLING.md](docs/BILLING.md).
+The hosted beta requires a single-use invitation and inbox verification. New invitations give 60 days of unlimited core knowledge transfers, with a visible expiry countdown and an extension contact. Operators can issue links without collecting email first, or restrict a code to one mailbox, through the console or [invitation API](docs/BETA_INVITES.md). The implementation also supports independent workspaces, owner-managed Stripe subscriptions, a 14-day trial, and a $19/month Cloud plan. Existing data remains readable and exportable after write access ends; see [docs/BILLING.md](docs/BILLING.md).
 
 Self-hosted mode has no hosted billing calls, trial expiry, or licence check. Setup, owner recovery, TLS, and backups are in [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md).
 
@@ -102,13 +108,13 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-External AI processing starts **off for every workspace**. Optional keys in `.env` make providers available; a workspace owner must also enable processing in Workspace settings. Core storage, keyword search, and activity work without provider keys. See [privacy and data flow](docs/PRIVACY.md) for what leaves the deployment when enabled.
+Optional provider processing starts **off**. Keys in `.env` make providers available; a workspace owner must also enable the relevant permission in Workspace settings. Jev has its own opt-in, separate from embeddings and generated briefs. Self-hosted provider usage is paid directly through your provider account. Core storage, keyword search, and activity work without provider keys. See [privacy and data flow](docs/PRIVACY.md) for what leaves the deployment when enabled.
 
 | Env | Role |
 | --- | --- |
-| `TYPESAFE_API_KEY` | Jev. Topic routing, classification, recall rerank. |
+| `JEV_API_KEY` | Optional Jev routing, review and recall reranking. Legacy `REFLEX_API_KEY` and `TYPESAFE_API_KEY` remain accepted. |
 | `VOYAGE_API_KEY` | `voyage-4-large` embeddings for candidate search. |
-| `REFLEX_MODEL` | Default `jev-1.13.0`; hosted analysis requires a pinned version. |
+| `REFLEX_MODEL` | Default `jev-latest`, TypeSafe’s stable alias. Exact versions can be selected when the provider exposes them. |
 | `RESEND_API_KEY` | Magic-link and invite email. Login fails closed when mail is unavailable; self-hosted operators can use the owner CLI. |
 | `ENGRAM_MAIL_FROM` | Default `engram@updates.ani.computer`. |
 | `ENGRAM_OAUTH_PRIVATE_KEY` | RSA key that signs connector JWTs. Without it those clients stay closed. |

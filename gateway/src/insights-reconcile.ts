@@ -4,24 +4,25 @@ import { sql, poolFor } from "./db";
 import { getOrg } from "./orgs";
 import { config } from "./config";
 import { requireHostedWriteAccess } from "./billing";
+import { isJevModel } from "./jev-model";
 
 let lastOrgId = 0;
 // Reconcile the independently committed memory entry and central queue after a
 // crash between those writes. Durable per-tenant cursors avoid re-reading the
 // same first page forever. At most50 eligible workspaces/50 entries each pass.
 export async function reconcileMemoryInsights(input: { db?: postgres.Sql; configured?: boolean } = {}): Promise<number> {
-  if (!(input.configured ?? (!!config.reflex.apiKey && /^jev-\d+\.\d+\.\d+$/.test(config.reflex.model)))) return 0;
+  if (!(input.configured ?? (!!config.reflex.apiKey && isJevModel(config.reflex.model)))) return 0;
   const db = input.db ?? sql;
-  let rows = await db`SELECT id FROM orgs WHERE id > ${lastOrgId} AND policies->>'externalAiProcessing'='true'
+  let rows = await db`SELECT id FROM orgs WHERE id > ${lastOrgId} AND policies->>'jevProcessing'='true'
     AND coalesce(policies->>'jevMayPropose','true')='true' ORDER BY id LIMIT 50`;
-  if (!rows.length && lastOrgId) { lastOrgId = 0; rows = await db`SELECT id FROM orgs WHERE policies->>'externalAiProcessing'='true'
+  if (!rows.length && lastOrgId) { lastOrgId = 0; rows = await db`SELECT id FROM orgs WHERE policies->>'jevProcessing'='true'
     AND coalesce(policies->>'jevMayPropose','true')='true' ORDER BY id LIMIT 50`; }
   let inserted = 0;
   for (const row of rows) {
     lastOrgId = Number(row.id);
     try {
       const org = await getOrg(lastOrgId, db);
-      if (!org?.policies.externalAiProcessing || !org.policies.jevMayPropose) continue;
+      if (!org?.policies.jevProcessing || !org.policies.jevMayPropose) continue;
       await requireHostedWriteAccess({ name: "engram-memory-reconciler", orgId: org.id, role: "agent", kind: "token", canWrite: true, email: null, scopes: [] }, { db });
       inserted += await db.begin(async tx => {
         const lock = await tx`SELECT pg_try_advisory_xact_lock(hashtextextended(${`memory-insights:${org.id}`},0)) AS acquired`;

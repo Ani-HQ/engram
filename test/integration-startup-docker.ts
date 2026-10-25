@@ -30,6 +30,8 @@ for (const [name, env, expected] of [
   ["hosted Docker", { ENGRAM_DEPLOYMENT_MODE: "hosted", ENGRAM_WORKER_ISOLATION: "docker" }, 1000],
   ["hosted provisioner", { ENGRAM_DEPLOYMENT_MODE: "hosted", ENGRAM_JOB: "provision" }, 1000],
   ["explicit Cloud Run provisioner", { ENGRAM_WORKER_ISOLATION: "cloudrun", ENGRAM_JOB: "provision" }, 1000],
+  ["hosted mail worker", { ENGRAM_DEPLOYMENT_MODE: "hosted", ENGRAM_JOB: "mail" }, 1000],
+  ["hosted billing worker", { ENGRAM_DEPLOYMENT_MODE: "hosted", ENGRAM_JOB: "billing" }, 1000],
   ["hosted Cloud Run HTTP", { ENGRAM_DEPLOYMENT_MODE: "hosted" }, 0],
   ["hosted Cloud Run dream", { ENGRAM_DEPLOYMENT_MODE: "hosted", ENGRAM_JOB: "dream" }, 0],
   ["explicit self-hosted Cloud Run", { ENGRAM_WORKER_ISOLATION: "cloudrun" }, 0],

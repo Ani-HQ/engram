@@ -15,9 +15,12 @@ import { aiConfiguration, attentionResults } from "./insights-view.js";
 import { confidenceLabel, reviewAllowed, reviewPlan } from "./insight-model.js";
 import { onboardingGuide } from "./onboarding-view.js";
 import { agentConnectionGuide, accessKeyConfiguration, onboardingProgress, shouldOfferOnboarding, createOnboardingReader } from "./onboarding-model.js";
-import { parseSignupPolicy, signupAuthMode, signupEntryMode, emailLinkRecovery } from "./signup-model.js";
+import { parseInviteEntry, parseSignupPolicy, signupAuthMode, signupEntryMode, emailLinkRecovery } from "./signup-model.js";
 import { signupView } from "./signup-view.js";
 import { signupAdminPanel } from "./signup-admin.js";
+import { createJevSettingsPanel } from "./jev-settings.js";
+import { createAccessClock, friendAccessCard, friendAccessPresentation } from "./access-view.js";
+import { applyWorkspaceName, createWorkspaceNameEditor, captureSetupFocus, restoreSetupFocus } from "./workspace-name.js";
 
 const root = document.querySelector("#app");
 const state = {
@@ -41,7 +44,9 @@ let sessionMutation = false, authEpoch = 0;
 let insightTimer, pendingInsightRun = false;
 let provisioningTimer, provisioningChecking = false, provisioningError = "", provisioningAttempt = 0;
 let connectionDraft = null, connectionFocusPending = null, skipDetailReturnFocus = false;
-let signupPolicy = null, signupPolicyRequest = null, authPanel = null, signupAdmin = null;
+let signupPolicy = null, signupPolicyRequest = null, authPanel = null, signupAdmin = null, jevSettingsPanel = null, pendingInviteEntry = null;
+let workspaceNameEpoch = 0;
+let accessSnapshot = null, accessClock = () => null, accessRefreshTimer, accessRequest = 0, accessError = "", accessRefreshing = false;
 const setupByWorkspace = new Map();
 const setupReader = createOnboardingReader(workspaceId => api.onboarding(workspaceId), () => state.session?.org.id);
 const dialog = el("dialog", { class: "detail", "aria-labelledby": "detail-title" });
@@ -93,7 +98,7 @@ function copyButton(label, value, attrs = {}) {
   }, { class: "small", ...attrs });
   return node;
 }
-function busy(button, label, pending) { button.disabled = pending; button.replaceChildren(...(pending ? [icon("loader-circle", { size: 14, class: "spin" }), label] : [label])); }
+function busy(button, label, pending) { button.disabled = pending; button.replaceChildren(...(pending ? [el("span", { class: "ds-spinner", "aria-hidden": "true" }), label] : [label])); }
 function skeletonRows(count = 5) {
   return el("div", { class: "skeleton-rows", role: "status", "aria-label": "Loading activity" }, Array.from({ length: count }, () => el("div", { class: "skeleton-row" }, el("span", { class: "skeleton-line" }), el("span", { class: "skeleton-line" }), el("div", {}, el("span", { class: "skeleton-line" }), el("span", { class: "skeleton-line short" })), el("span", { class: "skeleton-line" }))));
 }
@@ -156,7 +161,8 @@ function showDetail(title, body, { activity = false, memory = false, reporting =
 }
 function empty(title, description, action) { return el("div", { class: "empty" }, el("div", { class: "empty-icon" }, icon("activity", { size: 22 })), el("h2", {}, title), el("p", {}, description), action); }
 function heading(title, description, side) {
-  return el("div", { class: "page-heading" }, el("div", {}, el("h1", {}, title), el("p", {}, description)), side);
+  const labels = { activity: "THE WORK, IN VIEW", attention: "TAKE A CLOSER LOOK", memory: "GOOD CONTEXT LIVES HERE", connect: "BRING YOUR AGENTS", showcase: "A WINDOW INTO THE WORK", workspace: "YOUR SPACE. YOUR RULES.", billing: "THE PRACTICAL BITS" };
+  return el("div", { class: "page-heading" }, el("div", { class: "ds-heading-group" }, el("span", { class: "ds-eyebrow page-eyebrow" }, labels[state.view] || "YOUR WORKSPACE"), el("h1", {}, title), el("p", {}, description)), side);
 }
 function notice(message, retry) {
   return el("div", { class: "notice", role: "alert" }, message, retry && button("Try again", retry, { class: "text small" }));
@@ -188,12 +194,27 @@ function setupState() {
     try { dismissed = sessionStorage.getItem(`engram-setup-dismissed:${workspaceId}`) === "1"; } catch {}
     setupByWorkspace.set(workspaceId, { data: state.session.onboarding, visible: !dismissed && shouldOfferOnboarding(state.session.onboarding), agentId: "", checking: false, error: "" });
   }
-  return setupByWorkspace.get(workspaceId);
+  const setup = setupByWorkspace.get(workspaceId), ownerEmail = state.session.role === "owner" ? state.session.email : null;
+  if (ownerEmail && setup.nameIdentity !== ownerEmail) {
+    setup.nameEditor?.invalidate(); setup.nameIdentity = ownerEmail;
+    setup.nameEditor = createWorkspaceNameEditor({ workspaceId, name: state.session.org.name,
+      save: name => api.renameWorkspace(name, workspaceId),
+      context: () => !sessionMutation && state.session?.org.id === workspaceId && state.session?.role === "owner" && state.session?.email === ownerEmail ? `${authEpoch}:${workspaceNameEpoch}:${workspaceId}:${ownerEmail}` : null,
+      changed: () => { if (state.session?.org.id === workspaceId && setupByWorkspace.get(workspaceId) === setup) renderSetup(); },
+      saved: org => {
+        if (applyWorkspaceName(state.session, org)) render();
+      },
+      failed: error => { if (error instanceof AuthError) expired("Your session expired. Please sign in again."); },
+    });
+  }
+  setup.nameEditor?.syncName(state.session.org.name);
+  return setup;
 }
+function invalidateWorkspaceNames() { ++workspaceNameEpoch; for (const setup of setupByWorkspace.values()) setup.nameEditor?.invalidate(); }
 function setupPanel() {
   const setup = setupState();
   if (!setup?.visible) return null;
-  return onboardingGuide({ ...setup, mcp: state.mcp || `${location.origin}/mcp`, policies: state.session.org.policies, inventory: state.connections, demo: state.demo,
+  return onboardingGuide({ ...setup, session: state.session, mcp: state.mcp || `${location.origin}/mcp`, policies: state.session.org.policies, inventory: state.connections, demo: state.demo,
     onChoose: agentId => { setup.agentId = agentId; renderSetup(); },
     onCheck: refreshSetup, onDismiss: dismissSetup, onReporting: taskReportingHelp,
     onCreateKey: agentId => {
@@ -207,10 +228,10 @@ function setupPanel() {
 function renderSetup(focusTitle = false) {
   const slot = document.querySelector("#setup-slot");
   if (!slot) return;
-  const focusKey = slot.contains(document.activeElement) ? document.activeElement?.dataset.setupFocus : null;
+  const focus = captureSetupFocus(slot);
   const panel = setupPanel(); slot.replaceChildren(...(panel ? [panel] : []));
-  const target = focusTitle ? slot.querySelector("#setup-title") : focusKey ? [...slot.querySelectorAll("[data-setup-focus]")].find(node => node.dataset.setupFocus === focusKey) : null;
-  target?.focus({ preventScroll: true });
+  if (focusTitle) slot.querySelector("#setup-title")?.focus({ preventScroll: true });
+  else restoreSetupFocus(slot, focus);
 }
 function openSetup() {
   const setup = setupState(); if (!setup) return;
@@ -241,8 +262,10 @@ async function refreshSetup() {
   } finally { setup.checking = false; if (state.session?.org.id === workspaceId) renderSetup(); }
 }
 function render() {
+  const setupFocus = captureSetupFocus(document.querySelector("#setup-slot"));
   authPanel?.dispose(); authPanel = null;
   signupAdmin?.dispose(); signupAdmin = null;
+  jevSettingsPanel?.dispose(); jevSettingsPanel = null;
   previewWatcher?.stop(); previewWatcher = null;
   if (!state.session) return;
   if (workspacePending(state.session)) {
@@ -267,9 +290,43 @@ function render() {
       el("div", { class: "main-column" },
         el("div", { class: "app-topbar" }, el("div", { class: "breadcrumbs" }, el("span", {}, state.session.org.name), icon("chevron-right", { size: 13 }), el("span", {}, titles[state.view])),
           el("div", { class: "topbar-actions" }, setupState() && button("Get started", openSetup, { class: "text small setup-resume", "aria-controls": "setup-slot" }), state.session.role === "owner" && state.view !== "showcase" && button([icon("share-2", { size: 14 }), "Share activity"], () => { location.hash = "showcase"; }, { class: "small" }), iconButton("log-out", "Sign out", signOut, { class: "icon-button mobile-signout" }))),
-        el("main", { class: "workspace", id: "main" }, el("div", { id: "setup-slot" }, setupPanel()), state.view === "activity" ? activityView() : state.view === "attention" ? attentionView() : state.view === "memory" ? memoryView() : state.view === "showcase" ? showcaseView() : ["workspace", "billing"].includes(state.view) ? accountView() : connectView()))));
+        el("main", { class: "workspace", id: "main" }, el("div", { id: "friend-access-slot" }), el("div", { id: "setup-slot" }, setupPanel()), state.view === "activity" ? activityView() : state.view === "attention" ? attentionView() : state.view === "memory" ? memoryView() : state.view === "showcase" ? showcaseView() : ["workspace", "billing"].includes(state.view) ? accountView() : connectView()))));
+  renderFriendAccess();
   if (state.view === "showcase" && state.showcase?.profile.published) watchPreview();
   setSessionControlsBusy(sessionMutation);
+  restoreSetupFocus(document.querySelector("#setup-slot"), setupFocus);
+}
+function renderFriendAccess() {
+  clearTimeout(accessRefreshTimer);
+  const slot = document.querySelector("#friend-access-slot"), access = state.session?.access;
+  if (!slot) return;
+  if (access !== accessSnapshot) { accessSnapshot = access; accessClock = createAccessClock(access); }
+  const now = accessClock();
+  const view = friendAccessPresentation(access, { now });
+  const signature = JSON.stringify(view ? [view.state, view.label, view.days, view.expiresAt, view.unlimited, view.hasOtherAccess, accessError] : null);
+  if (slot.dataset.accessSignature !== signature) {
+    const focused = slot.contains(document.activeElement) ? document.activeElement.tagName.toLowerCase() : null;
+    const card = friendAccessCard(access, { now, error: accessError, retry: refreshFriendAccess });
+    slot.replaceChildren(...(card ? [card] : [])); slot.dataset.accessSignature = signature;
+    if (focused) (slot.querySelector(focused) || slot.querySelector("a"))?.focus({ preventScroll: true });
+  }
+  if (view && !document.hidden) accessRefreshTimer = setTimeout(refreshFriendAccess, Math.min(3_600_000, view.nextChangeMs ?? 3_600_000));
+}
+async function refreshFriendAccess() {
+  if (!state.session || sessionMutation || accessRefreshing || document.hidden) return;
+  const workspaceId = state.session.org.id, epoch = authEpoch, request = ++accessRequest;
+  accessRefreshing = true;
+  const retry = document.querySelector("#friend-access-slot button");
+  if (retry) { retry.disabled = true; retry.textContent = "Checking…"; }
+  try {
+    const result = await api.me(workspaceId);
+    if (request !== accessRequest || epoch !== authEpoch || sessionMutation || state.session?.org.id !== workspaceId || result.org?.id !== workspaceId) return;
+    state.session.access = result.access; accessError = "";
+  } catch (error) {
+    if (request !== accessRequest || epoch !== authEpoch || state.session?.org.id !== workspaceId) return;
+    if (error instanceof AuthError) return expired();
+    accessError = "unavailable";
+  } finally { accessRefreshing = false; if (request === accessRequest && epoch === authEpoch && state.session?.org.id === workspaceId) { if (retry) { retry.disabled = false; retry.textContent = "Try again"; } renderFriendAccess(); } }
 }
 function watchPreview() {
   const orgId = state.session.org.id, slug = state.showcase.profile.slug;
@@ -291,7 +348,7 @@ function activityView() {
   const search = el("input", { type: "search", class: "search", placeholder: "Search work, tools, or approaches…", "aria-label": "Search activity", value: state.filters.q,
     oninput: event => { state.filters.q = event.target.value; clearTimeout(searchTimer); searchTimer = setTimeout(() => { writeRoute(); loadActivity(); }, 250); } });
   return [
-    heading("Activity", memory ? "Memory reads, searches and changes across your agents." : state.activityKind === "tasks" ? "Progress and results reported by your agents." : "Memory calls and task reports across your agents.", el("div", { class: "activity-refresh-controls" },
+    heading("Activity", memory ? "The context your agents found, saved, and changed. Follow each memory call." : state.activityKind === "tasks" ? "See the steps, progress, and outcomes your agents report." : "Follow the thread across your agents. Memory calls and reported work, together.", el("div", { class: "activity-refresh-controls" },
       el("span", { class: "activity-refresh-label" }, el("span", { class: "activity-refresh-dot", "aria-hidden": "true" }), state.activities.length > 100 ? "History view · Updates paused" : "Auto-updates every 5s"),
       iconButton("refresh-cw", "Refresh activity", () => loadActivity(), { id: "activity-refresh" }))),
     el("div", { id: "activity-agent-overview" }, activityAgents()),
@@ -304,7 +361,7 @@ function activityView() {
       select("Filter by agent", state.filters.agent, [["", "All agents"], ...state.agents.map(agent => [agent, agentLabel(agent)])], value => filterActivities("agent", value)),
       select("Filter by tool", state.filters.tool, [["", "All tools"], ...state.tools.map(tool => [tool, toolLabel(tool)])], value => filterActivities("tool", value))),
     el("div", { id: "activity-filter-summary" }, activeActivityFilters()),
-    el("div", { id: "activity-results", "aria-busy": String(state.loading) }, activityResults()),
+    el("div", { id: "activity-results", class: "ds-results", "aria-busy": String(state.loading) }, activityResults()),
   ];
 }
 function agentLabel(agent) { return connectionIdentity(agent, state.connections?.connections)?.displayName || agent; }
@@ -364,7 +421,7 @@ function activityResults() {
   const memory = state.activityKind === "memory";
   return [
     state.error && notice(state.error, () => loadActivity()),
-    state.activities.length ? activityFeed(state.activities.map(activity => withConnectionIdentity(activity, state.connections?.connections)), { onOpen: openActivity, onFilter: filterActivities, onResource: openActivityResource, kind: state.activityKind, filters: state.filters, freshIds: state.freshIds }) : state.loading ? activitySkeleton() : state.error ? null : empty(filtered ? "No matching activity" : state.activityKind === "tasks" ? "No task reports yet" : "Your activity starts with a call", filtered ? "Try another search or clear the filters." : state.activityKind === "tasks" ? "Agents report task progress and results here. You can see their recorded memory calls in All activity." : "Use Engram from an agent to read or save a memory. Its calls will appear here automatically.",
+    state.activities.length ? activityFeed(state.activities.map(activity => withConnectionIdentity(activity, state.connections?.connections)), { onOpen: openActivity, onFilter: filterActivities, onResource: openActivityResource, kind: state.activityKind, filters: state.filters, freshIds: state.freshIds }) : state.loading ? activitySkeleton() : state.error ? null : empty(filtered ? "No matching activity" : state.activityKind === "tasks" ? "No task reports yet" : "Every thread starts somewhere.", filtered ? "Try another search or clear the filters." : state.activityKind === "tasks" ? "Agents report task progress and results here. You can see their recorded memory calls in All activity." : "Ask a connected agent to read or save a memory. Its Engram calls will appear here. External work appears when the agent reports it.",
       !filtered && state.activityKind === "tasks" ? el("div", { class: "task-empty-actions" }, button("Set up reporting", taskReportingHelp, { class: "primary" }), button("See all activity", () => changeActivityKind("all"))) : button(filtered ? "Clear filters" : "View connections", () => { if (filtered) clearActivityFilters(); else location.hash = "connect"; })),
     state.activities.length > 0 && el("div", { class: "activity-list-footer" },
       el("span", {}, `${state.activities.length} ${state.activities.length === 1 ? "activity" : "activities"}${state.more ? " shown" : ""}`),
@@ -544,7 +601,7 @@ function attentionView() {
   const pending = ["queued", "running"].includes(state.insights?.job?.status);
   const query = el("input", { type: "search", class: "search", maxlength: 500, placeholder: "Describe the work you want to find…", "aria-label": "Search activity by intent", value: state.insightsQuery, oninput: event => state.insightsQuery = event.target.value });
   const run = el("button", { type: "submit", class: "primary small", disabled: state.insightBusy || pending || state.session.canWrite === false }, icon(pending ? "loader-circle" : "layers", { size: 14, class: pending ? "spin" : "" }), pending ? "Checking…" : "Run checks");
-  return [heading("Attention", "A second look at what your agents recorded. Every finding links back to evidence."),
+  return [heading("Attention", "Spot connections and loose ends in recorded work. Follow each finding back to its evidence."),
     state.insightsActivityId && el("div", { class: "insight-scope" }, icon("layers", { size: 13 }), "Checking one activity", button("Check all activity", () => { state.insightsActivityId = ""; state.insights = null; render(); }, { class: "text small", disabled: pending })),
     el("form", { class: "insight-toolbar", onsubmit: event => { event.preventDefault(); runInsights(); } }, el("div", { class: "search-field" }, icon("search", { size: 15 }), query), run),
     el("p", { class: "detail-note" }, "Optional: describe an intent to find related work. The result identifies whether matching used text or a configured model."),
@@ -618,7 +675,7 @@ function memoryView() {
   if (state.memoryTab === "review") return [heading("Memory", "Review proposed relationships and organization before they change shared memory."), tabs,
     el("div", { class: "filters" }, select("Review state", state.reviewState, [["pending", "Pending"], ["deferred", "Deferred"], ["applied", "Applied"], ["rejected", "Rejected"]], value => { state.reviewState = value; writeRoute(); loadReviews(); })),
     el("div", { id: "review-results", "aria-busy": String(state.loading) }, reviewResults())];
-  return [heading("Memory", "Context your agents can carry from one task to the next.", state.session.canWrite !== false && button([icon("plus", { size: 15 }), "Add memory"], captureMemory, { class: "primary small" })),
+  return [heading("Memory", "Keep the useful bits: decisions, preferences, and context for whatever comes next.", state.session.canWrite !== false && button([icon("plus", { size: 15 }), "Add memory"], captureMemory, { class: "primary small" })),
     tabs,
     el("div", { class: "filters" }, el("div", { class: "search-field memory-search" }, icon("search", { size: 16 }), el("input", { type: "search", class: "search", placeholder: "Search memory…", "aria-label": "Search memory", value: state.memoryQuery, oninput: event => { state.memoryQuery = event.target.value; clearTimeout(searchTimer); searchTimer = setTimeout(loadMemories, 250); } }), el("kbd", {}, "/"))),
     el("div", { id: "memory-results", "aria-busy": String(state.loading) }, memoryResults())];
@@ -629,8 +686,8 @@ function memoryResults() {
       el("span", { class: "memory-icon" }, icon("file-text", { size: 19 })),
       el("div", {}, el("span", { class: "action-title" }, memory.title || memory.slug), el("p", { class: "muted" }, memory.snippet || memory.slug)),
       el("span", { class: "memory-date" }, memory.updated_at ? day(memory.updated_at) : icon("chevron-right", { size: 14 })),
-    ], () => memoryDetail(memory.slug), { class: "memory-row" })),
-    !state.memories.length && !state.error && (state.loading ? skeletonRows(4) : empty("A little context goes a long way.", "Save decisions and context here, or ask a connected agent to remember them.", state.session.canWrite !== false && button([icon("plus", { size: 14 }), "Add your first memory"], captureMemory))),
+    ], () => memoryDetail(memory.slug), { class: "memory-row ds-card" })),
+    !state.memories.length && !state.error && (state.loading ? skeletonRows(4) : empty("Keep the good bits.", "Save a decision, preference, or project detail here. Your connected agents can pick it up later.", state.session.canWrite !== false && button([icon("plus", { size: 14 }), "Add your first memory"], captureMemory))),
     state.more && button("Load more", () => loadMemories({ append: true }), { class: "small", disabled: state.loading })];
 }
 function refreshMemoryResults() {
@@ -744,7 +801,7 @@ function connectView() {
   const permission = select("Connection permission", connectionDraft?.canWrite === false ? "read" : "write", [["read", "Read only"], ["write", "Read and write"]], () => {});
   const mint = el("button", { class: "primary", type: "submit" }, icon("plus", { size: 15 }), "Create connection");
   return el("div", { class: "connect-layout" },
-    heading("Connections", "See who has access and when Engram last heard from them.", iconButton("refresh-cw", "Refresh connections", loadConnections, { disabled: state.loading })),
+    heading("Connections", "Give each agent a way in. See its permissions and when it last called Engram.", iconButton("refresh-cw", "Refresh connections", loadConnections, { disabled: state.loading })),
     state.error && notice(state.error, loadConnections),
     state.connectionError && notice("Connection status could not load. Refresh to try again.", loadConnections),
     canConnect && (state.connections ? connectionInventory(state.connections, { onInspect: connectionHelp, actions: connection => {
@@ -882,7 +939,7 @@ function disconnect(name) {
 }
 function showcaseView() {
   if (state.session.role !== "owner") return [heading("Public profile", "A shareable view of your agents’ work."), empty("Managed by your workspace owner", "Only workspace owners can publish activity totals.")];
-  if (!state.showcase) return [heading("Public profile", "A small window into what your agents get done."), state.error ? notice(state.error, loadShowcase) : profileSkeleton()];
+  if (!state.showcase) return [heading("Public profile", "Share the shape of your agents’ work. Activity counts are public; task content stays private."), state.error ? notice(state.error, loadShowcase) : profileSkeleton()];
   const draft = state.showcaseDraft;
   const saved = state.showcase.profile;
   const publicUrl = saved.published ? state.showcase.urls.page : `${location.origin}/u/${draft.slug || "your-name"}`;
@@ -915,7 +972,7 @@ function showcaseView() {
     el("div", { class: "form-actions" }, save, el("span", { class: "field-hint" }, saved.published ? "Changes update your public page." : "Saving keeps your profile private.")));
   const urls = state.showcase.urls;
   return [
-    heading("Public profile", "A small window into what your agents get done.", publish),
+    heading("Public profile", "Share the shape of your agents’ work. Activity counts are public; task content stays private.", publish),
     state.error && notice(state.error),
     el("div", { class: "showcase-layout" },
       el("div", { class: "showcase-controls" },
@@ -1013,7 +1070,10 @@ function setSessionControlsBusy(pending) {
 async function switchOrg(orgId) {
   if (sessionMutation || !state.session) return;
   sessionMutation = true; setSessionControlsBusy(true);
+  ++accessRequest; clearTimeout(accessRefreshTimer); accessError = "";
+  invalidateWorkspaceNames();
   signupAdmin?.dispose(); signupAdmin = null;
+  jevSettingsPanel?.dispose(); jevSettingsPanel = null;
   const epoch = authEpoch;
   setupReader.invalidate();
   clearTimeout(provisioningTimer); ++provisioningAttempt; provisioningChecking = false; provisioningError = "";
@@ -1033,20 +1093,31 @@ function accountView() {
   const billing = state.view === "billing";
   const workspaceId = state.session.org.id;
   const title = billing ? "Plan & billing" : "Workspace";
-  const description = billing ? "Simple pricing. A workspace that stays yours." : "People, privacy, and access in one place.";
+  const description = billing ? "Your current plan, access, and subscription details. All in one place." : "A shared space with clear boundaries. Manage people, permissions, and processing.";
   if (!["owner", "member"].includes(state.session.role) || (billing && state.session.role !== "owner")) return [heading(title, description), empty("Managed by your workspace owner", "Sign in with your own account to manage this workspace.")];
   if (!state.account || state.account.view !== state.view) return [heading(title, description), state.error ? notice(state.error, loadAccount) : skeletonRows(3)];
   const fail = error => { if (workspaceId === state.session?.org.id && error instanceof AuthError) expired("Your session expired. Please sign in again."); };
   const notify = message => { if (workspaceId === state.session?.org.id) toast(message); };
   const scopedApi = workspaceApi(workspaceId);
+  const epoch = authEpoch;
+  const isCurrent = () => !sessionMutation && authEpoch === epoch && state.view === "workspace" && state.session?.org.id === workspaceId;
   if (!billing) signupAdmin = signupAdminPanel({ session: state.session, api: scopedApi, fail, copy: value => navigator.clipboard.writeText(value), isCurrent: () => !sessionMutation && state.view === "workspace" && state.session?.org.id === workspaceId && state.session?.capabilities?.manageSignupInvites === true });
-  return [heading(title, description), billing ? billingPanel({ billing: state.account.billing, catalog: state.account.catalog, api: scopedApi, notify, fail, refresh: loadAccount }) : [workspacePanel({ session: state.session, members: state.account.members, invites: state.account.invites, api: scopedApi, notify, fail, saved: policies => { if (state.session?.org.id === workspaceId) { state.session.org.policies = policies; loadAccount(); } } }), signupAdmin?.element, state.account.external && aiConfiguration(state.account.external, { settings: false })]];
+  if (!billing) jevSettingsPanel = createJevSettingsPanel({ data: state.account.jev, error: state.account.jevError, api: scopedApi, fail, refresh: loadAccount, isCurrent, saved: result => {
+    if (!isCurrent()) return;
+    state.account.jev = result;
+    state.session.org.policies.jevProcessing = result.enabled === true;
+    if (state.account.external) state.account.external.jevConsented = result.enabled === true;
+    toast("Jev settings saved"); render();
+  } });
+  return [heading(title, description), billing ? billingPanel({ billing: state.account.billing, catalog: state.account.catalog, jev: state.account.jev, jevError: state.account.jevError, api: scopedApi, notify, fail, refresh: loadAccount }) : [workspacePanel({ session: state.session, members: state.account.members, invites: state.account.invites, api: scopedApi, notify, fail, saved: policies => { if (state.session?.org.id === workspaceId) { state.session.org.policies = policies; loadAccount(); } } }), jevSettingsPanel?.element, signupAdmin?.element, state.account.external && aiConfiguration(state.account.external, { settings: false })]];
 }
 async function loadAccount() {
   if (!["owner", "member"].includes(state.session.role) || (state.view === "billing" && state.session.role !== "owner")) return;
   const requestId = ++generation, view = state.view, workspaceId = state.session.org.id; state.error = ""; state.loading = true;
   try {
-    const data = view === "billing" ? await Promise.all([api.billing(workspaceId), api.plans()]).then(([billing, catalog]) => ({ billing, catalog })) : await Promise.all([api.members(workspaceId), api.insights({}, workspaceId)]).then(([members, insights]) => ({ ...members, external: insights.external }));
+    const jevRequest = api.jev(workspaceId).then(jev => ({ jev, jevError: "" })).catch(error => { if (error instanceof AuthError) throw error; return { jev: null, jevError: errorMessage(error) }; });
+    const [base, jev] = await Promise.all([view === "billing" ? Promise.all([api.billing(workspaceId), api.plans()]).then(([billing, catalog]) => ({ billing, catalog })) : Promise.all([api.members(workspaceId), api.insights({}, workspaceId)]).then(([members, insights]) => ({ ...members, external: insights.external })), jevRequest]);
+    const data = { ...base, ...jev };
     if (requestId !== generation || state.view !== view || workspaceId !== state.session?.org.id) return;
     state.account = { view, ...data };
   } catch (error) { if (requestId === generation) { if (error instanceof AuthError) return expired(); state.error = errorMessage(error); state.account = null; } }
@@ -1055,14 +1126,19 @@ async function loadAccount() {
 async function signOut() {
   if (sessionMutation) return;
   sessionMutation = true; ++authEpoch; setSessionControlsBusy(true);
+  invalidateWorkspaceNames();
   signupAdmin?.dispose(); signupAdmin = null;
+  jevSettingsPanel?.dispose(); jevSettingsPanel = null;
   try { await api.logout(); expired(); }
   catch (error) { toast(errorMessage(error)); }
   finally { sessionMutation = false; setSessionControlsBusy(false); }
 }
 function expired(message = "") {
   ++authEpoch;
+  ++accessRequest; clearTimeout(accessRefreshTimer); accessSnapshot = null; accessError = "";
+  invalidateWorkspaceNames();
   signupAdmin?.dispose(); signupAdmin = null;
+  jevSettingsPanel?.dispose(); jevSettingsPanel = null;
   setupReader.invalidate(); setupByWorkspace.clear();
   previewWatcher?.stop(); previewWatcher = null;
   state.account = null;
@@ -1072,12 +1148,24 @@ function expired(message = "") {
 function renderAuth(mode = "email", message = "") {
   mode = signupAuthMode(mode, signupPolicy);
   authPanel?.dispose(); signupAdmin?.dispose(); signupAdmin = null;
-  authPanel = signupView({ mode, policy: signupPolicy, message, api,
-    changeMode: next => { history.replaceState(null, "", next === "create" ? "#invite" : "#signin"); renderAuth(next); },
+  jevSettingsPanel?.dispose(); jevSettingsPanel = null;
+  authPanel = signupView({ mode, policy: signupPolicy, message, api, inviteEntry: pendingInviteEntry, inviteSubmitted: () => { pendingInviteEntry = null; },
+    changeMode: next => { pendingInviteEntry = null; history.replaceState(null, "", next === "create" ? "#invite" : "#signin"); renderAuth(next); },
     signedIn: session => { state.session = session; readRoute(); render(); loadView(); },
     retryPolicy: async () => { const epoch = authEpoch; try { await loadSignupPolicy(); } catch {} if (!state.session && epoch === authEpoch) renderAuth(mode, message); },
   });
   root.replaceChildren(...[state.demo && el("div", { class: "demo" }, "Preview · Sample data. Sign-in and connections are simulated."), authPanel.element].filter(Boolean));
+  // A fresh auth screen must not inherit a long workspace page’s scroll position.
+  // Form feedback updates in place, so submission never resets scrolling or focus.
+  window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+}
+function captureInviteEntry() {
+  if (!location.hash.startsWith("#invite=")) return false;
+  pendingInviteEntry = parseInviteEntry(location.hash);
+  // Clear the credential and editable email hint before awaiting any request.
+  // Their only remaining use is the current in-memory invite form.
+  history.replaceState(null, "", "#invite");
+  return true;
 }
 async function loadSignupPolicy() {
   if (signupPolicy) return signupPolicy;
@@ -1124,6 +1212,7 @@ async function pollProvisioning() {
   }
 }
 window.addEventListener("hashchange", () => {
+  if (captureInviteEntry()) { if (state.session) expired(); openAuth(pendingInviteEntry ? "" : "This invite link could not be read. Ask for a fresh link, or enter a code manually."); return; }
   if (!state.session) { openAuth(); return; }
   clearTimeout(searchTimer); clearTimeout(insightTimer); ++generation; closeDetail(); state.insightBusy = false; state.error = ""; state.more = false; readRoute(); render(); window.scrollTo(0, 0); loadView();
 });
@@ -1141,23 +1230,26 @@ document.addEventListener("keydown", event => {
 setInterval(() => { if (!document.hidden && state.session && !workspacePending(state.session) && !sessionMutation && state.view === "activity" && !state.loading && !dialog.open) loadActivity({ quiet: true }); }, 5000);
 document.addEventListener("visibilitychange", () => {
   document.documentElement.dataset.pageHidden = String(document.hidden);
-  if (document.hidden) { previewWatcher?.pause(); clearTimeout(activityRefreshTimer); clearTimeout(insightTimer); clearTimeout(provisioningTimer); }
-  else { if (workspacePending(state.session)) { scheduleProvisioning(0); return; } previewWatcher?.resume(); if (currentActivity && dialog.open) fetchActivityDetail({ quiet: true }); if (state.view === "attention" && ["queued", "running"].includes(state.insights?.job?.status)) loadInsights({ jobId: state.insights.job.id, quiet: true }); }
+  if (document.hidden) { previewWatcher?.pause(); clearTimeout(activityRefreshTimer); clearTimeout(insightTimer); clearTimeout(provisioningTimer); clearTimeout(accessRefreshTimer); }
+  else { if (workspacePending(state.session)) { scheduleProvisioning(0); return; } if (friendAccessPresentation(state.session?.access)) refreshFriendAccess(); previewWatcher?.resume(); if (currentActivity && dialog.open) fetchActivityDetail({ quiet: true }); if (state.view === "attention" && ["queued", "running"].includes(state.insights?.job?.status)) loadInsights({ jobId: state.insights.job.id, quiet: true }); }
 });
-window.addEventListener("pagehide", () => { authPanel?.clearSecrets(); signupAdmin?.clearSecrets(); previewWatcher?.pause(); clearTimeout(activityRefreshTimer); clearTimeout(insightTimer); clearTimeout(provisioningTimer); });
+window.addEventListener("pagehide", () => { pendingInviteEntry = null; authPanel?.clearSecrets(); signupAdmin?.clearSecrets(); previewWatcher?.pause(); clearTimeout(activityRefreshTimer); clearTimeout(insightTimer); clearTimeout(provisioningTimer); clearTimeout(accessRefreshTimer); });
 window.addEventListener("pageshow", event => {
   if (!event.persisted) return;
   if (workspacePending(state.session)) { scheduleProvisioning(0); return; }
+  if (friendAccessPresentation(state.session?.access)) refreshFriendAccess();
   previewWatcher?.resume();
   if (currentActivity && dialog.open) fetchActivityDetail({ quiet: true });
   else if (state.session && state.view === "activity" && !sessionMutation) loadActivity({ quiet: true });
   else if (state.session && state.view === "attention") loadInsights({ jobId: state.insights?.job?.id, quiet: true });
 });
 async function boot() {
+  const invited = captureInviteEntry();
   // Warm the public policy for sign-out too; a failed policy check never stops
   // an existing session or makes signup available by assumption.
   loadSignupPolicy().catch(() => {});
-  root.replaceChildren(el("main", { class: "auth boot-loader", role: "status" }, el("img", { class: "brand-mark", src: "/brand/engram-mark.svg", width: 27, height: 27, alt: "" }), icon("loader-circle", { size: 18, class: "spin" }), el("p", { class: "muted" }, "Opening your workspace…")));
+  root.replaceChildren(el("main", { class: "auth boot-loader", role: "status" }, el("img", { class: "brand-mark", src: "/brand/engram-mark.svg", width: 27, height: 27, alt: "" }), el("span", { class: "ds-spinner", "aria-hidden": "true" }), el("p", { class: "muted" }, "Opening your workspace…")));
+  if (invited) { await openAuth(pendingInviteEntry ? "" : "This invite link could not be read. Ask for a fresh link, or enter a code manually."); return; }
   const hash = location.hash.slice(1), joining = hash.startsWith("join="), recovery = joining ? emailLinkRecovery(hash.slice(5)) : null;
   // Email bearer links must leave the address bar on both success and failure.
   if (joining) history.replaceState(null, "", recovery.hash);

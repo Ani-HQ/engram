@@ -44,6 +44,56 @@ describe("local static branding", () => {
 });
 
 describe("local activity demo", () => {
+  test("simulates isolated Jev consent without pricing approval, provider keys, or usage charges", async () => {
+    await request("/api/session/switch", { method: "POST", body: JSON.stringify({ orgId: 2 }) });
+    const headers = { "X-Engram-Workspace": "2", "X-Engram-Console": "1" };
+    const get = () => request("/api/jev", { headers });
+    const put = (body: any, custom = headers) => request("/api/jev", { method: "PUT", headers: custom, body: JSON.stringify(body) });
+    const before = await (await get()).json();
+    const policies = (await (await request("/api/policies")).json()).policies;
+    expect(before).toMatchObject({ enabled: false, eligibility: "operator-funded", pricing: { inputPerMillionUsd: null, rateVersion: null }, usage: { calls: 0 }, demo: true });
+    expect((await get()).headers.get("cache-control")).toBe("no-store");
+    expect((await request("/api/jev")).status).toBe(400);
+    expect((await put({ enabled: true, monthlyBudgetUsd: "1" }, { "X-Engram-Workspace": "2" } as any)).status).toBe(403);
+    expect((await put({ enabled: true, monthlyBudgetUsd: "0" })).status).toBe(400);
+    expect((await put({ enabled: true, monthlyBudgetUsd: "1", apiKey: "not-a-key" })).status).toBe(400);
+    try {
+      const enabled = await (await put({ enabled: true, monthlyBudgetUsd: "1.25" })).json();
+      expect(enabled).toMatchObject({ enabled: true, available: true, budget: { monthlyUsd: "1.25", spentUsd: "0" }, usage: { calls: 0 } });
+      expect((await (await request("/api/policies")).json()).policies).toEqual({ ...policies, jevProcessing: true });
+      const external = (await (await request("/api/insights")).json()).external;
+      expect(external.jevConsented).toBe(true); expect(external.consented).toBe(policies.externalAiProcessing);
+      await request("/api/session/switch", { method: "POST", body: JSON.stringify({ orgId: 1 }) });
+      expect((await get()).status).toBe(409);
+      const otherHeaders = { "X-Engram-Workspace": "1", "X-Engram-Console": "1" };
+      const other = await (await request("/api/jev", { headers: otherHeaders })).json();
+      expect(other).toMatchObject({ enabled: false, eligibility: "subscription-required" });
+      expect((await put({ enabled: true, monthlyBudgetUsd: "1" }, otherHeaders)).status).toBe(409);
+      const catalog = await (await request("/api/plans")).json();
+      expect(catalog.addons.jev).toMatchObject({ inputPerMillionUsd: null, outputPerMillionUsd: null, markupBps: null, rateVersion: null });
+    } finally {
+      await request("/api/session/switch", { method: "POST", body: JSON.stringify({ orgId: 2 }) });
+      await put({ enabled: before.enabled, monthlyBudgetUsd: before.budget.monthlyUsd });
+      await request("/api/session/switch", { method: "POST", body: JSON.stringify({ orgId: 1 }) });
+    }
+  });
+  test("renames the pinned workspace display name and preserves it across switches", async () => {
+    const before = (await (await request("/api/me")).json()).org;
+    const rename = (name: string, headers: Record<string, string> = { "X-Engram-Workspace": "1", "X-Engram-Console": "1" }) => request("/api/workspace", { method: "PUT", headers, body: JSON.stringify({ name }) });
+    expect((await rename("Unscoped", { "X-Engram-Console": "1" })).status).toBe(400);
+    expect((await rename("No console", { "X-Engram-Workspace": "1" })).status).toBe(403);
+    expect((await rename("Wrong workspace", { "X-Engram-Workspace": "2", "X-Engram-Console": "1" })).status).toBe(409);
+    expect((await rename("Invalid\nname")).status).toBe(400);
+    try {
+      const response = await rename("  Shared decisions  "); expect(response.status).toBe(200);
+      const result = await response.json(); expect(result.org).toEqual({ ...before, name: "Shared decisions" });
+      const current = await (await request("/api/me")).json(); expect(current.org.name).toBe("Shared decisions"); expect(current.orgs.find((org: any) => org.id === 1).name).toBe("Shared decisions");
+      await request("/api/session/switch", { method: "POST", body: JSON.stringify({ orgId: 2 }) });
+      const other = await (await request("/api/me")).json(); expect(other.org.name).not.toBe("Shared decisions");
+      await request("/api/session/switch", { method: "POST", body: JSON.stringify({ orgId: 1 }) });
+      expect((await (await request("/api/me")).json()).org.name).toBe("Shared decisions");
+    } finally { await request("/api/session/switch", { method: "POST", body: JSON.stringify({ orgId: 1 }) }); await rename(before.name); }
+  });
   test("previews email-bound signup and operator-only code management without sending mail", async () => {
     const policy = await (await request("/api/signup-policy", { headers: { Cookie: "engram_dev=0" } })).json();
     expect(policy).toMatchObject({ mode: "invite-only", inviteCodeRequired: true, verificationRequired: true, complimentary: true, tokenSignInAllowed: false });
@@ -78,6 +128,27 @@ describe("local activity demo", () => {
     expect(Object.values(data.checks).every(value => typeof value === "boolean")).toBe(true);
     expect((await (await request("/api/me")).json()).onboarding).toEqual(data);
     expect((await request("/api/onboarding", { headers: { "X-Engram-Workspace": "2" } })).status).toBe(409);
+  });
+  test("unbound preview invites bind only after inbox verification and grant an exact 60-day personal benefit", async () => {
+    const issued = await (await request("/api/admin/signup-invites", { method: "POST", headers: { "X-Engram-Workspace": "1" }, body: "{}" })).json();
+    expect(issued.invite.email).toBeNull(); expect(issued.invite.emailBound).toBe(false); expect(issued.invite.accessDurationDays).toBe(60);
+    expect(new URL(issued.inviteUrl).hash).toBe(`#invite=${issued.inviteCode}`);
+    const verify = async (email: string) => (await request("/api/orgs", { method: "POST", body: JSON.stringify({ email, inviteCode: issued.inviteCode }) })).json();
+    const first = await verify("first@example.com"), second = await verify("second@example.com");
+    const pending = (await (await request("/api/admin/signup-invites")).json()).invites.find((item: any) => item.id === issued.invite.id);
+    expect(pending.email).toBeNull(); expect(pending.redeemedAt).toBeNull();
+    const accept = (link: string) => request("/api/invites/accept", { method: "POST", body: JSON.stringify({ token: new URL(link).hash.slice(6) }) });
+    try {
+      const result = await accept(second.url); expect(result.status).toBe(200);
+      const session = await result.json(); expect(session.org.kind).toBe("personal");
+      const benefit = session.access.complimentary;
+      expect(benefit).toMatchObject({ source: "invite", durationDays: 60, active: true, unlimitedKnowledgeTransfers: true, extensionUrl: "https://x.com/anirudh_twt" });
+      expect(Date.parse(benefit.expiresAt) - Date.parse(benefit.grantedAt)).toBe(60 * 86_400_000);
+      expect((await accept(first.url)).status).toBe(400);
+    } finally { await request("/api/session/switch", { method: "POST", body: JSON.stringify({ orgId: 1 }) }); }
+    const redeemed = (await (await request("/api/admin/signup-invites")).json()).invites.find((item: any) => item.id === issued.invite.id);
+    expect(redeemed.email).toBe("second@example.com"); expect(redeemed.emailBound).toBe(true);
+    expect(JSON.stringify(redeemed)).not.toContain(issued.inviteCode); expect(JSON.stringify(redeemed)).not.toContain(issued.inviteUrl);
   });
   test("marks the initial session and activity as demo data", async () => {
     const session = await (await request("/api/me")).json();
@@ -379,7 +450,7 @@ describe("local activity demo", () => {
   test("runs the shared rule engine with cited evidence, extractive briefs, and honest text search", async () => {
     const initial = await (await request("/api/insights")).json();
     expect(initial.job).toBeNull();
-    expect(initial.external).toEqual({ consented: false, configured: false, generativeConfigured: false });
+    expect(initial.external).toEqual({ consented: false, configured: false, generativeConsented: false, jevConsented: false, jevConfigured: false, embeddingConfigured: false, generativeConfigured: false });
     const invalid = await request("/api/insights", { method: "POST", body: JSON.stringify({ model: "pretend-model" }) });
     expect(invalid.status).toBe(400);
     const submitted = await request("/api/insights", { method: "POST", body: JSON.stringify({ q: "schema" }), headers: { "X-Engram-Workspace": "1" } });
@@ -423,7 +494,7 @@ describe("local activity demo", () => {
       expect((await request("/api/page?slug=action-evidence")).status).toBe(404);
       const changed = await (await request("/api/policies", { method: "PUT", body: JSON.stringify({ policies: { externalAiProcessing: true } }) })).json();
       expect(changed.policies.externalAiProcessing).toBe(true);
-      expect((await (await request("/api/insights")).json()).external).toEqual({ consented: true, configured: false, generativeConfigured: false });
+      expect((await (await request("/api/insights")).json()).external).toEqual({ consented: true, configured: true, generativeConsented: true, jevConsented: false, jevConfigured: true, embeddingConfigured: false, generativeConfigured: false });
       expect((await request("/api/insights", { headers: { "X-Engram-Workspace": "1" } })).status).toBe(409);
     } finally { await request("/api/session/switch", { method: "POST", body: JSON.stringify({ orgId: 1 }) }); }
     expect((await (await request("/api/insights")).json()).external.consented).toBe(false);

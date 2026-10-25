@@ -5,6 +5,8 @@ import { assertTenantDatabaseReady, prepareGatewayDatabase, protectGatewayMetada
 import { ensureInsightSchema } from "./insights-schema";
 import { ensureComplimentaryAccessSchema } from "./billing-schema";
 import { ensureHostedSignupInvitesSchema } from "./signup-invites-schema";
+import { ensureMailSeriesSchema } from "./mail-series-schema";
+import { ensureJevSchema } from "./jev-schema";
 import { assertRuntimeSchema, ensureProvisioningSchema, markSchemaReady } from "./provisioning-schema";
 
 export const sql = postgres(dbUrl("engram_gateway"), {
@@ -509,6 +511,8 @@ export async function migrate() {
   await ensureInsightSchema(sql);
   await ensureComplimentaryAccessSchema(sql);
   await ensureHostedSignupInvitesSchema(sql);
+  await ensureMailSeriesSchema(sql);
+  await ensureJevSchema(sql);
   await protectGatewayMetadata(sql);
   await markSchemaReady(sql);
   if (databaseSecurity.authority === "inline") {

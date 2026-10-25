@@ -2,6 +2,13 @@
 .setup-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .setup-heading h2 { margin-top: 7px; font-size: 21px; letter-spacing: -.55px; font-weight: 540; }
 .setup-heading > button { flex-shrink: 0; }
+.setup-workspace-name { margin-top: 22px; padding: 18px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); max-width: 680px; }
+.setup-workspace-name h3 { font-size: 14px; font-weight: 540; margin: 0 0 8px; }
+.setup-workspace-name p { font-size: 11px; line-height: 1.7; margin: 0; color: #646464; }
+.setup-workspace-name form { margin-top: 14px; }
+.setup-name-fields { display: flex; align-items: flex-end; gap: 10px; }
+.setup-name-fields .field { flex: 1; max-width: 380px; min-width: 0; }
+.setup-name-fields button { flex-shrink: 0; min-height: 40px; }
 .setup-steps { list-style: none; display: flex; gap: 18px; padding: 20px 0; margin: 0 0 20px; border-bottom: 1px solid var(--line); }
 .setup-steps li { display: flex; align-items: center; gap: 7px; color: #727272; font-size: 11px; line-height: 1.5; }
 .setup-steps li.current, .setup-steps li.complete { color: #202020; }
@@ -29,6 +36,9 @@
 .connection-secret-row input { flex: 1; }
 .connection-install pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 600px) {
+  .setup-name-fields { align-items: stretch; flex-direction: column; }
+  .setup-name-fields .field { max-width: none; }
+  .setup-name-fields button { align-self: flex-start; }
   .setup-guide { padding: 18px; }
   .setup-heading { flex-wrap: wrap; gap: 7px; }
   .setup-heading h2 { font-size: 19px; }

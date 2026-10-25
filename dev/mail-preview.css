@@ -1,0 +1,63 @@
+/* Local review composition; all visual primitives come from the design system. */
+.mail-shell { max-width: 1520px; margin: auto; padding: 0 var(--ds-space-10); }
+.mail-header, .mail-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--ds-space-5); padding: var(--ds-space-6) 0; border-bottom: 1px solid var(--ds-line-strong); }
+.mail-brand { display: flex; align-items: center; gap: var(--ds-space-3); text-decoration: none; font-size: 25px; font-weight: 650; letter-spacing: -.055em; }
+.mail-brand span { font: 11px var(--ds-font-mono); color: var(--ds-muted); letter-spacing: 0; border-left: 1px solid var(--ds-line-strong); padding-left: var(--ds-space-3); }
+.mail-header .ds-row > a { font-size: 12px; min-height: 44px; display: inline-flex; align-items: center; }
+.mail-intro { padding: var(--ds-space-12) 0 var(--ds-space-8); }
+.mail-intro h1 { font-size: clamp(40px, 5vw, 64px); font-weight: 550; line-height: 1.04; letter-spacing: -.06em; }
+.mail-intro p { max-width: 620px; color: var(--ds-muted); font-size: 14px; line-height: 1.8; }
+.mail-local-note { margin-bottom: var(--ds-space-8); }
+.mail-layout { display: grid; grid-template-columns: 240px minmax(0,1fr); gap: var(--ds-space-8); align-items: start; }
+.mail-picker { position: sticky; top: var(--ds-space-6); }
+.mail-picker h2 { font: 10px var(--ds-font-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--ds-muted); margin: var(--ds-space-6) 0 var(--ds-space-3); }
+.mail-picker h2:first-child { margin-top: 0; }
+.mail-picker button { width: 100%; justify-content: flex-start; text-align: left; min-height: 50px; margin-bottom: var(--ds-space-2); gap: var(--ds-space-3); }
+.mail-picker button[aria-pressed="true"] { background: var(--ds-lime); }
+.mail-picker button span:first-child { font: 10px var(--ds-font-mono); color: var(--ds-muted); }
+.mail-picker button span:last-child { display: grid; gap: 3px; }
+.mail-picker button small { font-size: 10px; font-weight: 400; color: var(--ds-muted); }
+.mail-main { min-width: 0; }
+.mail-envelope { padding: var(--ds-space-6); }
+.mail-envelope h2, .mail-rules h2 { font-size: 25px; font-family: var(--ds-font-editorial); font-weight: 400; line-height: 1.2; letter-spacing: -.04em; }
+.mail-count { font: 10px var(--ds-font-mono); color: var(--ds-muted); }
+.mail-metadata { display: grid; gap: var(--ds-space-3); padding-top: var(--ds-space-5); margin: var(--ds-space-5) 0 0; border-top: 1px solid var(--ds-line); }
+.mail-metadata > div { display: grid; grid-template-columns: 90px minmax(0,1fr); gap: var(--ds-space-4); font-size: 12px; line-height: 1.7; }
+.mail-metadata dt { color: var(--ds-muted); font: 10px/1.7 var(--ds-font-mono); }
+.mail-metadata dd { margin: 0; overflow-wrap: anywhere; }
+.mail-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--ds-space-4); margin: var(--ds-space-6) 0; }
+.mail-segment { display: flex; flex-wrap: wrap; gap: var(--ds-space-2); }
+.mail-segment button { font-size: 11px; }
+.mail-segment button[aria-pressed="true"] { background: var(--ds-lilac); }
+.mail-frames { display: flex; align-items: flex-start; gap: var(--ds-space-6); overflow-x: auto; padding: 0 0 var(--ds-space-4); }
+.mail-frame-wrap { flex: 0 0 auto; }
+.mail-frame-wrap h3 { display: flex; align-items: center; gap: var(--ds-space-3); margin-bottom: var(--ds-space-3); font-size: 12px; font-weight: 550; }
+.mail-frame-wrap h3 span { font: 10px var(--ds-font-mono); color: var(--ds-muted); }
+.mail-frame-wrap iframe { box-sizing: content-box; display: block; border: 1px solid var(--ds-line-strong); background: var(--ds-paper); border-radius: var(--ds-radius-control); }
+.mail-text { margin-bottom: var(--ds-space-6); }
+.mail-text h3 { font-size: 18px; font-weight: 550; }
+.mail-text .ds-hint { margin-top: var(--ds-space-3); }
+.mail-text pre { margin-top: var(--ds-space-5); font-size: 12px; line-height: 1.9; overflow-wrap: anywhere; white-space: pre-wrap; }
+.mail-rules { margin-top: var(--ds-space-6); }
+.mail-rules-grid { display: grid; gap: var(--ds-space-4); margin-top: var(--ds-space-6); }
+.mail-rules-grid > div { display: grid; grid-template-columns: 90px minmax(0,1fr); gap: var(--ds-space-4); }
+.mail-rules-grid dt { color: var(--ds-muted); font: 10px/1.8 var(--ds-font-mono); }
+.mail-rules-grid dd { margin: 0; font-size: 12px; line-height: 1.8; }
+.mail-rule-note { color: var(--ds-muted); font-size: 11px; line-height: 1.8; border-top: 1px solid var(--ds-line); padding-top: var(--ds-space-5); margin-top: var(--ds-space-5); }
+.mail-footer { margin-top: var(--ds-space-12); border-bottom: 0; border-top: 1px solid var(--ds-line-strong); color: var(--ds-muted); font-size: 11px; }
+@media (max-width: 800px) {
+  .mail-shell { padding-inline: var(--ds-space-5); }
+  .mail-layout { grid-template-columns: 1fr; gap: var(--ds-space-6); }
+  .mail-picker { position: static; }
+  #mail-template-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: var(--ds-space-2); }
+  .mail-picker h2 { grid-column: 1 / -1; margin-top: var(--ds-space-4); }
+  .mail-picker button { margin: 0; }
+  .mail-intro { padding-top: var(--ds-space-8); }
+  .mail-intro h1 { font-size: 42px; }
+  .mail-envelope, .mail-rules { padding: var(--ds-space-5); }
+  .mail-metadata > div, .mail-rules-grid > div { grid-template-columns: 1fr; gap: var(--ds-space-1); }
+}
+
+.mail-browser-pages { margin-top: var(--ds-space-10); }
+.mail-browser-pages h2 { font: 400 30px/1.2 var(--ds-font-editorial); letter-spacing: -.04em; }
+.mail-browser-pages nav { margin-top: var(--ds-gap-heading-actions); }

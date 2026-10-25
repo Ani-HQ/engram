@@ -1,6 +1,7 @@
 import { h } from "./profile.js";
 import { icon } from "./icons.js";
 import { billingPresentation } from "./billing-model.js";
+import { jevUsageSummary } from "./jev-settings.js";
 
 const action = (label, onclick, attrs = {}) => h("button", { type: "button", onclick, ...attrs }, label);
 const link = (label, href, className = "text") => h("a", { href, class: className }, label);
@@ -17,7 +18,7 @@ export function provisioningPanel({ session, checking, error, retry, signOut, sw
   return h("main", { class: "auth provisioning", "aria-labelledby": "provisioning-title" },
     h("a", { class: "wordmark", href: "/" }, h("span", { class: "brand-mark" }, icon("activity", { size: 17 })), "engram"),
     h("div", { role: "status", "aria-live": "polite" }, icon(failed ? "circle-alert" : "loader-circle", { size: 22, class: failed ? "" : "spin" }),
-      h("h1", { id: "provisioning-title" }, failed ? "Setup needs another try." : "Preparing your workspace."),
+      h("h1", { id: "provisioning-title" }, failed ? "Setup needs another try." : "Making room for your ideas."),
       h("p", {}, failed ? "We couldn’t finish setting up this workspace. Check again in a moment." : `Your account is ready. We’re setting up ${session.org.name} so your agents have a place to work.`)),
     error && h("p", { class: "notice", role: "alert" }, error),
     h("div", { class: "form-actions" }, action(checking ? "Checking…" : "Check again", retry, { class: "small", disabled: checking }), action("Sign out", signOut, { class: "text small" })),
@@ -30,24 +31,24 @@ export function planCards(catalog, cloudHref = "/app#start", cloudLabel = "Start
   const beta = catalog.mode === "hosted" && signupPolicy?.mode === "invite-only";
   if (beta) { cloudHref = "/app#invite"; cloudLabel = "Have an invite?"; }
   if (catalog.mode === "self-hosted" && cloudHref === "/app#start") { cloudHref = "/hosted"; cloudLabel = "Explore Engram Cloud"; }
-  return h("div", { class: "plan-grid" }, catalog.plans.map(plan => h("section", { class: `plan-card ${plan.id === "cloud" ? "cloud-plan" : ""}` },
+  return h("div", { class: "plan-grid" }, catalog.plans.map(plan => h("section", { class: `plan-card ds-card ${plan.id === "cloud" ? "cloud-plan" : ""}`, "data-tone": plan.id === "cloud" ? "lilac" : null },
     h("div", { class: "plan-label" }, icon(plan.id === "cloud" ? "cloud" : "terminal", { size: 18 }), plan.name),
     h("p", { class: "plan-description" }, plan.description),
     h("div", { class: "plan-price" }, h("strong", {}, `$${beta && plan.id === "cloud" ? 0 : plan.monthlyPrice}`), h("span", {}, plan.id === "cloud" ? beta ? "/ invited early access" : "/ workspace / month" : "/ Engram licence")),
-    h("p", { class: "field-hint" }, plan.id === "cloud" ? beta ? "Closed beta · free until access is revoked" : "USD · launch pricing · taxes may apply" : "You cover your infrastructure costs."),
-    h("ul", { class: "plan-features" }, plan.features.map(feature => h("li", {}, icon("check", { size: 14 }), beta && plan.id === "cloud" && feature === "Cancel any time" ? "Email-bound invitation and verification" : feature))),
+    h("p", { class: "field-hint" }, plan.id === "cloud" ? beta ? "Closed beta · invited access" : "USD · launch pricing · taxes may apply" : "You cover your infrastructure costs."),
+    h("ul", { class: "plan-features" }, plan.features.map(feature => h("li", {}, icon("check", { size: 14 }), beta && plan.id === "cloud" && feature === "Cancel any time" ? "Single-use invitation and email verification" : feature))),
     link(plan.id === "cloud" ? cloudLabel : "Self-host Engram", plan.id === "cloud" ? cloudHref : "/self-host", plan.id === "cloud" ? "button primary" : "button"),
-    h("p", { class: "field-hint" }, plan.id === "cloud" ? beta ? "Invite code required. Verify your email. No card needed." : "No card needed to try it. Subscribe when you're ready." : "Open source · MIT licence"),
+    h("p", { class: "field-hint" }, plan.id === "cloud" ? beta ? "60 days of friend access after email verification. No card needed. Jev is separate." : "No card needed to try it. Subscribe when you're ready." : "Open source · MIT licence"),
   )));
 }
 
-export function billingPanel({ billing, catalog, api, notify, fail, refresh }) {
+export function billingPanel({ billing, catalog, jev, jevError, api, notify, fail, refresh }) {
   const feedback = h("p", { class: "form-feedback", role: "status" });
   const plan = billingPresentation(billing);
   const { hosted, complimentary } = plan;
   const redirect = async (button, operation) => {
     const original = button.textContent;
-    button.disabled = true; button.replaceChildren(icon("loader-circle", { size: 14, class: "spin" }), "Opening…"); feedback.textContent = "";
+    button.disabled = true; button.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), "Opening…"); feedback.textContent = "";
     try { const result = await operation(); window.location.assign(result.url); }
     catch (error) { fail(error); feedback.textContent = error.message || "Please try again."; button.disabled = false; button.textContent = original; }
   };
@@ -57,16 +58,17 @@ export function billingPanel({ billing, catalog, api, notify, fail, refresh }) {
   return h("div", { class: "account-content" },
     returnState === "success" && h("div", { class: "notice", role: "status" }, "Checkout returned successfully. Your plan updates after payment confirmation.", action("Refresh plan", refresh, { class: "text small" })),
     returnState === "canceled" && h("div", { class: "notice", role: "status" }, "Checkout was canceled. Your plan has not changed."),
-    h("section", { class: "billing-summary" }, h("div", {}, h("span", { class: "eyebrow" }, "CURRENT PLAN"), h("h2", {}, plan.title), h("p", { class: "detail-note" }, plan.description)), h("span", { class: "plan-status" }, icon("circle-check", { size: 14 }), plan.label),
+    h("section", { class: "billing-summary ds-card" }, h("div", { class: "ds-heading-group" }, h("span", { class: "eyebrow ds-eyebrow" }, "CURRENT PLAN"), h("h2", {}, plan.title), h("p", { class: "detail-note" }, plan.description)), h("span", { class: "plan-status ds-badge", "data-tone": "lime" }, icon("circle-check", { size: 14 }), plan.label),
       hosted && h("dl", { class: "billing-dates" }, h("dt", {}, plan.dateLabel), h("dd", {}, plan.noExpiry ? "No expiry" : date(plan.dateValue))),
       plan.subscriptionLabel && h("p", { class: "detail-note" }, `Existing Stripe subscription: ${plan.subscriptionLabel}. Complimentary access does not cancel a subscription. Manage it below.`),
       hosted && h("div", { class: "form-actions" }, plan.showSubscribe && subscribe, billing.portalAvailable && manage),
       hosted && !billing.canWrite && h("p", { class: "detail-note" }, "You can still read and export existing memory and activity, revoke access, and unpublish your profile. A subscription restores writes."),
       hosted && !complimentary && !billing.checkoutAvailable && h("p", { class: "detail-note" }, "The operator has not connected hosted billing on this installation yet."), feedback),
+    jevUsageSummary(jev, { error: jevError, refresh }),
     complimentary ? h("p", { class: "detail-note" }, link("Compare hosting options", "/pricing", "text small")) : planCards(catalog, "/pricing", "View pricing"),
-    section("Private on every plan", "Privacy protections are part of the product, including self-hosted installs.", h("div", { class: "trust-list" },
+    section("Your space, your boundaries", "The same access and publishing controls apply on hosted and self-hosted workspaces.", h("div", { class: "trust-list" },
       h("p", {}, icon("shield-check", { size: 16 }), "Workspace-scoped access and agent credentials."),
-      h("p", {}, icon("eye-off", { size: 16 }), "External AI processing is off unless your workspace owner enables it."),
+      h("p", {}, icon("eye-off", { size: 16 }), "Jev and embeddings/generated briefs have separate workspace permissions."),
       h("p", {}, icon("globe", { size: 16 }), "Your activity profile stays private until you publish it."), link("Read how privacy works", "/privacy"))),
   );
 }
@@ -84,7 +86,7 @@ export function workspacePanel({ session, members, invites, api, saved, notify, 
     catch (error) { fail(error); feedback.textContent = error.message || "Please try again."; }
     finally { save.disabled = false; }
   } }, h("label", { class: "setting-toggle" }, writes, h("span", {}, h("strong", {}, "Allow agents to write"), h("small", {}, "Individual connection permissions also apply."))),
-    h("label", { class: "setting-toggle" }, ai, h("span", {}, h("strong", {}, "Allow external AI processing"), h("small", {}, "Allows configured analysis, embedding, and optional brief providers to process bounded action context, relevant memory text, and queries. Provider keys stay on the server. Processing remains local when providers are unavailable."))), feedback, owner && save);
+    h("label", { class: "setting-toggle" }, ai, h("span", {}, h("strong", {}, "Allow embeddings & generated briefs"), h("small", {}, "Allows configured Voyage embeddings to process relevant memory text and queries, and OpenAI to process bounded activity context for optional generated briefs. This permission does not enable Jev. Provider keys stay on the server; provider terms and retention apply."))), feedback, owner && save);
   ai.disabled = !owner; writes.disabled = !owner;
   const email = h("input", { type: "email", required: true, placeholder: "teammate@example.com", "aria-label": "Teammate email" });
   const send = h("button", { type: "submit", class: "small" }, "Invite member");

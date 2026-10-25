@@ -56,6 +56,12 @@ class BillingVerificationTests(unittest.TestCase):
         bad = fixtures(); bad["webhook_endpoints?limit=100"]["data"] *= 2
         with self.assertRaisesRegex(verify.VerificationError, "exactly one"): check(bad)
 
+    def test_subscription_webhook_requires_draft_invoice_delivery_for_jev_usage(self):
+        data = fixtures()
+        data["webhook_endpoints?limit=100"]["data"][0]["enabled_events"].remove("invoice.created")
+        with self.assertRaisesRegex(verify.VerificationError, "event subscription"):
+            check(data)
+
     def test_probe_exercises_raw_bytes_but_never_a_handled_billing_event(self):
         secret = "whsec_offline-only-fixture"
         calls = []

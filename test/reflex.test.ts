@@ -99,6 +99,7 @@ describe("reflex client", () => {
       }
       return Response.json({
         model: FIXTURE_MODEL,
+        usage: { input_tokens: 100, output_tokens: 3 },
         answers: { kind: { type: "choice", choice: "fact", confidence: 0.9 } },
       });
     }, Date.now, { apiKey: "test-key", model: FIXTURE_MODEL });
@@ -113,7 +114,7 @@ describe("reflex client", () => {
   });
 
   test("hard-disables on 401", async () => {
-    const client = new TypesafeReflexClient(async () => new Response("no", { status: 401 }), Date.now, { apiKey: "test-key" });
+    const client = new TypesafeReflexClient(async () => new Response("no", { status: 401 }), Date.now, { apiKey: "test-key", model: FIXTURE_MODEL });
     expect(await client.evaluate({ state: {}, questions: { a: { type: "noul", instructions: "x" } } })).toBeNull();
     expect(client.available()).toBe(false);
   });

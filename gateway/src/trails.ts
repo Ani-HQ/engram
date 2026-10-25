@@ -130,6 +130,7 @@ export async function generateDigest(input: {
   };
   try {
     const result = await reflexClient().evaluate({
+      task: "trail-digest",
       state: {
         repo: input.repo,
         harness: input.harness,

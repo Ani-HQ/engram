@@ -95,9 +95,10 @@ export function parseClassification(
 export async function classifyMemory(
   client: ReflexClient,
   text: string,
+  operationKey?: string,
 ): Promise<MemoryClassification | null> {
   if (!client.available()) return null;
-  const result = await client.evaluate(buildClassifyQuestions(text));
+  const result = await client.evaluate({ ...buildClassifyQuestions(text), task: "classify", operationKey });
   if (!result) return null;
   return { ...parseClassification(result.answers, result.model), requestedModel: result.requestedModel, modelReported: result.modelReported };
 }

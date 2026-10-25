@@ -5,6 +5,9 @@ import { currentOrg } from "./context";
 import { sql } from "./db";
 import { hasOauthScope, normalizeToken, type TokenRecord } from "./policies";
 import { paidPlan, PLANS, TRIAL_DAYS } from "./plans";
+import { jevPricing } from "./jev";
+import { prepareJevInvoiceBatch, exportJevInvoiceBatch, drainJevInvoiceBatches } from "./jev-billing";
+import { SIGNUP_EXTENSION_URL } from "./signup-invites";
 
 const HEADERS = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
 const STRIPE_VERSION = "2026-09-30.endive";
@@ -49,7 +52,7 @@ function ready(settings: BillingSettings): boolean {
 }
 export function publicPlans(input: BillingDependencies = {}) {
   const { settings } = dependencies(input);
-  return { mode: settings.mode, trialDays: TRIAL_DAYS, currency: "usd", checkoutAvailable: ready(settings), plans: PLANS };
+  return { mode: settings.mode, trialDays: TRIAL_DAYS, currency: "usd", checkoutAvailable: ready(settings), plans: PLANS, addons: { jev: jevPricing() } };
 }
 
 // Keep payment recovery, privacy controls, exports, revocation and deletion free
@@ -80,12 +83,20 @@ async function ensureRow(orgId: number, db: postgres.Sql) {
 async function getRow(orgId: number, db: postgres.Sql, lock = false): Promise<any> {
   const rows = lock
     ? await db`SELECT b.*, c.id AS complimentary_id, c.granted_at AS complimentary_granted_at,
-        c.expires_at AS complimentary_expires_at, c.revoked_at AS complimentary_revoked_at
+        c.expires_at AS complimentary_expires_at, c.revoked_at AS complimentary_revoked_at,
+        admission.id AS complimentary_invite_id, admission.access_duration_days AS complimentary_invite_duration_days
         FROM workspace_billing b LEFT JOIN workspace_complimentary_access c ON c.org_id = b.org_id
+        LEFT JOIN LATERAL (SELECT i.id, i.access_duration_days FROM hosted_signup_invites i
+          WHERE i.complimentary_grant_id = c.id AND i.redeemed_org_id = c.org_id
+          ORDER BY i.redeemed_at DESC LIMIT 1) admission ON true
         WHERE b.org_id = ${orgId} FOR UPDATE OF b`
     : await db`SELECT b.*, c.id AS complimentary_id, c.granted_at AS complimentary_granted_at,
-        c.expires_at AS complimentary_expires_at, c.revoked_at AS complimentary_revoked_at
+        c.expires_at AS complimentary_expires_at, c.revoked_at AS complimentary_revoked_at,
+        admission.id AS complimentary_invite_id, admission.access_duration_days AS complimentary_invite_duration_days
         FROM workspace_billing b LEFT JOIN workspace_complimentary_access c ON c.org_id = b.org_id
+        LEFT JOIN LATERAL (SELECT i.id, i.access_duration_days FROM hosted_signup_invites i
+          WHERE i.complimentary_grant_id = c.id AND i.redeemed_org_id = c.org_id
+          ORDER BY i.redeemed_at DESC LIMIT 1) admission ON true
         WHERE b.org_id = ${orgId}`;
   if (!rows[0]) throw new BillingError("Workspace billing is unavailable", 503, "billing_unavailable");
   return rows[0];
@@ -103,7 +114,13 @@ function complimentaryAccess(row: any, now: Date) {
   const active = !!grantedAt && new Date(grantedAt).getTime() <= now.getTime()
     && row.complimentary_revoked_at === null
     && (row.complimentary_expires_at === null || (!!expiresAt && new Date(expiresAt).getTime() > now.getTime()));
-  return { active, grantedAt, expiresAt, revokedAt };
+  const invited = !!row.complimentary_invite_id;
+  return { active, grantedAt, expiresAt, revokedAt,
+    source: invited ? "invite" : "operator",
+    durationDays: invited && row.complimentary_invite_duration_days === 60 ? 60 : null,
+    unlimitedKnowledgeTransfers: active,
+    extensionUrl: invited ? SIGNUP_EXTENSION_URL : null,
+  };
 }
 function snapshot(row: any, settings: BillingSettings, now: Date) {
   const trialEndsAt = iso(row?.trial_ends_at);
@@ -114,6 +131,7 @@ function snapshot(row: any, settings: BillingSettings, now: Date) {
   const complimentary = complimentaryAccess(row, now);
   const comp = complimentary?.active === true;
   return {
+    serverNow: now.toISOString(),
     mode: settings.mode, planId: comp ? "complimentary" : row?.plan_id === "cloud" ? "cloud" : "trial", status: comp ? "complimentary" : trial ? "trial" : row?.status === "trial" ? "trial_expired" : LIVE_STATUSES.has(row?.status) && !subscribed ? "payment_pending" : String(row?.status ?? "trial_expired"),
     canWrite: comp || subscribed || trial, trialEndsAt, currentPeriodEndsAt: periodEndsAt,
     entitlementSource: comp ? "complimentary" : subscribed ? "subscription" : trial ? "trial" : "none",
@@ -141,9 +159,20 @@ async function entitlementRow(orgId: number, deps: Dependencies) {
 export async function getBillingSummary(token: TokenRecord, input: BillingDependencies = {}) {
   const actor = actorFor(token, true);
   const deps = dependencies(input);
-  if (deps.settings.mode === "self-hosted") return { ...SELF_HOSTED };
+  if (deps.settings.mode === "self-hosted") return { ...SELF_HOSTED, serverNow: deps.now().toISOString() };
   await ensureRow(actor.orgId, deps.db);
   return snapshot(await entitlementRow(actor.orgId, deps), deps.settings, deps.now());
+}
+// Session chrome needs the clock and invitation benefit for every current
+// member, without exposing payment identifiers or contacting Stripe at login.
+// This cached summary is display metadata; write routes recheck entitlement.
+export async function getWorkspaceAccessSummary(token: TokenRecord, input: BillingDependencies = {}) {
+  const actor = actorFor(token);
+  const deps = dependencies(input);
+  if (deps.settings.mode === "self-hosted") return { serverNow: deps.now().toISOString(), canWrite: true, entitlementSource: "self-hosted", complimentary: null };
+  await ensureRow(actor.orgId, deps.db);
+  const state = snapshot(await getRow(actor.orgId, deps.db), deps.settings, deps.now());
+  return { serverNow: state.serverNow, canWrite: state.canWrite, entitlementSource: state.entitlementSource, complimentary: state.complimentary };
 }
 // Reads, exports, deleting data, and payment management remain available after an
 // expired trial. Call this only before adding/changing billable workspace content.
@@ -231,7 +260,8 @@ async function checkout(token: TokenRecord, plan: unknown, input: BillingDepende
     if (complimentaryAccess(row, deps.now())?.active) throw new BillingError("This workspace already has complimentary access. No subscription is required.", 409, "complimentary_access");
     if (config.signupMode === "invite-only") {
       const admission = await db`SELECT id FROM hosted_signup_invites
-        WHERE redeemed_org_id = ${actor.orgId} AND redeemed_at IS NOT NULL AND revoked_at IS NULL AND complimentary_revoked_at IS NULL LIMIT 1`;
+        WHERE redeemed_org_id = ${actor.orgId} AND redeemed_at IS NOT NULL AND revoked_at IS NULL
+          AND complimentary_applied_at IS NULL AND complimentary_revoked_at IS NULL LIMIT 1`;
       if (admission.length) throw new BillingError("Your invitation includes complimentary access. Setup is still being completed.", 409, "complimentary_pending");
     }
     const price = await stripe(deps, `prices/${encodeURIComponent(deps.settings.cloudMonthlyPriceId)}`);
@@ -354,6 +384,15 @@ export async function handleBillingWebhook(req: Request, input: BillingDependenc
     if (!stripeId(event?.id, "evt") || typeof event?.type !== "string" || !event?.data?.object) throw new BillingError("Invalid webhook event");
     const keyMode = deps.settings.secretKey.match(/^(?:sk|rk)_(test|live)_/)?.[1];
     if (keyMode && event.livemode !== (keyMode === "live")) throw new BillingError("Webhook environment does not match");
+    if (event.type === 'invoice.created') {
+      const invoiceDeps = { db: deps.db, now: deps.now(), request: (path: string, params?: Record<string,string>, key?: string) => stripe(deps,path,params,key) };
+      const batch = await prepareJevInvoiceBatch(event.data.object,invoiceDeps);
+      if (batch) await exportJevInvoiceBatch(batch,invoiceDeps);
+      // An export ambiguity is durable and reconciled by the billing worker.
+      // Acknowledge after preparation so add-on retries don't hold the base
+      // subscription invoice's automatic finalization hostage.
+      return Response.json({ received: true }, { headers: HEADERS });
+    }
     if (!WEBHOOK_TYPES.has(event.type)) return Response.json({ received: true }, { headers: HEADERS });
     await deps.db.begin(async tx => {
       const db = tx as unknown as postgres.Sql;
@@ -375,4 +414,10 @@ export async function handleBillingWebhook(req: Request, input: BillingDependenc
     });
     return Response.json({ received: true }, { headers: HEADERS });
   } catch (error) { return failure(error); }
+}
+
+export async function drainJevBilling(input: BillingDependencies = {}, options: { dryRun?: boolean; limit?: number } = {}) {
+  const deps = dependencies(input);
+  if (deps.settings.mode !== 'hosted' || !/^(?:sk|rk)_(?:test|live)_[A-Za-z0-9]+$/.test(deps.settings.secretKey) || !trustedOrigin(deps.settings)) return { enabled: false, pending: 0, exported: 0, review: 0, dryRun: options.dryRun === true };
+  return drainJevInvoiceBatches({ db: deps.db, now: deps.now(), request: (path,params,key) => stripe(deps,path,params,key) },options);
 }
