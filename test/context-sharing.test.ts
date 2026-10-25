@@ -6,6 +6,8 @@ import type { Org } from "../gateway/src/orgs";
 import { authenticateContextShareToken, listApprovedTeamItems } from "../gateway/src/context-sharing-access";
 import { commitContextShare, getContextSharing, handleContextSharingApi, parseContextCommit, parseContextPreview, previewContextShare, revokeContextShare, rotateContextShareToken, type ContextSource } from "../gateway/src/context-sharing";
 import type { ReflexClient } from "../gateway/src/reflex/types";
+import { currentContext, runWithContext } from "../gateway/src/context";
+import { requireHostedWriteAccess } from "../gateway/src/billing";
 
 const now = new Date("2026-10-25T12:00:00Z");
 const actor = normalizeToken({name:"private-owner@example.test",email:"private-owner@example.test",kind:"session",role:"owner",orgId:7});
@@ -17,7 +19,8 @@ function store() {
   const execute = (query:string,v:any[]):any[] => {
     calls.push({query,values:v});
     if (query.includes("FROM org_members m JOIN orgs o")) return state.owner && v[0]===7 && v[1]===actor.email ? [{id:state.memberId,kind:state.kind,policies:{...DEFAULT_POLICIES,jevProcessing:state.consent}}] : [];
-    if (query.includes("SELECT o.id, o.name, o.policies")) return state.targetMember && v[0]===8 && state.accept ? [{id:8,name:"Startup team",policies:{...DEFAULT_POLICIES,acceptShares:state.accept},member_id:state.targetMemberId}] : [];
+    if (query.includes("SELECT o.id, o.name, o.policies")) return state.targetMember && v[0]===8 && state.accept ? [{id:8,name:"Startup team",policies:{...DEFAULT_POLICIES,acceptShares:state.accept},member_id:state.targetMemberId,member_role:"member"}] : [];
+    if (query.includes("SELECT * FROM orgs WHERE id")) return v[0]===8 ? [{id:8,name:"Startup team",slug:"startup-team",kind:"team",brain_db:"brain_org_8",data_db:"brain_org_8",home_dir:"org-8",policies:DEFAULT_POLICIES,provisioning_status:"ready",created_at:now.toISOString()}] : [];
     if (query.includes("SELECT o.id, o.name FROM orgs")) return state.targetMember && state.accept ? [{id:8,name:"Startup team"}] : [];
     if (query.includes("DELETE FROM context_share_previews")) {for (const [id,row] of previews) if(new Date(row.expires_at)<now)previews.delete(id); return [];}
     if (query.includes("count(*)::integer AS n FROM context_share_previews")) return [{n:previews.size}];
@@ -45,7 +48,7 @@ function store() {
     });queue=operation.then(()=>{},()=>{});return operation;
   }) as any;
   const client:ReflexClient={enabled:()=>true,available:()=>true,evaluate:async()=>{state.modelCalls++;return null;}};
-  const deps={db,client,now:()=>now,sources:async()=>({sources:structuredClone(sources),truncated:false}),source:async(kind:string,id:string)=>sources.find(s=>s.kind===kind&&s.id===id)??null,entitlement:async()=>{if(!state.entitled)throw Object.assign(new Error("private billing"),{status:402});}};
+  const deps={db,client,now:()=>now,sources:async()=>({sources:structuredClone(sources),truncated:false}),source:async(kind:string,id:string)=>sources.find(s=>s.kind===kind&&s.id===id)??null,entitlement:async(..._args:any[])=>{if(!state.entitled)throw Object.assign(new Error("private billing"),{status:402});},withWorkspace:async<T>(target:Org,actor:ReturnType<typeof normalizeToken>,work:()=>Promise<T>)=>runWithContext({org:target,token:actor,dataSql:db},work)};
   return {db,calls,previews,shares,items,state,deps,setSources:(value:ContextSource[])=>{sources=value;}};
 }
 const request = (path:string,method="GET",body?:unknown,headers:Record<string,string>={})=>new Request(`https://engram.example${path}`,{method,headers:{"X-Engram-Console":"1","X-Engram-Workspace":"7",...headers},...(body===undefined?{}:{body:JSON.stringify(body)})});
@@ -124,6 +127,18 @@ describe("reviewed selective context sharing",()=>{
     s.state.targetMember=false;expect(await listApprovedTeamItems(8,s.db)).toEqual([]);s.state.targetMember=true;
     s.state.owner=false;expect(await listApprovedTeamItems(8,s.db)).toEqual([]);s.state.owner=true;
     await revokeContextShare(actor,org,result.share.id,s.deps);expect(await listApprovedTeamItems(8,s.db)).toEqual([]);
+  });
+  test("real billing context checks use the target member role and restore source authorization before reading source versions",async()=>{
+    const s=store(),seen:{orgId:number;context:number|undefined;role:string}[]=[];
+    const billing={mode:"self-hosted" as const,publicUrl:"https://engram.example",secretKey:"",webhookSecret:"",cloudMonthlyPriceId:""};
+    s.deps.entitlement=async(token:ReturnType<typeof normalizeToken>,db:postgres.Sql)=>{seen.push({orgId:token.orgId,context:currentContext()?.org.id,role:token.role});await requireHostedWriteAccess(token,{db,settings:billing});};
+    const original=s.deps.source;s.deps.source=async(kind,id)=>{expect(currentContext()?.org.id).toBe(7);expect(currentContext()?.token.role).toBe("owner");return original(kind,id);};
+    await runWithContext({org,token:actor,dataSql:s.db},async()=>{const preview=await draft(s,{kind:"team",orgId:8});await commit(s,preview);expect(currentContext()?.org.id).toBe(7);});
+    expect(seen).toEqual([{orgId:7,context:7,role:"owner"},{orgId:7,context:7,role:"owner"},{orgId:8,context:8,role:"member"}]);
+    const denied=store(),preview=await draft(denied,{kind:"team",orgId:8});
+    denied.deps.entitlement=async(token:ReturnType<typeof normalizeToken>,db:postgres.Sql)=>{await requireHostedWriteAccess(token,{db,settings:billing});if(token.orgId===8)throw Object.assign(new Error("Target access expired"),{status:402});};
+    await runWithContext({org,token:actor,dataSql:denied.db},async()=>{await expect(commit(denied,preview)).rejects.toMatchObject({status:402});expect(currentContext()?.org.id).toBe(7);});
+    expect(denied.shares.size).toBe(0);expect(denied.items).toHaveLength(0);
   });
   test("explicit rotation invalidates the old isolated credential; revocation and membership loss stop every new read",async()=>{
     const s=store(),result=await commit(s,await draft(s));

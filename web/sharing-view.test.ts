@@ -112,4 +112,46 @@ describe("reviewed selective sharing", () => {
     const teamPanel=sharingView({api:{sharing:async()=>({...catalog,sourceKind:"team"})}});
     await tick();expect(teamPanel.element.textContent).toContain("Choose your personal workspace");expect((teamPanel.element as Element).querySelector("form")?.hidden).toBe(true);teamPanel.dispose();
   });
+
+  test("a catalog refresh started before commit cannot discard the newly approved share",async()=>{
+    let loadCalls=0, finishLoad:(value:any)=>void=()=>{}, finishCommit:(value:any)=>void=()=>{};
+    const panel=sharingView({api:{
+      sharing:()=>++loadCalls===1?Promise.resolve(catalog):new Promise(resolve=>finishLoad=resolve),
+      sharingPreview:async()=>preview(), sharingCommit:()=>new Promise(resolve=>finishCommit=resolve),
+    }});
+    const view=panel.element as Element;await tick();await draft(view);await approve(view,"Use stable IDs.");
+    const loading=button(view,"Refresh shares").fire("click");
+    expect(view.textContent).toContain("Loading sharing settings");
+    const committing=button(view,"Share approved text").fire("click");
+    expect(button(view,"Refresh shares").disabled).toBe(true);
+    expect(view.textContent).not.toContain("Loading sharing settings");
+    await button(view,"Refresh shares").fire("click");expect(loadCalls).toBe(2);
+    finishCommit({share});await committing;
+    finishLoad({...catalog,shares:[]});await loading;
+    expect(view.textContent).toContain("Read approved text · 1 excerpt(s)");
+    expect(view.textContent).toContain("Use stable IDs.");
+    expect(button(view,"Refresh shares").disabled).toBe(false);panel.dispose();
+  });
+
+  for(const operation of ["revoke","rotate"] as const) test("an earlier catalog refresh cannot overwrite "+operation+" and stays disabled until it completes",async()=>{
+    const grant=operation==="rotate"?{...share,recipient:{kind:"agent",name:"Example assistant"}}:share;
+    let loadCalls=0, finishLoad:(value:any)=>void=()=>{}, finishMutation:(value:any)=>void=()=>{};
+    const panel=sharingView({api:{
+      sharing:()=>++loadCalls===1?Promise.resolve({...catalog,shares:[grant]}):new Promise(resolve=>finishLoad=resolve),
+      revokeSharing:()=>new Promise(resolve=>finishMutation=resolve),rotateSharingToken:()=>new Promise(resolve=>finishMutation=resolve),
+    }});
+    const view=panel.element as Element;await tick();
+    const loading=button(view,"Refresh shares").fire("click");
+    await button(view,operation==="revoke"?"Revoke sharing":"Replace agent token").fire("click");
+    const mutating=button(view,operation==="revoke"?"Confirm revoke":"Confirm token replacement").fire("click");
+    expect(button(view,"Refresh shares").disabled).toBe(true);
+    expect(view.textContent).not.toContain("Loading sharing settings");
+    await button(view,"Refresh shares").fire("click");expect(loadCalls).toBe(2);
+    finishMutation(operation==="revoke"?{share:{...grant,revokedAt:new Date().toISOString()}}:{credential:{token:"egs_"+"r".repeat(32),mcpUrl:"https://engram.example/mcp/shared"}});await mutating;
+    finishLoad({...catalog,shares:operation==="revoke"?[grant]:[]});await loading;
+    expect(view.textContent).toContain(operation==="revoke"?"Revoked":"Example assistant");
+    if(operation==="revoke")expect(view.textContent).not.toContain("Active snapshot");
+    else expect(find(view,item=>item.attrs["aria-label"]==="Read-only share token").value).toBe("egs_"+"r".repeat(32));
+    expect(button(view,"Refresh shares").disabled).toBe(false);panel.dispose();
+  });
 });

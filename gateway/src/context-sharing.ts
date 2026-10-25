@@ -6,7 +6,7 @@ import { sha256 } from "./hash";
 import { requireHostedWriteAccess } from "./billing";
 import { getMemoryEntry, listActiveEntries } from "./memory-entries";
 import { getTrail, listTrails } from "./trails";
-import { publicUrlFrom, type Org } from "./orgs";
+import { getOrg, publicUrlFrom, withOrg, type Org } from "./orgs";
 import { normalizeToken, parsePolicies, type TokenRecord } from "./policies";
 import { redactSecrets } from "./redact";
 import { reflexClient } from "./reflex/client";
@@ -21,17 +21,18 @@ export class ContextSharingError extends Error {
 export type ContextRecipient = { kind: "team"; orgId: number } | { kind: "agent"; name: string };
 export interface ContextSource { kind: "entry" | "trail"; id: string; text: string; version: string }
 interface Candidate { id: string; title: string; text: string; reason: string; sourceKind: "entry" | "trail"; sourceId: string; sourceHash: string }
-interface RecipientBinding { kind: "team" | "agent"; orgId: number | null; memberId: number | null; name: string }
+interface RecipientBinding { kind: "team" | "agent"; orgId: number | null; memberId: number | null; name: string; role: "owner" | "member" | null }
 export interface ContextSharingDeps {
   db?: postgres.Sql; client?: ReflexClient; now?: () => Date;
   sources?: () => Promise<{ sources: ContextSource[]; truncated: boolean }>;
   source?: (kind: "entry" | "trail", id: string) => Promise<ContextSource | null>;
   entitlement?: (actor: TokenRecord, db: postgres.Sql) => Promise<unknown>;
+  withWorkspace?: <T>(org: Org, actor: TokenRecord, work: () => Promise<T>) => Promise<T>;
 }
 function dependencies(deps: ContextSharingDeps) {
   return { db: deps.db ?? sql, client: deps.client ?? reflexClient(), now: deps.now ?? (() => new Date()),
     sources: deps.sources ?? collectContextSources, source: deps.source ?? getContextSource,
-    entitlement: deps.entitlement ?? ((actor: TokenRecord, db: postgres.Sql) => requireHostedWriteAccess(actor, { db })) };
+    entitlement: deps.entitlement ?? ((actor: TokenRecord, db: postgres.Sql) => requireHostedWriteAccess(actor, { db })), withWorkspace: deps.withWorkspace ?? withOrg };
 }
 function object(value: unknown, allowed: string[]): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some(key => !allowed.includes(key))) throw new ContextSharingError("Use the supported sharing fields.");
@@ -73,11 +74,11 @@ function personal(source: Org) {
   if (source.kind !== "personal") throw new ContextSharingError("Select your personal workspace to share a reviewed excerpt.", 403, "forbidden");
 }
 async function recipientBinding(recipient: ContextRecipient, actor: TokenRecord, db: postgres.Sql): Promise<RecipientBinding> {
-  if (recipient.kind === "agent") return { kind: "agent", orgId: null, memberId: null, name: recipient.name };
-  const rows = await db`SELECT o.id, o.name, o.policies, m.id AS member_id FROM orgs o JOIN org_members m ON m.org_id = o.id
+  if (recipient.kind === "agent") return { kind: "agent", orgId: null, memberId: null, name: recipient.name, role: null };
+  const rows = await db`SELECT o.id, o.name, o.policies, m.id AS member_id, m.role AS member_role FROM orgs o JOIN org_members m ON m.org_id = o.id
     WHERE o.id = ${recipient.orgId} AND o.kind = 'team' AND m.email = ${actor.email} FOR SHARE OF m, o`;
-  if (rows.length !== 1 || !parsePolicies(rows[0].policies).acceptShares) throw new ContextSharingError("That team is not available for sharing.", 403, "forbidden");
-  return { kind: "team", orgId: Number(rows[0].id), memberId: Number(rows[0].member_id), name: String(rows[0].name) };
+  if (rows.length !== 1 || !["owner","member"].includes(rows[0].member_role) || !parsePolicies(rows[0].policies).acceptShares) throw new ContextSharingError("That team is not available for sharing.", 403, "forbidden");
+  return { kind: "team", orgId: Number(rows[0].id), memberId: Number(rows[0].member_id), name: String(rows[0].name), role: rows[0].member_role };
 }
 function entrySource(entry: NonNullable<Awaited<ReturnType<typeof getMemoryEntry>>>): ContextSource {
   return { kind: "entry", id: entry.id, text: entry.rawText, version: sha256(JSON.stringify([entry.rawText, entry.slug, entry.topicHint, entry.status])) };
@@ -176,7 +177,15 @@ export async function commitContextShare(token: TokenRecord, org: Org, input: un
     const recipient = await recipientBinding(preview.recipient_kind === "team" ? { kind: "team", orgId: Number(preview.target_org) } : { kind: "agent", name: String(preview.agent_name) }, authorization.actor, tx);
     if (recipient.memberId !== (preview.target_member_id == null ? null : Number(preview.target_member_id))) throw new ContextSharingError("The recipient membership changed. Start a new preview.", 409, "preview_changed");
     await d.entitlement(authorization.actor, tx);
-    if (recipient.orgId) await d.entitlement(normalizeToken({ ...authorization.actor, orgId: recipient.orgId }), tx);
+    if (recipient.orgId) {
+      const target = await getOrg(recipient.orgId,tx);
+      if (!target || target.kind !== "team") throw new ContextSharingError("That team is not available for sharing.",403,"forbidden");
+      // Billing verifies the request context as well as the actor. Enter the
+      // authenticated destination with its actual current membership role;
+      // never turn a source-owner token into a destination-owner credential.
+      const targetActor = normalizeToken({ ...authorization.actor, orgId: target.id, role: recipient.role! });
+      await d.withWorkspace(target,targetActor,()=>d.entitlement(targetActor,tx));
+    }
     const candidates = preview.candidates as Candidate[];
     if (!Array.isArray(candidates) || previewHash(candidates) !== preview.source_hash) throw new ContextSharingError("This preview changed. Start a new preview.", 409, "preview_changed");
     const selected: { candidate: Candidate; text: string }[] = [];

@@ -11,7 +11,7 @@ within two business days. Approved erasure from the active service has a target 
 30 days after the requester's authority and scope are verified; explain delays and
 retained exceptions. These are manual service targets, not automatic deletion jobs
 or an incident-resolution SLA. The hosted notice is published at `/privacy` with
-an update date of 24 October 2026. Self-hosted operators set their own policies.
+an update date of 25 October 2026. Self-hosted operators set their own policies.
 
 ## Stored information
 

@@ -70,8 +70,17 @@ export function sharingView({ api, fail = () => {}, isCurrent = () => true, copy
   function lockForm() {
     [instruction, recipientKind, team, agent].forEach(field => { field.disabled = commitBusy; });
     previewButton.disabled = commitBusy || previewBusy || loadBusy;
+    refresh.disabled = loadBusy || commitBusy || pendingGrants.size > 0;
     cancelPreview.hidden = !previewBusy;
     if (!previewBusy) previewButton.textContent = "Preview matching text";
+  }
+  function renderSourceState() {
+    loadState.replaceChildren(...(!catalog ? [] : catalog.sourceKind === "personal" ? [notice(catalog.modelAvailable ? "Optional model-assisted matching is available under this workspace’s existing processing settings. You still review every excerpt." : "Text matching and manual review are available. Optional model-assisted matching is currently unavailable.")] : [notice("Sharing starts from a personal workspace. Choose your personal workspace in the workspace picker to prepare a reviewed snapshot.")]));
+    if (catalog?.sourceKind === "personal" && !catalog.modelAvailable) loadState.append(h("p", { class: "field-hint" }, "Matching by meaning needs optional Jev processing with applicable access and budget. ", h("a", { href: "#workspace" }, "Review processing settings"), "."));
+  }
+  function invalidateCatalogLoad() {
+    ++loadVersion;
+    if (loadBusy) { loadBusy = false; renderSourceState(); }
   }
   function discardReview(message = "") {
     clearTimeout(previewTimer); preview = null; candidates = [];
@@ -160,6 +169,7 @@ export function sharingView({ api, fail = () => {}, isCurrent = () => true, copy
     if (!current() || !preview || commitBusy || shareButton.disabled || Date.parse(preview.expiresAt) <= now()) { if (preview && Date.parse(preview.expiresAt) <= now()) { preview.expired = true; renderCommitState(); } return; }
     const data = preview, epoch = scope;
     const selections = candidates.filter(item => item.selected).map(item => ({ id: item.id, text: item.draft.trim() }));
+    invalidateCatalogLoad();
     commitBusy = true; lockForm(); renderCommitState(); acknowledge.disabled = true;
     candidates.forEach(item => { item.checkbox.disabled = true; item.editor.disabled = true; });
     review.querySelectorAll("button").forEach(control => { control.disabled = true; });
@@ -219,7 +229,7 @@ export function sharingView({ api, fail = () => {}, isCurrent = () => true, copy
         const control = button(label, async () => {
           if (!current() || pendingGrants.has(share.id) || share.revokedAt) return;
           if (!confirmed) { confirmed = true; control.textContent = confirmLabel; cancel.hidden = false; return; }
-          const attempt = {}, epoch = scope; pendingGrants.set(share.id, attempt); control.disabled = true; cancel.disabled = true; clearCredential(); report("");
+          const attempt = {}, epoch = scope; pendingGrants.set(share.id, attempt); invalidateCatalogLoad(); lockForm(); control.disabled = true; cancel.disabled = true; clearCredential(); report("");
           try {
             const result = kind === "revoke" ? await api.revokeSharing(share.id) : await api.rotateSharingToken(share.id);
             if (!current() || epoch !== scope || pendingGrants.get(share.id) !== attempt) return;
@@ -229,7 +239,7 @@ export function sharingView({ api, fail = () => {}, isCurrent = () => true, copy
               report("Sharing revoked. Previously read or exported copies cannot be recalled."); grantsHeading.focus({ preventScroll: true });
             } else { showCredential(result.credential); report("Agent token replaced. The previous token no longer works."); }
           } catch (error) { if (current() && epoch === scope) { report(error.message || "The change could not be confirmed. Refresh shares and try again.", true); fail(error); } }
-          finally { if (pendingGrants.get(share.id) === attempt) { pendingGrants.delete(share.id); control.disabled = false; cancel.disabled = false; confirmed = false; control.textContent = label; cancel.hidden = true; } }
+          finally { if (pendingGrants.get(share.id) === attempt) { pendingGrants.delete(share.id); lockForm(); control.disabled = false; cancel.disabled = false; confirmed = false; control.textContent = label; cancel.hidden = true; } }
         }, { class: kind === "revoke" ? "text small" : "small" });
         actions.append(control, cancel);
       };
@@ -249,7 +259,7 @@ export function sharingView({ api, fail = () => {}, isCurrent = () => true, copy
     }) : [notice("No approved snapshots yet. Describe a slice above and preview the text to create a share.")]));
   }
   async function loadCatalog() {
-    if (!current() || loadBusy || commitBusy) return;
+    if (!current() || loadBusy || commitBusy || pendingGrants.size > 0) return;
     const version = ++loadVersion, epoch = scope;
     loadBusy = true; refresh.disabled = true; loadState.replaceChildren(notice("Loading sharing settings…")); lockForm();
     try {
@@ -260,12 +270,12 @@ export function sharingView({ api, fail = () => {}, isCurrent = () => true, copy
       team.replaceChildren(h("option", { value: "" }, catalog.targets.length ? "Choose a team" : "No eligible team workspaces"), ...catalog.targets.map(target => h("option", { value: target.id }, target.name)));
       team.value = selected;
       form.hidden = catalog.sourceKind !== "personal"; grants.hidden = catalog.sourceKind !== "personal";
-      loadState.replaceChildren(...(catalog.sourceKind === "personal" ? [notice(catalog.modelAvailable ? "Optional model-assisted matching is available under this workspace’s existing processing settings. You still review every excerpt." : "Text matching and manual review are available. Optional model-assisted matching is currently unavailable.")] : [notice("Sharing starts from a personal workspace. Choose your personal workspace in the workspace picker to prepare a reviewed snapshot.")]));
+      renderSourceState();
       if (catalog.sourceKind !== "personal") { ++previewVersion; discardReview(); clearCredential(); }
       else { updateRecipient(); if (preview?.recipient.kind === "team" && !catalog.targets.some(item => Number(item.id) === Number(preview.recipient.orgId))) invalidateReview("That team is no longer available. Choose a recipient and preview again."); renderGrants(); }
     } catch (error) {
       if (current() && epoch === scope && version === loadVersion) { loadState.replaceChildren(notice(error.message || "Sharing settings could not be loaded. Try again.", "danger", true), button("Try loading again", loadCatalog)); fail(error); }
-    } finally { if (current() && epoch === scope && version === loadVersion) { loadBusy = false; refresh.disabled = false; lockForm(); } }
+    } finally { if (current() && epoch === scope && version === loadVersion) { loadBusy = false; lockForm(); } }
   }
   loadCatalog();
   return { element, clearSecrets() {

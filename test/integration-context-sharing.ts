@@ -28,6 +28,7 @@ export async function checkContextSharing(db:postgres.Sql):Promise<number> {
     await db`INSERT INTO org_members(org_id,email,role) VALUES (${otherId},'different-person@example.test','owner')`;
     const source=(await getOrg(sourceId,db))!,actor=normalizeToken({orgId:sourceId,name:email,email,kind:"session",role:"owner"});
     await ensureDatabase(sourceDb);await migrateOrgDataTables(poolFor(sourceDb));
+    await ensureDatabase(`brain_org_${targetId}`);await migrateOrgDataTables(poolFor(`brain_org_${targetId}`));
     await poolFor(sourceDb)`TRUNCATE memory_entries, trails, reflex_decisions, review_items, dream_runs RESTART IDENTITY CASCADE`;
     const original="Startup launches use staged rollouts.\n\nPersonal medical appointment: private detail.";
     const entry=await withOrg(source,actor,()=>upsertMemoryEntry({slug:"private/health-and-work",topicHint:"private-topic-name",rawText:original,repo:"private-repository",harness:"private-agent-alias"}));
@@ -90,5 +91,6 @@ export async function checkContextSharing(db:postgres.Sql):Promise<number> {
     await db`DELETE FROM org_members WHERE org_id IN (${sourceId},${targetId},${otherId})`;
     await db`DELETE FROM orgs WHERE id IN (${sourceId},${targetId},${otherId})`;
     await closeOrgPool(sourceDb);
+    await closeOrgPool(`brain_org_${targetId}`);
   }
 }
