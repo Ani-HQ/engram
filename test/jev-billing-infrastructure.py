@@ -144,6 +144,34 @@ class JevBillingInfrastructureTests(unittest.TestCase):
                 self.assertRaisesRegex(RuntimeError, "separately reviewed"):
             billing.main()
 
+    def test_prepare_uses_create_headers_then_update_headers_when_retried(self):
+        for existing in (False, True):
+            with self.subTest(existing=existing):
+                operations = []
+                def cloud(args, command, **kwargs):
+                    operations.append(command)
+                    if command[:3] == ["scheduler", "jobs", "describe"]:
+                        return copy.deepcopy(self.schedule) if existing else None
+                    if command[:3] in (["scheduler", "jobs", "create"], ["scheduler", "jobs", "update"]):
+                        self.assertEqual(command[2], "update" if existing else "create")
+                        expected = "--update-headers=Content-Type=application/json" if existing else "--headers=Content-Type=application/json"
+                        rejected = "--headers=" if existing else "--update-headers="
+                        self.assertIn(expected, command)
+                        self.assertFalse(any(flag.startswith(rejected) for flag in command))
+                        return {"state": "PAUSED" if existing else "ENABLED"}
+                    return {}
+                with patch.object(billing, "cloud", side_effect=cloud), \
+                        patch.object(billing, "replace_job", side_effect=lambda args, enabled: operations.append(["replace-job", str(enabled)])), \
+                        patch.object(billing, "verify") as verify:
+                    billing.prepare(self.args)
+                mutation = next(i for i, command in enumerate(operations) if command[:3] in (["scheduler", "jobs", "create"], ["scheduler", "jobs", "update"]))
+                self.assertLess(operations.index(["replace-job", "False"]), mutation)
+                self.assertEqual(sum(command[:3] in (["scheduler", "jobs", "create"], ["scheduler", "jobs", "update"]) for command in operations), 1)
+                self.assertFalse(any("execute" in command or "resume" in command or "access" in command for command in operations))
+                if not existing:
+                    self.assertEqual(operations[-1][:3], ["scheduler", "jobs", "pause"])
+                verify.assert_called_once_with(self.args)
+
 
 if __name__ == "__main__":
     unittest.main()
