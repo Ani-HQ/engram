@@ -138,7 +138,7 @@ export function renderShowcasePage(activity: PublicActivity, origin: string): st
   const description = profile.bio || `${activity.stats.totalActions.toLocaleString("en-US")} agent actions, connected through Engram.`;
   const escape = escapeShowcaseHtml;
   return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="en" data-design-system="signal"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escape(title)}</title><meta name="description" content="${escape(description)}">
 <link rel="canonical" href="${escape(urls.page!)}"><meta property="og:type" content="profile">
 <meta property="og:title" content="${escape(title)}"><meta property="og:description" content="${escape(description)}">
@@ -146,12 +146,12 @@ export function renderShowcasePage(activity: PublicActivity, origin: string): st
 <meta property="og:image:type" content="image/png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${escape(title)}">
 <meta name="twitter:description" content="${escape(description)}"><meta name="twitter:image" content="${escape(urls.card!)}">
-<link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/showcase.css"><script type="module" src="/showcase.js"></script>
+<link rel="stylesheet" href="/design-system.css"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/showcase.css"><link rel="stylesheet" href="/app-theme.css"><script type="module" src="/showcase.js"></script>
 </head><body><div id="public-showcase" data-slug="${escape(profile.slug)}"><main class="public-showcase-fallback"><p>engram</p><h1>${escape(profile.displayName || profile.slug)}</h1><p>${escape(description)}</p><p>${activity.stats.totalActions.toLocaleString("en-US")} actions · ${activity.stats.activeAgents.toLocaleString("en-US")} agents</p></main></div></body></html>`;
 }
 
 export function renderUnavailableShowcasePage(): string {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Profile unavailable · engram</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/showcase.css"></head><body><main class="public-unavailable"><a class="wordmark" href="/">engram</a><h1>Nothing public here yet.</h1><p>This profile is private, unavailable, or has moved.</p><a class="button-link" href="/">Back to engram</a></main></body></html>`;
+  return `<!doctype html><html lang="en" data-design-system="signal"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Profile unavailable · engram</title><link rel="stylesheet" href="/design-system.css"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/showcase.css"><link rel="stylesheet" href="/app-theme.css"></head><body><main class="public-unavailable"><a class="wordmark" href="/">engram</a><h1>Nothing public here yet.</h1><p>This profile is private, unavailable, or has moved.</p><a class="button-link" href="/">Back to engram</a></main></body></html>`;
 }
 
 export function renderShowcaseCard(activity: PublicActivity): string {

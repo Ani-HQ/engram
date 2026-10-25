@@ -109,13 +109,28 @@ function writeState(path:string,state:unknown) {
   try { writeFileSync(temporary,JSON.stringify(state,null,2)+"\n",{flag:"wx",mode:0o600}); renameSync(temporary,path); }
   finally { rmSync(temporary,{force:true}); }
 }
+function reviewedJevFlags(state:any):string[] {
+  // Older release records predate optional Jev billing. For newer records the
+  // flags must come from the reviewed candidate, never a process default.
+  if(state.jev===undefined) return [];
+  const jev=state.jev;
+  if(!jev || typeof jev!=="object" || Array.isArray(jev) ||
+      Object.keys(jev).some(key=>!["customerBillingEnabled","markupBps"].includes(key)) ||
+      typeof jev.customerBillingEnabled!=="boolean" ||
+      !(jev.markupBps===null || (Number.isInteger(jev.markupBps) && jev.markupBps>=0 && jev.markupBps<=10000)) ||
+      (jev.customerBillingEnabled && jev.markupBps===null)) throw new OwnerCheckError("invalid_jev_release_settings");
+  return [...(jev.customerBillingEnabled ? ["--jev-enable-customer-billing"] : []),
+    ...(jev.markupBps===null ? [] : ["--jev-markup-bps",String(jev.markupBps)])];
+}
 function validateState(options:CandidateSettings,state:any) {
   if (state.project!==options.project || state.region!==options.region || state.service!=="engram" || state.image!==options.image || state.tag!==options.tag ||
       typeof state.candidateRevision!=="string" || !/^engram-[a-z0-9-]+$/.test(state.candidateRevision) || !/^https:\/\/[a-z0-9.-]+\.run\.app$/.test(state.candidateURL ?? "")) throw new OwnerCheckError("release_state_mismatch");
+  reviewedJevFlags(state);
 }
 export async function releaseSmoke(options:CandidateSettings,stateFile:string,raw:string,signal:AbortSignal):Promise<void> {
   stopped(signal);
-  const child=Bun.spawn([options.python,release,"smoke","--project",options.project,"--region",options.region,"--service","engram","--image",options.image,"--tag",options.tag,"--state-file",stateFile,"--smoke-token-stdin"],{
+  const state=readState(stateFile).state;validateState(options,state);
+  const child=Bun.spawn([options.python,release,"smoke","--project",options.project,"--region",options.region,"--service","engram","--image",options.image,"--tag",options.tag,"--state-file",stateFile,...reviewedJevFlags(state),"--smoke-token-stdin"],{
     env:{...process.env,CLOUDSDK_CORE_LOG_HTTP:"false",CLOUDSDK_CORE_VERBOSITY:"error",CLOUDSDK_CORE_DISABLE_FILE_LOGGING:"true"},
     stdin:new Blob([raw+"\n"]),stdout:"ignore",stderr:"ignore",
   });

@@ -20,7 +20,7 @@ import urllib.request
 import uuid
 
 VERSION = "2026-09-30.endive"
-EVENTS = {"checkout.session.completed", "checkout.session.async_payment_succeeded", "customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted", "invoice.paid", "invoice.payment_failed"}
+EVENTS = {"checkout.session.completed", "checkout.session.async_payment_succeeded", "customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted", "invoice.created", "invoice.paid", "invoice.payment_failed"}
 PROBE_TYPE = "engram.configuration_probe"
 SECRETS = {
     "key": "engram-stripe-secret-key",

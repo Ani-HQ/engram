@@ -17,11 +17,11 @@ case "$engram_isolation" in
   *) echo "[entrypoint] invalid worker isolation mode" >&2; exit 64 ;;
 esac
 case "${ENGRAM_JOB-}" in
-  ''|dream|provision) ;;
+  ''|dream|provision|mail|billing) ;;
   *) echo "[entrypoint] invalid job mode" >&2; exit 64 ;;
 esac
 
-if [ "$engram_isolation" = cloudrun ] && [ "${ENGRAM_JOB-}" != provision ]; then
+if [ "$engram_isolation" = cloudrun ] && [ "${ENGRAM_JOB-}" != provision ] && [ "${ENGRAM_JOB-}" != mail ] && [ "${ENGRAM_JOB-}" != billing ]; then
   if [ "$(id -u)" != 0 ]; then
     echo "[entrypoint] Cloud Run sandbox networking requires a root launcher" >&2
     exit 78

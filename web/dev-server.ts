@@ -2,6 +2,9 @@
 import { extname, normalize } from "node:path";
 import { createHash } from "node:crypto";
 import { PLANS } from "../gateway/src/plans";
+import { PUBLIC_PAGE_FILES } from "../gateway/src/site-routes";
+import { devReviewPage } from "./dev-review";
+import { devMailPreview } from "../dev/mail-preview";
 import { parsePolicies } from "../gateway/src/policies";
 import { parseReportedSource } from "../gateway/src/agent-source";
 import { activityDetail, activityPage, latestLogicalActions } from "./activity-model.js";
@@ -27,6 +30,10 @@ const demoSelfHosted = Bun.env.ENGRAM_DEMO_SELF_HOSTED === "1";
 const root = new URL("./", import.meta.url);
 const session = { ...await fixture("session.json"), demo: true };
 const workspacePolicies = new Map<number, ReturnType<typeof parsePolicies>>(session.orgs.map((org: any) => [org.id, parsePolicies(org.id === session.org.id ? session.org.policies : {})]));
+const demoJevSettings = new Map<number, { enabled: boolean; monthlyBudgetUsd: string }>();
+// Fixed, simulated metadata only. This preview does not read provider keys,
+// approve customer pricing, call TypeSafe, create usage, or contact billing.
+const demoJevPricing = { currency: "usd", providerInputPerMillionUsd: "0.042", inputPerMillionUsd: null, outputPerMillionUsd: null, markupBps: null, rateVersion: null };
 session.org.policies = workspacePolicies.get(session.org.id)!;
 const memoryFixture = await fixture("pages.json");
 const detailFixture = await fixture("page-detail.json");
@@ -71,8 +78,13 @@ const demoStreams = createShowcaseStreamManager({
 const invitations = new Map<number, any[]>();
 const signupInvitations = new Map<string, any>();
 const signupCodes = new Map<string, string>();
-const signupLinks = new Map<string, string>();
-const demoSession = () => ({ ...session, capabilities: { manageSignupInvites: session.org.id === 1 && session.role === "owner" }, onboarding: demoOnboarding() });
+const signupLinks = new Map<string, { inviteId: string; email: string }>();
+let demoFriendGrant = { active: true, source: "invite", durationDays: 60, unlimitedKnowledgeTransfers: true, extensionUrl: "https://x.com/anirudh_twt", grantedAt: new Date(Date.now() - 13 * 86_400_000).toISOString(), expiresAt: new Date(Date.now() + 47 * 86_400_000).toISOString(), revokedAt: null as string | null };
+function demoAccess() {
+  const complimentary = !demoSelfHosted && session.org.id === 2 && session.org.kind === "personal" ? { ...demoFriendGrant, active: !demoFriendGrant.revokedAt && Date.parse(demoFriendGrant.expiresAt) > Date.now(), unlimitedKnowledgeTransfers: !demoFriendGrant.revokedAt && Date.parse(demoFriendGrant.expiresAt) > Date.now() } : null;
+  return { serverNow: new Date().toISOString(), canWrite: true, entitlementSource: complimentary?.active ? "complimentary" : demoSelfHosted ? "self-hosted" : "trial", complimentary };
+}
+const demoSession = () => ({ ...session, access: demoAccess(), capabilities: { manageSignupInvites: session.org.id === 1 && session.role === "owner" }, onboarding: demoOnboarding() });
 const tokens: any[] = [
   { id: 1, orgId: 1, name: "codex", harness: "codex", sourceLabel: null, canWrite: true, createdAt: "2026-10-20T09:00:00.000Z", revokedAt: null, lastUsedAt: "2026-10-21T09:42:00.000Z", issuerKind: "member", issuedBy: session.email },
   { id: 2, orgId: 1, name: "mac-claude", harness: "claude-code", sourceLabel: null, canWrite: true, createdAt: "2026-10-19T09:00:00.000Z", revokedAt: null, lastUsedAt: "2026-10-21T09:38:00.000Z", issuerKind: "member", issuedBy: session.email },
@@ -89,26 +101,36 @@ if (import.meta.main) {
 
 export async function devFetch(req: Request): Promise<Response> {
   const url = new URL(req.url);
+  const mailPreview = await devMailPreview(req);
+  if (mailPreview) return mailPreview;
+  if (url.pathname === "/__review" && ["GET", "HEAD"].includes(req.method)) return devReviewPage(url, req.method === "HEAD");
   if (url.pathname === "/source") return Response.redirect("https://github.com/Ani-HQ/engram", 302);
   if (url.pathname === "/hosted") return Response.redirect("https://engram.ani.computer/pricing", 302);
   const showcase = await publicShowcase(req, url);
   if (showcase) return showcase;
-  return url.pathname.startsWith("/api/") ? handleApi(req, url) : serveStatic(url, req.method === "HEAD");
+  if (url.pathname.startsWith("/api/")) return handleApi(req, url);
+  if (!["GET", "HEAD"].includes(req.method)) return new Response("Method Not Allowed", { status: 405 });
+  return serveStatic(url, req.method === "HEAD");
 }
 
 async function handleApi(req: Request, url: URL): Promise<Response> {
   const route = `${req.method} ${url.pathname}`;
-  if (route === "GET /api/plans") return json({ mode: "hosted", trialDays: 14, currency: "usd", checkoutAvailable: false, plans: PLANS, demo: true });
+  if (route === "GET /api/plans") return json({ mode: demoSelfHosted ? "self-hosted" : "hosted", trialDays: 14, currency: "usd", checkoutAvailable: false, plans: PLANS, addons: { jev: demoJevPricing }, demo: true });
   if (route === "GET /api/signup-policy") return json({ mode: demoSelfHosted ? "open" : "invite-only", complimentary: true, verificationRequired: true, inviteCodeRequired: !demoSelfHosted, tokenSignInAllowed: demoSelfHosted, demo: true });
   if (route === "POST /api/session" && !demoSelfHosted) return json({ error: "Sign in with an email link. Access tokens connect agents only.", code: "token_sign_in_disabled" }, 403);
   if (route === "POST /api/session" || route === "POST /api/invites/accept") {
     const body = await bodyObject(req);
     if (!string(body?.token)) return json({ error: "A token is required." }, 400);
-    const signupId = signupLinks.get(body.token), signup = signupId && signupInvitations.get(signupId);
+    const proof = signupLinks.get(body.token), signup = proof && signupInvitations.get(proof.inviteId);
     if (route === "POST /api/invites/accept" && body.token.startsWith("svf_") && !signup) return json({ error: "This preview verification link is unavailable." }, 400);
     if (signup) {
       if (signup.revokedAt || signup.redeemedAt || Date.parse(signup.expiresAt) <= Date.now()) return json({ error: "This preview verification link is unavailable." }, 400);
+      signup.email = proof!.email; signup.emailBound = true;
       signup.redeemedAt = new Date().toISOString(); signup.complimentaryAppliedAt = signup.redeemedAt; signup.redeemedOrgId = 2;
+      signup.accessExpiresAt = new Date(Date.parse(signup.redeemedAt) + 60 * 86_400_000).toISOString();
+      demoFriendGrant = { ...demoFriendGrant, grantedAt: signup.redeemedAt, expiresAt: signup.accessExpiresAt, revokedAt: null };
+      const personal = session.orgs.find((org: any) => org.id === 2);
+      session.org = { ...session.org, ...personal, policies: workspacePolicies.get(2) || parsePolicies({}) };
     }
     return json(demoSession(), 200, { "Set-Cookie": "engram_dev=1; Path=/; HttpOnly; SameSite=Lax" });
   }
@@ -120,20 +142,42 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     if (typeof body?.email !== "string" || !body.email.includes("@")) return json({ error: "An email is required." }, 400);
     if (route === "POST /api/orgs" && !demoSelfHosted && (body.inviteCode || body.email.toLowerCase() !== session.email.toLowerCase())) {
       const id = signupCodes.get(String(body.inviteCode || "")), invite = id && signupInvitations.get(id);
-      if (!invite || invite.email !== body.email.trim().toLowerCase() || invite.revokedAt || Date.parse(invite.expiresAt) <= Date.now() || invite.redeemedAt) return json({ error: "Use an unexpired invite code issued for this email address.", code: "invite_invalid" }, 400);
-      const token = `svf_demo_${crypto.randomUUID()}`; signupLinks.set(token, invite.id);
-      return json({ sent: false, url: `${url.origin}/app#join=${token}`, demo: true });
+      if (!invite || (invite.email && invite.email !== body.email.trim().toLowerCase()) || invite.revokedAt || Date.parse(invite.expiresAt) <= Date.now() || invite.redeemedAt) return json({ error: "Use an unexpired invitation. An email-bound invitation must use its invited address.", code: "invite_invalid" }, 400);
+      const token = `svf_demo_${crypto.randomUUID()}`; signupLinks.set(token, { inviteId: invite.id, email: body.email.trim().toLowerCase() });
+      return json({ sent: false, url: `${url.origin}/app?preview=${crypto.randomUUID()}#join=${token}`, demo: true });
     }
-    return json({ sent: false, url: `${url.origin}/app#join=inv_dev`, demo: true });
+    // Force a document navigation even when a simulated link is opened from
+    // /app itself; hash-only changes select an auth panel rather than booting
+    // email verification. The query marker is random sample data, not a secret.
+    return json({ sent: false, url: `${url.origin}/app?preview=${crypto.randomUUID()}#join=inv_dev`, demo: true });
   }
   // An initial visit is signed in to the demo. An explicit sign-out stays signed out.
   if (req.headers.get("cookie")?.split(";").some(value => value.trim() === "engram_dev=0")) {
     return json({ error: "unauthorized" }, 401);
   }
-  if (route === "GET /api/me") return json(demoSession());
+  if (route === "GET /api/me") {
+    if (req.headers.get("x-engram-workspace") && req.headers.get("x-engram-workspace") !== String(session.org.id)) return json({ error: "The selected workspace changed." }, 409);
+    return json(demoSession(), 200, { "Cache-Control": "no-store" });
+  }
   const expectedWorkspace = req.headers.get("x-engram-workspace");
   if (expectedWorkspace && expectedWorkspace !== String(session.org.id)) return json({ error: "The selected workspace changed. Please start the export again." }, 409);
   const workspaceId = session.org.id;
+  if (url.pathname === "/api/jev") {
+    const headers = { "Cache-Control": "no-store" };
+    if (!expectedWorkspace) return json({ error: "Select a workspace and try again." }, 400, headers);
+    if (req.method === "GET") return json(demoJevSummary(), 200, headers);
+    if (req.method !== "PUT") return json({ error: "method not allowed" }, 405, headers);
+    if (req.headers.get("x-engram-console") !== "1" || session.role !== "owner" || !session.email) return json({ error: "Only a signed-in workspace owner can change Jev settings." }, 403, headers);
+    const body = await bodyObject(req);
+    if (!body || typeof body.enabled !== "boolean" || typeof body.monthlyBudgetUsd !== "string" || !/^(?:0|[1-9]\d{0,4})(?:\.\d{1,2})?$/.test(body.monthlyBudgetUsd) || Number(body.monthlyBudgetUsd) > 10000 || Object.keys(body).some(key => !["enabled", "monthlyBudgetUsd", "acceptedRateVersion"].includes(key))) return json({ error: "Use valid Jev settings and a monthly budget up to 10,000 USD." }, 400, headers);
+    const summary = demoJevSummary();
+    if (body.enabled && summary.eligibility === "subscription-required") return json({ error: "An active Cloud subscription is required for billed Jev usage." }, 409, headers);
+    if (body.enabled && !demoSelfHosted && Number(body.monthlyBudgetUsd) < .01) return json({ error: "Choose a positive monthly soft budget." }, 400, headers);
+    demoJevSettings.set(workspaceId, { enabled: body.enabled, monthlyBudgetUsd: body.monthlyBudgetUsd });
+    session.org.policies = parsePolicies({ ...session.org.policies, jevProcessing: body.enabled });
+    workspacePolicies.set(workspaceId, session.org.policies);
+    return json(demoJevSummary(), 200, headers);
+  }
   if (url.pathname === "/api/workspace") {
     if (req.method !== "PUT") return json({ error: "method not allowed" }, 405);
     if (req.headers.get("x-engram-console") !== "1") return json({ error: "Use the console to rename this workspace." }, 403);
@@ -150,23 +194,23 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     if (route === "GET /api/admin/signup-invites") return json({ invites: [...signupInvitations.values()].reverse().slice(0, 100), more: signupInvitations.size > 100 });
     if (route === "POST /api/admin/signup-invites") {
       const body = await bodyObject(req);
-      if (typeof body?.email !== "string" || !body.email.includes("@")) return json({ error: "An email is required." }, 400);
+      if (!body || Object.keys(body).some(key => key !== "email") || (body.email !== undefined && (typeof body.email !== "string" || !body.email.includes("@")))) return json({ error: "Use an optional email address or leave it blank." }, 400);
       const id = crypto.randomUUID(), inviteCode = `demo_signup_${crypto.randomUUID()}`;
-      const invite = { id, email: body.email.trim().toLowerCase(), createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 7 * 86_400_000).toISOString(), revokedAt: null, redeemedAt: null, redeemedOrgId: null, accessExpiresAt: null, complimentaryAppliedAt: null, complimentaryRevokedAt: null };
+      const invite = { id, email: body.email?.trim().toLowerCase() || null, emailBound: Boolean(body.email?.trim()), createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 7 * 86_400_000).toISOString(), revokedAt: null, redeemedAt: null, redeemedOrgId: null, accessExpiresAt: null, accessDurationDays: 60, extensionUrl: "https://x.com/anirudh_twt", complimentaryAppliedAt: null, complimentaryRevokedAt: null };
       signupInvitations.set(id, invite); signupCodes.set(inviteCode, id);
-      return json({ invite, inviteCode }, 201);
+      return json({ invite, inviteCode, inviteUrl: `${url.origin}/app#invite=${encodeURIComponent(inviteCode)}` }, 201);
     }
     const revoke = url.pathname.match(/^\/api\/admin\/signup-invites\/([^/]+)\/revoke$/);
     if (req.method === "POST" && revoke) {
       const invite = signupInvitations.get(decodeURIComponent(revoke[1]));
       if (!invite) return json({ error: "Invite not found." }, 404);
       invite.revokedAt = new Date().toISOString();
-      if (invite.complimentaryAppliedAt) invite.complimentaryRevokedAt = invite.revokedAt;
+      if (invite.complimentaryAppliedAt) { invite.complimentaryRevokedAt = invite.revokedAt; demoFriendGrant.revokedAt = invite.revokedAt; }
       return json({ invite, revocationPending: false });
     }
     return json({ error: "not found" }, 404);
   }
-  if (route === "GET /api/billing") return json({ mode: "hosted", planId: "trial", status: "trial", canWrite: true, trialEndsAt: new Date(Date.now() + 14 * 86_400_000).toISOString(), currentPeriodEndsAt: null, cancelAtPeriodEnd: false, checkoutAvailable: false, portalAvailable: false });
+  if (route === "GET /api/billing") { const access = demoAccess(); return json({ mode: demoSelfHosted ? "self-hosted" : "hosted", planId: access.complimentary?.active ? "complimentary" : "trial", status: access.complimentary?.active ? "complimentary" : "trial", ...access, trialEndsAt: new Date(Date.now() + 14 * 86_400_000).toISOString(), currentPeriodEndsAt: null, cancelAtPeriodEnd: false, checkoutAvailable: false, portalAvailable: false }); }
   if (route === "POST /api/billing/checkout" || route === "POST /api/billing/portal") return json({ error: "Payments are disabled in the local preview. No charge was made." }, 503);
   if (url.pathname === "/api/insights") return handleDemoInsights(req, url);
   if (url.pathname === "/api/review" || url.pathname.startsWith("/api/review/")) return handleDemoReview(req, url);
@@ -306,7 +350,19 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
 }
 
 function demoExternalStatus() {
-  return { consented: session.org.policies.externalAiProcessing === true, configured: false, generativeConfigured: false };
+  return { consented: session.org.policies.externalAiProcessing === true, generativeConsented: session.org.policies.externalAiProcessing === true, jevConsented: session.org.policies.jevProcessing === true, configured: demoJevSummary().configured, jevConfigured: demoJevSummary().configured, embeddingConfigured: false, generativeConfigured: false };
+}
+
+function demoJevSummary() {
+  const settings = demoJevSettings.get(session.org.id) || { enabled: false, monthlyBudgetUsd: "0" };
+  const eligibility = demoSelfHosted ? "self-hosted" : session.org.id === 2 && session.org.kind === "personal" ? "operator-funded" : "subscription-required";
+  const configured = eligibility !== "subscription-required";
+  const start = new Date(), end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
+  start.setUTCDate(1); start.setUTCHours(0, 0, 0, 0);
+  const unavailableReason = !settings.enabled ? "disabled" : !configured ? "not-configured" : !demoSelfHosted && Number(settings.monthlyBudgetUsd) <= 0 ? "budget-reached" : null;
+  return { enabled: settings.enabled, available: unavailableReason === null, canManage: session.role === "owner" && Boolean(session.email), configured, eligibility, unavailableReason, pricing: demoJevPricing,
+    budget: { monthlyUsd: settings.monthlyBudgetUsd, spentUsd: "0", remainingUsd: settings.monthlyBudgetUsd, periodStartsAt: start.toISOString(), periodEndsAt: end.toISOString(), softLimit: true },
+    usage: { calls: 0, inputTokens: "0", outputTokens: "0", pendingCalls: 0, unknownCalls: 0 }, demo: true };
 }
 
 async function handleDemoInsights(req: Request, url: URL) {
@@ -595,18 +651,25 @@ function integer(url: URL, key: string, fallback: number, max: number) {
 async function serveStatic(url: URL, head = false): Promise<Response> {
   let pathname: string;
   try { pathname = decodeURIComponent(url.pathname); } catch { return new Response(head ? null : "Bad Request", { status: 400 }); }
-  if (["/", "/app", "/app/"].includes(pathname)) pathname = "/index.html";
-  pathname = ({ "/pricing": "/pricing.html", "/privacy": "/privacy.html", "/self-host": "/self-host.html" } as Record<string, string>)[pathname] ?? pathname;
+  pathname = PUBLIC_PAGE_FILES[pathname] ?? pathname;
   const safe = normalize(pathname).replace(/^(\.\.[/\\])+/, "");
-  const fileUrl = new URL(`.${safe}`, root);
+  let fileUrl = new URL(`.${safe}`, root), status = 200;
   if (!fileUrl.pathname.startsWith(root.pathname)) return new Response(head ? null : "Forbidden", { status: 403 });
-  const file = Bun.file(fileUrl);
-  if (!await file.exists()) return new Response(head ? null : "Not Found", { status: 404 });
-  const type = ({ ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml; charset=utf-8", ".woff2": "font/woff2", ".ttf": "font/ttf", ".png": "image/png", ".ico": "image/x-icon", ".webmanifest": "application/manifest+json" } as Record<string, string>)[extname(fileUrl.pathname)];
+  let file = Bun.file(fileUrl);
+  if (!await file.exists()) {
+    if (pathname.startsWith("/workspace/")) fileUrl = new URL("./index.html", root);
+    else if (!extname(pathname) && !pathname.startsWith("/brand")) { fileUrl = new URL("./not-found.html", root); status = 404; }
+    else return new Response(head ? null : "Not Found", { status: 404 });
+    file = Bun.file(fileUrl);
+    if (!await file.exists()) return new Response(head ? null : "Not Found", { status: 404 });
+  }
+  const type = ({ ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml; charset=utf-8", ".woff2": "font/woff2", ".ttf": "font/ttf", ".png": "image/png", ".ico": "image/x-icon", ".webmanifest": "application/manifest+json", ".xml": "application/xml; charset=utf-8", ".txt": "text/plain; charset=utf-8" } as Record<string, string>)[extname(fileUrl.pathname)];
   const content = head ? null : extname(fileUrl.pathname) === ".html" ? (await file.text()).replace("</head>", '<meta name="engram-demo" content="sample-data"></head>') : file;
   const assetPath = fileUrl.pathname.slice(root.pathname.length - 1);
   const publicBrandAsset = assetPath.startsWith("/brand/") || ["/favicon.svg", "/favicon.ico", "/apple-touch-icon.png", "/site.webmanifest"].includes(assetPath);
-  return new Response(content, { headers: { ...(type ? { "Content-Type": type } : {}), "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff", ...(publicBrandAsset ? { "Access-Control-Allow-Origin": "*" } : {}) } });
+  // Only this loopback sample-data server permits same-origin review frames.
+  // Production's static responses keep frame-ancestors 'none'.
+  return new Response(content, { status, headers: { ...(type ? { "Content-Type": type } : {}), "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "same-origin", "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'", ...(publicBrandAsset ? { "Access-Control-Allow-Origin": "*" } : {}) } });
 }
 
 async function bodyObject(req: Request): Promise<any> {

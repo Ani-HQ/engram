@@ -33,7 +33,7 @@ Create a Stripe recurring product/price for Cloud. Enable Customer Portal paymen
 - `checkout.session.completed`
 - `checkout.session.async_payment_succeeded`
 - `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`
-- `invoice.paid`, `invoice.payment_failed`
+- `invoice.created`, `invoice.paid`, `invoice.payment_failed`
 
 Payment is confirmed through the verified webhook or authoritative subscription refresh, never through the checkout return URL. Hosted mode fails closed when Checkout is unconfigured. The default deployment mode remains self-hosted, so enabling a paid service is an explicit operator action; existing production is not silently switched into billing by this change.
 
@@ -63,7 +63,177 @@ After a trial or paid access period ends, content writes stop through HTTP, MCP,
 
 Billing sends an opaque workspace reference to Stripe, not agent identities, memory, action content, or transcripts. Stripe collects payment and billing information on its hosted page. Keep the operator's retention and privacy disclosures aligned with the actual deployment.
 
+## Optional Jev usage
+
+Jev is a separate opt-in add-on to the Cloud workspace subscription. It is not
+enabled by the older embeddings/briefs consent, and a server key alone grants no
+permission. `GET /api/jev` exposes the selected workspace's eligibility, saved
+budget, accepted pricing and aggregate usage; `PUT /api/jev` requires a current
+owner's human email session, the console CSRF header and an exact workspace pin.
+The request supplies `enabled`, `monthlyBudgetUsd` as a decimal string and, for
+paid Cloud use, `acceptedRateVersion`. It never accepts a provider API key.
+
+Self-hosters use their own `JEV_API_KEY`; blank/`unset` values fall back to
+`REFLEX_API_KEY`, then `TYPESAFE_API_KEY`. They explicitly enable Jev for the
+workspace and pay their provider directly. Engram does not export self-hosted
+Jev usage to Stripe. [Reflex](REFLEX.md) describes model/transport configuration
+and the separate Voyage/OpenAI controls.
+
+Hosted customer use requires all of the following: a configured key and reviewed
+model selection, a ready workspace with Jev enabled, an active paid Cloud
+subscription, a positive monthly soft budget and acceptance of the current
+approved rate. A trial or ordinary complimentary workspace does not authorize
+customer-billed Jev. New paid usage remains disabled unless the operator
+explicitly sets `ENGRAM_JEV_BILLING_ENABLED=1` and an approved
+`ENGRAM_JEV_MARKUP_BPS`; `0` basis points means provider price. No markup is
+implicitly selected. The default model is TypeSafe’s stable `jev-latest` alias, which can change
+underlying versions; it does not lock model weights. Exact selectable versions
+remain supported when the provider exposes them. Requested and reported model
+names are recorded truthfully alongside usage. The immutable rate version and
+markup are captured with
+each admitted call; a rate change requires renewed workspace acceptance before
+new paid calls can proceed.
+
+The implemented provider rate is $0.042 USD per million input tokens and zero
+for output tokens, consistent with [TypeSafe's published pricing](https://typesafe.ai/).
+Rates can change; verify the provider contract and deliberately update the
+versioned rate before changing this snapshot. The workspace sees the approved
+customer rate including markup before enabling it. This code/configuration is
+not evidence that a live Jev charge has occurred.
+
+**Selected beta pricing — 25 October 2026:** pass provider cost through at
+$0.042 USD per million input tokens, with output tokens free and no markup
+(`ENGRAM_JEV_MARKUP_BPS=0`). The operator delegated this pricing decision; the
+rate was checked against TypeSafe's public pricing and
+[API usage documentation](https://docs.typesafe.ai/api/system-one).
+The existing Cloud workspace subscription covers the product and hosting;
+the optional Jev line passes through its measured provider usage during beta.
+This is a launch choice, not a finding from willingness-to-pay research.
+Cloud Build records zero markup while retaining billing disabled by default.
+Release review, explicit activation and each paid workspace's rate acceptance
+remain required. Operator-funded and self-hosted behavior stays as described
+below.
+
+### Prepare and review the Jev release
+
+Store the key using `bash deploy/set-jev-key.sh`; its hidden terminal prompt
+writes only `engram-jev-api-key` through stdin. Do not paste a key into chat,
+source, command arguments or a browser setting. `deploy/configure-jev.py plan
+--project YOUR_PROJECT` is offline; `check` reads the stored key and the official
+model list without inference, while `prepare` also grants the existing runtime
+identity access to that one secret. These commands do not enable a workspace.
+
+If hidden terminal paste is unavailable on macOS, run
+`bash deploy/set-jev-key.sh --clipboard`. After it starts, copy only the Jev key
+from the provider console and press Return in Terminal without pasting. The
+helper reads the clipboard locally and sends the value through stdin to the
+same secret; it never prints the value or puts it in command arguments.
+
+An approved release may pass `--jev-owner-email owner@example.test` to select
+one existing personal workspace's sole owner. The provisioner applies the
+one-time default with `--jev-operator-budget-usd 1`; no private owner address is
+committed. The request runtime and tenant engines never receive this selector.
+
+Prepare the private exporter with `python3 deploy/jev-billing.py prepare
+--project YOUR_PROJECT --image gcr.io/YOUR_PROJECT/engram:REVIEWED_BUILD`.
+It creates a disabled `engram-billing` job and a paused quarter-hour schedule;
+preparation performs no exports. Its only secret bindings are the restricted
+runtime database template, tenant credential key and dedicated Stripe key.
+It receives no Jev key, webhook signing key or administrator database URL.
+
+After a customer rate is approved, stage with
+`--jev-enable-customer-billing --jev-markup-bps 0` and use
+the same values for smoke and activation. Activation verifies the prepared
+exporter and enables it only after traffic changes. Without that flag, the
+exporter remains paused. Rollback pauses it; frozen pending batches remain
+available for operator reconciliation. The standalone exporter `enable`
+command additionally requires `--allow-customer-billing`.
+
+The existing dedicated Stripe endpoint needs `invoice.created` added before
+customer billing activation. The explicitly approved `configure-stripe.py
+--apply` path upgrades only the known previous event list on that same endpoint,
+preserving its ID and signing secret; live configuration also requires
+`--allow-live`. Unknown endpoint settings fail for manual review. Verify the
+result using `verify-billing.py`; no live Jev invoice roundtrip is established
+by the offline or PostgreSQL tests.
+
+An expressly authorized personal operator workspace has a separate,
+provisioner-owned funding record. Its one-time default is Jev enabled with a
+$1 USD monthly soft budget, measured against known provider cost; its customer
+charge is zero. The helper requires one exact existing personal owner selected
+by the operator, does not create/promote an owner, and does not embed a personal
+email in source. Repeating provisioning does not reactivate a later opt-out or
+revoked funding record. This exception does not enable other accounts or AI
+providers. The runtime can read, but cannot grant or rewrite, operator funding.
+
+Soft budgets reset on UTC calendar-month boundaries, independently of the
+subscription's billing cycle. Admission checks settled known spending before
+new calls. Already admitted/in-flight calls can exceed the threshold, so this
+is not a hard spending guarantee. The durable daily attempt allowance still
+applies. Missing consent, funding, approved price or available budget leaves the
+local memory/search path available.
+
+### Usage receipts and invoice export
+
+Every hosted Jev attempt reserves a durable receipt before transmission. The
+provider's actual input/output token counts and returned model are validated and
+settled before interpreting its answers. A valid call can therefore be billable
+even when its answers are unusable. The ledger uses integer nano-USD amounts,
+stores the accepted rate/model/funding identity, and contains no prompts or
+memory/action text. Hosted calls have one transmission attempt. Stable background
+operation IDs deny retransmission after a crash; reading a cached result does
+not create another provider call or usage charge.
+
+Timed-out, aborted, failed or malformed responses remain unresolved/unbilled;
+a model mismatch is recorded as rejected with no customer charge. Unknown and
+pending receipts need operator review, not a blind replay. Operator-funded usage
+is accounted separately and never added to a customer invoice.
+
+A signed `invoice.created` event prepares a batch only for an exact stored
+workspace/customer/subscription binding and a USD draft subscription invoice.
+It takes settled, previously unbatched customer usage requested before that
+invoice's creation time. The total plus the same workspace/subscription's
+existing sub-cent remainder is floored to whole cents; the remaining fraction
+carries forward for that subscription. Calls are not rounded up to a cent each.
+The batch freezes the selected usage, invoice identity and amount before export.
+
+Only an aggregate `Jev usage` invoice item, amount and opaque batch/workspace
+references go to Stripe. Export reconciles matching invoice items before every
+possible POST and uses a stable Stripe idempotency key. It writes only to the
+original draft invoice. A response lost after provider acceptance can be recovered
+from the exact item; duplicate/mismatched items, an already-finalized invoice
+without the item or an unresolved attempt beyond the 23-hour local retry horizon
+require manual reconciliation. The exporter does not silently move the charge to
+another invoice, finalize an invoice, or initiate a separate off-session payment.
+
+The webhook acknowledges after durable batch preparation even when export needs
+reconciliation, so an add-on export retry does not deliberately hold up the base
+invoice's automatic finalization. The dedicated billing worker drains up to 25
+eligible durable batches, reports aggregate outcomes and supports read-only
+`--dry-run` inspection. Its separate `ENGRAM_JEV_BILLING_WORKER_ENABLED=1`
+approval permits existing accepted usage to export even after new-call billing
+is turned off. Preparation keeps that worker disabled and its private schedule
+paused until the approved release step. A finalized or ambiguous invoice remains
+an operator review item; never delete its batch or recreate it under a new key
+to force collection.
+
+The additive `jev_version` readiness marker requires provisioner migration before
+the restricted runtime starts. Usage, accepted rates, carry balances and invoice
+receipts must survive traffic rollback for reconciliation. Keep the current
+provisioner/ACL protections; do not downgrade them with an older image. Neither
+local tests nor this documentation establish live invoice collection; verify the
+approved deployment, webhook delivery and aggregate worker state separately.
+
 ## Operator-managed complimentary access
+
+New signup invitations carry 60 days of unlimited core knowledge transfers from
+verified redemption. The original timestamps are preserved through delayed
+provisioning and retries. Workspace access summaries expose the exact expiry,
+server time and invitation provenance for the countdown and X extension link.
+They expose no raw invite credential. Expired invitation access does not reset
+trials or keep blocking an otherwise valid subscription checkout. See
+[beta invitations](BETA_INVITES.md) for single-use link and optional mailbox
+binding behavior. Earlier grants retain their original terms.
 
 A hosted workspace can have a separate complimentary entitlement. Its nullable
 `expires_at` is genuinely non-expiring when null; it does not extend, reset or

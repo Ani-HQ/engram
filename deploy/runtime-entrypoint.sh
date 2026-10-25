@@ -18,4 +18,10 @@ fi
 if [ "${ENGRAM_JOB:-}" = provision ]; then
   exec bun gateway/src/jobs/provision.ts
 fi
+if [ "${ENGRAM_JOB:-}" = mail ]; then
+  exec bun gateway/src/jobs/mail.ts
+fi
+if [ "${ENGRAM_JOB:-}" = billing ]; then
+  exec bun gateway/src/jobs/billing.ts
+fi
 exec bun gateway/src/index.ts

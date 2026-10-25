@@ -5,7 +5,8 @@ import { authenticateSecret, createLoginInvite, createSession, type TokenRecord 
 import { parseSessionCookie, serializeSessionCookie } from "./cookies";
 import { sql } from "./db";
 import { sha256 } from "./hash";
-import { devLoginLinksAllowed, loginLinkText, sendMail } from "./mail";
+import { devLoginLinksAllowed, sendMail } from "./mail";
+import { renderEmail } from "./mail-templates";
 import { localJwks, oauthSigningEnabled, signJwt } from "./oauth-keys";
 import { canonicalResource, corsHeaders, oauthIssuer, resourceHost } from "./oauth";
 import { renderOAuthAuthorizePage } from "./oauth-view";
@@ -164,8 +165,7 @@ async function sendAuthorizeLink(
   const continueUrl = `${oauthIssuer(resourceHost(req))}/oauth/continue?invite=${invite.raw}&rid=${rid}`;
   const delivery = await sendMail({
     to: email,
-    subject: "Sign in to engram",
-    text: loginLinkText(continueUrl),
+    ...renderEmail({ template: "agent-authorize", url: continueUrl, expiresInMinutes: REQUEST_TTL_MS / 60_000 }),
   });
   if (delivery === "failed") return authorizePage(parsed, "Could not send the email.");
   if (delivery === "skipped") {

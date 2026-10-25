@@ -1,3 +1,5 @@
+import { configuredJevModel } from "./jev-model";
+
 // All deployment knobs in one place. ENGRAM_DB_URL_TEMPLATE is the runtime URL,
 // a Postgres URL containing the literal __DB__ where the database name goes, e.g.
 //   postgresql://postgres:pw@localhost:5544/__DB__
@@ -98,8 +100,8 @@ export const config = {
   },
   brainIdleMs: envNumber("ENGRAM_BRAIN_IDLE_MS", 10 * 60 * 1000),
   reflex: {
-    apiKey: secretValue(process.env.REFLEX_API_KEY ?? process.env.TYPESAFE_API_KEY),
-    model: (process.env.REFLEX_MODEL ?? process.env.TYPESAFE_MODEL ?? "jev-1.13.0").trim(),
+    apiKey: [process.env.JEV_API_KEY, process.env.REFLEX_API_KEY, process.env.TYPESAFE_API_KEY].map(secretValue).find(Boolean) ?? "",
+    model: configuredJevModel(),
     endpoint: (process.env.REFLEX_ENDPOINT ?? "https://api.typesafe.ai/v1/systemone").trim(),
     timeoutMs: envNumber("REFLEX_TIMEOUT_MS", envNumber("JEV_TIMEOUT_MS", 15_000)),
     concurrency: envNumber("REFLEX_CONCURRENCY", envNumber("JEV_CONCURRENCY", 8)),

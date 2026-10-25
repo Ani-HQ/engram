@@ -10,8 +10,11 @@ export class SignupInviteError extends Error {
   constructor(message: string, readonly status = 400, readonly code = "invite_invalid") { super(message); }
 }
 
+export const SIGNUP_ACCESS_DAYS = 60;
+export const SIGNUP_EXTENSION_URL = "https://x.com/anirudh_twt";
+
 export function signupPolicy(mode = config.signupMode) {
-  return { mode, complimentary: true, verificationRequired: true, inviteCodeRequired: mode === "invite-only", tokenSignInAllowed: config.deploymentMode === "self-hosted" };
+  return { mode, complimentary: true, accessDurationDays: SIGNUP_ACCESS_DAYS, unlimitedKnowledgeTransfers: true, accessStartsOn: "verified-redemption", extensionUrl: SIGNUP_EXTENSION_URL, verificationRequired: true, inviteCodeRequired: mode === "invite-only", tokenSignInAllowed: config.deploymentMode === "self-hosted" };
 }
 
 export async function canManageSignupInvites(token: TokenRecord, db: postgres.Sql = sql): Promise<boolean> {
@@ -39,18 +42,20 @@ async function requireOperator(token: TokenRecord, db: postgres.Sql) {
 function iso(value: unknown): string | null { return value == null ? null : new Date(String(value)).toISOString(); }
 export function publicSignupInvite(row: any) {
   return {
-    id: String(row.id), email: String(row.email), createdAt: iso(row.created_at), expiresAt: iso(row.expires_at),
+    id: String(row.id), email: row.email == null ? null : String(row.email), emailBound: row.email != null, createdAt: iso(row.created_at), expiresAt: iso(row.expires_at),
     revokedAt: iso(row.revoked_at), redeemedAt: iso(row.redeemed_at),
-    redeemedOrgId: row.redeemed_org_id == null ? null : Number(row.redeemed_org_id), accessExpiresAt: null,
+    redeemedOrgId: row.redeemed_org_id == null ? null : Number(row.redeemed_org_id), accessExpiresAt: iso(row.access_expires_at),
+    accessDurationDays: row.access_duration_days == null ? null : Number(row.access_duration_days),
+    extensionUrl: SIGNUP_EXTENSION_URL,
     complimentaryAppliedAt: iso(row.complimentary_applied_at), complimentaryRevokedAt: iso(row.complimentary_revoked_at),
     complimentaryErrorCode: row.complimentary_error_code === "signup_access_unavailable" ? "signup_access_unavailable" : null,
     complimentaryRetryAt: iso(row.complimentary_retry_at),
   };
 }
 
-export async function issueSignupInvite(token: TokenRecord, email: string, expiresAt: unknown = undefined, db: postgres.Sql = sql, now = new Date()) {
-  const normalized = normalizeEmail(email);
-  if (!normalized || normalized.length > 254) throw new SignupInviteError("Enter a valid email.");
+export async function issueSignupInvite(token: TokenRecord, email: string | null | undefined, expiresAt: unknown = undefined, db: postgres.Sql = sql, now = new Date()) {
+  const normalized = email == null || email === "" ? null : normalizeEmail(email);
+  if (email != null && email !== "" && (!normalized || normalized.length > 254)) throw new SignupInviteError("Enter a valid email.");
   const expiry = expiresAt === undefined ? new Date(now.getTime() + 7 * 86_400_000) : new Date(typeof expiresAt === "string" ? expiresAt : "");
   if (!Number.isFinite(expiry.getTime()) || expiry.getTime() <= now.getTime() || expiry.getTime() > now.getTime() + 30 * 86_400_000) {
     throw new SignupInviteError("Invitation expiry must be within the next 30 days.");
@@ -59,8 +64,8 @@ export async function issueSignupInvite(token: TokenRecord, email: string, expir
   const invite = await db.begin(async tx => {
     const operator = await requireOperator(token, tx as unknown as postgres.Sql);
     const rows = await tx`
-      INSERT INTO hosted_signup_invites (id, code_hash, email, created_by_member_id, expires_at)
-      VALUES (${randomUUID()}, ${sha256(inviteCode)}, ${normalized}, ${operator}, ${expiry}) RETURNING *`;
+      INSERT INTO hosted_signup_invites (id, code_hash, email, created_by_member_id, expires_at, access_duration_days)
+      VALUES (${randomUUID()}, ${sha256(inviteCode)}, ${normalized}, ${operator}, ${expiry}, ${SIGNUP_ACCESS_DAYS}) RETURNING *`;
     return publicSignupInvite(rows[0]);
   });
   return { invite, inviteCode };
@@ -88,7 +93,9 @@ export async function revokeSignupInvite(token: TokenRecord, id: string, db: pos
 function invalidInvite(): never { throw new SignupInviteError("That invitation code is invalid, expired, or unavailable for this email."); }
 
 // This function sends no mail and creates no account. A valid code authorizes
-// only a verification link to its exact mailbox; final consumption happens in
+// only a verification link to a mailbox. A bound code requires its exact email;
+// an unbound code belongs to the first mailbox that completes verification.
+// Requesting a link neither binds nor consumes an unbound code. Final consumption happens in
 // the same transaction that creates/binds the verified personal workspace.
 export async function createSignupVerification(email: string, name: string, inviteCode: string, publicUrl: string, db: postgres.Sql = sql) {
   const normalized = normalizeEmail(email);
@@ -103,15 +110,20 @@ export async function createSignupVerification(email: string, name: string, invi
       SELECT i.* FROM hosted_signup_invites i
       JOIN hosted_signup_operators op ON op.member_id = i.created_by_member_id AND op.revoked_at IS NULL
       JOIN org_members creator ON creator.id = op.member_id AND creator.org_id = 1 AND creator.role = 'owner'
-      WHERE i.code_hash = ${sha256(inviteCode)} AND i.email = ${normalized}
+      WHERE i.code_hash = ${sha256(inviteCode)} AND (i.email = ${normalized} OR i.email IS NULL)
         AND i.revoked_at IS NULL AND i.redeemed_at IS NULL AND i.expires_at > now()
       FOR UPDATE OF i`;
     if (rows.length !== 1) invalidInvite();
-    await eligiblePersonalWorkspace(tx as unknown as postgres.Sql, normalized);
-    const sent = (await tx`SELECT count(*)::integer AS n, max(created_at) > now() - interval '60 seconds' AS cooling_down
+    // Eligibility is private account metadata. Check it only after mailbox
+    // proof during the atomic claim, so an unbound code cannot probe emails
+    // for an existing subscription or complimentary grant.
+    const sent = (await tx`SELECT count(*)::integer AS n,
+      max(created_at) FILTER (WHERE email = ${normalized}) > now() - interval '60 seconds' AS cooling_down
       FROM hosted_signup_verifications WHERE signup_invite_id = ${rows[0].id} AND created_at > now() - interval '1 day'`)[0];
     if (Number(sent.n) >= 10 || sent.cooling_down === true) throw new SignupInviteError("Please wait before requesting another verification email.", 429, "signup_rate_limited");
-    await tx`UPDATE hosted_signup_verifications SET accepted_at = now() WHERE signup_invite_id = ${rows[0].id} AND accepted_at IS NULL`;
+    // Keep previously delivered proofs valid. A requester who knows the code
+    // and email must not invalidate a link without owning that mailbox. Every
+    // proof still shares one atomic, verified invitation claim.
     await tx`INSERT INTO hosted_signup_verifications (id, signup_invite_id, email, token_hash, expires_at, pending_name)
       VALUES (${randomUUID()}, ${rows[0].id}, ${normalized}, ${sha256(raw)}, least(${rows[0].expires_at}::timestamptz, now() + interval '1 day'), ${pendingName})`;
   });

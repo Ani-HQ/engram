@@ -3,6 +3,7 @@ import postgres from "postgres";
 import { config, databaseSecurity, dbUrl, provisionerDbUrl } from "./config";
 import { OPERATOR_ONLY_BILLING_TABLES } from "./billing-schema";
 import { SIGNUP_OPERATOR_ONLY_TABLES } from "./signup-invites-schema";
+import { JEV_OPERATOR_ONLY_TABLES } from "./jev-schema";
 
 function identifier(value: string): string { return `"${value.replace(/"/g, '""')}"`; }
 
@@ -104,7 +105,10 @@ export async function protectGatewayMetadata(db: postgres.Sql): Promise<void> {
       await db.unsafe(`ALTER TABLE public.${table} OWNER TO ${identifier(owner)}`);
       await db.unsafe(`REVOKE ALL ON TABLE public.${table} FROM PUBLIC`);
       await db.unsafe(`REVOKE ALL ON TABLE public.${table} FROM ${runtime}`);
-      const privileges = row.tablename === "engram_schema_state" || OPERATOR_ONLY_BILLING_TABLES.has(String(row.tablename)) || SIGNUP_OPERATOR_ONLY_TABLES.has(String(row.tablename)) ? "SELECT" : "SELECT, INSERT, UPDATE, DELETE";
+      const privileges = row.tablename === "engram_schema_state" || OPERATOR_ONLY_BILLING_TABLES.has(String(row.tablename)) || SIGNUP_OPERATOR_ONLY_TABLES.has(String(row.tablename)) || JEV_OPERATOR_ONLY_TABLES.has(String(row.tablename)) ? "SELECT" : "SELECT, INSERT, UPDATE, DELETE";
+      // mail_series_* follows the normal central runtime DML policy: the
+      // gateway enrolls/opts out and the restricted scheduled worker leases
+      // jobs. It gains no billing writes, schema ownership or tenant authority.
       await db.unsafe(`GRANT ${privileges} ON TABLE public.${table} TO ${runtime}`);
       await db.unsafe(`ALTER TABLE public.${table} ENABLE ROW LEVEL SECURITY`);
       await db.unsafe(`ALTER TABLE public.${table} FORCE ROW LEVEL SECURITY`);

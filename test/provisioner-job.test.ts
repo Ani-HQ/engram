@@ -5,10 +5,12 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repository = fileURLToPath(new URL("..", import.meta.url));
-async function job(result: { ready: number; failed: number; pending: number }, migrationFailure = false) {
+async function job(result: { ready: number; failed: number; pending: number }, migrationFailure = false, operatorReason?: string) {
   const directory = mkdtempSync(join(tmpdir(), "engram-provisioner-job-"));
   const closed = join(directory, "closed"), preload = join(directory, "preload.ts");
   const source = `import {mock} from 'bun:test';import{writeFileSync}from'node:fs';
+    ${operatorReason ? "process.env.ENGRAM_JEV_OPERATOR_EMAIL='private-operator@example.test';" : "delete process.env.ENGRAM_JEV_OPERATOR_EMAIL;"}
+    mock.module(${JSON.stringify(join(repository,"gateway/src/jev.ts"))},()=>({configureJevOperatorDefault:async()=>({applied:${operatorReason === 'applied'},reason:${JSON.stringify(operatorReason ?? 'already-configured')}})}));
     mock.module(${JSON.stringify(join(repository, "gateway/src/config.ts"))},()=>({databaseSecurity:{authority:'provisioner'}}));
     mock.module(${JSON.stringify(join(repository, "gateway/src/db.ts"))},()=>({sql:{},migrate:async()=>{${migrationFailure ? "throw Object.assign(new Error('private-password-and-tenant-content'),{code:'42501',detail:'private-password-and-tenant-content'})" : ""}},closeDatabasePools:async()=>{writeFileSync(${JSON.stringify(closed)},'closed')}}));
     mock.module(${JSON.stringify(join(repository, "gateway/src/provisioning.ts"))},()=>({provisionPendingWorkspaces:async()=>(${JSON.stringify(result)})}));`;
@@ -22,6 +24,13 @@ async function job(result: { ready: number; failed: number; pending: number }, m
 }
 
 describe("provisioner job completion", () => {
+  test("explicit operator target fails closed when absent or ambiguous, but reruns honor optout", async () => {
+    for (const reason of ['owner-not-found','ambiguous-owner']) {
+      const result = await job({ready:0,failed:0,pending:0},false,reason);
+      expect(result.code).toBe(1); expect(result.stdout).toBe(''); expect(result.stderr).not.toContain('private-operator');
+    }
+    expect((await job({ready:0,failed:0,pending:0},false,'already-configured')).code).toBe(0);
+  });
   test("succeeds only when every queued workspace is ready", async () => {
     const result = await job({ ready: 2, failed: 0, pending: 0 });
     expect(result.code).toBe(0);

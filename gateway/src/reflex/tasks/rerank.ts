@@ -57,7 +57,7 @@ export async function rerankHits(
   options: { signal?: AbortSignal; maxAttempts?: number } = {},
 ): Promise<RankedHit[] | null> {
   if (!client.available() || snippets.length === 0) return null;
-  const result = await client.evaluate({ ...buildRerankQuestions(query, snippets), ...options });
+  const result = await client.evaluate({ ...buildRerankQuestions(query, snippets), ...options, task: "rerank" });
   if (!result) return null;
   return parseRerank(result.answers, snippets.length);
 }

@@ -56,7 +56,7 @@ export async function routeTopic(
     return { topic: null, model: null, confidence: null };
   }
   const built = buildTopicRouteQuestions(text, candidates.slice(0, 8));
-  const result = await client.evaluate(built);
+  const result = await client.evaluate({ ...built, task: "topic-route" });
   if (!result) return { topic: null, model: null, confidence: null };
   const topic = parseTopicRoute(result.answers, candidates);
   return {

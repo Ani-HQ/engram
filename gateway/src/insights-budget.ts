@@ -7,9 +7,9 @@ import { requireHostedWriteAccess } from "./billing";
 // One durable per-workspace budget covers memory, recall, Attention and briefs,
 // across app instances. Reserve immediately before transmission; a server key
 // alone never grants consent. Failed calls consume budget too.
-export async function reserveWorkspaceInference(orgId: number, db: postgres.Sql = sql): Promise<boolean> {
+export async function reserveWorkspaceInference(orgId: number, db: postgres.Sql = sql, provider: "legacy" | "jev" = "legacy"): Promise<boolean> {
   const org = await getOrg(orgId, db);
-  if (!org?.policies.externalAiProcessing || !org.policies.jevMayPropose) return false;
+  if (!org || (provider === "jev" ? !org.policies.jevProcessing : !org.policies.externalAiProcessing)) return false;
   try {
     await requireHostedWriteAccess({ name: "engram-inference", orgId, kind: "token", role: "agent", canWrite: true, email: null, scopes: [] }, { db });
   } catch { return false; }

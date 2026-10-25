@@ -25,7 +25,9 @@ import { handlePublicShowcase, handleShowcaseApi } from "./showcase";
 import { BillingError, handleBillingApi, handleBillingWebhook, publicPlans, requireHostedWriteAccess, requiresHostedEntitlement } from "./billing";
 import { triggerProvisioning } from "./provisioning-trigger";
 import { processingOrg } from "./privacy";
+import { PUBLIC_PAGE_FILES } from "./site-routes";
 import { handleInsightsApi } from "./insights";
+import { handleMailUnsubscribe } from "./mail-series";
 
 export { SESSION_COOKIE_MAX_AGE, SESSION_COOKIE_NAME } from "./cookies";
 export { clearSessionCookie, parseSessionCookie, serializeSessionCookie };
@@ -44,6 +46,8 @@ const CONTENT_TYPES: Record<string, string> = {
   ".png": "image/png",
   ".ico": "image/x-icon",
   ".webmanifest": "application/manifest+json",
+  ".xml": "application/xml; charset=utf-8",
+  ".txt": "text/plain; charset=utf-8",
 };
 
 export class ToolTextError extends Error {
@@ -175,6 +179,7 @@ export async function handleWeb(req: Request): Promise<Response> {
 
 async function routeWeb(req: Request): Promise<Response> {
   const url = new URL(req.url);
+  if (url.pathname === "/email/unsubscribe") return handleMailUnsubscribe(req);
   if (url.pathname === "/source" && req.method === "GET") return Response.redirect("https://github.com/Ani-HQ/engram", 302);
   if (url.pathname === "/hosted" && req.method === "GET") return Response.redirect("https://engram.ani.computer/pricing", 302);
   if (url.pathname === "/api/billing/webhook") return handleBillingWebhook(req);
@@ -344,7 +349,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   // storage, the memory engine, or a paid content-write entitlement.
   if (workspaceMetadata) return await handleOrgApi(req, url, actor, storedOrg) ?? Response.json({ error: "not found" }, { status: 404 });
   const org = ["/api/search", "/api/page", "/api/pages", "/api/capture", "/api/insights"].includes(url.pathname) ? await processingOrg(storedOrg, actor) : storedOrg;
-  const lightweight = url.pathname === "/api/activities" || url.pathname.startsWith("/api/activities/") || url.pathname === "/api/insights" || ["/api/actions", "/api/showcase", "/api/billing", "/api/billing/checkout", "/api/billing/portal", "/api/policies", "/api/tokens", "/api/connections", "/api/tokens/write", "/api/tokens/source", "/api/tokens/revoke", "/api/members", "/api/invites", "/api/wiring", "/api/me", "/api/onboarding"].includes(url.pathname);
+  const lightweight = url.pathname === "/api/activities" || url.pathname.startsWith("/api/activities/") || url.pathname === "/api/insights" || ["/api/jev", "/api/actions", "/api/showcase", "/api/billing", "/api/billing/checkout", "/api/billing/portal", "/api/policies", "/api/tokens", "/api/connections", "/api/tokens/write", "/api/tokens/source", "/api/tokens/revoke", "/api/members", "/api/invites", "/api/wiring", "/api/me", "/api/onboarding"].includes(url.pathname);
   return withOrg(org, actor, async () => {
     if (url.pathname === "/api/billing" || url.pathname.startsWith("/api/billing/")) return handleBillingApi(req, actor);
     // Keep reads, billing recovery, revocation, privacy controls, deletion and
@@ -656,8 +661,8 @@ function isPublicBrandAsset(pathname: string): boolean {
 
 async function serveStatic(pathname: string, head = false): Promise<Response> {
   const webDir = defaultWebDir();
-  const publicPages: Record<string, string> = { "/pricing": "/pricing.html", "/privacy": "/privacy.html", "/self-host": "/self-host.html" };
-  pathname = publicPages[pathname] ?? pathname;
+  const legacyClientRoute = pathname.startsWith("/workspace/");
+  pathname = PUBLIC_PAGE_FILES[pathname] ?? pathname;
   const staticPath = resolveStaticPath(pathname, webDir);
   const notFound = () => new Response(head ? null : "Not Found", { status: 404, headers: { "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff" } });
   if (!staticPath) return notFound();
@@ -668,14 +673,18 @@ async function serveStatic(pathname: string, head = false): Promise<Response> {
   if (await isFile(staticPath)) return fileResponse(staticPath, head, publicBrandAsset);
   if (publicBrandAsset || assetPath === "/oauth.css") return notFound();
 
-  // Unknown client-side routes fall back to the SPA shell without exposing cwd.
-  const indexPath = resolveStaticPath("/", webDir);
+  // Retain the existing legacy client path without turning arbitrary missing
+  // pages and assets into successful HTML responses (soft 404s).
+  const indexPath = legacyClientRoute ? resolveStaticPath("/index.html", webDir) : null;
   if (indexPath && await isFile(indexPath)) return fileResponse(indexPath, head);
+  const missingPage = !extname(pathname) ? resolveStaticPath("/not-found.html", webDir) : null;
+  if (missingPage && await isFile(missingPage)) return fileResponse(missingPage, head, false, 404);
   return notFound();
 }
 
-function fileResponse(pathname: string, head = false, publicBrandAsset = false): Response {
+function fileResponse(pathname: string, head = false, publicBrandAsset = false, status = 200): Response {
   return new Response(head ? null : Bun.file(pathname), {
+    status,
     headers: { "Content-Type": contentTypeFor(pathname), "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "same-origin", "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'", ...(publicBrandAsset ? { "Access-Control-Allow-Origin": "*" } : {}) },
   });
 }

@@ -1,6 +1,7 @@
 import type postgres from "postgres";
 
 export const HOSTED_SIGNUP_SCHEMA_VERSION = 2026102401;
+export const SIGNUP_ACCESS_SCHEMA_VERSION = 2026102501;
 export const SIGNUP_OPERATOR_ONLY_TABLES = new Set(["hosted_signup_operators"]);
 
 export async function ensureHostedSignupInvitesSchema(db: postgres.Sql): Promise<void> {
@@ -32,6 +33,32 @@ export async function ensureHostedSignupInvitesSchema(db: postgres.Sql): Promise
     )`;
   await db`ALTER TABLE hosted_signup_invites ADD COLUMN IF NOT EXISTS complimentary_error_code text`;
   await db`ALTER TABLE hosted_signup_invites ADD COLUMN IF NOT EXISTS complimentary_retry_at timestamptz`;
+  // Preserve the promises attached to already-issued invitations. New codes
+  // carry their own duration; a future policy change cannot reset their clock.
+  await db`ALTER TABLE hosted_signup_invites ADD COLUMN IF NOT EXISTS access_duration_days integer`;
+  await db`ALTER TABLE hosted_signup_invites ADD COLUMN IF NOT EXISTS access_expires_at timestamptz`;
+  await db`ALTER TABLE hosted_signup_invites ALTER COLUMN email DROP NOT NULL`;
+  // Old runtimes omit these columns when issuing/redeeming codes. NULL retains
+  // their original terms while a candidate is staged at zero traffic.
+  await db`ALTER TABLE hosted_signup_invites ALTER COLUMN access_duration_days DROP DEFAULT`;
+  await db`DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'hosted_signup_invites_access_duration_valid') THEN
+      ALTER TABLE hosted_signup_invites ADD CONSTRAINT hosted_signup_invites_access_duration_valid CHECK (
+        (access_duration_days IS NULL AND access_expires_at IS NULL)
+        OR (access_duration_days IS NOT NULL AND access_duration_days = 60 AND (
+          (redeemed_at IS NULL AND access_expires_at IS NULL)
+          OR (redeemed_at IS NOT NULL AND access_expires_at IS NOT NULL AND access_expires_at = redeemed_at + interval '1440 hours')
+        ))
+      );
+    END IF;
+  END $$`;
+  await db`DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'hosted_signup_invites_verified_email_required') THEN
+      ALTER TABLE hosted_signup_invites ADD CONSTRAINT hosted_signup_invites_verified_email_required
+        CHECK (redeemed_at IS NULL OR email IS NOT NULL);
+    END IF;
+  END $$`;
+  await db`CREATE INDEX IF NOT EXISTS hosted_signup_invites_grant_idx ON hosted_signup_invites (complimentary_grant_id) WHERE complimentary_grant_id IS NOT NULL`;
   await db`
     CREATE TABLE IF NOT EXISTS hosted_signup_verifications (
       id uuid PRIMARY KEY,

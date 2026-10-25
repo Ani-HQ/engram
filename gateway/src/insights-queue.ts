@@ -8,7 +8,7 @@ import { requireHostedWriteAccess } from "./billing";
 // in this central outbox; text stays in the tenant's database until processing.
 export async function enqueueMemoryInsight(entryId: string): Promise<void> {
   const context = currentContext();
-  if (!context || !context.org.policies.jevMayPropose || !context.org.policies.externalAiProcessing || !config.reflex.apiKey) return;
+  if (!context || !context.org.policies.jevMayPropose || !context.org.policies.jevProcessing || !config.reflex.apiKey) return;
   await requireHostedWriteAccess(context.token);
   await sql.begin(async tx => {
     await tx`SELECT pg_advisory_xact_lock(hashtextextended(${`memory-insights:${context.org.id}`}, 0))`;

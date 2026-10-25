@@ -200,7 +200,11 @@ try {
   const [jobOutput, jobError, jobCode] = await Promise.all([new Response(provisioner.stdout).text(), new Response(provisioner.stderr).text(), provisioner.exited]);
   equal(jobCode, 0, `Separate provisioner job creates queued storage: ${jobError}`);
   check(JSON.parse(jobOutput).provisioning.ready >= 1, "Separate job reports durable provisioning completion");
-  equal((await sql`SELECT o.provisioning_status, c.expires_at, c.revoked_at FROM orgs o JOIN workspace_complimentary_access c ON c.org_id=o.id WHERE o.id=${betaAccepted!.org.id}`)[0], { provisioning_status: "ready", expires_at: null, revoked_at: null }, "The separate privileged job commits the verified signup grant with readiness under restricted runtime ACLs");
+  const betaAccess = (await sql`SELECT o.provisioning_status, c.expires_at, c.revoked_at, c.granted_at,
+    i.redeemed_at, i.access_expires_at FROM orgs o JOIN workspace_complimentary_access c ON c.org_id=o.id
+    JOIN hosted_signup_invites i ON i.complimentary_grant_id=c.id WHERE o.id=${betaAccepted!.org.id}`)[0];
+  equal([betaAccess.provisioning_status, betaAccess.revoked_at, betaAccess.granted_at, betaAccess.expires_at], ["ready", null, betaAccess.redeemed_at, betaAccess.access_expires_at], "The privileged job commits the verified signup timestamps under restricted runtime ACLs");
+  equal(new Date(betaAccess.expires_at).getTime() - new Date(betaAccess.granted_at).getTime(), 60 * 86_400_000, "Restricted runtime cannot turn the sixty-day invitation into unlimited-duration access");
   equal(await runGateway(String(pendingOrg.id)), "ready", "Original no-admin runtime can use the completed workspace without schema authority");
 
   const inventoryOwner = normalizeToken({ name: "security-owner@example.test", orgId: a.id, role: "owner", kind: "session", email: "security-owner@example.test" });

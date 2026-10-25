@@ -89,6 +89,11 @@ steps:
       - |
         set -euo pipefail
         python3 test/release-automation.py
+        python3 test/mail-infrastructure.py
+        python3 test/jev-billing-infrastructure.py
+        python3 test/jev-configuration.py
+        python3 test/stripe-jev-events.py
+        python3 test/jev-secret-setup.py
         python3 test/billing-verification.py
         python3 test/edge-configuration.py
 
@@ -106,6 +111,10 @@ steps:
       - 'ENGRAM_BACKUP_ID=${_BACKUP_ID}'
       - 'ENGRAM_RELEASE_COMMAND=${_RELEASE_COMMAND}'
       - 'ENGRAM_RELEASE_STATE=/workspace/release-state.json'
+      - 'ENGRAM_JEV_BILLING_ENABLED=${_JEV_BILLING_ENABLED}'
+      - 'ENGRAM_JEV_MARKUP_BPS=${_JEV_MARKUP_BPS}'
+      - 'ENGRAM_JEV_OPERATOR_EMAIL=${_JEV_OPERATOR_EMAIL}'
+      - 'ENGRAM_JEV_OPERATOR_MONTHLY_BUDGET_USD=${_JEV_OPERATOR_BUDGET_USD}'
     args:
       - -c
       - |
@@ -124,6 +133,11 @@ substitutions:
   _RELEASE_COMMAND: plan
   # An operator supplies a successful backup from the last24hours for each stage.
   _BACKUP_ID: ''
+  _JEV_BILLING_ENABLED: '0'
+  # Beta policy: pass provider cost through, without a markup. Activation stays explicit.
+  _JEV_MARKUP_BPS: '0'
+  _JEV_OPERATOR_EMAIL: ''
+  _JEV_OPERATOR_BUDGET_USD: '1'
 images:
   - 'gcr.io/$PROJECT_ID/engram:$BUILD_ID'
 artifacts:

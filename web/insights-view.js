@@ -8,10 +8,11 @@ const badge = text => h("span", { class: "insight-badge" }, text);
 const method = value => badge(methodLabel(value));
 
 export function aiConfiguration(external = {}, { settings = true } = {}) {
+  const jev = external.jevConsented === true, other = external.generativeConsented === true || external.consented === true;
   return h("section", { class: "insight-privacy" },
-    h("div", {}, icon("shield-check", { size: 16 }), h("strong", {}, external.consented ? "External AI processing enabled" : "External AI processing off")),
-    h("p", {}, external.consented ? "This workspace permits configured providers to process relevant context. Rules and extractive summaries remain available." : "Checks run with local rules and extractive summaries. Your workspace owner can enable optional provider processing in Workspace."),
-    h("dl", { class: "insight-config" }, h("div", {}, h("dt", {}, "Analysis provider"), h("dd", {}, external.configured ? "Configured by operator" : "Not configured")), h("div", {}, h("dt", {}, "Text generation"), h("dd", {}, external.generativeConfigured ? "Configured by operator" : "Not configured"))),
+    h("div", {}, icon("shield-check", { size: 16 }), h("strong", {}, "Separate choices for external processing")),
+    h("p", {}, "Local rules and extractive summaries remain available. Each optional provider needs its own applicable permission and server configuration; Jev also needs available access and budget."),
+    h("dl", { class: "insight-config" }, h("div", {}, h("dt", {}, "Jev · TypeSafe"), h("dd", {}, `${jev ? "Permission on" : "Permission off"} · ${external.jevConfigured === true ? "server configured" : "not configured"}`)), h("div", {}, h("dt", {}, "Voyage embeddings"), h("dd", {}, `${other ? "Permission on" : "Permission off"} · ${external.embeddingConfigured === true ? "server configured" : "not configured"}`)), h("div", {}, h("dt", {}, "OpenAI briefs"), h("dd", {}, `${other ? "Permission on" : "Permission off"} · ${external.generativeConfigured === true ? "server configured" : "not configured"}`))),
     settings && h("a", { href: "#workspace", class: "insight-settings-link" }, "Privacy settings", icon("arrow-up-right", { size: 12 })));
 }
 

@@ -252,6 +252,20 @@
       "guidelines": null,
       "packageLicense": "MIT",
       "iconLicense": null
+    },
+    {
+      "file": "devin.svg",
+      "package": "@lobehub/icons-static-svg",
+      "version": "1.98.0",
+      "gitHead": "86b3f06ad9a4cc57011a56e5a7d3a5d4f1e8d835",
+      "integrity": "sha512-soyLV2g74ujV+9BBymPwXrorJ+kQsEz7WvVd4uzhN2wZnd4Jbyc2FsmyjZBosGaufOirCs1RGJQlLe6l9bjwLg==",
+      "upstreamFile": "icons/devin.svg",
+      "upstreamSha256": "8d197b0c31522517ffa896cd4a1ee65719eb73bff9eb9bbf7edf64db6b1a573d",
+      "sha256": "dbf70cf0b0b0bcf1fe34a86dbcdc4da69e110199052202dbf41130c5e3cf01f0",
+      "source": "https://devin.ai/",
+      "guidelines": "https://docs.devin.ai/work-with-devin/mcp",
+      "packageLicense": "MIT",
+      "iconLicense": null
     }
   ]
 }

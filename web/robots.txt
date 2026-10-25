@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /mcp
+Disallow: /oauth/
+
+Sitemap: https://engram.ani.computer/sitemap.xml

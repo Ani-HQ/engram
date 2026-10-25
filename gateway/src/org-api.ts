@@ -48,7 +48,10 @@ import {
   parseShareLevel,
 } from "./policies";
 import { serializeSessionCookie } from "./cookies";
-import { inviteLinkText, loginLinkResponse, loginLinkText, sendMail } from "./mail";
+import { loginLinkResponse, sendMail } from "./mail";
+import { renderEmail } from "./mail-templates";
+import { handleJevApi } from "./jev";
+import { getWorkspaceAccessSummary } from "./billing";
 import { oauthEnabled } from "./oauth";
 import { canManageSignupInvites, createSignupVerification, issueSignupInvite, listSignupInvites, revokeSignupInvite, SignupInviteError } from "./signup-invites";
 import { triggerProvisioning } from "./provisioning-trigger";
@@ -110,7 +113,8 @@ export async function sessionActor(token: TokenRecord, org: Org, extra: Record<s
     }))
     : [];
   const capabilities = { manageSignupInvites: await canManageSignupInvites(token) };
-  return publicActor(token, org, { orgs, ...extra, capabilities });
+  const access = isConsolePerson(token) ? await getWorkspaceAccessSummary(token) : undefined;
+  return publicActor(token, org, { orgs, ...extra, capabilities, access });
 }
 
 export async function onboardingState(org: Org, db: postgres.Sql = sql) {
@@ -153,6 +157,7 @@ export async function handleOrgApi(
   org: Org,
 ): Promise<Response | null> {
   if (token.orgId !== org.id) return Response.json({ error: "forbidden" }, { status: 403 });
+  if (url.pathname === "/api/jev") return handleJevApi(req, token);
   if (url.pathname === "/api/workspace") {
     return req.method === "PUT" ? putWorkspace(req, token, org) : Response.json({ error: "method not allowed" }, { status: 405, headers: { Allow: "PUT" } });
   }
@@ -254,8 +259,7 @@ async function postOrg(req: Request): Promise<Response> {
     if (!invite) return Response.json({ error: "could not create org" }, { status: 400 });
     const delivery = await sendMail({
       to: email,
-      subject: existing ? "Your engram login link" : "Confirm your engram org",
-      text: loginLinkText(invite.url),
+      ...renderEmail({ template: inviteCode || !existing ? "verify-signup" : "login", url: invite.url, orgName: name }),
     });
     const result = loginLinkResponse(delivery, invite.url);
     return Response.json(result.body, { status: result.status });
@@ -273,7 +277,9 @@ async function handleSignupInviteAdmin(req: Request, url: URL, token: TokenRecor
     if (!body) return Response.json({ error: "Provide a JSON object." }, { status: 400 });
     if (req.method === "POST" && url.pathname === "/api/admin/signup-invites") {
       if (Object.keys(body).some(key => !["email", "expiresAt"].includes(key))) return Response.json({ error: "Only email and invitation expiry may be supplied." }, { status: 400 });
-      return Response.json(await issueSignupInvite(token, text(body, "email") ?? "", body.expiresAt), { status: 201 });
+      if (body.email !== undefined && body.email !== null && typeof body.email !== "string") return Response.json({ error: "Provide an email or leave it blank for a single-use invitation link." }, { status: 400 });
+      const result = await issueSignupInvite(token, text(body, "email"), body.expiresAt);
+      return Response.json({ ...result, inviteUrl: `${publicUrlFrom(req).replace(/\/$/, "")}/app#invite=${result.inviteCode}` }, { status: 201 });
     }
     const revoke = url.pathname.match(/^\/api\/admin\/signup-invites\/([a-f0-9-]+)\/revoke$/);
     if (req.method === "POST" && revoke) {
@@ -298,8 +304,7 @@ async function postLoginEmail(req: Request): Promise<Response> {
   if (!invite) return Response.json({ error: "not found" }, { status: 404 });
   const delivery = await sendMail({
     to: email,
-    subject: "Your engram login link",
-    text: loginLinkText(invite.url),
+    ...renderEmail({ template: "login", url: invite.url }),
   });
   const result = loginLinkResponse(delivery, invite.url);
   return Response.json(result.body, { status: result.status });
@@ -402,7 +407,9 @@ async function postTokenWrite(req: Request, token: TokenRecord, org: Org): Promi
 async function putPolicies(req: Request, token: TokenRecord, org: Org): Promise<Response> {
   if (!canManageOrg(token) || !isConsolePerson(token)) return forbidden();
   const body = await jsonObject(req);
-  const next = parsePolicies({ ...DEFAULT_POLICIES, ...org.policies, ...(body?.policies ?? body ?? {}) });
+  // The generic privacy form cannot grant Jev processing or accept a price.
+  // updatePolicies also preserves the latest database value under concurrency.
+  const next = parsePolicies({ ...DEFAULT_POLICIES, ...org.policies, ...(body?.policies ?? body ?? {}), jevProcessing: org.policies.jevProcessing });
   const updated = await updatePolicies(org.id, next);
   if (!updated) return Response.json({ error: "not found" }, { status: 404 });
   return Response.json({ policies: updated.policies });
@@ -437,8 +444,7 @@ async function postInvite(req: Request, token: TokenRecord, org: Org): Promise<R
     const invite = await createInvite(org.id, email, role, token.name, publicUrlFrom(req));
     const delivery = await sendMail({
       to: email,
-      subject: `Join ${org.name} on engram`,
-      text: inviteLinkText({ orgName: org.name, invitedBy: token.name, url: invite.url }),
+      ...renderEmail({ template: "team-invite", orgName: org.name, invitedBy: token.name, url: invite.url }),
     });
     if (delivery === "sent") return Response.json({ email, role, sent: true });
     const result = loginLinkResponse(delivery, invite.url);

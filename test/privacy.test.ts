@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { runWithContext } from "../gateway/src/context";
 import { normalizeToken, parsePolicies } from "../gateway/src/policies";
-import { brainEnvironment, externalAiAllowed } from "../gateway/src/privacy";
+import { brainEnvironment, externalAiAllowed, jevAllowed } from "../gateway/src/privacy";
 import { TypesafeReflexClient } from "../gateway/src/reflex/client";
 
 function inWorkspace<T>(id: number, optedIn: boolean, work: () => T): T {
-  return runWithContext({ org: { id, name: "Private", slug: `private-${id}`, kind: "team", brainDb: `brain_org_${id}`, dataDb: `brain_org_${id}`, homeDir: `org-${id}`, policies: parsePolicies({ externalAiProcessing: optedIn }) }, token: normalizeToken({ name: "agent", orgId: id }), dataSql: {} as any }, work);
+  return runWithContext({ org: { id, name: "Private", slug: `private-${id}`, kind: "team", brainDb: `brain_org_${id}`, dataDb: `brain_org_${id}`, homeDir: `org-${id}`, policies: parsePolicies({ jevProcessing: optedIn }) }, token: normalizeToken({ name: "agent", orgId: id }), dataSql: {} as any }, work);
 }
 
 describe("workspace privacy defaults", () => {
@@ -14,7 +14,12 @@ describe("workspace privacy defaults", () => {
     expect(parsePolicies({ externalAiProcessing: "true" }).externalAiProcessing).toBe(false);
     expect(externalAiAllowed()).toBe(false);
     expect(inWorkspace(7, false, () => externalAiAllowed())).toBe(false);
-    expect(inWorkspace(8, true, () => externalAiAllowed())).toBe(true);
+    expect(inWorkspace(8, true, () => externalAiAllowed())).toBe(false);
+    expect(inWorkspace(8, true, () => jevAllowed())).toBe(true);
+    expect(jevAllowed()).toBe(false);
+    expect(parsePolicies({ externalAiProcessing: true }).jevProcessing).toBe(false);
+    for (const value of [undefined, null, "true", 1, {}, []]) expect(parsePolicies({ jevProcessing: value }).jevProcessing).toBe(false);
+    expect(parsePolicies({ jevProcessing: true }).externalAiProcessing).toBe(false);
   });
 
   test("child processes receive no operator billing, auth or AI secrets by default", () => {
@@ -29,8 +34,8 @@ describe("workspace privacy defaults", () => {
     const sent: string[] = [];
     const client = new TypesafeReflexClient(async (_url, options) => {
       sent.push(JSON.parse(String(options?.body)).state.memory);
-      return Response.json({ answers: { kind: { type: "choice", choice: "fact", confidence: 1 } } });
-    }, Date.now, { apiKey: "test-key" });
+      return Response.json({ model: "jev-1.13.0", usage: { input_tokens: 100, output_tokens: 3 }, answers: { kind: { type: "choice", choice: "fact", confidence: 1 } } });
+    }, Date.now, { apiKey: "test-key", model: "jev-1.13.0" });
     const ask = (memory: string) => client.evaluate({ state: { memory }, questions: { kind: { type: "choice", instructions: "classify", criteria: { fact: "fact" } } } });
     const [privateResult, optedInResult] = await Promise.all([
       inWorkspace(7, false, async () => { await Promise.resolve(); return ask("private-memory"); }),

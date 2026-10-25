@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { signupView } from "./signup-view.js";
 import { signupAdminPanel } from "./signup-admin.js";
-import { parseSignupPolicy, signupAuthMode, signupEntryMode, signupInviteStatus, signupRequest, emailLinkRecovery } from "./signup-model.js";
+import { parseInviteEntry, parseSignupPolicy, signupAuthMode, signupEntryMode, signupInviteStatus, signupRequest, emailLinkRecovery } from "./signup-model.js";
 import { planCards } from "./account.js";
 
 class Element {
@@ -31,6 +31,30 @@ beforeEach(() => Object.assign(globalThis, { Node: Element, document: { createEl
 afterEach(() => Object.assign(globalThis, original));
 
 describe("email-bound beta signup", () => {
+  test("invite-link email hints stay editable while the private URL code is read-only and sent in the body", async () => {
+    const entry = parseInviteEntry("#invite=eg_inv_example&email=person%40example.com");
+    expect(entry).toEqual({ code: "eg_inv_example", email: "person@example.com" });
+    expect(signupEntryMode(beta, "#invite=eg_inv_example&email=person%40example.com")).toBe("create");
+    expect(parseInviteEntry("#invite=bad%0Acode")).toBeNull(); expect(parseInviteEntry("#invite=first&invite=second")).toBeNull();
+    expect(parseInviteEntry("#invite=eg_inv_example&email=%3Cscript%3E%40example.com")).toEqual({ code: "eg_inv_example", email: "" });
+    const calls: any[] = []; let completed = 0;
+    const view = signupView({ mode: "create", policy: beta, inviteEntry: entry, inviteSubmitted: () => completed++, api: { createOrg: async (body: any) => { calls.push(body); return { sent: true }; } }, changeMode() {}, signedIn() {} }).element as Element;
+    const code = input(view, "password"), email = input(view, "email");
+    expect(code.attrs.readonly).toBe(""); expect(code.disabled).toBe(false); expect(code.value).toBe("eg_inv_example"); expect(code.attrs.value).toBeUndefined();
+    expect(email.attrs.readonly).toBeUndefined(); expect(email.value).toBe("person@example.com");
+    email.value = "changed@example.com"; await submit(view).fire("submit");
+    expect(calls).toEqual([{ email: "changed@example.com", inviteCode: "eg_inv_example" }]); expect(completed).toBe(1); expect(code.value).toBe("eg_inv_example"); expect(code.attrs.value).toBeUndefined();
+    email.value = "corrected@example.com"; await submit(view).fire("submit"); expect(calls[1]).toEqual({ email: "corrected@example.com", inviteCode: "eg_inv_example" });
+    expect((input(signupView({ mode: "create", policy: beta, api: {}, changeMode() {}, signedIn() {} }).element as Element, "password")).attrs.readonly).toBeUndefined();
+  });
+  test("invite requests go to the operator’s X profile", () => {
+    const view = signupView({ mode: "create", policy: beta, api: {}, changeMode() {}, signedIn() {} }).element as Element;
+    const request = find(view, item => item.tag === "a" && item.textContent === "Ask for an invite");
+    expect(request.attrs.href).toBe("https://x.com/anirudh_twt");
+    expect(all(view).some(item => item.tag === "a" && item.attrs.href?.includes("Engram%20early%20access"))).toBe(false);
+    expect(all(view).some(item => item.tag === "input" && item.attrs.autocomplete === "organization")).toBe(false);
+  });
+
   test("hosted email and invite forms have no token entry or separator, including a legacy token mode", async () => {
     let tokenCalls = 0; const addresses: string[] = [];
     for (const mode of ["email", "create", "token"]) {
@@ -100,8 +124,7 @@ describe("email-bound beta signup", () => {
     expect(calls).toEqual([{ email: "friend@example.com", inviteCode: "example-invite" }]);
     expect(sessions).toHaveLength(0);
     expect(view.textContent).toContain("Check friend@example.com for a verification link");
-    expect(view.textContent).toContain("No card required. Verify your email to get started.");
-    expect(find(view, item => item.attrs.href === "mailto:ani@odstdio.com?subject=Engram%20early%20access").textContent).toBe("Don’t have a code? Ask for an invite");
+    expect(view.textContent).toContain("No card required.");
     expect(input(view, "password").value).toBe("");
   });
 
@@ -133,7 +156,7 @@ describe("email-bound beta signup", () => {
   test("public beta offers no open trial while self-hosting and paid billing cards retain their paths", () => {
     const catalog = { mode: "hosted", plans: [{ id: "cloud", name: "Cloud", description: "Hosted", monthlyPrice: 19, features: ["Cancel any time"] }, { id: "self-hosted", name: "Self-hosted", description: "Run it", monthlyPrice: 0, features: [] }] };
     const view = planCards(catalog, undefined, undefined, beta) as Element;
-    expect(view.textContent).toContain("Closed beta · free until access is revoked");
+    expect(view.textContent).toContain("Closed beta · invited access");
     expect(view.textContent).not.toMatch(/14-day|Subscribe when/);
     expect(all(view).filter(item => item.tag === "a").map(item => item.attrs.href)).toEqual(["/app#invite", "/self-host"]);
     expect((planCards(catalog) as Element).textContent).toContain("Start a 14-day trial");
@@ -142,6 +165,20 @@ describe("email-bound beta signup", () => {
 });
 
 describe("operator early access invitations", () => {
+  test("an optional recipient creates an unbound single-use link shown and copied once", async () => {
+    const copied: string[] = [], payloads: any[] = [], unbound = { ...invite, email: null, emailBound: false, accessDurationDays: 60 };
+    const inviteUrl = "https://engram.example/app#invite=eg_inv_sample_once";
+    const panel = signupAdminPanel({ session: operator, api: { signupInvites: async () => ({ invites: [], more: false }), issueSignupInvite: async (body: any) => { payloads.push(body); return { invite: unbound, inviteCode: "eg_inv_sample_once", inviteUrl }; } }, copy: async (value: string) => copied.push(value) })!;
+    const view = panel.element as Element; view.open = true; await view.fire("toggle");
+    expect(input(view, "email").attrs.required).toBeUndefined();
+    await submit(view).fire("submit"); expect(payloads).toEqual([{}]);
+    const secret = input(view, "password"), copyLink = button(view, "Copy link");
+    expect(secret.value).toBe(inviteUrl); expect(secret.attrs.value).toBeUndefined(); expect(view.textContent).not.toContain("eg_inv_sample_once");
+    expect(view.textContent).toContain("first person to verify an email address claims it");
+    await copyLink.fire("click"); expect(copied).toEqual([inviteUrl]);
+    panel.dispose(); expect(secret.value).toBe(""); await copyLink.fire("click"); expect(copied).toHaveLength(1);
+    expect(signupInviteStatus({ ...invite, complimentaryAppliedAt: "2026-10-25", accessExpiresAt: "2026-12-24" }, Date.parse("2026-12-25"))).toBe("Friend access ended");
+  });
   test("requires an explicit capability rather than owner role alone and only loads on opening", async () => {
     let calls = 0;
     const api = { signupInvites: async () => { calls++; return { invites: [], more: false }; } };
@@ -158,7 +195,7 @@ describe("operator early access invitations", () => {
     const view = panel.element as Element; view.open = true; await view.fire("toggle"); input(view, "email").value = "friend@example.com"; await submit(view).fire("submit");
     const secret = input(view, "password"), copyCode = button(view, "Copy code");
     expect(secret.value).toBe("sample-once-code"); expect(secret.attrs.value).toBeUndefined(); expect(JSON.stringify(view.attrs)).not.toContain("sample-once-code"); expect(view.textContent).not.toContain("sample-once-code");
-    expect(payloads).toEqual([{ email: "friend@example.com" }]); expect(view.textContent).toContain("generating a code does not send an email");
+    expect(payloads).toEqual([{ email: "friend@example.com" }]); expect(view.textContent).toContain("Generating an invitation does not send an email");
     await copyCode.fire("click"); expect(copied).toEqual(["sample-once-code"]);
     view.open = false; await view.fire("toggle"); expect(secret.value).toBe(""); await copyCode.fire("click"); expect(copied).toHaveLength(1);
     view.open = true; await view.fire("toggle"); expect(all(view).some(item => item.type === "password")).toBe(false);
@@ -181,7 +218,7 @@ describe("operator early access invitations", () => {
     const redeemed = { ...invite, redeemedAt: "2026-10-24T01:00:00Z", complimentaryAppliedAt: "2026-10-24T01:00:00Z" };
     const panel = signupAdminPanel({ session: operator, api: { signupInvites: async () => ({ invites: [redeemed], more: true }), revokeSignupInvite: async (id: string) => { calls++; expect(id).toBe(invite.id); return { invite: { ...redeemed, revokedAt: "2026-10-24T02:00:00Z" }, revocationPending: true }; } } })!;
     const view = panel.element as Element; view.open = true; await view.fire("toggle");
-    expect(view.textContent).toContain("Free access active"); expect(view.textContent).toContain("100 newest");
+    expect(view.textContent).toContain("Friend access active"); expect(view.textContent).toContain("100 newest");
     const revoke = button(view, "Revoke code and free access"); await revoke.fire("click"); expect(calls).toBe(0); await revoke.fire("click");
     expect(calls).toBe(1); expect(view.textContent).toContain("Revocation pending"); expect(view.textContent).toContain("free access removal is still queued"); expect(button(view, "Retry revocation")).toBeDefined();
     expect(signupInviteStatus({ ...redeemed, revokedAt: "2026-10-24", complimentaryRevokedAt: "2026-10-24" })).toBe("Revoked");

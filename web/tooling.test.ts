@@ -149,7 +149,7 @@ describe("local tooling identity", () => {
 
   test("vendored additions match their provenance and contain only monochrome local SVG", () => {
     const sources = JSON.parse(readFileSync(new URL("./vendor/brands/catalog-sources.json", import.meta.url), "utf8"));
-    expect(sources.assets).toHaveLength(18);
+    expect(sources.assets).toHaveLength(19);
     for (const asset of sources.assets) {
       const svg = readFileSync(new URL(`./vendor/brands/${asset.file}`, import.meta.url), "utf8");
       expect(createHash("sha256").update(svg).digest("hex")).toBe(asset.sha256);

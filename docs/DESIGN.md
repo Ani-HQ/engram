@@ -1,8 +1,17 @@
 # Interface direction
 
-Engram stays monochrome. The interface separates private investigation from a
-public, aggregate-only profile. It uses self-hosted Inter, a local Lucide subset,
-system monospace for identifiers, and no remote runtime scripts, fonts or icons.
+The current visual language and contribution rules live in
+[the design system](DESIGN-SYSTEM.md), with a working gallery at `/design-system`.
+Every frontend change must reuse or contribute to that system. Warm paper, ink,
+lime, lilac and orbital graphics connect the public website to the working app.
+The interface separates private investigation from a public, aggregate-only
+profile. It uses self-hosted Inter, local SVG assets and system monospace for
+identifiers, with no remote runtime scripts, fonts or icons.
+
+For local review, run `bun web/dev-server.ts`. The public homepage is `/`, the
+sample-data app is `/app`, and `/__review` shows those actual pages inside a
+390×844 frame for responsive review. The frame shell exists only in the local
+preview server. Production pages retain their restrictive frame policy.
 
 ## Brand identity
 
@@ -15,7 +24,7 @@ missing branding paths return 404. No remote logo service is involved.
 
 HTTP and stdio MCP identity share the Engram title, description and icon hints.
 OAuth discovery uses canonical absolute logo URLs, and the authorization page
-uses the same black-and-white identity on a white surface. These are display
+uses the same identity and shared design tokens. These are display
 hints: receiving clients control their cards and caches, so published metadata
 does not guarantee a refreshed connector logo or verify a caller's identity.
 
@@ -69,9 +78,9 @@ The references were searched and visually inspected through Mobbin:
 - Connections store a separate display source so custom agent names can use their
   harness's mark. Owners can edit this source without changing access or the
   authenticated name. Registered and agent-reported sources remain distinct.
-- Login uses one responsive400px column and a shared left alignment for the
-  brand, heading, form, secondary actions and footer. Radius tokens use10px for
-  controls,14px for cards and18px for panels; circular status marks stay circular.
+- Login uses the shared responsive auth composition, with a clear form and an
+  illustrative memory graphic. Form controls, cards, focus and motion use the
+  design system; circular status marks stay circular.
 - Attention runs explicit, read-only checks through a workspace-scoped job queue.
   Findings distinguish deterministic rules from model judgments, link to cited
   action snapshots, and open the corresponding work log with the source highlighted.

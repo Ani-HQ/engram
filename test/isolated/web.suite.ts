@@ -635,6 +635,28 @@ describe("anonymous branding asset delivery", () => {
     expect(privateResponse.headers.get("access-control-allow-origin")).toBeNull();
   });
 
+  test("serves separate public and private shells without soft 404s", async () => {
+    for (const [path, expected] of [["/", "/marketing.css"], ["/app", "/app.js"]]) {
+      const page = await handleWeb(new Request(`http://engram.local${path}`));
+      expect(page.status).toBe(200);
+      expect(await page.text()).toContain(expected);
+      const head = await handleWeb(new Request(`http://engram.local${path}`, { method: "HEAD" }));
+      expect(head.status).toBe(200);
+      expect(await head.text()).toBe("");
+    }
+    const missingPage = await handleWeb(new Request("http://engram.local/a-missing-public-page"));
+    expect(missingPage.status).toBe(404);
+    expect(missingPage.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    expect(missingPage.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+    expect(await missingPage.text()).toContain('name="robots" content="noindex');
+    const missingAsset = await handleWeb(new Request("http://engram.local/missing-runtime.js"));
+    expect(missingAsset.status).toBe(404);
+    expect(await missingAsset.text()).toBe("Not Found");
+    const sitemap = await handleWeb(new Request("http://engram.local/sitemap.xml"));
+    expect(sitemap.status).toBe(200);
+    expect(sitemap.headers.get("content-type")).toBe("application/xml; charset=utf-8");
+  });
+
   test("returns 404 for missing branding and consent assets while retaining SPA routes", async () => {
     const webDir = await mkdtemp(join(tmpdir(), "engram-branding-static-"));
     const previous = process.env.ENGRAM_WEB_DIR;

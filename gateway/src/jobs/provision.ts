@@ -7,6 +7,12 @@ export async function main(): Promise<void> {
   if (databaseSecurity.authority !== "provisioner") throw new Error("Separate provisioner authority is required for this job");
   try {
     await migrate();
+    const jevOwnerEmail = process.env.ENGRAM_JEV_OPERATOR_EMAIL?.trim();
+    if (jevOwnerEmail) {
+      const { configureJevOperatorDefault } = await import("../jev");
+      const configured = await configureJevOperatorDefault(sql, { email: jevOwnerEmail });
+      if (configured.reason === 'owner-not-found' || configured.reason === 'ambiguous-owner') throw new Error('Jev operator owner is unavailable');
+    }
     // Maintenance-only command: the public job invoker cannot override job
     // arguments. Stop traffic/workers before credential rotation and restart
     // them only after this finishes and old database sessions are terminated.

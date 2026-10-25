@@ -234,8 +234,11 @@ export async function listMemberships(email: string): Promise<Array<Org & { role
 }
 
 export async function updatePolicies(orgId: number, policies: OrgPolicies): Promise<Org | null> {
+  // Jev consent and spend acceptance belong to /api/jev. Preserve the current
+  // committed value in SQL, not a potentially stale request's org snapshot.
   const rows = await sql`
-    UPDATE orgs SET policies = ${sql.json(policies)} WHERE id = ${orgId} RETURNING *`;
+    UPDATE orgs SET policies = jsonb_set(${sql.json(policies)}::jsonb, '{jevProcessing}', coalesce(orgs.policies->'jevProcessing','false'::jsonb))
+    WHERE id = ${orgId} RETURNING *`;
   return rows[0] ? rowToOrg(rows[0]) : null;
 }
 
@@ -425,24 +428,31 @@ async function acceptSignupVerification(raw: string, db: postgres.Sql): Promise<
   const { eligiblePersonalWorkspace } = await import("./signup-invites");
   const result = await db.begin(async tx => {
     const rows = await tx`
-      SELECT i.id AS signup_id, i.email, v.id AS verification_id, v.pending_name
+      SELECT i.id AS signup_id, v.email, v.id AS verification_id, v.pending_name
       FROM hosted_signup_invites i JOIN hosted_signup_verifications v ON v.signup_invite_id = i.id
       JOIN hosted_signup_operators op ON op.member_id = i.created_by_member_id AND op.revoked_at IS NULL
       JOIN org_members creator ON creator.id = op.member_id AND creator.org_id = 1 AND creator.role = 'owner'
       WHERE v.token_hash = ${sha256(raw)}
-        AND v.accepted_at IS NULL AND v.expires_at > now() AND v.email = i.email
+        AND v.accepted_at IS NULL AND v.expires_at > now() AND (v.email = i.email OR i.email IS NULL)
         AND i.redeemed_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > now()
       FOR UPDATE OF i, v FOR SHARE OF creator`;
     if (rows.length !== 1) return null;
     const row = rows[0], email = String(row.email);
     await tx`SELECT pg_advisory_xact_lock(hashtextextended(${`engram/signup/${email}`}, 0))`;
+    const knownPerson = (await tx`SELECT EXISTS (SELECT 1 FROM org_members WHERE email = ${email}) AS known`)[0].known === true;
     const prior = await eligiblePersonalWorkspace(tx as unknown as postgres.Sql, email);
     const target = prior ? { org: (await getOrg(prior.orgId, tx as unknown as postgres.Sql))!, member: prior.member }
       : await createPersonalOrgRecords(String(row.pending_name), email, tx as unknown as postgres.Sql);
     if (!target.org) return null;
-    await tx`UPDATE hosted_signup_invites SET redeemed_at = now(), redeemed_org_id = ${target.org.id}, redeemed_owner_member_id = ${target.member.id}
+    await tx`UPDATE hosted_signup_invites SET email = ${email}, redeemed_at = now(),
+      access_expires_at = CASE WHEN access_duration_days = 60 THEN now() + interval '1440 hours' ELSE NULL END,
+      redeemed_org_id = ${target.org.id}, redeemed_owner_member_id = ${target.member.id}
       WHERE id = ${row.signup_id}`;
     await tx`UPDATE hosted_signup_verifications SET accepted_at = now() WHERE id = ${row.verification_id}`;
+    if (!prior && !knownPerson) {
+      const { enrollMailSeries } = await import("./mail-series");
+      await enrollMailSeries(tx as unknown as postgres.Sql, { orgId: target.org.id, memberId: target.member.id, email, signupInviteId: String(row.signup_id) });
+    }
     return target;
   });
   // Existing ready workspaces have no provisioning poll to retry a coalesced

@@ -13,10 +13,10 @@ const time = value => h("time", { datetime: value, "data-relative-time": value, 
 
 export function agentOverview(data, { onManage, onFilter, selectedAgent = "", error = "", now = Date.now() } = {}) {
   if (!data) return error ? h("aside", { class: "agent-overview unavailable" }, icon("info", { size: 14 }), h("span", {}, "Connection status is unavailable."), button("View connections", onManage, { class: "text small" }))
-    : h("aside", { class: "agent-overview is-loading", "aria-label": "Loading agent connections" }, h("span", { class: "muted" }, "Checking agent connections…"));
+    : h("aside", { class: "agent-overview is-loading", "aria-label": "Loading agent connections" }, h("span", { class: "ds-spinner", "aria-hidden": "true" }), h("span", { class: "muted" }, "Checking agent connections…"));
   const connections = data.connections || [], summary = connectionSummary(connections, now, data.recentWindowSeconds);
   const visible = [...connections].sort((a, b) => Number(b.status === "authorized") - Number(a.status === "authorized") || (Date.parse(lastConnectionContact(b, now) || b.createdAt) || 0) - (Date.parse(lastConnectionContact(a, now) || a.createdAt) || 0)).slice(0, 5);
-  return h("aside", { class: "agent-overview", "aria-label": "Agent connections" },
+  return h("aside", { class: "agent-overview ds-card", "aria-label": "Agent connections" },
     h("div", { class: "agent-overview-heading" }, h("div", {}, h("h2", {}, "Your agents"), h("span", {}, summary.recent ? `${summary.recent} seen recently` : summary.authorized ? `${summary.authorized} authorized · No recent contact` : connections.length ? "Connections need attention" : "Connect your first agent")),
       button(["Connections", icon("arrow-up-right", { size: 12 })], onManage, { class: "text small" })),
     visible.length > 0 && h("div", { class: "agent-presence-list" }, visible.map(connection => {
@@ -36,13 +36,13 @@ export function connectionInventory(data, { actions, onInspect, now = Date.now()
   const all = data.connections || [], authorized = all.filter(connection => connection.status === "authorized"), attention = all.filter(connection => connection.status !== "authorized");
   const row = connection => {
     const state = connectionState(connection, now, data.recentWindowSeconds);
-    return h("article", { class: `connection-row ${state.state}`, "data-connection-id": connection.id }, avatar(connection),
+    return h("article", { class: `connection-row ds-card ${state.state}`, "data-connection-id": connection.id }, avatar(connection),
       h("div", { class: "connection-copy" }, h("div", { class: "connection-name" }, h("strong", {}, name(connection)), h("span", { class: "connection-auth-kind" }, connection.kind === "oauth" ? "Sign-in" : "Access key")),
         connection.kind === "token" && connection.name !== name(connection) && h("p", { class: "connection-installation" }, connection.name),
         h("p", {}, state.lastContactAt ? ["Last contact ", time(state.lastContactAt)] : "No agent calls recorded yet"),
         h("p", { class: "connection-counts" }, `${count(connection.memoryCalls)} memory ${Number(connection.memoryCalls) === 1 ? "call" : "calls"}`, h("span", { "aria-hidden": "true" }, "·"), `${count(connection.taskReports)} task ${Number(connection.taskReports) === 1 ? "report" : "reports"}`),
         h("p", { class: "connection-reporting-state", title: taskReportingStatus(connection).detail }, taskReportingStatus(connection).label)),
-      h("div", { class: "connection-row-end" }, h("span", { class: `connection-state ${state.state}`, title: state.explanation }, icon(state.state === "reconnect" ? "info" : state.state === "recent" ? "check" : "circle-dashed", { size: 12 }), state.label),
+      h("div", { class: "connection-row-end" }, h("span", { class: `connection-state ds-badge ${state.state}`, "data-tone": state.state === "recent" ? "success" : state.state === "reconnect" ? "warning" : "neutral", title: state.explanation }, icon(state.state === "reconnect" ? "info" : state.state === "recent" ? "check" : "circle-dashed", { size: 12 }), state.label),
         actions?.(connection) || button(state.state === "reconnect" ? "Reconnect" : "Details", () => onInspect?.(connection), { class: "text small" })));
   };
   return h("div", { class: "connection-inventory" },

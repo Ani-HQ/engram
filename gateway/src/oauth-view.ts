@@ -23,23 +23,25 @@ export function renderOAuthAuthorizePage(parsed: OAuthAuthorizeViewParams, messa
     ? `<p id="oauth-feedback" class="oauth-feedback" role="status">Local mailer is off. Open <a href="${escapeHtml(link)}">this sign-in link</a> to continue.</p>`
     : message ? `<p id="oauth-feedback" class="oauth-feedback" role="status">${escapeHtml(message)}</p>` : "";
   const html = `<!doctype html>
-<html lang="en">
+<html lang="en" data-design-system="signal">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex, noarchive">
   <title>Connect to Engram</title>
   <link rel="icon" href="/favicon.ico" type="image/x-icon" sizes="16x16 32x32 48x48">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" sizes="any">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
+  <link rel="stylesheet" href="/design-system.css">
   <link rel="stylesheet" href="/oauth.css">
 </head>
-<body>
+<body class="oauth-surface">
   <main class="oauth-page">
-    <section class="oauth-card" aria-labelledby="oauth-title">
+    <section class="oauth-card ds-card" aria-labelledby="oauth-title">
       <a class="oauth-brand" href="/" aria-label="Engram home"><img src="/brand/engram-mark.svg" alt="" width="36" height="36"><span>engram</span></a>
       <header class="oauth-heading">
-        <p class="oauth-context">Agent connection</p>
+        <p class="oauth-context ds-eyebrow">Agent connection</p>
         <h1 id="oauth-title">Connect to Engram</h1>
         <p id="oauth-description" class="oauth-description">Sign in with your workspace email. We’ll email you a link to continue.</p>
       </header>
@@ -50,7 +52,7 @@ export function renderOAuthAuthorizePage(parsed: OAuthAuthorizeViewParams, messa
           <label for="oauth-email">Email address</label>
           <input id="oauth-email" type="email" name="email" autocomplete="email" inputmode="email" spellcheck="false" required placeholder="you@example.com" aria-describedby="oauth-description${feedback ? " oauth-feedback" : ""}">
         </div>
-        <button type="submit">Email a sign-in link <span aria-hidden="true">→</span></button>
+        <button type="submit" class="ds-button primary">Email a sign-in link <span aria-hidden="true">→</span></button>
       </form>
       <p class="oauth-reassurance">Your existing workspace permissions still apply.</p>
     </section>

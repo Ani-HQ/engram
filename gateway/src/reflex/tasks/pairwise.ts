@@ -46,9 +46,10 @@ export async function judgePair(
   client: ReflexClient,
   a: string,
   b: string,
+  operationKey?: string,
 ): Promise<{ relation: MemoryRelation | null; confidence: number | null; model: string | null; requestedModel?: string; modelReported?: boolean }> {
   if (!client.available()) return { relation: null, confidence: null, model: null };
-  const result = await client.evaluate(buildPairwiseQuestions(a, b));
+  const result = await client.evaluate({ ...buildPairwiseQuestions(a, b), task: "pairwise", operationKey });
   if (!result) return { relation: null, confidence: null, model: null };
   return { ...parsePairwise(result.answers), model: result.model, requestedModel: result.requestedModel, modelReported: result.modelReported };
 }

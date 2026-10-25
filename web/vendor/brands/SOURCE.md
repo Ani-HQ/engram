@@ -8,6 +8,14 @@ Included unchanged: codex, grok, openai, gemini, cline, windsurf, goose, amp,
 opencode and githubcopilot. The package is MIT licensed; see LOBE-LICENSE.
 Trademark ownership remains with the respective products.
 
+Devin uses `icons/devin.svg` from the same pinned package. Root sizing is
+normalized to 24px and layout-only inline styling is removed; paths are unchanged.
+Its npm SHA-512 integrity and original/vendored SHA-256 hashes are recorded in
+`catalog-sources.json`. Product: https://devin.ai/ . MCP configuration reference:
+https://docs.devin.ai/work-with-devin/mcp . The logo identifies the product;
+compatibility through a custom MCP connection is distinct from an Engram-tested
+Devin session or an endorsement.
+
 OpenClaw and **Hermes Agent** are from the same pinned Lobe package. Their
 catalog pages identify the products: https://icons.lobehub.com/components/open-claw
 and https://icons.lobehub.com/components/hermes-agent . The Hermes Agent mark is
@@ -45,3 +53,33 @@ Claude and Cursor continue to use the pinned local Simple Icons subset described
 in ../simple-icons/SOURCE.md. No product image is loaded from an external host
 at runtime. Marks identify a connection's configured or reported source and do
 not indicate endorsement or a verified model.
+
+
+## Muse and Instinct: official product assets
+
+Retrieved on 25 October 2026 for named product identification in an illustrative
+shared-memory diagram. These are original public product assets, not generated
+or redrawn marks. They do not claim an Engram-tested MCP integration, partnership,
+or endorsement. No open-source license grant is claimed for either asset;
+copyright and trademark ownership stay with the respective product owners.
+
+- **Muse** (`muse.svg`): the unchanged 100×100 app mark at
+  https://muse.ai/images/favicon/app-squiggle.svg , linked as an SVG favicon by
+  https://muse.ai/ . Product identity is corroborated by Meta's official page
+  https://ai.meta.com/muse/ and announcement
+  https://about.fb.com/news/2026/09/introducing-muse-personal-ai-agent/ , which
+  links to muse.ai. The original gradient, geometry, dimensions and viewBox are
+  preserved. SHA-256:
+  `6373d89d274258a38432f3c3729cd716498b8ded849b174a7998683dcf4aaba5`.
+- **Instinct** (`instinct.png`): the unchanged 64×64 icon at
+  https://instinct.com/redesign/favicon.ico , linked by https://instinct.com/ .
+  That upstream URL returns PNG bytes; only the local filename extension matches
+  its actual format. The stick-figure artwork and white background are preserved.
+  The product's terms identify Spear Street Technology, Inc. d/b/a Instinct:
+  https://instinct.com/terms . Brand and content rights remain reserved there.
+  SHA-256:
+  `0b666ba5c89408ca2b9c790ce7bf65da063645ca60a5e06426461924b0c1fd08`.
+
+Neither asset is covered by the LobeHub MIT or Simple Icons CC0 notices above.
+Both load from local files at runtime; no visitor request goes to their source
+websites.

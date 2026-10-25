@@ -116,12 +116,42 @@ describe("operator candidate smoke credential",()=>{
     const directory=mkdtempSync(join(tmpdir(),"engram-smoke-stdin-")),python=join(directory,"python-fixture"),marker=join(directory,"safe-result.json");
     const raw="eng_"+"x".repeat(43);
     try {
+      writeFileSync(join(directory,"metadata-only.json"),JSON.stringify({project:"ani-hq",region:"us-central1",service:"engram",image:"gcr.io/ani-hq/engram:reviewed-build",tag:"candidate",candidateRevision:"engram-r-fixture",candidateURL:"https://candidate-fixture.a.run.app"}),{mode:0o600});
       writeFileSync(python,`#!${process.execPath}\nimport{writeFileSync}from'node:fs';const token=(await Bun.stdin.text()).trim();writeFileSync(${JSON.stringify(marker)},JSON.stringify({stdinCorrect:token===${JSON.stringify(raw)},inArguments:process.argv.some(arg=>arg.includes(token)),stdinFlag:process.argv.includes('--smoke-token-stdin')}));console.log(token);console.error(token);`,{mode:0o700});
       const script=`const {releaseSmoke,settings}=await import('./deploy/smoke-candidate');const options=settings(${JSON.stringify(["--project","ani-hq","--image","gcr.io/ani-hq/engram:reviewed-build","--state-file",join(directory,"metadata-only.json"),"--python",python,"--run"])});await releaseSmoke(options,options.stateFile,${JSON.stringify(raw)},new AbortController().signal);`;
       const child=Bun.spawn([process.execPath,"--eval",script],{cwd:repository,stdout:"pipe",stderr:"pipe"});
       const [out,error,code]=await Promise.all([new Response(child.stdout).text(),new Response(child.stderr).text(),child.exited]);
       expect(code,error).toBe(0);expect(out).toBe("");expect(error).toBe("");
       expect(JSON.parse(readFileSync(marker,"utf8"))).toEqual({stdinCorrect:true,inArguments:false,stdinFlag:true});
+    } finally{rmSync(directory,{recursive:true,force:true});}
+  });
+
+  test("smoke subprocess uses the exact reviewed Jev billing and zero-markup settings",async()=>{
+    const directory=mkdtempSync(join(tmpdir(),"engram-smoke-jev-")),stateFile=join(directory,"state.json"),python=join(directory,"python-fixture"),marker=join(directory,"flags.json");
+    const state={project:"ani-hq",region:"us-central1",service:"engram",image:"gcr.io/ani-hq/engram:reviewed-build",tag:"candidate",candidateRevision:"engram-r-fixture",candidateURL:"https://candidate-fixture.a.run.app"};
+    try {
+      writeFileSync(python,`#!${process.execPath}\nimport{writeFileSync}from'node:fs';await Bun.stdin.text();const args=process.argv.slice(2);const i=args.indexOf('--jev-markup-bps');writeFileSync(${JSON.stringify(marker)},JSON.stringify({customerBillingEnabled:args.includes('--jev-enable-customer-billing'),markupBps:i<0?null:Number(args[i+1])}));`,{mode:0o700});
+      const options=settings(["--project","ani-hq","--image",state.image,"--state-file",stateFile,"--python",python,"--run"]);
+      const {releaseSmoke}=await import("../deploy/smoke-candidate");
+      for(const jev of [undefined,{customerBillingEnabled:false,markupBps:null},{customerBillingEnabled:false,markupBps:0},{customerBillingEnabled:true,markupBps:0},{customerBillingEnabled:true,markupBps:1000}]){
+        writeFileSync(stateFile,JSON.stringify({...state,...(jev===undefined?{}:{jev})}),{mode:0o600});
+        await releaseSmoke(options,stateFile,"eng_"+"x".repeat(43),new AbortController().signal);
+        expect(JSON.parse(readFileSync(marker,"utf8"))).toEqual(jev??{customerBillingEnabled:false,markupBps:null});
+      }
+    } finally{rmSync(directory,{recursive:true,force:true});}
+  });
+
+  test("invalid reviewed Jev settings fail before an operator credential can be issued",async()=>{
+    const directory=mkdtempSync(join(tmpdir(),"engram-smoke-jev-invalid-")),stateFile=join(directory,"state.json");
+    const options=settings(["--project","ani-hq","--image","gcr.io/ani-hq/engram:reviewed-build","--state-file",stateFile,"--run"]);
+    const state={project:"ani-hq",region:"us-central1",service:"engram",image:options.image,tag:"candidate",candidateRevision:"engram-r-fixture",candidateURL:"https://candidate-fixture.a.run.app"};
+    let connected=false;
+    try {
+      for(const jev of [null,[],{customerBillingEnabled:"true",markupBps:0},{customerBillingEnabled:true,markupBps:null},{customerBillingEnabled:true,markupBps:-1},{customerBillingEnabled:true,markupBps:10001},{customerBillingEnabled:true,markupBps:0.1},{customerBillingEnabled:false},{customerBillingEnabled:false,markupBps:0,unexpected:"override"}]){
+        writeFileSync(stateFile,JSON.stringify({...state,jev}),{mode:0o600});
+        await expect(run(options,undefined,{connect:(async()=>{connected=true;throw new Error("Must not connect");}) as any})).rejects.toMatchObject({code:"invalid_jev_release_settings"});
+      }
+      expect(connected).toBe(false);
     } finally{rmSync(directory,{recursive:true,force:true});}
   });
 });

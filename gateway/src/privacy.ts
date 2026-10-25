@@ -11,12 +11,18 @@ export function externalAiAllowed(org = currentOrg()): boolean {
   return org?.policies.externalAiProcessing === true;
 }
 
+// Jev consent never enables embeddings or generated briefs, and the legacy
+// external-AI preference never grants permission to send content to Jev.
+export function jevAllowed(org = currentOrg()): boolean {
+  return org?.policies.jevProcessing === true;
+}
+
 // Reading an expired workspace must not trigger paid external model processing.
 // Preserve the saved preference; this copy is effective only for this request.
 export async function processingOrg<T extends ContextOrg>(org: T, actor: TokenRecord): Promise<T> {
-  if (config.deploymentMode !== "hosted" || !externalAiAllowed(org)) return org;
+  if (config.deploymentMode !== "hosted" || (!externalAiAllowed(org) && !jevAllowed(org))) return org;
   try { await requireHostedWriteAccess(actor); return org; }
-  catch { return { ...org, policies: { ...org.policies, externalAiProcessing: false } }; }
+  catch { return { ...org, policies: { ...org.policies, externalAiProcessing: false, jevProcessing: false } }; }
 }
 
 export function brainEnvironment(org: BrainWorkspace, source = process.env): Record<string, string> {

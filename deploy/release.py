@@ -8,6 +8,7 @@ only revision names, traffic, image identity and smoke outcomes.
 import argparse
 import copy
 import datetime
+from decimal import Decimal
 import json
 import os
 from pathlib import Path
@@ -28,10 +29,11 @@ RUNTIME_SECRETS = {
     "STRIPE_PORTAL_CONFIGURATION_ID": "engram-stripe-portal-configuration-id",
     "RESEND_API_KEY": "resend-api-key",
     "ENGRAM_OAUTH_PRIVATE_KEY": "engram-oauth-private-key",
+    "JEV_API_KEY": "engram-jev-api-key",
 }
 PROVISIONER_SECRETS = {key: RUNTIME_SECRETS[key] for key in ("ENGRAM_DB_URL_TEMPLATE", "ENGRAM_TENANT_CREDENTIAL_KEY")}
 PROVISIONER_SECRETS["ENGRAM_PROVISIONER_DB_URL_TEMPLATE"] = "engram-provisioner-db-url-template"
-REMOVE_RUNTIME = {"ENGRAM_PROVISIONER_DB_URL_TEMPLATE", "ENGRAM_DB_PASSWORD", "PGPASSWORD", "ENGRAM_ALLOW_LEGACY_DB_CREDENTIALS", "ENGRAM_WORKER_DB_URL_TEMPLATE", "ENGRAM_JOB"}
+REMOVE_RUNTIME = {"ENGRAM_PROVISIONER_DB_URL_TEMPLATE", "ENGRAM_DB_PASSWORD", "PGPASSWORD", "ENGRAM_ALLOW_LEGACY_DB_CREDENTIALS", "ENGRAM_WORKER_DB_URL_TEMPLATE", "ENGRAM_JOB", "REFLEX_API_KEY", "TYPESAFE_API_KEY", "REFLEX_ENDPOINT", "ENGRAM_JEV_MARKUP_BPS", "ENGRAM_JEV_OPERATOR_EMAIL", "ENGRAM_JEV_OPERATOR_MONTHLY_BUDGET_USD", "ENGRAM_JEV_BILLING_WORKER_ENABLED"}
 
 
 def environment(existing, desired, secrets, remove=()):
@@ -92,7 +94,10 @@ def service_body(service, args, revision):
 
 
 def runtime_environment(args):
-    return {"ENGRAM_DEPLOYMENT_MODE": "hosted", "ENGRAM_SIGNUP_MODE": "invite-only", "ENGRAM_DATABASE_AUTHORITY": "runtime", "ENGRAM_WORKER_ISOLATION": "cloudrun", "GBRAIN_HOMES_DIR": "/tmp/gbrain-homes", "ENGRAM_CLOUDSQL_INSTANCE": f"{args.project}:{args.region}:engram-pg", "ENGRAM_WORKER_CONNECTOR_SERVICE_ACCOUNT": f"engram-db-connector@{args.project}.iam.gserviceaccount.com", "ENGRAM_PROVISION_JOB": f"projects/{args.project}/locations/{args.region}/jobs/engram-provision", "ENGRAM_PUBLIC_URL": args.public_url, "ENGRAM_OAUTH_AUDIENCE": args.public_url + "/mcp", "ENGRAM_DEV_LOGIN_LINKS": "0", "ENGRAM_INSECURE_COOKIE": "0", "REFLEX_MODEL": "jev-1.13.0"}
+    values = {"ENGRAM_DEPLOYMENT_MODE": "hosted", "ENGRAM_SIGNUP_MODE": "invite-only", "ENGRAM_ONBOARDING_EMAILS": "1", "ENGRAM_DATABASE_AUTHORITY": "runtime", "ENGRAM_WORKER_ISOLATION": "cloudrun", "GBRAIN_HOMES_DIR": "/tmp/gbrain-homes", "ENGRAM_CLOUDSQL_INSTANCE": f"{args.project}:{args.region}:engram-pg", "ENGRAM_WORKER_CONNECTOR_SERVICE_ACCOUNT": f"engram-db-connector@{args.project}.iam.gserviceaccount.com", "ENGRAM_PROVISION_JOB": f"projects/{args.project}/locations/{args.region}/jobs/engram-provision", "ENGRAM_PUBLIC_URL": args.public_url, "ENGRAM_OAUTH_AUDIENCE": args.public_url + "/mcp", "ENGRAM_DEV_LOGIN_LINKS": "0", "ENGRAM_INSECURE_COOKIE": "0", "REFLEX_MODEL": "jev-latest", "ENGRAM_JEV_BILLING_ENABLED": "1" if getattr(args, "jev_enable_customer_billing", False) else "0"}
+    if getattr(args, "jev_markup_bps", None) is not None:
+        values["ENGRAM_JEV_MARKUP_BPS"] = args.jev_markup_bps
+    return values
 
 
 def write_state(path, state):
@@ -182,6 +187,9 @@ def verify_provision_trigger(args):
 
 def provision(args):
     env = {"ENGRAM_DEPLOYMENT_MODE": "hosted", "ENGRAM_SIGNUP_MODE": "invite-only", "ENGRAM_DATABASE_AUTHORITY": "provisioner", "ENGRAM_JOB": "provision", "ENGRAM_CLOUDSQL_INSTANCE": f"{args.project}:{args.region}:engram-pg", "GBRAIN_HOMES_DIR": "/tmp/gbrain-homes"}
+    if getattr(args, "jev_owner_email", ""):
+        env["ENGRAM_JEV_OPERATOR_EMAIL"] = args.jev_owner_email
+        env["ENGRAM_JEV_OPERATOR_MONTHLY_BUDGET_USD"] = getattr(args, "jev_operator_budget_usd", "1")
     secrets = ",".join(f"{name}={secret}:latest" for name, secret in PROVISIONER_SECRETS.items())
     cloud(args, ["run", "jobs", "deploy", "engram-provision", f"--image={args.image}", f"--region={args.region}", f"--service-account=engram-provisioner@{args.project}.iam.gserviceaccount.com", f"--set-cloudsql-instances={args.project}:{args.region}:engram-pg", "--set-env-vars=" + ",".join(f"{key}={value}" for key, value in env.items()), "--set-secrets=" + secrets, "--memory=2Gi", "--cpu=1", "--tasks=1", "--max-retries=1", "--task-timeout=900s"])
     cloud(args, ["run", "jobs", "execute", "engram-provision", f"--region={args.region}", "--wait"])
@@ -320,6 +328,25 @@ def dream(api, args):
     api.request("jobs", "engram-dream", "PUT", {"apiVersion": "run.googleapis.com/v1", "kind": "Job", "metadata": metadata, "spec": spec})
 
 
+def mail_series(args, command):
+    # Preparation (including its new resource-scoped IAM/secret) is a separate
+    # reviewed step. Release only verifies, enables or pauses that prepared job.
+    result = subprocess.run([sys.executable, str(Path(__file__).with_name("mail-series.py")), command,
+        "--project", args.project, "--region", args.region, "--image", args.image,
+        "--public-url", args.public_url], stdin=subprocess.DEVNULL, capture_output=True, timeout=600)
+    if result.returncode:
+        raise RuntimeError("Mail worker operation failed; use deploy/mail-series.py to inspect its reviewed configuration")
+
+
+def jev_billing(args, command):
+    flags = ["--allow-customer-billing"] if command == "enable" and args.jev_enable_customer_billing else []
+    result = subprocess.run([sys.executable, str(Path(__file__).with_name("jev-billing.py")), command,
+        "--project", args.project, "--region", args.region, "--image", args.image,
+        "--public-url", args.public_url, *flags], stdin=subprocess.DEVNULL, capture_output=True, timeout=600)
+    if result.returncode:
+        raise RuntimeError("Jev billing worker operation failed; inspect its private prepared configuration")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("plan", "stage", "smoke", "activate", "rollback"))
@@ -331,6 +358,10 @@ def main():
     parser.add_argument("--public-url", default="https://engram.ani.computer")
     parser.add_argument("--state-file", default="release-state.json")
     parser.add_argument("--backup-id", default="")
+    parser.add_argument("--jev-owner-email", default=os.environ.get("ENGRAM_JEV_OPERATOR_EMAIL", ""))
+    parser.add_argument("--jev-operator-budget-usd", default="1")
+    parser.add_argument("--jev-enable-customer-billing", action="store_true")
+    parser.add_argument("--jev-markup-bps", type=int)
     token_source = parser.add_mutually_exclusive_group()
     token_source.add_argument("--smoke-token-secret", default="")
     token_source.add_argument("--smoke-token-stdin", action="store_true")
@@ -341,8 +372,16 @@ def main():
         raise RuntimeError("Use an explicit immutable build tag or digest in this project's Engram repository")
     if not re.fullmatch(r"https://[a-zA-Z0-9.-]+", args.public_url):
         raise RuntimeError("Use a canonical HTTPS origin")
+    if args.jev_owner_email and not re.fullmatch(r"[^\s@,]+@[^\s@,]+\.[^\s@,]+", args.jev_owner_email):
+        raise RuntimeError("Use one exact verified owner email for the Jev default")
+    if not re.fullmatch(r"[0-9]+(?:\.[0-9]{1,2})?", args.jev_operator_budget_usd) or not Decimal("1") <= Decimal(args.jev_operator_budget_usd) <= Decimal("100"):
+        raise RuntimeError("Use an operator Jev budget between 1 and 100 USD")
+    if args.jev_markup_bps is not None and not 0 <= args.jev_markup_bps <= 10000:
+        raise RuntimeError("Jev markup must be between 0 and 10000 basis points")
+    if args.jev_enable_customer_billing and args.jev_markup_bps is None:
+        raise RuntimeError("Customer Jev billing requires an explicitly approved markup; zero means provider price")
     if args.command == "plan":
-        print(json.dumps({"service": args.service, "image": args.image, "runtimeSecrets": sorted(RUNTIME_SECRETS.values()), "provisionerOnlySecret": "engram-provisioner-db-url-template", "activation": "separate explicit command after private smoke", "maxInstances": 1, "minInstances": 0, "cpuAlwaysAllocated": True}))
+        print(json.dumps({"service": args.service, "image": args.image, "runtimeSecrets": sorted(RUNTIME_SECRETS.values()), "provisionerOnlySecret": "engram-provisioner-db-url-template", "mailPreparation": "deploy/mail-series.py prepare using this image before staging; delivery stays disabled", "jevCustomerBilling": args.jev_enable_customer_billing, "jevMarkupBps": args.jev_markup_bps, "jevOwnerBootstrapRequested": bool(args.jev_owner_email), "activation": "separate explicit command after private smoke; enable prepared mail worker after traffic activation", "maxInstances": 1, "minInstances": 0, "cpuAlwaysAllocated": True}))
         return
     api = RunApi(args)
     if args.command == "stage":
@@ -354,6 +393,7 @@ def main():
         previous = api.request("services", args.service)
         revision = args.service + "-r-" + str(int(time.time()))
         state = {"version": 1, "project": args.project, "region": args.region, "service": args.service, "image": args.image, "candidateRevision": revision, "tag": args.tag, "backupId": args.backup_id, "priorTraffic": pinned_traffic(previous), "priorReadyRevision": previous.get("status", {}).get("latestReadyRevisionName"), "publicSmoke": False, "privateSmoke": False}
+        state["jev"] = {"customerBillingEnabled": args.jev_enable_customer_billing, "markupBps": args.jev_markup_bps}
         write_state(args.state_file, state)
         provision(args)
         api.request("services", args.service, "PUT", service_body(previous, args, revision))
@@ -364,6 +404,8 @@ def main():
     state = json.loads(Path(args.state_file).read_text())
     if any(state.get(key) != getattr(args, key) for key in ("project", "region", "service", "image", "tag")):
         raise RuntimeError("Release state does not match the selected candidate")
+    if args.command != "rollback" and state.get("jev", {"customerBillingEnabled": False, "markupBps": None}) != {"customerBillingEnabled": args.jev_enable_customer_billing, "markupBps": args.jev_markup_bps}:
+        raise RuntimeError("Use the same reviewed Jev billing settings as the staged candidate")
     if args.command == "smoke":
         current = api.request("services", args.service)
         tagged = next((entry.get("url") for entry in current.get("status", {}).get("traffic", []) if entry.get("tag") == args.tag and entry.get("revisionName") == state["candidateRevision"]), None)
@@ -384,15 +426,32 @@ def main():
         args.backup_id = state["backupId"]
         preflight(args)
         verify_provision_trigger(args)
+        # A prior activation may have changed traffic and enabled one worker
+        # before another enable failed. Reverify exact image/IAM/bindings while
+        # accepting either worker state, then safely complete missing enables.
+        traffic = current.get("spec", {}).get("traffic", [])
+        already_active = len(traffic) == 1 and traffic[0].get("revisionName") == state["candidateRevision"] and traffic[0].get("percent") == 100
+        worker_check = "verify-active" if already_active else "verify"
+        mail_series(args, worker_check)
+        jev_billing(args, worker_check if args.jev_enable_customer_billing else "pause")
         dream(api, args)
         current["spec"]["traffic"] = [{"revisionName": state["candidateRevision"], "percent": 100}]
     else:
+        mail_series(args, "pause")
+        jev_billing(args, "pause")
         current["spec"]["traffic"] = state["priorTraffic"]
     body = {key: current[key] for key in ("apiVersion", "kind", "spec")}
     body["metadata"] = {key: value for key, value in current["metadata"].items() if key in ("name", "namespace", "resourceVersion", "labels", "annotations")}
     api.request("services", args.service, "PUT", body)
     state["activated" if args.command == "activate" else "rolledBack"] = True
     write_state(args.state_file, state)
+    if args.command == "activate":
+        mail_series(args, "enable")
+        state["mailEnabled"] = True
+        if args.jev_enable_customer_billing:
+            jev_billing(args, "enable")
+            state["jevBillingWorkerEnabled"] = True
+        write_state(args.state_file, state)
     print(json.dumps({"operation": args.command, "revision": state["candidateRevision"] if args.command == "activate" else state.get("priorReadyRevision"), "databaseRestorePerformed": False}))
 
 
