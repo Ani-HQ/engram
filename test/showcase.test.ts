@@ -1,5 +1,5 @@
 import { describe, expect, test, setSystemTime } from "bun:test";
-import type postgres from "postgres";
+import postgres from "postgres";
 import { getPublicActivity, getShowcaseSettings, handlePublicShowcase, handleShowcaseApi, parseShowcaseInput, publicActivitySnapshot, renderShowcaseCard, renderShowcasePage, renderShowcasePng, showcaseCategory, updateShowcaseSettings, SHOWCASE_PAYLOAD_LIMIT, type ShowcaseProfile } from "../gateway/src/showcase";
 import { runWithContext } from "../gateway/src/context";
 import { DEFAULT_POLICIES, normalizeToken } from "../gateway/src/policies";
@@ -7,6 +7,8 @@ import { DEFAULT_POLICIES, normalizeToken } from "../gateway/src/policies";
 const owner = normalizeToken({ name: "private-owner@example.com", role: "owner", orgId: 7 });
 const now = new Date("2026-10-22T00:03:00Z");
 const profile: ShowcaseProfile = { slug: "my-agents", displayName: "Ada", bio: "Building with agents", published: true, showActivity: false, layout: "studio", highlights: [] };
+// Use the driver's real typed JSON helper without executing a connection.
+const jsonParameter = postgres().json;
 const aggregate = {
   total_actions: "17", completed_actions: "13", failed_actions: "2", running_actions: "2",
   active_agents: "3", active_days: "4", updated_at: "2026-10-21T21:00:00Z",
@@ -28,8 +30,12 @@ function database(initial: ShowcaseProfile | null = profile) {
     if (unavailable) throw new Error("private connection details");
     if (query.includes("INSERT INTO action_profiles")) {
       if ([...profiles].some(([id, value]) => id !== values[0] && value.slug === values[1])) throw Object.assign(new Error("duplicate"), { code: "23505" });
+      const highlights = values[7];
+      // A JSON-encoded string can be serialized again when PostgreSQL infers
+      // jsonb. Require the typed array binding that the real constraint accepts.
+      if (highlights?.type !== 3802 || !Array.isArray(highlights.value)) throw Object.assign(new Error("highlights must be a JSON array"), { code: "23514" });
       const existing = profiles.get(values[0]);
-      const saved = { slug: values[1], displayName: values[2], bio: values[3], published: values[4], showActivity: values[5] === true, layout: existing && !values[8] ? existing.layout : values[6], highlights: existing && !values[9] ? existing.highlights : JSON.parse(values[7]) };
+      const saved = { slug: values[1], displayName: values[2], bio: values[3], published: values[4], showActivity: values[5] === true, layout: existing && !values[8] ? existing.layout : values[6], highlights: existing && !values[9] ? existing.highlights : structuredClone(highlights.value) };
       profiles.set(values[0], saved);
       return [{ slug: saved.slug, display_name: saved.displayName, bio: saved.bio, published: saved.published, show_activity: saved.showActivity, layout: saved.layout, highlights: saved.highlights }];
     }
@@ -56,6 +62,7 @@ function database(initial: ShowcaseProfile | null = profile) {
     });
     return { fragment: true, query, values, then(resolve: any, reject: any) { return Promise.resolve().then(() => execute(query, values)).then(resolve, reject); } };
   }) as unknown as postgres.Sql;
+  db.json = jsonParameter;
   return { db, calls, profiles, events: (rows: any[]) => { eventRows = rows; }, fail: () => { unavailable = true; }, onAggregate: (callback: () => void) => { aggregateHook = callback; } };
 }
 
@@ -102,7 +109,7 @@ describe("showcase control", () => {
     expect(result.profile).toEqual(profile);
     expect(result.urls).toEqual({ page: "https://engram.example/u/my-agents", json: "https://engram.example/api/public/activity/my-agents", card: "https://engram.example/api/public/activity/my-agents/card.png", stream: "https://engram.example/api/public/activity/my-agents/stream" });
     expect(calls[0].query).toContain("ON CONFLICT (org_id)");
-    expect(calls[0].values).toEqual([7, profile.slug, profile.displayName, profile.bio, true, false, "studio", "[]", true, true]);
+    expect(calls[0].values).toEqual([7, profile.slug, profile.displayName, profile.bio, true, false, "studio", expect.objectContaining({ type: 3802, value: [] }), true, true]);
     expect(result.preview.stats.totalActions).toBe(17);
     await expect(updateShowcaseSettings(normalizeToken({ ...owner, orgId: 8 }), profile, "https://engram.example", db)).rejects.toMatchObject({ status: 409 });
   });
@@ -122,6 +129,17 @@ describe("showcase control", () => {
 
 describe("owner-written profile presentation", () => {
   const highlights = [{ title: "Release notes", body: "A short, deliberately public project update.", url: "https://example.com/releases" }];
+
+  test("binds empty and populated highlights as typed JSON arrays without pre-encoding", async () => {
+    for (const selected of [[], highlights]) {
+      const store = database(null);
+      const saved = await updateShowcaseSettings(owner, { ...profile, highlights: selected }, "https://engram.example", store.db);
+      expect(store.calls[0].values[7]).toMatchObject({ type: 3802, value: selected });
+      expect(Array.isArray(store.calls[0].values[7].value)).toBe(true);
+      expect(store.profiles.get(owner.orgId)?.highlights).toEqual(selected);
+      expect(saved.profile.highlights).toEqual(selected);
+    }
+  });
 
   test("validates bounded highlight records and safe optional links without accepting private record fields", () => {
     expect(parseShowcaseInput({ ...profile, layout: "field-notes", highlights: [{ title: "  A public note  ", body: "  Chosen by the owner.  ", url: "  https://example.com/note  " }, { title: "No link", body: "" }] })).toMatchObject({ layout: "field-notes", highlights: [{ title: "A public note", body: "Chosen by the owner.", url: "https://example.com/note" }, { title: "No link", body: "", url: "" }] });

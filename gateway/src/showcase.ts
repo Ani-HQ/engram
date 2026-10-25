@@ -43,7 +43,7 @@ export async function updateShowcaseSettings(token: TokenRecord, raw: unknown, o
   try {
     const rows = await db`
       INSERT INTO action_profiles (org_id, slug, display_name, bio, published, show_activity, layout, highlights)
-      VALUES (${actor.orgId}, ${profile.slug}, ${profile.displayName}, ${profile.bio}, ${profile.published}, ${profile.showActivity === true}, ${profile.layout}, ${JSON.stringify(profile.highlights)}::jsonb)
+      VALUES (${actor.orgId}, ${profile.slug}, ${profile.displayName}, ${profile.bio}, ${profile.published}, ${profile.showActivity === true}, ${profile.layout}, ${db.json(profile.highlights as postgres.JSONValue)})
       ON CONFLICT (org_id) DO UPDATE SET slug = EXCLUDED.slug, display_name = EXCLUDED.display_name,
         bio = EXCLUDED.bio, published = EXCLUDED.published, show_activity = EXCLUDED.show_activity,
         layout = CASE WHEN ${Object.hasOwn(input, "layout")} THEN EXCLUDED.layout ELSE action_profiles.layout END,

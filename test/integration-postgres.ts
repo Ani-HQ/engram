@@ -235,7 +235,7 @@ try {
   equal([(await getPublicActivity("integration-a"))?.profile.layout, (await getPublicActivity("integration-a"))?.profile.highlights], ["field-notes", publicHighlights], "An old client's update atomically preserves saved layout and highlights");
   equal([publicB.profile.layout, publicB.profile.highlights], ["studio", []], "Another tenant receives none of the owner's chosen highlights");
   await rejects(() => sql`UPDATE action_profiles SET layout = 'unknown' WHERE org_id = 2`, error => error.code === "23514", "The database rejects an unsupported layout independently of request validation");
-  await rejects(() => sql`UPDATE action_profiles SET highlights = ${JSON.stringify(Array.from({ length: 4 }, () => publicHighlights[0]))}::jsonb WHERE org_id = 2`, error => error.code === "23514", "The database bounds stored highlights to three records");
+  await rejects(() => sql`UPDATE action_profiles SET highlights = ${sql.json(Array.from({ length: 4 }, () => ({ ...publicHighlights[0] })))} WHERE org_id = 2`, error => error.code === "23514", "The database bounds stored highlight arrays to three records");
   await updateShowcaseSettings(ownerA, { slug: "integration-a", displayName: "Public A", bio: "Only aggregates", published: true, layout: "studio", highlights: [] }, "https://integration.example");
   equal((await getPublicActivity("integration-a"))?.profile.highlights, [], "An explicit empty highlight list clears previously approved public text");
   equal(publicA.stats, { totalActions: 4, completedActions: 3, failedActions: 1, runningActions: 0, activeAgents: 2, activeDays: 1 }, "Public totals aggregate only tenant A's actions");
