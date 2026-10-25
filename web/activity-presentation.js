@@ -1,4 +1,5 @@
 // Display only recorded metadata. These helpers never infer a goal or an outcome.
+import { resourceIdentity } from "./resource-model.js";
 const text = value => typeof value === "string" ? value.trim() : "";
 const memoryTools = {
   remember: "Save memory", recall: "Search memory", search: "Search memory",
@@ -26,26 +27,26 @@ function memorySlug(value) {
     && !slug.split("/").some(part => !part || part === "." || part === "..") ? slug : null;
 }
 /** A navigation descriptor, not a URL to assign blindly to an anchor. */
-export function resourcePresentation(value, { memory = false } = {}) {
+export function resourcePresentation(value, { memory = false, tool } = {}) {
   const raw = text(value);
   if (!raw) return null;
+  const identity = resourceIdentity(raw, { tool });
+  const metadata = { service: identity.service, resourceKind: identity.kind };
   if (/^engram:\/\//i.test(raw)) {
     const slug = memorySlug(raw.slice("engram://".length));
-    return slug ? { raw, kind: "memory", slug, href: null, label: words(slug.split("/").at(-1)) } : { raw, kind: "resource", slug: null, href: null, label: raw };
+    return slug ? { raw, ...metadata, kind: "memory", slug, href: null, label: words(slug.split("/").at(-1)) } : { raw, ...metadata, kind: "resource", slug: null, href: null, label: identity.label };
   }
   if (/^https?:\/\//i.test(raw) && !/[\u0000-\u0020\u007f\\]/.test(raw)) {
     try {
       const url = new URL(raw);
-      if (url.hostname && !url.username && !url.password) {
-        let path = url.pathname === "/" ? "" : url.pathname;
-        try { path = decodeURIComponent(path); } catch { /* Keep malformed escaping literal. */ }
-        return { raw, kind: "url", slug: null, href: url.href, label: `${url.hostname}${path}` };
+      if (url.hostname && !url.username && !url.password && identity.service !== "other") {
+        return { raw, ...metadata, kind: "url", slug: null, href: url.href, label: identity.label };
       }
     } catch { /* Opaque resource identifiers remain readable, never executable. */ }
   }
   const slug = memory && !raw.includes(":") ? memorySlug(raw) : null;
-  return slug ? { raw, kind: "memory", slug, href: null, label: words(slug.split("/").at(-1)) }
-    : { raw, kind: "resource", slug: null, href: null, label: raw };
+  return slug ? { raw, service: "memory", resourceKind: "memory", kind: "memory", slug, href: null, label: words(slug.split("/").at(-1)) }
+    : { raw, ...metadata, kind: "resource", slug: null, href: null, label: identity.label };
 }
 function timestamp(value) { const result = Date.parse(value); return Number.isFinite(result) ? result : 0; }
 export function chronologicalActions(actions = []) {
@@ -71,7 +72,7 @@ export function memoryOperationContext(action) {
   const args = memoryArguments(action.detail);
   const query = ["recall", "search"].includes(operation) && args
     ? boundedArgument(args.query, 280) || boundedArgument(args.q, 280) : "";
-  const supplied = resourcePresentation(action.resource, { memory: true });
+  const supplied = resourcePresentation(action.resource, { memory: true, tool: action.tool });
   const argumentSlug = args ? memorySlug(boundedArgument(args.slug, 500)) : null;
   const target = supplied?.kind === "memory" ? supplied
     : argumentSlug ? resourcePresentation(`engram://${argumentSlug}`) : null;
@@ -116,6 +117,22 @@ export function actionPresentation(action) {
   return { title: text(action.taskTitle) || (generic ? targeted : summary) || targeted || "Recorded action",
     outcome: text(action.outcome), currentStep: text(action.currentStep), memory: Boolean(operation), memoryContext: context };
 }
+function repositoryContext(resource) {
+  if (!["git", "github", "gitlab"].includes(resource.service) || !["repository", "pull-request", "issue", "file"].includes(resource.resourceKind)) return null;
+  let name = resource.label;
+  if (resource.resourceKind !== "repository") {
+    if (resource.service === "github") name = resource.resourceKind === "file" ? name.split(" · ")[0] : name.replace(/ #\d+$/, "");
+    else if (resource.service === "gitlab") {
+      if (resource.resourceKind === "file") {
+        try {
+          const url = new URL(resource.raw.includes("://") ? resource.raw : `https://${resource.raw}`);
+          name = decodeURIComponent(url.pathname).split("/-/")[0].replace(/^\/+|\/+$/g, "");
+        } catch { return null; }
+      } else name = name.replace(/ [#!]\d+$/, "");
+    } else return null;
+  }
+  return `${resource.service}:${resource.service === "github" ? name.toLowerCase() : name}`;
+}
 export function activityPresentation(activity) {
   const actions = chronologicalActions(activity.actions || []);
   const tools = [...new Set([...(activity.tools || []), ...actions.map(action => action.tool)].map(text).filter(Boolean))];
@@ -137,10 +154,18 @@ export function activityPresentation(activity) {
     : outcome ? { label: "Outcome", text: outcome } : latestReport ? { label: "Latest report", text: latestReport }
     : currentStep ? { label: "Last reported step", text: currentStep } : null;
   const values = [...new Set([...uniqueResources, context?.target?.raw].filter(Boolean))];
-  const resources = values.map(value => resourcePresentation(value, { memory: kind === "memory" }));
+  const resources = values.map(value => {
+    const sourceTools = actions.filter(action => text(action.resource) === value).map(action => action.tool);
+    const candidateTools = sourceTools.length ? sourceTools : values.length === 1 && tools.length === 1 ? tools : [];
+    const services = new Set(candidateTools.map(tool => resourceIdentity(value, { tool }).service));
+    return resourcePresentation(value, { memory: kind === "memory", tool: services.size === 1 ? candidateTools[0] : undefined });
+  });
   const explicitResource = text(activity.resource);
+  const repositories = resources.filter(resource => repositoryContext(resource));
+  const repositoryContexts = new Set(repositories.map(repositoryContext));
+  const repository = repositoryContexts.size === 1 ? repositories.find(resource => resource.resourceKind === "repository") || repositories[0] : null;
   return { kind, title, outcome, currentStep, lead, resources, actions, memoryContext: context, latestReport,
-    primaryResource: explicitResource ? resources.find(resource => resource.raw === explicitResource) : resources.length === 1 ? resources[0] : null,
+    primaryResource: explicitResource ? resources.find(resource => resource.raw === explicitResource) : resources.length === 1 ? resources[0] : repository,
     approaches: (activity.approaches || []).filter(approach => text(approach.text)).map(approach => ({ ...approach, text: text(approach.text) })),
     evidence: activity.evidence === "observed" ? "Observed by Engram" : activity.evidence === "mixed" ? "Observed and reported" : "Agent-reported" };
 }

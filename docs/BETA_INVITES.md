@@ -14,8 +14,10 @@ installations retain token sign-in for owner bootstrap and recovery.
 
 Sign in with the existing installation administrator account, select **Ani HQ**,
 and open **Workspace → Early access invitations**. Create a single-use link
-without collecting the friend's email first. Copy the link once and share it
-directly. Creating a link does not send an email to the friend. An optional
+without collecting the friend's email first. Copy the link and share it
+directly. The invitation list also offers **Copy link** for unused, unexpired
+invitations after reopening the page. Creating or copying a link does not send
+an email to the friend. An optional
 recipient email can instead restrict a code to that exact mailbox.
 
 The friend opens the link and enters their email. Engram sends a verification
@@ -39,8 +41,11 @@ that guide. Renaming keeps the workspace identity, storage, policies and billing
 unchanged.
 
 Unused codes expire after seven days by default and can be revoked. Raw codes
-are returned only at creation; the database stores their hashes. Generate a
-replacement if the code was lost. Verification emails have their own short
+are returned only at creation; the database stores their hashes. An authorized
+operator can copy a signed link to the same unused invitation later. This does
+not recover or replace the original code, extend expiry, reset verification
+limits, change a mailbox restriction, or create another claim. Both links share
+the same single verified redemption and revocation state. Verification emails have their own short
 expiry and resend limits. Revocation and expiry are checked again when the email
 link is accepted.
 
@@ -92,7 +97,32 @@ whether a mailbox restriction was set or the invitation has since been claimed.
 
 `GET /api/admin/signup-invites` lists the optional recipient email, code/access
 expiry, redemption, and revocation metadata without returning codes, links or
-hashes. Save the link at issuance; issue a replacement if it is lost.
+hashes. To copy a usable link to an existing unused invitation:
+
+```http
+POST /api/admin/signup-invites/INVITATION_ID/link
+Content-Type: application/json
+X-Engram-Console: 1
+X-Engram-Workspace: 1
+
+{}
+```
+
+The response contains only `{ "inviteUrl": "https://…/app#invite=…" }` and uses
+`Cache-Control: no-store`. This endpoint requires the live operator session,
+console header and matching workspace pin; it accepts no invitation or account
+overrides. Expired, revoked, redeemed invitations and invitations from an
+inactive issuer return `409` with `invite_unavailable`. Missing invitations
+return `404`. Other methods return `405` and do not reveal a link.
+
+Copied links contain an invitation ID and a domain-separated HMAC proof in a
+separate `eg_link_v1_` namespace. The proof binds the original server-only code
+hash, mailbox restriction, issuer and exact expiry; no code hash or mailbox is
+encoded into the link. The database stores no plaintext code or copied link.
+The original code remains valid under its existing terms. Server signing-key
+rotation can invalidate copied aliases; the operator can request another link
+without replacing the original invitation. Older gateways may not recognize
+these aliases, while the original invitation codes remain compatible.
 
 ```http
 POST /api/admin/signup-invites/INVITATION_ID/revoke

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, setSystemTime } from "bun:test";
 import type postgres from "postgres";
 import { getPublicActivity, getShowcaseSettings, handlePublicShowcase, handleShowcaseApi, parseShowcaseInput, publicActivitySnapshot, renderShowcaseCard, renderShowcasePage, renderShowcasePng, showcaseCategory, updateShowcaseSettings } from "../gateway/src/showcase";
 import { runWithContext } from "../gateway/src/context";
@@ -6,7 +6,7 @@ import { DEFAULT_POLICIES, normalizeToken } from "../gateway/src/policies";
 
 const owner = normalizeToken({ name: "private-owner@example.com", role: "owner", orgId: 7 });
 const now = new Date("2026-10-22T00:03:00Z");
-const profile = { slug: "my-agents", displayName: "Ada", bio: "Building with agents", published: true };
+const profile = { slug: "my-agents", displayName: "Ada", bio: "Building with agents", published: true, showActivity: false };
 const aggregate = {
   total_actions: "17", completed_actions: "13", failed_actions: "2", running_actions: "2",
   active_agents: "3", active_days: "4", updated_at: "2026-10-21T21:00:00Z",
@@ -22,12 +22,13 @@ function database(initial: typeof profile | null = profile) {
   const calls: { query: string; values: any[] }[] = [];
   let unavailable = false;
   let aggregateHook: (() => void) | undefined;
+  let eventRows: any[] = [];
   function execute(query: string, values: any[]) {
     calls.push({ query, values });
     if (unavailable) throw new Error("private connection details");
     if (query.includes("INSERT INTO action_profiles")) {
       if ([...profiles].some(([id, value]) => id !== values[0] && value.slug === values[1])) throw Object.assign(new Error("duplicate"), { code: "23505" });
-      profiles.set(values[0], { slug: values[1], displayName: values[2], bio: values[3], published: values[4] });
+      profiles.set(values[0], { slug: values[1], displayName: values[2], bio: values[3], published: values[4], showActivity: values[5] === true });
       return [];
     }
     if (query.includes("FROM action_profiles")) {
@@ -36,8 +37,9 @@ function database(initial: typeof profile | null = profile) {
         : [...profiles].find(([id]) => id === values[0]);
       if (!entry) return [];
       const [orgId, value] = entry;
-      return [{ org_id: orgId, slug: value.slug, display_name: value.displayName, bio: value.bio, published: value.published, email: "private@example.com" }];
+      return [{ org_id: orgId, slug: value.slug, display_name: value.displayName, bio: value.bio, published: value.published, show_activity: value.showActivity === true, email: "private@example.com" }];
     }
+    if (query.includes("WITH latest_reports")) return eventRows;
     if (query.includes("WITH ledger")) { aggregateHook?.(); return [aggregate]; }
     throw new Error("Unexpected test query");
   }
@@ -52,14 +54,14 @@ function database(initial: typeof profile | null = profile) {
     });
     return { fragment: true, query, values, then(resolve: any, reject: any) { return Promise.resolve().then(() => execute(query, values)).then(resolve, reject); } };
   }) as unknown as postgres.Sql;
-  return { db, calls, profiles, fail: () => { unavailable = true; }, onAggregate: (callback: () => void) => { aggregateHook = callback; } };
+  return { db, calls, profiles, events: (rows: any[]) => { eventRows = rows; }, fail: () => { unavailable = true; }, onAggregate: (callback: () => void) => { aggregateHook = callback; } };
 }
 
 describe("showcase control", () => {
   test("starts private with no implicit identity, but gives the owner an aggregate preview", async () => {
     const { db, calls } = database(null);
     const settings = await getShowcaseSettings(owner, "https://engram.example", db);
-    expect(settings.profile).toEqual({ slug: "", displayName: "", bio: "", published: false });
+    expect(settings.profile).toEqual({ slug: "", displayName: "", bio: "", published: false, showActivity: false });
     expect(settings.urls).toEqual({ page: null, json: null, card: null, stream: null });
     expect(settings.preview.stats.totalActions).toBe(17);
     expect(calls[0].values).toEqual([7]);
@@ -71,7 +73,7 @@ describe("showcase control", () => {
     for (const slug of ["a", "ab", "-abc", "abc-", "a--b", "ABC", "a/b", "a.b", "a b", "éabc", "a".repeat(49)]) {
       expect(() => parseShowcaseInput({ ...profile, slug })).toThrow();
     }
-    for (const value of [null, [], {}, { ...profile, published: "true" }, { ...profile, orgId: 99 }, { ...profile, displayName: "x".repeat(81) }, { ...profile, bio: "x".repeat(161) }]) {
+    for (const value of [null, [], {}, { ...profile, published: "true" }, { ...profile, showActivity: "true" }, { ...profile, showActivity: null }, { ...profile, showActivity: 1 }, { ...profile, orgId: 99 }, { ...profile, displayName: "x".repeat(81) }, { ...profile, bio: "x".repeat(161) }]) {
       expect(() => parseShowcaseInput(value)).toThrow();
     }
     expect(parseShowcaseInput({ ...profile, displayName: " Ada ", bio: " Hello " })).toMatchObject({ displayName: "Ada", bio: "Hello" });
@@ -98,7 +100,7 @@ describe("showcase control", () => {
     expect(result.profile).toEqual(profile);
     expect(result.urls).toEqual({ page: "https://engram.example/u/my-agents", json: "https://engram.example/api/public/activity/my-agents", card: "https://engram.example/api/public/activity/my-agents/card.png", stream: "https://engram.example/api/public/activity/my-agents/stream" });
     expect(calls[0].query).toContain("ON CONFLICT (org_id)");
-    expect(calls[0].values).toEqual([7, profile.slug, profile.displayName, profile.bio, true]);
+    expect(calls[0].values).toEqual([7, profile.slug, profile.displayName, profile.bio, true, false]);
     expect(result.preview.stats.totalActions).toBe(17);
     await expect(updateShowcaseSettings(normalizeToken({ ...owner, orgId: 8 }), profile, "https://engram.example", db)).rejects.toMatchObject({ status: 409 });
   });
@@ -117,6 +119,63 @@ describe("showcase control", () => {
 });
 
 describe("public activity projection", () => {
+  test("observes runtime receipts after awaited reads while preserving explicitly injected clocks", async () => {
+    const before = new Date("2026-10-25T12:00:00Z"), after = new Date("2026-10-25T12:00:02Z");
+    try {
+      for (const route of ["json", "preview", "stream", "injected"]) {
+        setSystemTime(before);
+        const store = database({ ...profile, showActivity: true });
+        store.onAggregate(() => {
+          setSystemTime(after);
+          store.events([{ id: "receipt-during-read", agent: "private-agent", tool: "files.write", status: "running", evidence: "reported", recorded_at: after.toISOString(), harness: "codex" }]);
+        });
+        let value;
+        if (route === "preview") value = (await getShowcaseSettings(owner, "https://engram.example", store.db)).preview;
+        else if (route === "stream") {
+          const response = await handlePublicShowcase(new Request(`https://engram.example/api/public/activity/${profile.slug}/stream`), store.db);
+          const reader = response!.body!.getReader();
+          try { value = JSON.parse(new TextDecoder().decode((await reader.read()).value).split("data: ")[1].trim()); }
+          finally { await reader.cancel(); }
+        } else value = await getPublicActivity(profile.slug, store.db, route === "injected" ? before : undefined);
+        expect(value?.activity.events[0].status).toBe(route === "injected" ? "stale" : "running");
+        expect(value?.live.checkedAt).toBe((route === "injected" ? before : after).toISOString());
+      }
+    } finally { setSystemTime(); }
+  });
+
+  test("requires explicit activity sharing while authorized owner previews stay safe and useful", async () => {
+    const store = database();
+    const event = { id: "secret-id", agent: "private-agent", action_key: "secret-action", harness: "codex", tool: "github.create_pull_request", resource: "https://github.com/private-org/private-repo/pull/42", status: "completed", evidence: "reported", recorded_at: now.toISOString(), summary: "secret-summary" };
+    store.events([event]);
+    const hidden = await getPublicActivity(profile.slug, store.db, now);
+    expect(hidden?.activity).toEqual({ enabled: false, events: [] });
+    expect(store.calls.some(call => call.query.includes("WITH latest_reports"))).toBe(false);
+    const preview = await getShowcaseSettings(owner, "https://engram.example", store.db);
+    expect(preview.profile.showActivity).toBe(false);
+    expect(preview.preview.activity.events).toHaveLength(1);
+    const saved = await updateShowcaseSettings(owner, { ...profile, showActivity: true }, "https://engram.example", store.db);
+    expect(saved.profile.showActivity).toBe(true);
+    const visible = await getPublicActivity(profile.slug, store.db, now);
+    expect(visible?.activity.enabled).toBe(true);
+    expect(visible?.activity.events[0].agent).toEqual({ product: "codex", label: "Codex" });
+    expect(visible?.activity.events[0].service).toBe("github");
+    for (const secret of ["secret-", "private-org", "private-repo", "private-agent", "pull/42"]) expect(JSON.stringify(visible)).not.toContain(secret);
+    const query = store.calls.find(call => call.query.includes("WITH latest_reports"))!;
+    expect(query.values).toEqual([7, 7]);
+    expect(query.query).toContain("LIMIT 20");
+    for (const field of ["summary", "task_title", "current_step", "detail", "run_id", "arg_summary"]) expect(query.query).not.toContain(field);
+    expect(query.query).toContain("(harness IS NULL AND source_label IS NULL)");
+    const { showActivity, ...legacy } = profile;
+    expect((await updateShowcaseSettings(owner, legacy, "https://engram.example", store.db)).profile.showActivity).toBe(false);
+  });
+
+  test("activity permission changes revoke an in-flight public projection", async () => {
+    const store = database({ ...profile, showActivity: true });
+    store.events([{ id: "secret", agent: "secret-agent", tool: "search", status: "completed", evidence: "observed", recorded_at: now.toISOString() }]);
+    store.onAggregate(() => store.profiles.set(7, { ...profile, showActivity: false }));
+    expect(await getPublicActivity(profile.slug, store.db, now)).toBeNull();
+  });
+
   test("uses both action sources, exact organization bindings, aggregate-only SQL and UTC dates", async () => {
     const { db, calls } = database();
     const result = await getPublicActivity(profile.slug, db, now);

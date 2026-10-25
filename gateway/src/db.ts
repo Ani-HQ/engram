@@ -7,6 +7,7 @@ import { ensureComplimentaryAccessSchema } from "./billing-schema";
 import { ensureHostedSignupInvitesSchema } from "./signup-invites-schema";
 import { ensureMailSeriesSchema } from "./mail-series-schema";
 import { ensureJevSchema } from "./jev-schema";
+import { ensureContextSharingSchema } from "./context-sharing-schema";
 import { assertRuntimeSchema, ensureProvisioningSchema, markSchemaReady } from "./provisioning-schema";
 
 export const sql = postgres(dbUrl("engram_gateway"), {
@@ -363,8 +364,10 @@ export async function migrate() {
       display_name text NOT NULL DEFAULT '' CHECK (length(display_name) <= 80),
       bio          text NOT NULL DEFAULT '' CHECK (length(bio) <= 160),
       published    boolean NOT NULL DEFAULT false,
+      show_activity boolean NOT NULL DEFAULT false,
       updated_at   timestamptz NOT NULL DEFAULT now()
     )`;
+  await sql`ALTER TABLE action_profiles ADD COLUMN IF NOT EXISTS show_activity boolean NOT NULL DEFAULT false`;
 
   await sql`
     CREATE TABLE IF NOT EXISTS org_members (
@@ -513,6 +516,7 @@ export async function migrate() {
   await ensureHostedSignupInvitesSchema(sql);
   await ensureMailSeriesSchema(sql);
   await ensureJevSchema(sql);
+  await ensureContextSharingSchema(sql);
   await protectGatewayMetadata(sql);
   await markSchemaReady(sql);
   if (databaseSecurity.authority === "inline") {

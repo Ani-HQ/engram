@@ -1,13 +1,14 @@
 import type postgres from "postgres";
 import { ShowcaseError, parseShowcaseInput, publicActivitySnapshot, renderShowcaseCard, renderShowcasePage, renderShowcasePng, renderUnavailableShowcasePage, showcaseUrls, validShowcaseSlug, type ShowcaseProfile, type PublicActivity } from "./showcase-view";
 export * from "./showcase-view";
-import { config } from "./config";
+import { config, databaseSecurity, dbUrl } from "./config";
 import { currentOrg } from "./context";
 import { sql } from "./db";
 import { hasOauthScope, normalizeToken, type TokenRecord } from "./policies";
 import { BillingError, requireHostedWriteAccess } from "./billing";
 import { actionLedger } from "./actions";
 import { createShowcaseStreamManager } from "./showcase-stream";
+import { publicActivityLedger } from "./public-activity";
 
 const NO_STORE = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
 const PUBLIC_JSON_HEADERS = { ...NO_STORE, "Access-Control-Allow-Origin": "*" };
@@ -23,15 +24,15 @@ function owner(token: TokenRecord, write = false): TokenRecord {
 
 function mapProfile(row: any): ShowcaseProfile {
   // Avoid publishing the workspace name or token identity as implicit defaults.
-  if (!row) return { slug: "", displayName: "", bio: "", published: false };
-  return { slug: String(row.slug), displayName: String(row.display_name), bio: String(row.bio), published: row.published === true };
+  if (!row) return { slug: "", displayName: "", bio: "", published: false, showActivity: false };
+  return { slug: String(row.slug), displayName: String(row.display_name), bio: String(row.bio), published: row.published === true, showActivity: row.show_activity === true };
 }
 
 export async function getShowcaseSettings(token: TokenRecord, origin: string, db: postgres.Sql = sql) {
   const actor = owner(token);
-  const rows = await db`SELECT slug, display_name, bio, published FROM action_profiles WHERE org_id = ${actor.orgId}`;
+  const rows = await db`SELECT slug, display_name, bio, published, show_activity FROM action_profiles WHERE org_id = ${actor.orgId}`;
   const profile = mapProfile(rows[0]);
-  return { profile, urls: showcaseUrls(profile, config.publicUrl || origin), preview: await getOrgActivitySnapshot(profile, actor.orgId, db) };
+  return { profile, urls: showcaseUrls(profile, config.publicUrl || origin), preview: await getOrgActivitySnapshot(profile, actor.orgId, db, undefined, true) };
 }
 
 export async function updateShowcaseSettings(token: TokenRecord, raw: unknown, origin: string, db: postgres.Sql = sql) {
@@ -40,23 +41,23 @@ export async function updateShowcaseSettings(token: TokenRecord, raw: unknown, o
   if (profile.published) await requireHostedWriteAccess(actor);
   try {
     await db`
-      INSERT INTO action_profiles (org_id, slug, display_name, bio, published)
-      VALUES (${actor.orgId}, ${profile.slug}, ${profile.displayName}, ${profile.bio}, ${profile.published})
+      INSERT INTO action_profiles (org_id, slug, display_name, bio, published, show_activity)
+      VALUES (${actor.orgId}, ${profile.slug}, ${profile.displayName}, ${profile.bio}, ${profile.published}, ${profile.showActivity === true})
       ON CONFLICT (org_id) DO UPDATE SET slug = EXCLUDED.slug, display_name = EXCLUDED.display_name,
-        bio = EXCLUDED.bio, published = EXCLUDED.published, updated_at = now()`;
+        bio = EXCLUDED.bio, published = EXCLUDED.published, show_activity = EXCLUDED.show_activity, updated_at = now()`;
   } catch (error: any) {
     if (error?.code === "23505") throw new ShowcaseError("That showcase address is already taken", 409);
     throw error;
   }
-  return { profile, urls: showcaseUrls(profile, config.publicUrl || origin), preview: await getOrgActivitySnapshot(profile, actor.orgId, db) };
+  return { profile, urls: showcaseUrls(profile, config.publicUrl || origin), preview: await getOrgActivitySnapshot(profile, actor.orgId, db, undefined, true) };
 }
 
-export async function getPublicActivity(slug: string, db: postgres.Sql = sql, now = new Date()): Promise<PublicActivity | null> {
+export async function getPublicActivity(slug: string, db: postgres.Sql = sql, now?: Date): Promise<PublicActivity | null> {
   if (!validShowcaseSlug(slug)) return null;
   return publishedSnapshot(slug, db, now);
 }
 
-async function publishedSnapshot(slug: string, db: postgres.Sql, now: Date, expectedPublication?: string): Promise<PublicActivity | null> {
+async function publishedSnapshot(slug: string, db: postgres.Sql, now?: Date, expectedPublication?: string): Promise<PublicActivity | null> {
   const published = await publishedProfile(slug, db);
   if (!published) return null;
   const binding = publicationKey(published);
@@ -70,7 +71,7 @@ async function publishedSnapshot(slug: string, db: postgres.Sql, now: Date, expe
 
 async function publishedProfile(slug: string, db: postgres.Sql) {
   const profiles = await db`
-    SELECT org_id, slug, display_name, bio, published, updated_at::text AS publication_revision FROM action_profiles
+    SELECT org_id, slug, display_name, bio, published, show_activity, updated_at::text AS publication_revision FROM action_profiles
     WHERE slug = ${slug} AND published = true`;
   return profiles[0] ?? null;
 }
@@ -79,7 +80,7 @@ const streamManagers = new WeakMap<postgres.Sql, ReturnType<typeof createShowcas
 function publicationKey(row: any): string {
   // This internal binding never enters the public projection or SSE frames.
   // Keep PostgreSQL's full timestamp precision instead of truncating to JS ms.
-  return JSON.stringify([row.org_id, row.publication_revision, row.slug, row.display_name, row.bio]);
+  return JSON.stringify([row.org_id, row.publication_revision, row.slug, row.display_name, row.bio, row.show_activity === true]);
 }
 function streams(db: postgres.Sql) {
   let manager = streamManagers.get(db);
@@ -89,20 +90,21 @@ function streams(db: postgres.Sql) {
         const published = await publishedProfile(slug, db);
         return published ? publicationKey(published) : null;
       },
-      snapshot: (slug, expected) => publishedSnapshot(slug, db, new Date(), expected),
+      snapshot: (slug, expected) => publishedSnapshot(slug, db, undefined, expected),
     });
     streamManagers.set(db, manager);
   }
   return manager;
 }
 
-async function getOrgActivitySnapshot(profile: ShowcaseProfile, orgId: number, db: postgres.Sql, now = new Date()): Promise<PublicActivity> {
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - 83 * 86_400_000).toISOString();
-  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) + 86_400_000).toISOString();
-  const recent = new Date(now.getTime() - 15 * 60_000).toISOString();
+async function getOrgActivitySnapshot(profile: ShowcaseProfile, orgId: number, db: postgres.Sql, now?: Date, preview = false): Promise<PublicActivity> {
+  const queryAt = now ?? new Date();
+  const start = new Date(Date.UTC(queryAt.getUTCFullYear(), queryAt.getUTCMonth(), queryAt.getUTCDate()) - 83 * 86_400_000).toISOString();
+  const end = new Date(Date.UTC(queryAt.getUTCFullYear(), queryAt.getUTCMonth(), queryAt.getUTCDate()) + 86_400_000).toISOString();
+  const recent = new Date(queryAt.getTime() - 15 * 60_000).toISOString();
   const ledger = actionLedger(db, orgId, { aggregate: true });
-  // Only aggregates leave PostgreSQL. Private summaries, resources, run IDs,
-  // agent identities, and raw tool identifiers never enter a public response.
+  // This query returns aggregates. The optional ledger below passes through a
+  // separate closed projection before any event enters a public response.
   const rows = await db`
     WITH ledger AS (${ledger}), bounds AS (SELECT ${recent}::timestamptz AS recent_cutoff), categorized AS (
       SELECT *, CASE
@@ -139,7 +141,14 @@ async function getOrgActivitySnapshot(profile: ShowcaseProfile, orgId: number, d
       (SELECT coalesce(json_agg(days ORDER BY date), '[]'::json) FROM days) AS daily,
       (SELECT coalesce(json_agg(categories), '[]'::json) FROM categories) AS tools
     FROM ledger CROSS JOIN bounds`;
-  return publicActivitySnapshot(profile, rows[0], now);
+  const events = profile.showActivity === true || preview ? await publicActivityLedger(db, orgId) : [];
+  // Receipts may arrive while these reads are pending. Observe after the reads
+  // so a newly received running event is not mistaken for a future timestamp.
+  // An explicitly supplied clock remains fixed for deterministic callers.
+  const observedAt = now ?? new Date();
+  // A stable deployment secret keeps public IDs opaque across polls/restarts.
+  // Legacy self-hosted installs use their existing server-only database URL.
+  return publicActivitySnapshot(profile, rows[0], observedAt, { rows: events, scope: `${orgId}:${profile.slug}`, key: databaseSecurity.tenantCredentialKey || dbUrl("engram_gateway"), preview });
 }
 
 export async function handleShowcaseApi(req: Request, token: TokenRecord, db: postgres.Sql = sql): Promise<Response> {

@@ -11,6 +11,7 @@ import { afterRemember, rerankRecallHits, suggestTopic } from "./reflex";
 import { redactSecrets } from "./redact";
 import { BillingError, requireHostedWriteAccess } from "./billing";
 import { SERVER_INSTRUCTIONS } from "../../shim/instructions.js";
+import { approvedTeamContextPages, contextReadLimit, contextReadOffset, isSharedContextSlug, readRows, searchContextSnapshots, sharedPageSummary, sortContextPages } from "./shared-context-read";
 import {
   ARCHIVE_POINTER,
   ARCHIVE_SUFFIX,
@@ -566,8 +567,15 @@ async function recall(args: Record<string, unknown>): Promise<any> {
     name: "search",
     arguments: { query, limit: RECALL_CANDIDATES },
   }));
-  const candidates = (Array.isArray(hits) ? hits : []).slice(0, RECALL_CANDIDATES);
-  const top = await rerankRecallHits(query, candidates, RECALL_LIMIT);
+  const snapshots = await approvedTeamContextPages();
+  const sharedHits = searchContextSnapshots(snapshots, query);
+  const candidates = readRows(hits).filter(hit => !isSharedContextSlug(hit?.slug)).slice(0, RECALL_CANDIDATES);
+  const localTop = await rerankRecallHits(query, candidates, RECALL_LIMIT);
+  // Approved snapshots are searched locally, never sent to the recipient's
+  // semantic reranker or looked up through a source-workspace brain.
+  const top = sharedHits.length
+    ? [...localTop, ...sharedHits].sort((a: any, b: any) => (Number(b?.score) || 0) - (Number(a?.score) || 0)).slice(0, RECALL_LIMIT)
+    : localTop;
 
   const results = top.map((hit: any) => ({
     slug: hit?.slug,
@@ -588,7 +596,8 @@ async function recall(args: Record<string, unknown>): Promise<any> {
   let full: { slug: unknown; body: string } | null = null;
   if (args.full === true && top.length) {
     const best = top.reduce((a: any, b: any) => (Number(b?.score) || 0) > (Number(a?.score) || 0) ? b : a);
-    const page = await readPage(String(best?.slug ?? ""));
+    const slug = String(best?.slug ?? "");
+    const page = isSharedContextSlug(slug) ? snapshots.find(page => page.slug === slug) : await readPage(slug);
     if (page) {
       const body = typeof page.compiled_truth === "string" ? page.compiled_truth : "";
       full = { slug: best?.slug, body: truncateEnds(body, MAX_FULL_BODY) };
@@ -644,6 +653,13 @@ export async function callTool(
   const argSlug = typeof forwardedArgs.slug === "string" ? forwardedArgs.slug : null;
   const served = ALLOWED_TOOLS.has(name) || SYNTHETIC_TOOLS.has(name);
   const writing = name === "remember" || name === "record_action" || (ALLOWED_TOOLS.has(name) && !["search", "get_page", "list_pages"].includes(name));
+
+  // The namespace is reserved even for missing/revoked grants. Never fall back
+  // to a physical page with the same slug or allow a recipient to mutate it.
+  if (writing && (Object.values(forwardedArgs).some(isSharedContextSlug) ||
+      (name === "remember" && isSharedContextSlug(slugForRemember(String(forwardedArgs.text ?? ""), optionalArg(forwardedArgs.topic) ?? undefined))))) {
+    return toolError("Approved shared context is read-only. Its owner manages access.");
+  }
 
   if (served && (!canUseTool(actor, name, policies) || (writing && !hasOauthScope(actor, "memory:write")))) {
     await audit(actor.name, name, summarizeArgs(forwardedArgs), "denied", argSlug);
@@ -711,7 +727,29 @@ export async function callTool(
   }
 
   try {
-    const result = await brainClient().callTool({ name, arguments: forwardedArgs });
+    let result: any;
+    if (name === "get_page" && isSharedContextSlug(argSlug)) {
+      const page = (await approvedTeamContextPages()).find(page => page.slug === argSlug);
+      result = page ? jsonResult(page) : toolError("Page not found in approved context.");
+    } else if (name === "search" || name === "list_pages") {
+      const snapshots = await approvedTeamContextPages();
+      const limit = contextReadLimit(forwardedArgs.limit), offset = contextReadOffset(forwardedArgs.offset);
+      const args = name === "list_pages" && snapshots.length ? { ...forwardedArgs, offset: 0, limit: offset + limit } : forwardedArgs;
+      result = await brainClient().callTool({ name, arguments: args });
+      if (!result?.isError) {
+        const data = parseToolJson(result), rows = readRows(data);
+        const local = rows.filter(row => !isSharedContextSlug(row?.slug));
+        if (snapshots.length || rows.length !== local.length) {
+          if (name === "search") {
+            const shared = searchContextSnapshots(snapshots, typeof forwardedArgs.query === "string" ? forwardedArgs.query : "");
+            result = jsonResult([...local, ...shared].sort((a, b) => (Number(b?.score) || 0) - (Number(a?.score) || 0)).slice(0, limit));
+          } else {
+            const shared = forwardedArgs.tag ? [] : snapshots.map(sharedPageSummary);
+            result = jsonResult(sortContextPages([...local, ...shared], forwardedArgs.sort).slice(snapshots.length ? offset : 0, (snapshots.length ? offset : 0) + limit));
+          }
+        }
+      }
+    } else result = await brainClient().callTool({ name, arguments: forwardedArgs });
     await audit(token.name, name, summarizeArgs(forwardedArgs), result?.isError ? "error" : "ok", argSlug);
     return name === "search" ? capSearchResult(result) : result;
   } catch (e) {

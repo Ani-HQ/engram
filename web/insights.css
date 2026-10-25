@@ -5,19 +5,19 @@
 .insight-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; color: #666; font-size: 11px; }
 .insight-job { padding: 14px; border: 1px solid var(--line); border-radius: 8px; display: flex; gap: 9px; align-items: center; color: #666; font-size: 11px; margin-bottom: 18px; }
 .insight-job p { margin-top: 4px; font-size: 10px; color: #777; }
-.insight-result-meta, .insight-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.insight-result-meta, .insight-section-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
 .insight-result-meta { font-size: 10px; color: #777; margin: 22px 0 14px; }
 .insight-coverage { font-size: 10px; color: #777; line-height: 1.8; margin: -4px 0 17px; }
 .insight-provenance { margin: 20px 0; color: #666; font-size: 10px; }
 .insight-provenance > summary { cursor: pointer; width: fit-content; }
 .insight-section-heading h2 { font-size: 13px; letter-spacing: -.15px; }
-.insight-badge { display: inline-flex; align-items: center; width: fit-content; font-size: 9px; color: #666; border: 1px solid #e8e8e8; background: #fafafa; padding: 2px 6px; border-radius: 4px; }
 .insight-empty { padding: 65px 20px; display: grid; justify-items: center; text-align: center; gap: 13px; color: #777; }
 .insight-empty h2 { font-size: 17px; color: #333; }
 .insight-empty p { max-width: 470px; line-height: 1.9; font-size: 11px; }
 .insight-card, .insight-brief, .insight-search-results, .insight-privacy { border: 1px solid var(--line); border-radius: 9px; padding: 19px 20px; margin-bottom: 12px; background: #fff; }
 .insight-card-top { display: flex; align-items: start; gap: 12px; }
-.insight-card-top > svg { margin-top: 2px; color: #555; }
+.insight-card-top > svg { flex-shrink: 0; margin-top: 2px; color: #555; }
+.insight-card-top > div { min-width: 0; }
 .insight-card-top h2 { font-size: 13px; letter-spacing: -.1px; line-height: 1.7; }
 .insight-methods { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
 .insight-description { color: #666; font-size: 11px; margin-top: 13px; line-height: 1.9; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -37,22 +37,23 @@
 .insight-brief-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 2; font-size: 12px; margin-top: 18px; }
 .insight-brief > button { margin-top: 15px; }
 .insight-search-results { margin-top: 15px; }
-.insight-query { font-size: 11px; color: #555; margin: 12px 0 5px; }
+.insight-query { font-size: 11px; color: #555; margin: 12px 0 5px; overflow-wrap: anywhere; }
 .insight-search-match { display: flex; width: 100%; justify-content: space-between; gap: 15px; text-align: left; border: 0; border-bottom: 1px solid #eee; border-radius: 0; padding: 12px 0; font-size: 11px; }
-.insight-privacy { background: #fafafa; font-size: 11px; }
+.insight-privacy { background: #fafafa; font-size: 11px; margin-top: var(--ds-space-6); }
 .insight-privacy > div:first-child { display: flex; gap: 8px; align-items: center; }
 .insight-privacy strong { font-size: 11px; font-weight: 500; }
 .insight-privacy > p { font-size: 10px; color: #777; line-height: 1.9; margin-top: 9px; }
 .insight-config { display: flex; flex-wrap: wrap; gap: 7px 25px; margin: 12px 0 0; }
-.insight-config > div { display: flex; gap: 7px; font-size: 9px; }
+.insight-config > div { display: flex; flex-wrap: wrap; gap: 7px; min-width: 0; font-size: 9px; }
 .insight-config dt { color: #777; }
 .insight-config dd { margin: 0; color: #444; }
 .insight-settings-link { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; margin-top: 12px; }
-.memory-tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--line); margin: -10px 0 24px; }
+.memory-tabs { display: flex; flex-wrap: wrap; gap: 20px; border-bottom: 1px solid var(--line); margin: -10px 0 24px; }
 .memory-tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 12px 0; background: transparent; color: #777; font-size: 11px; }
 .memory-tabs button[aria-pressed="true"] { color: #222; border-bottom-color: #222; }
 .review-row { display: flex; width: 100%; text-align: left; justify-content: space-between; gap: 18px; padding: 17px 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
-.review-row > span:first-child { display: grid; gap: 5px; }
+.review-row > span:first-child { display: grid; gap: 5px; min-width: 0; }
+.review-state { flex-shrink: 0; }
 .review-row strong { font-size: 12px; font-weight: 500; }
 .review-row small, .review-state { font-size: 10px; color: #777; }
 .review-proposal { padding: 16px; border: 1px solid #ddd; background: #fcfcfc; border-radius: 8px; margin: 20px 0; }
@@ -67,6 +68,14 @@
 .review-actions-note { font-size: 10px; color: #777; margin-top: 10px; line-height: 1.8; }
 .work-log-step.is-cited { outline: 1px solid #bcbcbc; outline-offset: 8px; border-radius: 3px; background: #fafafa; }
 .activity-intent-button { white-space: nowrap; font-size: 10px; }
+.attention-content, .insight-findings { min-width: 0; }
+.insight-clear { display: flex; align-items: start; gap: var(--ds-space-3); }
+.insight-clear > svg { flex-shrink: 0; }
+.insight-clear > div { min-width: 0; }
+.insight-clear h2 { font-size: var(--ds-text-base); line-height: 1.5; overflow-wrap: anywhere; }
+.insight-clear p { margin-top: var(--ds-space-3); color: var(--ds-muted); font-size: var(--ds-text-sm); line-height: 1.8; }
+.insight-card-top h2, .insight-section-heading h2, .insight-search-match > span, .insight-config dd, .review-row strong, .review-row small { min-width: 0; overflow-wrap: anywhere; }
+.insight-source > svg, .insight-search-match > svg, .insight-private-note > svg, .insight-privacy > div:first-child > svg { flex-shrink: 0; }
 @media (max-width: 620px) {
   .insight-toolbar { flex-wrap: wrap; }
   .insight-toolbar .search-field { flex-basis: 100%; }
@@ -74,6 +83,10 @@
   .insight-toolbar button, .review-actions button, .insight-sources > summary { min-height: 40px; }
   .insight-config { display: grid; }
   .memory-tabs button { min-height: 44px; }
+  .review-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--ds-space-2) var(--ds-space-3); }
+  .review-row > span:first-child { grid-column: 1; }
+  .review-row .review-state { grid-column: 1; grid-row: 2; }
+  .review-row > svg { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
   .activity-search-filters .activity-intent-button { min-height: 38px; }
 }
 @media (prefers-reduced-motion: reduce) { .insight-source, .insight-search-match, .review-row { transition: none !important; } }

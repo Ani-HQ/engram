@@ -4,8 +4,8 @@ The current visual language and contribution rules live in
 [the design system](DESIGN-SYSTEM.md), with a working gallery at `/design-system`.
 Every frontend change must reuse or contribute to that system. Warm paper, ink,
 lime, lilac and orbital graphics connect the public website to the working app.
-The interface separates private investigation from a public, aggregate-only
-profile. It uses self-hosted Inter, local SVG assets and system monospace for
+The interface separates private investigation from a public profile with counts
+and an optional redacted activity stream. It uses self-hosted Inter, local SVG assets and system monospace for
 identifiers, with no remote runtime scripts, fonts or icons.
 
 For local review, run `bun web/dev-server.ts`. The public homepage is `/`, the
@@ -114,7 +114,8 @@ The references were searched and visually inspected through Mobbin:
 - Connections lists API keys and OAuth sign-ins, including retired credentials.
   Authorization, last recorded contact and actual working reports are distinct.
   The private inventory requires a human console session, follows the selected
-  workspace, and never enters public profiles or the aggregate stream.
+  workspace, and never enters public profiles or the public stream. The optional
+  public stream uses canonical product labels rather than connection aliases.
 - Empty Tasks links to a reporting setup guide. Connection metadata distinguishes
   reconnect, read-only, no received reports and received reports; it never claims
   hooks are installed or an agent is working. The guide checks tool discovery,

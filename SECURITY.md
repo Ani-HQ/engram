@@ -42,6 +42,8 @@ that team's memory; a workspace is the isolation boundary, not each member or
 agent. Personal workspaces provide a separate store. Explicit share rules copy
 selected material into another workspace after checking membership at both ends.
 
+Reviewed sharing stores exact owner-approved excerpts separately from source memory. Source changes do not expand grants. Team projection checks current source ownership, both exact memberships, target policy and revocation on each read. Separate `egs_` bearer credentials authenticate only at `/mcp/shared`, where a closed read-only tool catalog queries approved snapshots without entering the source memory engine. Ordinary workspace, OAuth and console authentication reject those credentials. The credential is a bearer capability, not proof of a named agent's identity. Existing broader credentials must be disconnected or revoked separately. Natural-language suggestions and best-effort redaction never replace the owner's review.
+
 The service operator and anyone with host/database administration privileges
 can access stored data. Self-hosting puts those responsibilities under your
 control. The application does not encrypt memory with a user-held key that
@@ -79,8 +81,10 @@ controls to configure and verify in the deployment.
   concurrency conflicts; they are not a proof against every process crash or
   database-connection failure during an external engine call.
 - Public activity profiles require owner publication and expose aggregate
-  activity counts and chosen profile text, not memory contents, action details,
-  resource URLs, or agent names. Unpublishing removes subsequent service access;
+  activity counts and chosen profile text. A separate owner opt-in permits
+  canonical agent products, services, fixed action labels, statuses, evidence,
+  and receipt times. Private task text, resource URLs/names, memory contents,
+  and personal agent aliases remain excluded. Unpublishing removes subsequent service access;
   it cannot erase copies already downloaded by other sites.
 
 These controls reduce risk; their existence is not evidence that every code

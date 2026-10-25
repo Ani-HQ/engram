@@ -184,7 +184,6 @@ summary { cursor: pointer; font-size: 11px; color: var(--muted); padding: 6px 0;
 .showcase-preview { position: sticky; top: 24px; }
 .public-page .public-profile, .public-page .profile-skeleton, .showcase-preview .public-profile, .showcase-preview .profile-skeleton { border-radius: var(--radius-panel); }
 .workspace :is(.insight-job, .insight-card, .insight-brief, .insight-search-results, .insight-privacy), .detail .review-proposal { border-radius: var(--radius-card); }
-.workspace .insight-badge { border-radius: calc(var(--radius-control) - 4px); }
 .share-link-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: var(--radius-card); margin: 12px 0; padding: 10px; }
 .share-link-label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 10px; }
 .share-link-row code { flex: 1; min-width: 100px; font-size: 9px; }

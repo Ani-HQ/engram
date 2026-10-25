@@ -58,19 +58,32 @@ export interface ShareableItem {
   at: string | null;
 }
 
-export function parseShareMatch(value: unknown): ShareMatch {
-  const raw = value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
-  return {
+export function parseShareMatch(value: unknown, options: { allowStoredAll?: boolean } = {}): ShareMatch {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("A structured sharing match is required.");
+  const raw = value as Record<string, unknown>;
+  const allowed = ["repos","topics","harnesses","since","until","trailIds","trail_ids","excludeTrailIds","exclude_trail_ids","matchAll"];
+  if (Object.keys(raw).some(key => !allowed.includes(key))) throw new Error("Unsupported sharing filter. Natural-language instructions require a reviewed sharing preview.");
+  for (const key of ["repos","topics","harnesses","trailIds","trail_ids","excludeTrailIds","exclude_trail_ids"]) {
+    const list = raw[key];
+    if (list !== undefined && (!Array.isArray(list) || list.length > 100 || list.some(item => typeof item !== "string" || !item.trim() || item.trim().length > 300))) throw new Error(`Sharing filter ${key} must be an array of nonempty strings.`);
+  }
+  if ((raw.trailIds !== undefined && raw.trail_ids !== undefined) || (raw.excludeTrailIds !== undefined && raw.exclude_trail_ids !== undefined)) throw new Error("Use one spelling for each sharing filter.");
+  if (raw.matchAll !== undefined && raw.matchAll !== true) throw new Error("Sharing everything requires matchAll: true.");
+  for (const key of ["since","until"]) if (raw[key] != null && (typeof raw[key] !== "string" || !Number.isFinite(Date.parse(raw[key] as string)))) throw new Error(`Sharing filter ${key} must be a valid date.`);
+  const match = {
     repos: stringList(raw.repos),
     topics: stringList(raw.topics),
     harnesses: stringList(raw.harnesses),
-    since: optionalText(raw.since),
-    until: optionalText(raw.until),
+    since: raw.since == null ? null : new Date(raw.since as string).toISOString(),
+    until: raw.until == null ? null : new Date(raw.until as string).toISOString(),
     trailIds: stringList(raw.trailIds ?? raw.trail_ids),
     excludeTrailIds: stringList(raw.excludeTrailIds ?? raw.exclude_trail_ids),
   };
+  if (match.since && match.until && match.since > match.until) throw new Error("Sharing date range must start before it ends.");
+  const constrained = match.repos.length || match.topics.length || match.harnesses.length || match.trailIds.length || match.since || match.until;
+  if (!constrained && raw.matchAll !== true && !options.allowStoredAll) throw new Error("Choose a sharing filter, or explicitly confirm matchAll: true.");
+  if (constrained && raw.matchAll === true) throw new Error("Choose sharing filters or matchAll, not both.");
+  return match;
 }
 
 export function ruleMatches(match: ShareMatch, item: ShareableItem): boolean {
@@ -213,7 +226,7 @@ export async function shareOne(input: {
 }): Promise<ShareRule> {
   return createShareRule({
     ...input,
-    match: { ...parseShareMatch({}), trailIds: [input.trailId] },
+    match: parseShareMatch({ trailIds: [input.trailId] }),
   });
 }
 
@@ -494,7 +507,9 @@ function rowToRule(row: any): ShareRule {
     ownerEmail: String(row.owner_email),
     sourceOrg: Number(row.source_org),
     targetOrg: Number(row.target_org),
-    match: parseShareMatch(row.match),
+    // Existing explicitly created standing rules keep their original scope.
+    // New requests cannot acquire that scope from an empty/malformed match.
+    match: parseShareMatch(row.match, { allowStoredAll: true }),
     level: parseShareLevel(row.level),
     createdAt: new Date(row.created_at).toISOString(),
     pausedAt: row.paused_at ? new Date(row.paused_at).toISOString() : null,
@@ -505,10 +520,6 @@ function rowToRule(row: any): ShareRule {
 function stringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return [...new Set(value.map(item => typeof item === "string" ? item.trim() : "").filter(Boolean))];
-}
-
-function optionalText(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function includesNormalized(list: string[], value: string | null): boolean {

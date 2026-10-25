@@ -34,6 +34,8 @@ import {
 } from "./proxy";
 import { handleWeb } from "./web";
 import { processingOrg } from "./privacy";
+import { handleSharedContextMcp } from "./shared-context-mcp";
+import { isSharedContextSlug } from "./shared-context-read";
 
 if (config.deploymentMode === "hosted" && databaseSecurity.authority !== "runtime") {
   throw new Error("Hosted HTTP requires the restricted runtime database identity");
@@ -82,7 +84,8 @@ async function handleMcp(req: Request): Promise<Response> {
 
   return withOrg(org, actor, async () => {
     try {
-      if (method === "tools/list" || (method === "tools/call" && !["record_action", "list_actions", "whoami"].includes(name ?? ""))) await ensureBrain(org);
+      const snapshotRead = name === "get_page" && isSharedContextSlug(msg.params?.arguments?.slug);
+      if (method === "tools/list" || (method === "tools/call" && !snapshotRead && !["record_action", "list_actions", "whoami"].includes(name ?? ""))) await ensureBrain(org);
       switch (method) {
         case "initialize": {
           const requested = msg.params?.protocolVersion;
@@ -160,6 +163,7 @@ const server = Bun.serve({
         oauth: oauthEnabled(),
       });
     }
+    if (url.pathname === "/mcp/shared") return handleSharedContextMcp(req);
     if (url.pathname === "/mcp") {
       if (req.method === "POST") return handleMcp(req);
       // No SSE stream. Browsers get a short hint; MCP clients still see 405.

@@ -9,7 +9,7 @@ import { acceptInvite, createInvite } from "../gateway/src/orgs";
 import { closeOrgPool as closePool } from "../gateway/src/db";
 import { sha256 } from "../gateway/src/hash";
 import { normalizeToken } from "../gateway/src/policies";
-import { canManageSignupInvites, createSignupVerification, issueSignupInvite, listSignupInvites, revokeSignupInvite, signupPolicy } from "../gateway/src/signup-invites";
+import { canManageSignupInvites, createSignupVerification, issueSignupInvite, listSignupInvites, revokeSignupInvite, signupInviteLink, signupPolicy } from "../gateway/src/signup-invites";
 import { applySignupInviteAccess, provisionPendingWorkspaces } from "../gateway/src/provisioning";
 import { handleWeb } from "../gateway/src/web";
 import { getBillingSummary, getWorkspaceAccessSummary, handleBillingApi, requireHostedWriteAccess } from "../gateway/src/billing";
@@ -67,8 +67,26 @@ export async function checkSignupInvites(db: postgres.Sql): Promise<number> {
     await assert.rejects(async () => { await db`UPDATE hosted_signup_invites SET access_duration_days = 365 WHERE id = ${first.invite.id}`; }, (error: any) => error.code === "23514"); checks++;
     await assert.rejects(async () => { await db`UPDATE hosted_signup_invites SET access_expires_at = now() + interval '60 days' WHERE id = ${first.invite.id}`; }, (error: any) => error.code === "23514"); checks++;
     equal(JSON.stringify(await listSignupInvites(actor(), db)).includes(first.inviteCode), false, "Operator inventory never repeats raw codes");
+    const linkPath = `/api/admin/signup-invites/${first.invite.id}/link`;
+    equal((await handleWeb(request(linkPath, deniedOwnerSession, {}))).status, 403, "Only an allowlisted operator may copy an existing invitation");
+    equal((await handleWeb(request(linkPath, operatorSession, {}, { "X-Engram-Console": "0" }))).status, 403, "Copying invitation capabilities retains the console CSRF boundary");
+    equal((await handleWeb(request(linkPath, operatorSession, {}, { "X-Engram-Workspace": "2" }))).status, 409, "Copying invitation capabilities stays pinned to the operator workspace");
+    equal((await handleWeb(request(linkPath, operatorSession, {}, { "X-Engram-Workspace": "" }))).status, 400, "Copying requires an explicit workspace selection");
+    equal((await handleWeb(request(linkPath, operatorSession))).status, 405, "GET cannot recover an invitation capability");
+    equal((await handleWeb(request(linkPath, operatorSession, { expiresAt: new Date(Date.now() + 86_400_000).toISOString() }))).status, 400, "Copying cannot override the invitation expiry");
+    const copiedResponse = await handleWeb(request(linkPath, operatorSession, {}));
+    equal([copiedResponse.status, copiedResponse.headers.get("cache-control")], [200, "no-store"], "Copied invitation links are returned only to an uncached authenticated POST");
+    const copiedLink = await copiedResponse.json();
+    equal(Object.keys(copiedLink), ["inviteUrl"], "Copy responses do not expose codes, hashes or extra invitation metadata");
+    const alias = new URL(copiedLink.inviteUrl).hash.slice("#invite=".length);
+    equal(alias.startsWith(`eg_link_v1_${first.invite.id}_`), true, "Copied links use a closed signed-alias namespace for the existing invitation");
+    equal((await db`SELECT code_hash, expires_at, access_duration_days, redeemed_at FROM hosted_signup_invites WHERE id = ${first.invite.id}`)[0], { code_hash: stored.code_hash, expires_at: stored.expires_at, access_duration_days: 60, redeemed_at: null }, "Copying preserves the original hash, expiry, benefit terms and unused state");
+    await reject(() => createSignupVerification("wrong@example.test", "Wrong", alias, "https://signup.example", db), "invite_invalid");
+    const originalAliasByte = alias.at(-43)!;
+    const changedAlias = alias.slice(0, -43) + (originalAliasByte === "A" ? "B" : "A") + alias.slice(-42);
+    await reject(() => createSignupVerification(first.invite.email!, "", changedAlias, "https://signup.example", db), "invite_invalid");
     await reject(() => createSignupVerification("wrong@example.test", "Wrong", first.inviteCode, "https://signup.example", db), "invite_invalid");
-    const verification = await createSignupVerification(first.invite.email, "A friend's memory", first.inviteCode, "https://signup.example", db);
+    const verification = await createSignupVerification(first.invite.email, "A friend's memory", alias, "https://signup.example", db);
     equal(Number((await db`SELECT count(*) AS n FROM invites WHERE sha256_hash = ${sha256(verification.raw)}`)[0].n), 0, "An old runtime's invite lookup cannot redeem the new verification token");
     equal(Number((await db`SELECT count(*) AS n FROM org_members WHERE email = ${first.invite.email}`)[0].n), 0, "Code redemption does not create membership before email proof");
     equal((await db`SELECT redeemed_at FROM hosted_signup_invites WHERE id = ${first.invite.id}`)[0].redeemed_at, null, "Email delivery failure or delay cannot consume the code");
@@ -114,8 +132,10 @@ export async function checkSignupInvites(db: postgres.Sql): Promise<number> {
     equal(unboundResponse.status, 201, "The operator may mint a single-use link without choosing an email");
     const unbound = await unboundResponse.json(); inviteIds.push(unbound.invite.id);
     equal([unbound.invite.email, unbound.invite.emailBound, new URL(unbound.inviteUrl).search, new URL(unbound.inviteUrl).hash], [null, false, "", `#invite=${unbound.inviteCode}`], "The returned link contains its one-time code only in the URL fragment");
+    const unboundAliasUrl = (await signupInviteLink(actor(), unbound.invite.id, "https://signup.example", db)).inviteUrl;
+    const unboundAlias = new URL(unboundAliasUrl).hash.slice("#invite=".length);
     const unboundEmails = [`${prefix}-unbound-first@example.test`, `${prefix}-unbound-second@example.test`];
-    const unboundProofs = await Promise.all(unboundEmails.map(email => createSignupVerification(email, "", unbound.inviteCode, "https://signup.example", db)));
+    const unboundProofs = await Promise.all(unboundEmails.map((email, index) => createSignupVerification(email, "", index ? unbound.inviteCode : unboundAlias, "https://signup.example", db)));
     equal((await db`SELECT email, redeemed_at FROM hosted_signup_invites WHERE id = ${unbound.invite.id}`)[0], { email: null, redeemed_at: null }, "Requesting verification neither binds nor consumes an unbound link");
     equal(Number((await db`SELECT count(*) AS n FROM hosted_signup_verifications WHERE signup_invite_id = ${unbound.invite.id} AND accepted_at IS NULL`)[0].n), 2, "Another unverified mailbox cannot invalidate the first recipient's proof");
     await db`UPDATE hosted_signup_verifications SET created_at = now() - interval '61 seconds' WHERE signup_invite_id = ${unbound.invite.id}`;
@@ -131,8 +151,10 @@ export async function checkSignupInvites(db: postgres.Sql): Promise<number> {
     const losingEmail = unboundEmails.find(email => email !== unboundWinner.member.email)!;
     equal(Number((await db`SELECT count(*) AS n FROM org_members WHERE email = ${losingEmail}`)[0].n), 0, "The losing verified claimant receives no workspace or membership");
     await reject(() => createSignupVerification(losingEmail, "", unbound.inviteCode, "https://signup.example", db), "invite_invalid");
+    await reject(() => createSignupVerification(losingEmail, "", unboundAlias, "https://signup.example", db), "invite_invalid");
+    await reject(() => signupInviteLink(actor(), unbound.invite.id, "https://signup.example", db), "invite_unavailable");
     const inventory = JSON.stringify(await listSignupInvites(actor(), db));
-    equal(inventory.includes(unbound.inviteCode) || inventory.includes(unbound.inviteUrl), false, "Invitation inventory cannot reconstruct the raw shared credential");
+    equal(inventory.includes(unbound.inviteCode) || inventory.includes(unbound.inviteUrl) || inventory.includes(unboundAlias), false, "Invitation inventory does not include raw or signed invitation capabilities");
 
     const paidId = personalId + 2, paidEmail = `${prefix}-paid-private@example.test`;
     await db`INSERT INTO orgs (id,name,slug,kind,brain_db,data_db,home_dir,provisioning_status)
@@ -170,12 +192,18 @@ export async function checkSignupInvites(db: postgres.Sql): Promise<number> {
     equal(Number((await db`SELECT count(*) AS n FROM org_members WHERE email = ${concurrentA.invite.email}`)[0].n), 1, "Email-scoped locking prevents duplicate stores");
 
     const revoked = await issue("revoked"), expired = await issue("expired");
+    const revokedAlias = new URL((await signupInviteLink(actor(), revoked.invite.id, "https://signup.example", db)).inviteUrl).hash.slice("#invite=".length);
+    const expiredAlias = new URL((await signupInviteLink(actor(), expired.invite.id, "https://signup.example", db)).inviteUrl).hash.slice("#invite=".length);
     const revokedLink = await createSignupVerification(revoked.invite.email, "Revoked", revoked.inviteCode, "https://signup.example", db);
     const expiredLink = await createSignupVerification(expired.invite.email, "Expired", expired.inviteCode, "https://signup.example", db);
     await revokeSignupInvite(actor(), revoked.invite.id, db);
     await db`UPDATE hosted_signup_invites SET created_at = now()-interval '2 days', expires_at = now()-interval '1 second' WHERE id = ${expired.invite.id}`;
     equal(await acceptInvite(revokedLink.raw, db), null, "Revocation is rechecked after email delivery");
     equal(await acceptInvite(expiredLink.raw, db), null, "Code expiry is rechecked after email delivery");
+    for (const [item, aliasCode] of [[revoked, revokedAlias], [expired, expiredAlias]] as const) {
+      await reject(() => signupInviteLink(actor(), item.invite.id, "https://signup.example", db), "invite_unavailable");
+      for (const code of [item.inviteCode, aliasCode]) await reject(() => createSignupVerification(item.invite.email!, "Unavailable", code, "https://signup.example", db), "invite_invalid");
+    }
     const limited = await issue("resend-limit");
     for (let attempt = 0; attempt < 10; attempt++) {
       await createSignupVerification(limited.invite.email, "Resend limit", limited.inviteCode, "https://signup.example", db);

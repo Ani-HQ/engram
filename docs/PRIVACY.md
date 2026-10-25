@@ -11,13 +11,15 @@ within two business days. Approved erasure from the active service has a target 
 30 days after the requester's authority and scope are verified; explain delays and
 retained exceptions. These are manual service targets, not automatic deletion jobs
 or an incident-resolution SLA. The hosted notice is published at `/privacy` with
-an update date of 24 October 2026. Self-hosted operators set their own policies.
+an update date of 25 October 2026. Self-hosted operators set their own policies.
 
 ## Stored information
 
 Memory pages and capture records live in the selected workspace's database. The central control database holds workspace identity, memberships, hashed credentials, action reports, memory-call audit, subscription state, Jev consent/usage accounting, and opt-in public-profile settings. Per-workspace request context selects storage; missing or corrupt context and storage bindings fail closed. This is application-enforced tenant isolation, not cryptographic isolation from an operator who has database access.
 
 People and agents in a team workspace share that workspace's memory and activity. Separate personal workspaces are private to their owner. Explicit sharing rules can copy selected content into a team; standing rules re-check both memberships and target permissions. Removed memberships invalidate sessions and delegated credentials through current membership checks. Removing someone cannot recall copies they already exported.
+
+Reviewed sharing in the console stores a natural-language instruction, a temporary preview, and the exact approved excerpt snapshots in central sharing records. An optional Jev judgment can propose matches under the separate Jev consent and access/budget rules. The text-match fallback does not understand intent or exclusions. Owners must review and explicitly approve each excerpt. New or changed source text is never shared automatically. Team recipients read only the approved projection plus other memory already available in their team. An isolated agent credential reads only its approved snapshots at `/mcp/shared`; existing full-workspace credentials retain their access. Revocation blocks future reads, not previously downloaded copies. Preview expiry, cleanup, and legacy standing-rule differences are documented in [Sharing](SHARING.md).
 
 ## Outbound processing
 
@@ -75,7 +77,7 @@ see [EDGE.md](EDGE.md). App source alone does not prove the edge's behavior.
 
 Workspace owners manage membership, agent write permissions, separate Jev processing, optional embeddings/briefs, and public profiles. People can export the memory and activity they can read. The browser export pins its workspace and stops if that workspace changes during the download. Exports do not include raw tokens, other workspaces, billing details, or a complete infrastructure backup.
 
-Unpublishing returns 404 from Engram's public page, JSON, cards, and new live streams. Existing streams close on their next publication check, normally within five seconds. Streams expose only the same aggregate projection, including recent working counts, and do not publish individual agent identities or tasks. Responses are not publicly cached by Engram. Copies retained by social networks, crawlers, portfolio sites, or other people cannot be recalled. Paid access expiry does not block reading/export, privacy controls, credential revocation, or unpublishing. See [the live API contract](PUBLIC_ACTIVITY.md).
+Unpublishing returns 404 from Engram's public page, JSON, cards, and new live streams. Existing streams close on their next publication check, normally within five seconds. Public profiles share counts by default. A separate owner choice enables a redacted activity stream with canonical agent products, services, broad action labels, evidence, state, and receipt times. Labels are constructed from allowlisted operation types; private free text, personal agent aliases, repository/document names, URLs, and transcripts are excluded. Changing the sharing scope retires the old stream binding. Responses are not publicly cached by Engram. Copies retained by social networks, crawlers, portfolio sites, or other people cannot be recalled. Paid access expiry does not block reading/export, privacy controls, credential revocation, or unpublishing. See [the live API contract](PUBLIC_ACTIVITY.md).
 
 Memory deletion/recovery uses the existing authenticated page APIs. Page deletion
 is recoverable soft deletion; it does not purge `memory_entries`, activity, audit,

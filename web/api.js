@@ -12,7 +12,7 @@ async function request(path, options = {}) {
   if (response.status === 401) throw new AuthError();
   if (response.status === 204) return null;
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`);
+  if (!response.ok) { const error = new Error(data.error || `Request failed (${response.status}).`); error.status = response.status; error.code = data.code; throw error; }
   return data;
 }
 
@@ -27,10 +27,16 @@ const scoped = workspaceId => ({ headers: workspaceId ? { "X-Engram-Workspace": 
 const post = (path, body, workspaceId) => request(path, { ...scoped(workspaceId), method: "POST", body: JSON.stringify(body) });
 
 export const api = {
+  sharing: workspaceId => request("/api/sharing", { ...scoped(workspaceId), cache: "no-store" }),
+  sharingPreview: (payload, workspaceId) => post("/api/sharing/preview", payload, workspaceId),
+  sharingCommit: (payload, workspaceId) => post("/api/sharing/commit", payload, workspaceId),
+  revokeSharing: (id, workspaceId) => request(`/api/sharing/${encodeURIComponent(id)}`, { ...scoped(workspaceId), method: "DELETE" }),
+  rotateSharingToken: (id, workspaceId) => post(`/api/sharing/${encodeURIComponent(id)}/agent-token`, {}, workspaceId),
   plans: () => request("/api/plans"),
   signupPolicy: () => request("/api/signup-policy", { cache: "no-store", signal: AbortSignal.timeout(10000) }),
   signupInvites: workspaceId => request("/api/admin/signup-invites", scoped(workspaceId)),
   issueSignupInvite: (payload, workspaceId) => post("/api/admin/signup-invites", payload, workspaceId),
+  signupInviteLink: (id, workspaceId) => request(`/api/admin/signup-invites/${encodeURIComponent(id)}/link`, { ...scoped(workspaceId), method: "POST", body: "{}", cache: "no-store" }),
   revokeSignupInvite: (id, workspaceId) => post(`/api/admin/signup-invites/${encodeURIComponent(id)}/revoke`, {}, workspaceId),
   billing: workspaceId => request("/api/billing", scoped(workspaceId)),
   jev: workspaceId => request("/api/jev", { ...scoped(workspaceId), cache: "no-store" }),
@@ -77,6 +83,6 @@ export const api = {
 // Callbacks retain the workspace that created them, even if the session cookie
 // changes before a request reaches the server. The server verifies this header.
 export function workspaceApi(workspaceId) {
-  const methods = ["jev", "saveJev", "renameWorkspace", "signupInvites", "issueSignupInvite", "revokeSignupInvite", "provisioning", "onboarding", "billing", "checkout", "billingPortal", "members", "invite", "removeMember", "savePolicies", "setTokenWrite", "setTokenSource", "showcase", "saveShowcase", "actions", "activities", "activity", "pages", "search", "page", "capture", "tokens", "connections", "wiring", "mintToken", "revokeToken", "insights", "runInsights", "reviews", "review", "resolveReview"];
+  const methods = ["sharing", "sharingPreview", "sharingCommit", "revokeSharing", "rotateSharingToken", "jev", "saveJev", "renameWorkspace", "signupInvites", "issueSignupInvite", "signupInviteLink", "revokeSignupInvite", "provisioning", "onboarding", "billing", "checkout", "billingPortal", "members", "invite", "removeMember", "savePolicies", "setTokenWrite", "setTokenSource", "showcase", "saveShowcase", "actions", "activities", "activity", "pages", "search", "page", "capture", "tokens", "connections", "wiring", "mintToken", "revokeToken", "insights", "runInsights", "reviews", "review", "resolveReview"];
   return Object.fromEntries(methods.map(name => [name, (...args) => api[name](...args, workspaceId)]));
 }

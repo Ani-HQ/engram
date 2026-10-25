@@ -1,6 +1,6 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type postgres from "postgres";
-import { config } from "./config";
+import { config, databaseSecurity, dbUrl } from "./config";
 import { sql } from "./db";
 import { sha256 } from "./hash";
 import { normalizeEmail, type OrgMember } from "./orgs";
@@ -12,6 +12,25 @@ export class SignupInviteError extends Error {
 
 export const SIGNUP_ACCESS_DAYS = 60;
 export const SIGNUP_EXTENSION_URL = "https://x.com/anirudh_twt";
+const INVITE_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
+const LEGACY_CODE = /^eg_inv_[A-Za-z0-9_-]{32}$/;
+const LINK_CODE = /^eg_link_v1_([a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})_([A-Za-z0-9_-]{43})$/;
+
+function linkSignature(row: any): Buffer {
+  // Domain-separate this capability from database credentials and other proofs.
+  // The original hash stays server-side and makes any replacement invalidate
+  // aliases without ever rotating the invitation or persisting plaintext.
+  const key = createHmac("sha256", databaseSecurity.tenantCredentialKey || dbUrl("engram_gateway"))
+    .update("engram/signup-invite-link/key/v1").digest();
+  return createHmac("sha256", key).update(JSON.stringify([
+    "engram/signup-invite-link/proof/v1", String(row.id), String(row.code_hash),
+    row.email == null ? null : String(row.email), String(row.created_by_member_id), String(row.link_expiry),
+  ])).digest();
+}
+function validLinkSignature(row: any, signature: string): boolean {
+  const supplied = Buffer.from(signature, "base64url"), expected = linkSignature(row);
+  return supplied.length === expected.length && supplied.toString("base64url") === signature && timingSafeEqual(expected, supplied);
+}
 
 export function signupPolicy(mode = config.signupMode) {
   return { mode, complimentary: true, accessDurationDays: SIGNUP_ACCESS_DAYS, unlimitedKnowledgeTransfers: true, accessStartsOn: "verified-redemption", extensionUrl: SIGNUP_EXTENSION_URL, verificationRequired: true, inviteCodeRequired: mode === "invite-only", tokenSignInAllowed: config.deploymentMode === "self-hosted" };
@@ -79,8 +98,29 @@ export async function listSignupInvites(token: TokenRecord, db: postgres.Sql = s
   });
 }
 
+/** Obtain a capability for the same unused invitation without recovering or replacing its code. */
+export async function signupInviteLink(token: TokenRecord, id: string, publicUrl: string, db: postgres.Sql = sql) {
+  return db.begin(async tx => {
+    await requireOperator(token, tx as unknown as postgres.Sql);
+    if (!INVITE_ID.test(id)) throw new SignupInviteError("Invitation not found.", 404);
+    const rows = await tx`
+      SELECT i.*, extract(epoch FROM i.expires_at)::text AS link_expiry,
+        (i.revoked_at IS NULL AND i.redeemed_at IS NULL AND i.expires_at > now() AND EXISTS (
+          SELECT 1 FROM hosted_signup_operators op JOIN org_members creator ON creator.id = op.member_id
+          WHERE op.member_id = i.created_by_member_id AND op.revoked_at IS NULL
+            AND creator.org_id = 1 AND creator.role = 'owner'
+        )) AS link_available
+      FROM hosted_signup_invites i WHERE i.id = ${id} FOR SHARE OF i`;
+    if (rows.length !== 1) throw new SignupInviteError("Invitation not found.", 404);
+    const row = rows[0];
+    if (row.link_available !== true) throw new SignupInviteError("This invitation is no longer available to share.", 409, "invite_unavailable");
+    const alias = `eg_link_v1_${id}_${linkSignature(row).toString("base64url")}`;
+    return { inviteUrl: `${publicUrl.replace(/\/$/, "")}/app#invite=${alias}` };
+  });
+}
+
 export async function revokeSignupInvite(token: TokenRecord, id: string, db: postgres.Sql = sql) {
-  if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(id)) throw new SignupInviteError("Invitation not found.", 404);
+  if (!INVITE_ID.test(id)) throw new SignupInviteError("Invitation not found.", 404);
   return db.begin(async tx => {
     await requireOperator(token, tx as unknown as postgres.Sql);
     const rows = await tx`UPDATE hosted_signup_invites SET revoked_at = coalesce(revoked_at, now()) WHERE id = ${id} RETURNING *`;
@@ -99,7 +139,8 @@ function invalidInvite(): never { throw new SignupInviteError("That invitation c
 // the same transaction that creates/binds the verified personal workspace.
 export async function createSignupVerification(email: string, name: string, inviteCode: string, publicUrl: string, db: postgres.Sql = sql) {
   const normalized = normalizeEmail(email);
-  if (!normalized || normalized.length > 254 || !/^eg_inv_[A-Za-z0-9_-]{32}$/.test(inviteCode)) invalidInvite();
+  const alias = typeof inviteCode === "string" ? LINK_CODE.exec(inviteCode) : null;
+  if (!normalized || normalized.length > 254 || (!alias && !LEGACY_CODE.test(inviteCode))) invalidInvite();
   const pendingName = name.trim() || `${normalized.split("@")[0]}'s memory`;
   if (pendingName.length > 100) throw new SignupInviteError("Workspace names can contain up to 100 characters.");
   // Separate namespace/table: an older runtime cannot accept this as an
@@ -107,13 +148,15 @@ export async function createSignupVerification(email: string, name: string, invi
   const raw = `svf_${randomBytes(24).toString("base64url")}`;
   await db.begin(async tx => {
     const rows = await tx`
-      SELECT i.* FROM hosted_signup_invites i
+      SELECT i.*, extract(epoch FROM i.expires_at)::text AS link_expiry FROM hosted_signup_invites i
       JOIN hosted_signup_operators op ON op.member_id = i.created_by_member_id AND op.revoked_at IS NULL
       JOIN org_members creator ON creator.id = op.member_id AND creator.org_id = 1 AND creator.role = 'owner'
-      WHERE i.code_hash = ${sha256(inviteCode)} AND (i.email = ${normalized} OR i.email IS NULL)
+      WHERE (i.code_hash = ${alias ? null : sha256(inviteCode)} OR i.id = ${alias ? alias[1] : null}::uuid)
+        AND (i.email = ${normalized} OR i.email IS NULL)
         AND i.revoked_at IS NULL AND i.redeemed_at IS NULL AND i.expires_at > now()
       FOR UPDATE OF i`;
     if (rows.length !== 1) invalidInvite();
+    if (alias && !validLinkSignature(rows[0], alias[2])) invalidInvite();
     // Eligibility is private account metadata. Check it only after mailbox
     // proof during the atomic claim, so an unbound code cannot probe emails
     // for an existing subscription or complimentary grant.

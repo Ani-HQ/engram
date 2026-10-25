@@ -6,14 +6,15 @@ import { getActivity, listActivities } from "../gateway/src/activities";
 import { audit } from "../gateway/src/audit";
 import { normalizeToken } from "../gateway/src/policies";
 import { getOrg, withOrg } from "../gateway/src/orgs";
-import { getShowcaseSettings } from "../gateway/src/showcase";
+import { getShowcaseSettings, getPublicActivity, updateShowcaseSettings } from "../gateway/src/showcase";
+import { SHOWCASE_SCHEMA_VERSION } from "../gateway/src/showcase-schema";
 
 // Called only after the parent's disposable-database guard and migrations.
 export async function checkTaskActivity(db: postgres.Sql): Promise<number> {
   let checks = 0;
   function equal(actual: unknown, expected: unknown, message: string) { assert.deepEqual(actual, expected, message); checks++; }
-  const versions = (await db`SELECT version, activity_version FROM engram_schema_state WHERE id=true`)[0];
-  equal([versions.version, versions.activity_version], [2026102202, 2026102301], "Additive activity migration preserves the old runtime base contract and marks the new feature ready");
+  const versions = (await db`SELECT version, activity_version, showcase_version FROM engram_schema_state WHERE id=true`)[0];
+  equal([versions.version, versions.activity_version, versions.showcase_version], [2026102202, 2026102301, SHOWCASE_SCHEMA_VERSION], "Additive activity and showcase migrations preserve the old runtime base contract and mark the features ready");
   const org = (await getOrg(2))!;
   const raw = await issueToken(2, "task-source-codex", true, null, db, { harness: "codex", label: "Development laptop" });
   const agent = (await authenticateStoredSecret(raw, db))!;
@@ -66,5 +67,29 @@ export async function checkTaskActivity(db: postgres.Sql): Promise<number> {
   equal((await recordAction(updated, completedInput)).action.harness, "codex", "Retrying an old event after a registration edit preserves its original immutable source snapshot");
   const publicValue = JSON.stringify((await getShowcaseSettings(normalizeToken({ ...agent, role: "owner" }), "https://integration.example", db)).preview);
   equal(["Publish the October release", "Development laptop", "Review assistant"].some(value => publicValue.includes(value)), false, "Task titles, results and source labels remain absent from public aggregates");
+  const human = normalizeToken({ ...updated, role: "owner" });
+  const previousProfile = (await getShowcaseSettings(human, "https://integration.example", db)).profile;
+  const column = (await db`SELECT column_default, is_nullable FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'action_profiles' AND column_name = 'show_activity'`)[0];
+  equal([column?.column_default, column?.is_nullable], ["false", "NO"], "Existing public profiles acquire a non-null activity permission that defaults off");
+  try {
+    await updateShowcaseSettings(human, { ...previousProfile, published: true, showActivity: false }, "https://integration.example", db);
+    equal((await getPublicActivity(previousProfile.slug, db))?.activity, { enabled: false, events: [] }, "Published profiles retain aggregate-only access until an owner explicitly opts in");
+    const privateReport = { tool: "github.create_pull_request", summary: "Private public-projection test summary", taskTitle: "Private public-projection task", currentStep: "Private public-projection step", resource: "https://github.com/private-projection-owner/private-projection-repo/pull/93", actionKey: "private-public-projection-key", status: "running", eventId: "private-public-projection-start" };
+    await recordAction(updated, privateReport);
+    await updateShowcaseSettings(human, { ...previousProfile, published: true, showActivity: true }, "https://integration.example", db);
+    const first = (await getPublicActivity(previousProfile.slug, db))!;
+    const event = first.activity.events[0];
+    equal([event.agent, event.service, event.action, event.status], [{ product: "grok-bot", label: "Grok Bot" }, "github", "Creating a pull request", "running"], "Real SQL projects the latest logical action with canonical source, provider and a fixed operation label");
+    await recordAction(updated, { ...privateReport, status: "completed", currentStep: undefined, outcome: "Private public-projection outcome", eventId: "private-public-projection-finish" });
+    const second = (await getPublicActivity(previousProfile.slug, db))!;
+    equal(second.activity.events.find(value => value.id === event.id)?.action, "Created a pull request", "A terminal SQL update preserves the opaque public identity and changes its safe label");
+    equal(second.activity.events.filter(value => value.id === event.id).length, 1, "Append-only lifecycle rows become one public logical event");
+    for (const secret of ["Private public-projection", "private-projection-owner", "private-projection-repo", "private-public-projection-key", agent.name, "Development laptop", "Updated source"]) equal(JSON.stringify(second).includes(secret), false, "Real public snapshots exclude raw identities, descriptions and resource details");
+    equal(second.activity.events.length <= 20, true, "The real SQL public feed is bounded");
+    await updateShowcaseSettings(human, { ...previousProfile, published: true, showActivity: false }, "https://integration.example", db);
+    equal((await getPublicActivity(previousProfile.slug, db))?.activity, { enabled: false, events: [] }, "Opting out removes events while preserving published aggregates");
+  } finally {
+    await updateShowcaseSettings(human, previousProfile, "https://integration.example", db);
+  }
   return checks;
 }

@@ -103,7 +103,9 @@ connected agents, optional email delivery, and infrastructure operators have
 their own access and data-handling responsibilities.
 
 Public profiles are off by default. Publishing exposes aggregate counts and the
-profile text the owner supplies. Review that preview before publishing.
+profile text the owner supplies. A separate owner option adds redacted action
+labels, agent products, services, statuses, and receipt times. Existing profiles
+keep that option off. Review the preview and sharing scope before publishing.
 
 ## Serve it beyond your machine
 

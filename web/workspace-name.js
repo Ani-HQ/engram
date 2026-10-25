@@ -48,8 +48,8 @@ export function workspaceNameForm({ session, editor }) {
   if (session?.role !== "owner" || typeof session.email !== "string" || !session.email.trim() || !editor) return null;
   const { state } = editor;
   const feedback = h("p", { id: "setup-name-feedback", class: "detail-note", role: state.error ? "alert" : "status", "aria-live": "polite" }, state.error || state.feedback);
-  const input = h("input", { type: "text", maxlength: 100, required: true, autocomplete: "organization", readonly: state.busy, "aria-describedby": "setup-name-note setup-name-feedback", "data-setup-focus": "workspace-name", oninput: event => {
-    editor.setDraft(event.target.value); feedback.textContent = ""; feedback.setAttribute("role", "status"); save.disabled = state.busy || state.draft.trim() === state.name;
+  const input = h("input", { type: "text", name: "workspace-name", maxlength: 100, required: true, autocomplete: "organization", readonly: state.busy, "aria-invalid": String(Boolean(state.error) && !validName(state.draft)), "aria-describedby": "setup-name-note setup-name-feedback", "data-setup-focus": "workspace-name", oninput: event => {
+    editor.setDraft(event.target.value); input.setAttribute("aria-invalid", "false"); feedback.textContent = ""; feedback.setAttribute("role", "status"); save.disabled = state.busy || state.draft.trim() === state.name;
   } });
   input.value = state.draft;
   const save = h("button", { type: "submit", class: "small", disabled: state.busy || state.draft.trim() === state.name, "data-setup-focus": "save-workspace-name" }, state.busy ? "Saving…" : "Save name");

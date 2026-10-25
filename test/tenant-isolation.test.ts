@@ -305,7 +305,7 @@ describe("live membership and credential boundaries", () => {
 describe("explicit cross-workspace sharing authority", () => {
   const rule = {
     id: 9, ownerEmail: "ada@example.com", sourceOrg: 7, targetOrg: 8,
-    match: parseShareMatch({}), level: "digest" as const,
+    match: parseShareMatch({matchAll:true}), level: "digest" as const,
     createdAt: "2026-10-01T00:00:00Z", pausedAt: null, revokedAt: null,
   };
 

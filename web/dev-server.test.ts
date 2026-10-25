@@ -118,6 +118,72 @@ describe("local activity demo", () => {
       expect((await request("/api/admin/signup-invites", { headers: { "X-Engram-Workspace": "1" } })).status).toBe(409);
     } finally { await request("/api/session/switch", { method: "POST", body: JSON.stringify({ orgId: 1 }) }); }
   });
+  test("copies a listed invitation as a stable alias without replacing its original code or terms", async () => {
+    const issued = await (await request("/api/admin/signup-invites", { method: "POST", body: JSON.stringify({ email: "copy-demo@example.com" }) })).json();
+    const path = `/api/admin/signup-invites/${issued.invite.id}/link`;
+    const options = { method: "POST", headers: { "X-Engram-Console": "1", "X-Engram-Workspace": "1" }, body: "{}" };
+    const before = (await (await request("/api/admin/signup-invites")).json()).invites;
+    const response = await request(path, options), copied = await response.json();
+    expect(response.status).toBe(200); expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(Object.keys(copied)).toEqual(["inviteUrl"]);
+    const alias = new URL(copied.inviteUrl).hash.slice("#invite=".length);
+    expect(alias).toMatch(new RegExp(`^eg_link_v1_${issued.invite.id}_[A-Za-z0-9_-]{43}$`));
+    expect(copied.inviteUrl).not.toContain("copy-demo@example.com");
+    expect((await (await request(path, options)).json()).inviteUrl).toBe(copied.inviteUrl);
+    const after = (await (await request("/api/admin/signup-invites")).json()).invites;
+    expect(after).toEqual(before);
+    expect(JSON.stringify(after)).not.toContain(alias); expect(JSON.stringify(after)).not.toContain(issued.inviteCode);
+    const verify = (inviteCode: string, email = "copy-demo@example.com") => request("/api/orgs", { method: "POST", body: JSON.stringify({ email, inviteCode }) });
+    expect((await verify(`${alias.slice(0, -1)}!`)).status).toBe(400);
+    expect((await verify(alias, "different@example.com")).status).toBe(400);
+    const originalProof = await (await verify(issued.inviteCode)).json();
+    const aliasProof = await (await verify(alias)).json();
+    expect(originalProof.demo).toBe(true); expect(aliasProof.demo).toBe(true);
+    try {
+      const accepted = await request("/api/invites/accept", { method: "POST", body: JSON.stringify({ token: new URL(aliasProof.url).hash.slice("#join=".length) }) });
+      expect(accepted.status).toBe(200);
+    } finally { await request("/api/session/switch", { method: "POST", body: JSON.stringify({ orgId: 1 }) }); }
+    expect((await verify(issued.inviteCode)).status).toBe(400); expect((await verify(alias)).status).toBe(400);
+    expect((await request("/api/invites/accept", { method: "POST", body: JSON.stringify({ token: new URL(originalProof.url).hash.slice("#join=".length) }) })).status).toBe(400);
+    const unavailable = await request(path, options);
+    expect(unavailable.status).toBe(409); expect((await unavailable.json()).code).toBe("invite_unavailable");
+    expect(unavailable.headers.get("cache-control")).toBe("no-store");
+  });
+  test("invitation-link retrieval requires the operator console workspace and rejects inactive invites", async () => {
+    const issued = await (await request("/api/admin/signup-invites", { method: "POST", body: "{}" })).json();
+    const path = `/api/admin/signup-invites/${issued.invite.id}/link`;
+    const headers = { "X-Engram-Console": "1", "X-Engram-Workspace": "1" };
+    const copy = (changes: RequestInit = {}) => request(path, { method: "POST", headers, body: "{}", ...changes });
+    for (const [changes, status] of [
+      [{ headers: { ...headers, Cookie: "engram_dev=0" } }, 401],
+      [{ headers: { "X-Engram-Workspace": "1" } }, 403],
+      [{ headers: { "X-Engram-Console": "1" } }, 400],
+      [{ headers: { ...headers, "X-Engram-Workspace": "2" } }, 409],
+      [{ method: "GET", body: undefined }, 404],
+    ] as [RequestInit, number][]) {
+      const response = await copy(changes);
+      expect(response.status).toBe(status); expect(response.headers.get("cache-control")).toBe("no-store");
+    }
+    for (const id of ["not-an-id", "%ZZ", crypto.randomUUID()]) {
+      const response = await request(`/api/admin/signup-invites/${id}/link`, { method: "POST", headers, body: "{}" });
+      expect(response.status).toBe(404); expect(response.headers.get("cache-control")).toBe("no-store");
+    }
+    try {
+      await request("/api/session/switch", { method: "POST", body: JSON.stringify({ orgId: 2 }) });
+      expect((await copy({ headers: { ...headers, "X-Engram-Workspace": "2" } })).status).toBe(403);
+      expect((await copy()).status).toBe(409);
+    } finally { await request("/api/session/switch", { method: "POST", body: JSON.stringify({ orgId: 1 }) }); }
+    const now = Date.now;
+    try {
+      Date.now = () => Date.parse(issued.invite.expiresAt);
+      const expired = await copy(); expect(expired.status).toBe(409); expect((await expired.json()).code).toBe("invite_unavailable");
+    } finally { Date.now = now; }
+    const active = await (await copy()).json();
+    const alias = new URL(active.inviteUrl).hash.slice("#invite=".length);
+    await request(`/api/admin/signup-invites/${issued.invite.id}/revoke`, { method: "POST", body: "{}" });
+    const revoked = await copy(); expect(revoked.status).toBe(409); expect((await revoked.json()).code).toBe("invite_unavailable");
+    for (const inviteCode of [alias, issued.inviteCode]) expect((await request("/api/orgs", { method: "POST", body: JSON.stringify({ email: "revoked-copy@example.com", inviteCode }) })).status).toBe(400);
+  });
   test("exposes simulated getting started evidence with workspace scoping", async () => {
     const response = await request("/api/onboarding", { headers: { "X-Engram-Workspace": "1" } });
     const data = await response.json();
@@ -303,7 +369,7 @@ describe("local activity demo", () => {
 
   test("previews real aggregate counts privately before explicit publication", async () => {
     const settings = await (await request("/api/showcase")).json();
-    expect(settings.profile).toEqual({ slug: "", displayName: "", bio: "", published: false });
+    expect(settings.profile).toEqual({ slug: "", displayName: "", bio: "", published: false, showActivity: false });
     expect(settings.urls.page).toBeNull();
     const data = await (await request("/api/actions?limit=100")).json();
     const expected = data.actions.filter((row: any) => !["list_actions", "record_action", "whoami"].includes(row.tool));
@@ -320,7 +386,7 @@ describe("local activity demo", () => {
     const invalid = await request("/api/showcase", { method: "PUT", body: JSON.stringify({ ...profile, slug: "../private" }) });
     expect(invalid.status).toBe(400);
     const saved = await (await request("/api/showcase", { method: "PUT", body: JSON.stringify(profile) })).json();
-    expect(saved.profile).toEqual(profile);
+    expect(saved.profile).toEqual({ ...profile, showActivity: false });
     expect(saved.urls.card).toBe("http://localhost:8099/api/public/activity/demo-agents/card.png");
     const dataResponse = await request("/api/public/activity/demo-agents", { headers: { Cookie: "engram_dev=0" } });
     expect(dataResponse.status).toBe(200);
@@ -349,10 +415,10 @@ describe("local activity demo", () => {
   });
 
   test("streams working to completed as one logical action and closes the stream when unpublished", async () => {
-    const profile = { slug: "live-demo", displayName: "Live demo", bio: "A public example", published: true };
+    const profile = { slug: "live-demo", displayName: "Live demo", bio: "A public example", published: true, showActivity: true };
     const publication = await (await request("/api/showcase", { method: "PUT", body: JSON.stringify(profile) })).json();
     const workingBefore = publication.preview.live.workingAgents;
-    const report = { tool: "demo.build", summary: "PRIVATE build details", resource: "file://private-build", actionKey: "stream-demo-build", eventId: "stream-demo-start", status: "running" };
+    const report = { tool: "github.create_pull_request", harness: "codex", summary: "PRIVATE build details", resource: "https://github.com/private-build-owner/private-build-repo/pull/9", actionKey: "stream-demo-build", eventId: "stream-demo-start", status: "running" };
     const started = await (await request("/api/actions", { method: "POST", body: JSON.stringify(report) })).json();
     const abort = new AbortController();
     const response = await request("/api/public/activity/live-demo/stream", { signal: abort.signal });
@@ -366,12 +432,21 @@ describe("local activity demo", () => {
       const initial = JSON.parse(first.split("data: ")[1].trim());
       expect(initial.live.workingAgents).toBe(workingBefore + 1);
       expect(first).not.toContain("PRIVATE build details");
-      expect(first).not.toContain("file://private-build");
+      expect(first).not.toContain("private-build-owner");
+      expect(first).not.toContain("private-build-repo");
+      expect(initial.activity.enabled).toBe(true);
+      const liveEvent = initial.activity.events.find((event: any) => event.service === "github" && event.status === "running");
+      expect(liveEvent.agent).toEqual({ product: "codex", label: "Codex" });
+      expect(liveEvent.action).toBe("Creating a pull request");
       const complete = { ...report, status: "completed", eventId: "stream-demo-end" };
       const finished = await (await request("/api/actions", { method: "POST", body: JSON.stringify(complete) })).json();
       const next = decode(await reader.read());
       const snapshot = JSON.parse(next.split("data: ")[1].trim());
       expect(snapshot.live.workingAgents).toBe(workingBefore);
+      const finalEvent = snapshot.activity.events.find((event: any) => event.id === liveEvent.id);
+      expect(finalEvent.status).toBe("completed");
+      expect(finalEvent.action).toBe("Created a pull request");
+      expect(next).not.toContain("PRIVATE build details");
       expect(snapshot.stats.totalActions).toBe(initial.stats.totalActions);
       expect(snapshot.stats.completedActions).toBe(initial.stats.completedActions + 1);
       const retry = await (await request("/api/actions", { method: "POST", body: JSON.stringify(complete) })).json();
@@ -582,5 +657,67 @@ describe("local activity demo", () => {
     const logical = await (await request("/api/actions?tool=demo.connection-receipts")).json();
     expect(logical.actions).toHaveLength(1);
     expect(logical.actions[0].status).toBe("completed");
+  });
+});
+
+describe("local reviewed-sharing lifecycle", () => {
+  test("approves exact team/agent snapshots, keeps credentials out of inventory, rotates and revokes reads", async () => {
+    const use = async (orgId: number) => request("/api/session/switch", { method: "POST", body: JSON.stringify({ orgId }) });
+    const headers = { "X-Engram-Workspace": "2", "X-Engram-Console": "1" };
+    const post = (path: string, value: unknown) => request(path, { method: "POST", headers, body: JSON.stringify(value) });
+    const instruction = "Share project architecture and deployment decisions. Exclude personal health details.";
+    const created: string[] = [];
+    try {
+      await use(1);
+      const teamState = await (await request("/api/sharing", { headers: { ...headers, "X-Engram-Workspace": "1" } })).json();
+      expect(teamState.sourceKind).toBe("team");
+      await use(2);
+      expect((await request("/api/sharing")).status).toBe(400);
+      const state = await (await request("/api/sharing", { headers })).json();
+      expect(state).toMatchObject({ sourceKind: "personal", modelAvailable: false });
+      expect(state.targets.some((target: any) => target.id === 1)).toBe(true);
+      const prepare = async (recipient: unknown) => (await (await post("/api/sharing/preview", { instruction, recipient })).json());
+      const preview = await prepare({ kind: "team", orgId: 1 });
+      expect(preview.method).toBe("text"); expect(preview.candidates.length).toBeGreaterThan(0);
+      expect(JSON.stringify(preview)).not.toContain("Personal health appointment");
+      const candidate = preview.candidates[0], selected = candidate.text.split(".")[0] + ".";
+      expect((await post("/api/sharing/commit", { previewId: preview.previewId, acknowledged: false, selections: [{ id: candidate.id, text: selected }] })).status).toBe(400);
+      expect((await post("/api/sharing/commit", { previewId: preview.previewId, acknowledged: true, selections: [{ id: candidate.id, text: "Unrelated material" }] })).status).toBe(400);
+      const committed = await (await post("/api/sharing/commit", { previewId: preview.previewId, acknowledged: true, selections: [{ id: candidate.id, text: selected }] })).json();
+      created.push(committed.share.id); expect(committed.share.items[0].text).toBe(selected); expect(committed.credential).toBeUndefined();
+      expect((await post("/api/sharing/commit", { previewId: preview.previewId, acknowledged: true, selections: [{ id: candidate.id, text: selected }] })).status).toBe(409);
+      await use(1);
+      const teamHeaders = { ...headers, "X-Engram-Workspace": "1" };
+      const teamPages = await (await request("/api/pages", { headers: teamHeaders })).json();
+      const page = teamPages.pages.find((page: any) => page.type === "shared-context" && page.body === selected);
+      expect(page).toBeDefined();
+      const direct = await (await request("/api/page?slug=" + encodeURIComponent(page.slug), { headers: teamHeaders })).json();
+      expect(direct.page.body).toBe(selected);
+      await use(2);
+      const agentPreview = await prepare({ kind: "agent", name: "Synthetic reviewer" });
+      const agentCandidate = agentPreview.candidates[0];
+      const agentResult = await (await post("/api/sharing/commit", { previewId: agentPreview.previewId, acknowledged: true, selections: [{ id: agentCandidate.id, text: agentCandidate.text }] })).json();
+      created.push(agentResult.share.id);
+      const token = agentResult.credential.token;
+      expect(token).toMatch(/^egs_[A-Za-z0-9_-]{32}$/);
+      const inventory = await (await request("/api/sharing", { headers })).json();
+      expect(JSON.stringify(inventory)).not.toContain(token);
+      const call = (credential: string, name = "recall") => request("/mcp/shared", { method: "POST", headers: { Authorization: "Bearer " + credential }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: { query: "stable" } } }) });
+      const read = await (await call(token)).json();
+      expect(JSON.stringify(read)).toContain(agentCandidate.text);
+      expect((await request("/api/pages", { headers: { Authorization: "Bearer " + token } })).status).toBe(401);
+      expect((await (await call(token, "remember")).json()).result.isError).toBe(true);
+      const replacement = await (await post("/api/sharing/" + agentResult.share.id + "/agent-token", {})).json();
+      expect((await call(token)).status).toBe(401); expect((await call(replacement.credential.token)).status).toBe(200);
+      await request("/api/sharing/" + agentResult.share.id, { method: "DELETE", headers });
+      expect((await call(replacement.credential.token)).status).toBe(401);
+      await request("/api/sharing/" + committed.share.id, { method: "DELETE", headers });
+      await use(1);
+      expect((await request("/api/page?slug=" + encodeURIComponent(page.slug), { headers: teamHeaders })).status).toBe(404);
+    } finally {
+      await use(2);
+      for (const id of created) await request("/api/sharing/" + id, { method: "DELETE", headers });
+      await use(1);
+    }
   });
 });

@@ -53,8 +53,9 @@ import { renderEmail } from "./mail-templates";
 import { handleJevApi } from "./jev";
 import { getWorkspaceAccessSummary } from "./billing";
 import { oauthEnabled } from "./oauth";
-import { canManageSignupInvites, createSignupVerification, issueSignupInvite, listSignupInvites, revokeSignupInvite, SignupInviteError } from "./signup-invites";
+import { canManageSignupInvites, createSignupVerification, issueSignupInvite, listSignupInvites, revokeSignupInvite, signupInviteLink, SignupInviteError } from "./signup-invites";
 import { triggerProvisioning } from "./provisioning-trigger";
+import { handleContextSharingApi } from "./context-sharing";
 import {
   getShareRule,
   createShareRule,
@@ -157,6 +158,7 @@ export async function handleOrgApi(
   org: Org,
 ): Promise<Response | null> {
   if (token.orgId !== org.id) return Response.json({ error: "forbidden" }, { status: 403 });
+  if (url.pathname === "/api/sharing" || url.pathname.startsWith("/api/sharing/")) return handleContextSharingApi(req, token, org);
   if (url.pathname === "/api/jev") return handleJevApi(req, token);
   if (url.pathname === "/api/workspace") {
     return req.method === "PUT" ? putWorkspace(req, token, org) : Response.json({ error: "method not allowed" }, { status: 405, headers: { Allow: "PUT" } });
@@ -271,7 +273,21 @@ async function postOrg(req: Request): Promise<Response> {
 }
 
 async function handleSignupInviteAdmin(req: Request, url: URL, token: TokenRecord): Promise<Response> {
+  const headers = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
+  const json = (body: unknown, status = 200, extra: Record<string, string> = {}) => Response.json(body, { status, headers: { ...headers, ...extra } });
   try {
+    const link = url.pathname.match(/^\/api\/admin\/signup-invites\/([^/]+)\/link$/);
+    if (link) {
+      if (req.method !== "POST") return json({ error: "method not allowed" }, 405, { Allow: "POST" });
+      if (req.headers.get("x-engram-console") !== "1") return json({ error: "forbidden" }, 403);
+      const pin = req.headers.get("x-engram-workspace");
+      if (!pin) return json({ error: "Select a workspace and try again." }, 400);
+      if (pin !== String(token.orgId)) return json({ error: "The selected workspace changed. Please try again." }, 409);
+      if (!await canManageSignupInvites(token)) throw new SignupInviteError("Only the signup operator can manage invitation codes.", 403, "forbidden");
+      const body = await jsonObject(req);
+      if (!body || Object.keys(body).length) return json({ error: "Link copying does not accept invitation or account overrides." }, 400);
+      return json(await signupInviteLink(token, link[1], publicUrlFrom(req)));
+    }
     if (req.method === "GET" && url.pathname === "/api/admin/signup-invites") return Response.json(await listSignupInvites(token));
     const body = await jsonObject(req);
     if (!body) return Response.json({ error: "Provide a JSON object." }, { status: 400 });
@@ -290,9 +306,9 @@ async function handleSignupInviteAdmin(req: Request, url: URL, token: TokenRecor
     }
     return Response.json({ error: "not found" }, { status: 404 });
   } catch (error) {
-    if (error instanceof SignupInviteError) return Response.json({ error: error.message, code: error.code }, { status: error.status });
+    if (error instanceof SignupInviteError) return json({ error: error.message, code: error.code }, error.status);
     console.error("[signup-invites] request failed:", failureCode(error));
-    return Response.json({ error: "Signup invitations are temporarily unavailable.", code: "signup_unavailable" }, { status: 503 });
+    return json({ error: "Signup invitations are temporarily unavailable.", code: "signup_unavailable" }, 503);
   }
 }
 
@@ -603,7 +619,7 @@ async function postShareRule(req: Request, token: TokenRecord, org: Org): Promis
       ownerEmail: token.email,
       sourceOrg: org,
       targetOrgId,
-      match: parseShareMatch(body?.match ?? body),
+      match: shareMatchFromBody(body, ["targetOrgId", "target_org", "level"]),
       level: parseShareLevel(body?.level),
     });
     return Response.json({ rule: publicRule(rule) });
@@ -614,19 +630,33 @@ async function postShareRule(req: Request, token: TokenRecord, org: Org): Promis
 
 async function postSharePreview(req: Request, org: Org): Promise<Response> {
   const body = await jsonObject(req);
-  const preview = await previewShare({ sourceOrg: org, match: parseShareMatch(body?.match ?? body) });
-  return Response.json(preview);
+  try {
+    const preview = await previewShare({ sourceOrg: org, match: shareMatchFromBody(body, []) });
+    return Response.json(preview);
+  } catch { return Response.json({ error: "Choose supported sharing filters; sharing everything requires matchAll: true." }, { status: 400 }); }
 }
 
 async function patchShareRule(req: Request, url: URL, token: TokenRecord, org: Org): Promise<Response> {
   const rule = await ownedRule(url, token, org);
   if (!rule) return Response.json({ error: "not found" }, { status: 404 });
   const body = await jsonObject(req);
-  const updated = await updateShareRule(rule, {
-    match: body?.match ? parseShareMatch(body.match) : undefined,
-    level: body?.level ? parseShareLevel(body.level) : undefined,
-  });
-  return Response.json({ rule: publicRule(updated) });
+  try {
+    if (!body || Object.keys(body).some(key=>!["match","level"].includes(key))) throw new Error("Unsupported sharing fields.");
+    const updated = await updateShareRule(rule, {
+      match: Object.hasOwn(body,"match") ? parseShareMatch(body.match) : undefined,
+      level: body.level ? parseShareLevel(body.level) : undefined,
+    });
+    return Response.json({ rule: publicRule(updated) });
+  } catch { return Response.json({ error: "Choose supported sharing filters; sharing everything requires matchAll: true." }, { status: 400 }); }
+}
+
+function shareMatchFromBody(body: Record<string,unknown> | null, envelope: string[]) {
+  if (!body) throw new Error("A structured sharing match is required.");
+  if (Object.hasOwn(body,"match")) {
+    if (Object.keys(body).some(key=>key!=="match" && !envelope.includes(key))) throw new Error("Unsupported sharing fields.");
+    return parseShareMatch(body.match);
+  }
+  return parseShareMatch(Object.fromEntries(Object.entries(body).filter(([key])=>!envelope.includes(key))));
 }
 
 async function pauseShareRule(url: URL, token: TokenRecord, org: Org, paused: boolean): Promise<Response> {

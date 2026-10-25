@@ -1,5 +1,7 @@
 .setup-guide { border: 1px solid var(--line); border-radius: 12px; padding: 24px; margin-bottom: 32px; background: #fafafa; min-width: 0; }
 .setup-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.setup-heading > div, .setup-stage, .setup-steps li { min-width: 0; }
+.setup-guide :is(h2,h3,p), .setup-steps li > span { overflow-wrap: anywhere; }
 .setup-heading h2 { margin-top: 7px; font-size: 21px; letter-spacing: -.55px; font-weight: 540; }
 .setup-heading > button { flex-shrink: 0; }
 .setup-workspace-name { margin-top: 22px; padding: 18px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); max-width: 680px; }

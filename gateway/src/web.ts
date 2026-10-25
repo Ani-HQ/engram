@@ -28,6 +28,7 @@ import { processingOrg } from "./privacy";
 import { PUBLIC_PAGE_FILES } from "./site-routes";
 import { handleInsightsApi } from "./insights";
 import { handleMailUnsubscribe } from "./mail-series";
+import { approvedTeamContextPages, isSharedContextSlug, sharedPageSummary } from "./shared-context-read";
 
 export { SESSION_COOKIE_MAX_AGE, SESSION_COOKIE_NAME } from "./cookies";
 export { clearSessionCookie, parseSessionCookie, serializeSessionCookie };
@@ -349,7 +350,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   // storage, the memory engine, or a paid content-write entitlement.
   if (workspaceMetadata) return await handleOrgApi(req, url, actor, storedOrg) ?? Response.json({ error: "not found" }, { status: 404 });
   const org = ["/api/search", "/api/page", "/api/pages", "/api/capture", "/api/insights"].includes(url.pathname) ? await processingOrg(storedOrg, actor) : storedOrg;
-  const lightweight = url.pathname === "/api/activities" || url.pathname.startsWith("/api/activities/") || url.pathname === "/api/insights" || ["/api/jev", "/api/actions", "/api/showcase", "/api/billing", "/api/billing/checkout", "/api/billing/portal", "/api/policies", "/api/tokens", "/api/connections", "/api/tokens/write", "/api/tokens/source", "/api/tokens/revoke", "/api/members", "/api/invites", "/api/wiring", "/api/me", "/api/onboarding"].includes(url.pathname);
+  const lightweight = url.pathname === "/api/sharing" || url.pathname.startsWith("/api/sharing/") || url.pathname === "/api/activities" || url.pathname.startsWith("/api/activities/") || url.pathname === "/api/insights" || ["/api/jev", "/api/actions", "/api/showcase", "/api/billing", "/api/billing/checkout", "/api/billing/portal", "/api/policies", "/api/tokens", "/api/connections", "/api/tokens/write", "/api/tokens/source", "/api/tokens/revoke", "/api/members", "/api/invites", "/api/wiring", "/api/me", "/api/onboarding"].includes(url.pathname);
   return withOrg(org, actor, async () => {
     if (url.pathname === "/api/billing" || url.pathname.startsWith("/api/billing/")) return handleBillingApi(req, actor);
     // Keep reads, billing recovery, revocation, privacy controls, deletion and
@@ -361,7 +362,8 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
         throw error;
       }
     }
-    if (!lightweight) await ensureBrain(org);
+    const snapshotRead = req.method === "GET" && url.pathname === "/api/page" && isSharedContextSlug(url.searchParams.get("slug"));
+    if (!lightweight && !snapshotRead) await ensureBrain(org);
     const orgRoute = await handleOrgApi(req, url, actor, org);
     if (orgRoute) return orgRoute;
     if (!route) return Response.json({ error: "not found" }, { status: 404 });
@@ -413,7 +415,8 @@ async function getPages(_req: Request, url: URL, token: TokenRecord): Promise<Re
   let data: any;
   try { data = await brainTool("list_pages", args); await auditConsole(token, "list_pages", args, "ok"); }
   catch { return Response.json({ error: "Memory is temporarily unavailable" }, { status: 503 }); }
-  const pages = normalizePageSummaries(data);
+  const shared = query.tag ? [] : (await approvedTeamContextPages()).map(sharedPageSummary);
+  const pages = normalizePageSummaries([...normalizePageSummaries(data).filter(page => !isSharedContextSlug(page.slug)), ...shared]);
   const window = sortPageSummaries(pages, query.sort).slice(query.offset, query.offset + query.limit);
   // One grouped query for the whole window, not one per row: the list is the hot path
   // and N round trips to answer a decoration would be the wrong trade.
@@ -518,13 +521,14 @@ async function getPage(_req: Request, url: URL, token: TokenRecord): Promise<Res
   const data = await readTool(token, "get_page", { slug });
   const normalized = normalizePageResult(data, slug);
   if (!normalized) return Response.json({ error: "not found" }, { status: 404 });
-  return Response.json({ ...normalized, provenance: await provenance(slug) });
+  return Response.json({ ...normalized, provenance: isSharedContextSlug(slug) ? { origin: null, contributors: [] } : await provenance(slug) });
 }
 
 async function deletePage(_req: Request, url: URL, token: TokenRecord): Promise<Response> {
   const org = await resolveOrg(token);
   if (!canDelete(token, org.policies)) return forbiddenResponse();
   const slug = textParam(url.searchParams, "slug");
+  if (isSharedContextSlug(slug)) return Response.json({ error: "Approved shared context is read-only. Its owner manages access." }, { status: 403 });
   if (!slug) {
     await auditConsole(token, "delete_page", {}, "bad_request");
     return Response.json({ error: "bad request" }, { status: 400 });
@@ -559,6 +563,7 @@ async function postRestorePage(req: Request, _url: URL, token: TokenRecord): Pro
   if (!canDelete(token, org.policies)) return forbiddenResponse();
   const body = await jsonObject(req);
   const slug = optionalText(body?.slug);
+  if (isSharedContextSlug(slug)) return Response.json({ error: "Approved shared context is read-only. Its owner manages access." }, { status: 403 });
   if (!slug) {
     await auditConsole(token, "restore_page", {}, "bad_request");
     return Response.json({ error: "bad request" }, { status: 400 });
@@ -800,6 +805,7 @@ export function normalizePageResult(data: any, slug: string) {
 
 export function rejectedSlugReason(slug: string | null): string | null {
   if (!slug) return null;
+  if (isSharedContextSlug(slug)) return "approved shared context is read-only";
   const prefix = HARD_EXCLUDED_SLUG_PREFIXES.find(p => slug.startsWith(p));
   return prefix ? `slug prefix '${prefix}' is hard-excluded from search` : null;
 }

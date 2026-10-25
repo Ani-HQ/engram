@@ -25,6 +25,36 @@ function source() {
 }
 
 describe("public activity event streams", () => {
+  test("streams safe logical-action updates and closes old viewers when activity sharing is disabled", async () => {
+    let enabled = true;
+    const privateRow = { id: "secret-event-1", action_key: "secret-logical-key", agent: "secret-agent-name", harness: "codex", tool: "github.create_pull_request", resource: "https://github.com/secret-owner/secret-repo/pull/9", summary: "secret-summary", task_title: "secret-title", status: "running", evidence: "reported", recorded_at: at.toISOString() };
+    let latest = privateRow;
+    const snapshot = () => publicActivitySnapshot({ ...profile, showActivity: enabled }, { total_actions: 1 }, at, { rows: [latest], scope: "tenant-7:my-agents", key: "server-only-key" });
+    const manager = createShowcaseStreamManager({ publication: async () => `tenant-7:${enabled}`, snapshot: async (_slug, expected) => expected === `tenant-7:${enabled}` ? snapshot() : null });
+    try {
+      const response = await manager.handle(request(), profile.slug), reader = response.body!.getReader();
+      const initial = await chunk(reader), first = data(initial.text);
+      expect(first.activity.enabled).toBe(true);
+      expect(first.activity.events[0].status).toBe("running");
+      expect(first.activity.events[0].service).toBe("github");
+      expect(initial.text).not.toContain("secret-");
+      latest = { ...privateRow, id: "secret-event-2", status: "completed" };
+      await manager.refresh();
+      const update = await chunk(reader), second = data(update.text);
+      expect(second.stats.totalActions).toBe(first.stats.totalActions);
+      expect(second.activity.events[0].id).toBe(first.activity.events[0].id);
+      expect(second.activity.events[0].status).toBe("completed");
+      expect(update.text).not.toContain("secret-");
+      enabled = false;
+      await manager.refresh();
+      expect(data((await chunk(reader)).text)).toEqual({ reason: "unpublished" });
+      expect((await chunk(reader)).done).toBe(true);
+      const after = await manager.handle(request(), profile.slug), newReader = after.body!.getReader();
+      expect(data((await chunk(newReader)).text).activity).toEqual({ enabled: false, events: [] });
+      await newReader.cancel();
+    } finally { manager.close(); }
+  });
+
   test("sends public aggregate snapshots with CORS and shares one poll across viewers", async () => {
     const backend = source(); const manager = createShowcaseStreamManager(backend.service);
     try {
