@@ -20,7 +20,7 @@ import { parseInviteEntry, parseSignupPolicy, signupAuthMode, signupEntryMode, e
 import { signupView } from "./signup-view.js";
 import { signupAdminPanel } from "./signup-admin.js";
 import { sharingView } from "./sharing-view.js";
-import { statusBadge, loadingState, observeLoadingMotion } from "./design-system.js";
+import { statusBadge, loadingState, observeLoadingMotion, observeSelects } from "./design-system.js";
 import { createJevSettingsPanel } from "./jev-settings.js";
 import { createAccessClock, friendAccessCard, friendAccessPresentation } from "./access-view.js";
 import { applyWorkspaceName, createWorkspaceNameEditor, captureSetupFocus, restoreSetupFocus } from "./workspace-name.js";
@@ -117,8 +117,8 @@ function skeletonRows(count = 5, label = "Loading workspace…") {
   return loadingState({ label, lines: count });
 }
 const option = (value, label) => el("option", { value }, label);
-function select(label, value, options, change) {
-  const node = el("select", { "aria-label": label, onchange: event => change(event.target.value) }, options.map(([key, text]) => option(key, text)));
+function select(label, value, options, change, attrs = {}) {
+  const node = el("select", { "aria-label": label, onchange: event => change(event.target.value), ...attrs }, options.map(([key, text]) => option(key, text)));
   node.value = value;
   return node;
 }
@@ -304,7 +304,7 @@ function render() {
     el("div", { class: "app-shell" },
       el("aside", { class: "sidebar", "aria-label": "Workspace navigation", "data-navigation-open": String(navigationOpen) },
         el("a", { class: "wordmark", href: "#activity", "aria-label": "engram home" }, el("img", { class: "brand-mark", src: "/brand/engram-mark.svg", width: 27, height: 27, alt: "" }), "engram"),
-        el("div", { class: "workspace-picker" }, el("span", { class: "workspace-initial", "aria-hidden": "true" }, state.session.org.name.slice(0, 1).toUpperCase()), select("Workspace", String(state.session.org.id), orgs.map(org => [String(org.id), org.name]), switchOrg)),
+        el("div", { class: "workspace-picker" }, el("span", { class: "workspace-initial", "aria-hidden": "true" }, state.session.org.name.slice(0, 1).toUpperCase()), select("Workspace", String(state.session.org.id), orgs.map(org => [String(org.id), org.name]), switchOrg, { "data-select-variant": "embedded" })),
         iconButton(navigationOpen ? "x" : "menu", "Navigation", () => setNavigationOpen(!navigationOpen), { class: "ds-icon-button ds-disclosure-toggle mobile-navigation-toggle", "aria-controls": "workspace-navigation", "aria-expanded": String(navigationOpen) }),
         el("nav", { class: "nav", id: "workspace-navigation", "aria-label": "Main navigation" },
           el("div", { class: "nav-group" }, el("span", { class: "nav-group-label" }, "Workspace"), workspaceNavigation.map(navigationLink)),
@@ -474,7 +474,7 @@ function activityResults() {
     state.activities.length > 0 && el("div", { class: "activity-list-footer" },
       el("span", {}, `${state.activities.length} ${state.activities.length === 1 ? "activity" : "activities"}${state.more ? " shown" : ""}`),
       el("span", { class: "activity-key-hint" }, el("kbd", {}, "↑"), el("kbd", {}, "↓"), "to move", el("kbd", {}, "Enter"), "to inspect"),
-      state.more && button(state.loading ? [icon("loader-circle", { size: 14, class: "spin" }), "Loading…"] : ["Load more", icon("chevron-down", { size: 14 })], () => loadActivity({ append: true }), { class: "small", disabled: state.loading })),
+      state.more && button(state.loading ? [icon("loader-circle", { size: 14, class: "spin" }), "Loading…"] : "Load more", () => loadActivity({ append: true }), { class: "small", disabled: state.loading })),
     state.activities.length > 100 && el("div", { class: "activity-history-paused", role: "status" }, icon("clock", { size: 13 }), "Live refresh is paused while you explore older work.", button("Back to latest", () => loadActivity(), { class: "text small" })),
     el("p", { class: "activity-footnote" }, icon("shield-check", { size: 13 }), memory ? "Private to this workspace. These operations were observed by Engram." : "Private to this workspace. Memory calls are recorded by Engram; external work comes from agent reports."),
   ];
@@ -530,14 +530,18 @@ async function loadActivity({ append = false, quiet = false } = {}) {
     changed = JSON.stringify(state.activities) !== JSON.stringify(next) || identitiesChanged || previousConnectionError !== state.connectionError || Boolean(state.error);
     state.activities = [...new Map(next.map(activity => [activity.id, activity])).values()];
     state.freshIds = new Set(state.activities.filter(activity => !existingIds.has(activity.id)).map(activity => activity.id));
-    const optionsChanged = identitiesChanged || JSON.stringify([state.agents, state.tools]) !== JSON.stringify([data.agents, data.tools]);
     state.agents = data.agents ?? []; state.tools = data.tools ?? []; state.more = Boolean(data.more); state.demo ||= Boolean(data.demo); state.error = "";
     state.activityStats = data.stats || {}; state.checkedAt = data.checkedAt;
     if (!quiet) announcements.textContent = `${state.activities.length} ${state.activities.length === 1 ? "activity" : "activities"} loaded`;
-    if (optionsChanged) {
-      for (const [label, values, selected, placeholder] of [["Filter by agent", state.agents, state.filters.agent, "All agents"], ["Filter by tool", state.tools, state.filters.tool, "All tools"]]) {
-        const control = document.querySelector(`select[aria-label="${label}"]`);
-        if (control && control !== document.activeElement) { control.replaceChildren(option("", placeholder), ...values.map(value => option(value, label === "Filter by agent" ? agentLabel(value) : toolLabel(value)))); control.value = selected; }
+    for (const [label, values, selected, placeholder] of [["Filter by agent", state.agents, state.filters.agent, "All agents"], ["Filter by tool", state.tools, state.filters.tool, "All tools"]]) {
+      const control = document.querySelector(`select[aria-label="${label}"]`);
+      if (!control) continue;
+      const focused = control === document.activeElement || control.closest('.ds-select')?.contains(document.activeElement);
+      if (focused && control.options.length > 1) continue;
+      const options = [["", placeholder], ...values.map(value => [value, label === "Filter by agent" ? agentLabel(value) : toolLabel(value)])];
+      // Compare the rendered options so a refresh deferred during keyboard use is retried on the next poll.
+      if (JSON.stringify([...control.options].map(item => [item.value, item.textContent])) !== JSON.stringify(options)) {
+        control.replaceChildren(...options.map(([value, text]) => option(value, text))); control.value = selected;
       }
     }
   } catch (error) {
@@ -734,7 +738,7 @@ function memoryResults() {
     ...state.memories.map(memory => button([
       el("span", { class: "memory-icon" }, icon("file-text", { size: 19 })),
       el("span", { class: "memory-row-copy" }, el("strong", { class: "action-title" }, memory.title || memory.slug), memory.type === "shared-context" && statusBadge("Approved snapshot · read-only", { tone: "lilac" }), el("span", { class: "muted" }, memory.snippet || (memory.type === "shared-context" ? "An approved excerpt shared with this workspace." : memory.slug))),
-      el("span", { class: "memory-date" }, memory.updated_at ? day(memory.updated_at) : icon("chevron-right", { size: 14 })),
+      memory.updated_at && el("span", { class: "memory-date" }, day(memory.updated_at)),
     ], () => memoryDetail(memory.slug), { class: "memory-row ds-card" })),
     !state.memories.length && !state.error && (state.loading ? skeletonRows(4) : state.memoryQuery ? empty("No matching memory", "Try another search or clear it to see your saved memory.", button("Clear search", () => { state.memoryQuery = ""; const search = document.querySelector('input[aria-label="Search memory"]'); if (search) { search.value = ""; search.focus(); } loadMemories(); })) : empty("Keep the good bits.", "Save a decision, preference, or project detail here. Your connected agents can pick it up later.", state.session.canWrite !== false && button([icon("plus", { size: 14 }), "Add your first memory"], captureMemory))),
     state.more && button(state.loading ? "Loading…" : "Load more", () => loadMemories({ append: true }), { class: "small", disabled: state.loading })];
@@ -784,7 +788,7 @@ function captureMemory() {
 }
 function reviewResults() {
   return [state.error && notice(state.error, loadReviews),
-    ...state.reviews.map(item => button([el("span", {}, el("strong", {}, `${item.kind.replaceAll("_", " ")} proposal`), el("small", {}, item.payload?.otherSlug || item.payload?.slug || `Review #${item.id}`)), el("span", { class: "review-state" }, item.state, " · ", day(item.createdAt)), icon("chevron-right", { size: 14 })], () => reviewDetail(item.id), { class: "review-row" })),
+    ...state.reviews.map(item => button([el("span", {}, el("strong", {}, `${item.kind.replaceAll("_", " ")} proposal`), el("small", {}, item.payload?.otherSlug || item.payload?.slug || `Review #${item.id}`)), el("span", { class: "review-state" }, item.state, " · ", day(item.createdAt))], () => reviewDetail(item.id), { class: "review-row" })),
     !state.reviews.length && !state.error && (state.loading ? skeletonRows(3) : empty("No proposals here", state.reviewState === "pending" ? "New memory proposals appear here when reconciliation finds a relationship or a change worth reviewing. Nothing is applied automatically." : `There are no ${state.reviewState} proposals in this workspace.`)),
     state.reviewMore && button("Load more", () => loadReviews({ append: true }), { class: "small", disabled: state.loading }),
   ];
@@ -1095,7 +1099,7 @@ function showcaseView() {
           el("div", { class: "share-link-row" }, el("span", { class: "share-link-label" }, icon("link", { size: 14 }), "Profile"), el("code", { id: "profile-permalink" }, publicUrl), copyButton("Copy", () => state.showcase.urls.page, { disabled: !saved.published })),
           saved.published && el("div", { class: "share-link-row" }, el("span", { class: "share-link-label" }, icon("code", { size: 14 }), "JSON"), el("code", {}, urls.json), copyButton("Copy", urls.json)),
           saved.published && el("div", { class: "share-link-row" }, el("span", { class: "share-link-label" }, icon("activity", { size: 14 }), "Live API"), el("code", {}, urls.stream || `${urls.json}/stream`), copyButton("Copy", urls.stream || `${urls.json}/stream`)),
-          saved.published && el("div", { class: "profile-link-actions" }, el("a", { href: urls.page, target: "_blank", rel: "noopener", class: "button-link" }, icon("external-link", { size: 14 }), "Open profile"), el("a", { href: urls.card, target: "_blank", rel: "noopener", class: "button-link" }, icon("share-2", { size: 14 }), "Social card")),
+          saved.published && el("div", { class: "profile-link-actions" }, el("a", { href: urls.page, target: "_blank", rel: "noopener", class: "button-link" }, "Open profile"), el("a", { href: urls.card, target: "_blank", rel: "noopener", class: "button-link" }, icon("share-2", { size: 14 }), "Social card")),
           !saved.published && el("p", { class: "field-hint" }, "Publish to activate the profile, JSON endpoint, and live stream. Unpublishing disables all three."),
           saved.published && el("details", {}, el("summary", {}, "Live website embed"), el("p", { class: "detail-note" }, "Paste this into your website for live counts, or use EventSource in your own design. JSON and the stream follow the sharing scope saved above."), el("pre", {}, liveEmbed(urls.stream || `${urls.json}/stream`)), copyButton("Copy live embed", liveEmbed(urls.stream || `${urls.json}/stream`))),
           saved.published && el("details", {}, el("summary", {}, "Image card embed"), el("p", { class: "detail-note" }, "A scalable snapshot for pages that do not run JavaScript."), el("pre", {}, `<a href="${urls.page}">\n  <img src="${urls.json}/card.svg"\n       alt="My agent activity on Engram" />\n</a>`), copyButton("Copy image embed", `<a href="${urls.page}"><img src="${urls.json}/card.svg" alt="My agent activity on Engram" /></a>`)))),
@@ -1209,9 +1213,10 @@ async function persistShowcase(published, submit, feedback, profile, controller)
 function setSessionControlsBusy(pending) {
   const picker = document.querySelector('select[aria-label="Workspace"]');
   if (picker) {
-    picker.disabled = Boolean(pending); picker.parentElement.setAttribute('aria-busy', String(pending));
-    const spinner = picker.parentElement.querySelector('.workspace-switch-spinner');
-    if (pending && !spinner) picker.parentElement.append(el('span', { class: 'ds-spinner workspace-switch-spinner', 'aria-hidden': 'true' }));
+    const container = picker.closest('.workspace-picker') || picker.parentElement;
+    picker.disabled = Boolean(pending); container.setAttribute('aria-busy', String(pending));
+    const spinner = container.querySelector('.workspace-switch-spinner');
+    if (pending && !spinner) container.append(el('span', { class: 'ds-spinner workspace-switch-spinner', 'aria-hidden': 'true' }));
     else if (!pending) spinner?.remove();
   }
   document.querySelectorAll('.sidebar-bottom button, .mobile-signout').forEach(control => { control.disabled = Boolean(pending); });
@@ -1402,7 +1407,7 @@ document.addEventListener("pointerdown", () => { inputMode = "pointer"; document
 document.addEventListener("keydown", event => {
   inputMode = "keyboard"; document.documentElement.dataset.input = inputMode;
   if (event.key === "Escape" && navigationOpen && !dialog.open) { event.preventDefault(); setNavigationOpen(false, true); }
-  if (event.key === "/" && !event.ctrlKey && !event.metaKey && !event.altKey && !dialog.open && !document.activeElement?.isContentEditable && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) {
+  if (event.key === "/" && !event.ctrlKey && !event.metaKey && !event.altKey && !dialog.open && !document.activeElement?.isContentEditable && !document.activeElement?.closest('[role="combobox"], [role="listbox"]') && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) {
     const search = document.querySelector(".search"); if (search) { event.preventDefault(); search.focus(); }
   }
 });
@@ -1439,6 +1444,9 @@ async function boot() {
   } catch (error) { await openAuth(recovery ? [error instanceof AuthError ? "" : errorMessage(error), recovery.message].filter(Boolean).join(" ") : error instanceof AuthError ? "" : errorMessage(error)); }
 }
 let stopLoadingMotion = observeLoadingMotion(document.body);
-window.addEventListener('pagehide', () => stopLoadingMotion());
-window.addEventListener('pageshow', event => { if (event.persisted) stopLoadingMotion = observeLoadingMotion(document.body); });
+let selectControls = observeSelects(document.body);
+window.addEventListener('pagehide', () => { stopLoadingMotion(); selectControls.dispose(); });
+window.addEventListener('pageshow', event => {
+  if (event.persisted) { stopLoadingMotion = observeLoadingMotion(document.body); selectControls = observeSelects(document.body); }
+});
 boot();

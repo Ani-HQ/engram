@@ -1,0 +1,25 @@
+// Public product examples, separate from authenticated source identities and
+// setup support. Every image is a fixed local asset; see vendor/brands/SOURCE.md.
+export const publicAgentCatalog = Object.freeze([
+  ['claude-code', 'Claude Code', '/vendor/simple-icons/claude.svg'],
+  ['codex', 'Codex', '/vendor/brands/codex.svg'],
+  ['cursor', 'Cursor', '/vendor/simple-icons/cursor.svg'],
+  ['chatgpt', 'ChatGPT', '/vendor/brands/openai.svg'],
+  ['grok-bot', 'Grok Bot', '/vendor/brands/grok-bot.png'],
+  ['muse', 'Muse', '/vendor/brands/muse.svg'],
+  ['instinct', 'Instinct', '/vendor/brands/instinct.png'],
+  ['windsurf', 'Windsurf', '/vendor/brands/windsurf.svg'],
+  ['devin', 'Devin', '/vendor/brands/devin.svg'],
+  ['openclaw', 'OpenClaw', '/vendor/brands/openclaw.svg'],
+  ['hermes', 'Hermes Agent', '/vendor/brands/hermesagent.svg'],
+  ['gemini-cli', 'Gemini CLI', '/vendor/brands/gemini.svg'],
+  ['opencode', 'OpenCode', '/vendor/brands/opencode.svg'],
+  ['cline', 'Cline', '/vendor/brands/cline.svg'],
+  ['goose', 'Goose', '/vendor/brands/goose.svg'],
+  ['amp', 'Amp', '/vendor/brands/amp.svg'],
+  ['github-copilot', 'GitHub Copilot', '/vendor/brands/githubcopilot.svg'],
+  ['vscode', 'Visual Studio Code', '/vendor/brands/vscode.png'],
+  ['aider', 'Aider', '/vendor/brands/aider.png'],
+  ['grok', 'Grok', '/vendor/brands/grok.svg'],
+  ['claude', 'Claude', '/vendor/simple-icons/claude.svg'],
+].map(([id, label, logo]) => Object.freeze({ id, label, logo })));

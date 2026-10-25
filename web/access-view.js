@@ -39,5 +39,5 @@ export function friendAccessCard(access, { now, error = "", retry } = {}) {
       h("p", { class: "ds-benefit-description" }, view.state === "active" ? [view.unlimited ? "Unlimited knowledge transfers through " : "Access through ", h("time", { datetime: view.expiresAt }, view.expiryLabel), "."] : view.state === "unknown" ? ["Your recorded access end is ", h("time", { datetime: view.expiresAt }, view.expiryLabel), ". Refresh to check the remaining time."] : ["This invitation’s access is no longer active. Scheduled end: ", h("time", { datetime: view.expiresAt }, view.expiryLabel), ". ", view.hasOtherAccess ? "Your current plan keeps core write access available." : "Your existing memory and activity remain readable and exportable."]),
       h("p", { class: "ds-hint" }, "Core memory transfers only. Jev has separate permission and usage costs."),
       error && h("p", { class: "ds-hint", role: "status" }, "Access status could not refresh. The last recorded expiry is shown. ", retry && h("button", { type: "button", class: "text small", onclick: retry }, "Try again"))),
-    h("a", { class: "ds-button small", href: INVITE_EXTENSION_URL }, "Ask for an extension ↗"));
+    h("a", { class: "ds-button small", href: INVITE_EXTENSION_URL }, "Ask for an extension"));
 }

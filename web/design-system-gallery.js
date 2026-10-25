@@ -1,4 +1,5 @@
-import { memoryOrbit, memoryStream, resourceChip, loadingState, progressBar, setProgress, observeLoadingMotion, statusBadge, highlightArt, profileLayoutPreview } from './design-system.js';
+import { memoryOrbit, memoryStream, resourceChip, loadingState, progressBar, setProgress, observeLoadingMotion, observeContextFlow, contextFlowArt, observeSelects, statusBadge, highlightArt, profileLayoutPreview } from './design-system.js';
+import { publicAgentCatalog } from './public-agent-catalog.js';
 import { icon } from './icons.js';
 import { agentVisual, toolVisual, visualIcon } from './tooling.js';
 import { createJevSettingsPanel } from './jev-settings.js';
@@ -12,12 +13,19 @@ if (document.querySelector('meta[name="engram-demo"]')) {
 }
 
 document.querySelector('#orbit-example').append(memoryOrbit());
+const productLogos = document.getElementById('product-logo-examples');
+productLogos.replaceChildren(...publicAgentCatalog.map(product => {
+  const sample = document.createElement('div'); sample.className = 'ds-gallery-product';
+  const frame = document.createElement('span'); frame.className = 'ds-product-logo-frame'; frame.setAttribute('data-tone', 'inverse');
+  const logo = document.createElement('img'); logo.className = 'ds-product-logo'; logo.setAttribute('data-size', '28'); logo.src = product.logo; logo.width = logo.height = 28; logo.alt = '';
+  const name = document.createElement('span'); name.textContent = product.label; frame.append(logo); sample.append(frame, name); return sample;
+}));
 document.querySelector('#agent-orbit-example').append(memoryOrbit({ agents: true, label: 'Illustrative agent ecosystem: Claude, OpenClaw, Grok Bot, Muse and Instinct around shared memory. Not live connections.' }));
 document.querySelector('#ink-orbit-example').append(memoryOrbit({ compact: true, className: 'ds-orbit--on-ink' }));
 document.querySelector('#stream-example').append(memoryStream({ label: 'A decision is saved to shared memory and recalled for the next task. This is an illustration.' }));
 const resourceExamples = document.querySelector('#resource-chip-examples');
 for (const [tool, label] of [['github.create_pull_request', 'example / shared-memory'], ['googledocs.get_document', 'Project notes'], ['linear.get_issue', 'ENG-42'], ['figma.get_file', 'Activity canvas']]) {
-  resourceExamples.append(resourceChip(label, { visual: visualIcon(toolVisual(tool), { size: 16 }), trailing: icon('arrow-up-right', { size: 12 }), onClick: () => { document.querySelector('#resource-chip-feedback').textContent = `Selected illustrative resource: ${label}. No resource was opened.`; } }));
+  resourceExamples.append(resourceChip(label, { visual: visualIcon(toolVisual(tool), { size: 16 }), onClick: () => { document.querySelector('#resource-chip-feedback').textContent = `Selected illustrative resource: ${label}. No resource was opened.`; } }));
 }
 document.querySelector('#redacted-chip-examples').append(resourceChip('GitHub · Repository', { visual: visualIcon(toolVisual('github'), { size: 16 }) }), resourceChip('Google Docs · Document', { visual: visualIcon(toolVisual('googledocs'), { size: 16 }) }), resourceChip('A deliberately long resource name that stays inside its available space', { visual: icon('file-text', { size: 16 }), onClick: () => {}, disabled: true }));
 let consentExample;
@@ -149,6 +157,12 @@ for (const element of [navigationToggle, navigationPanel]) element.addEventListe
 navigationPanel.addEventListener('click', event => { if (event.target.closest('a')) closeNavigationPreview(); });
 const stopLoadingMotion = observeLoadingMotion(document.body);
 window.addEventListener('pagehide', event => { if (!event.persisted) stopLoadingMotion(); });
+observeContextFlow(document.getElementById('context-flow-example'), { replayButton: document.getElementById('context-flow-example-replay') });
+document.getElementById('context-flow-loop-art').replaceWith(contextFlowArt());
+observeContextFlow(document.getElementById('context-flow-loop-example'), { pauseButton: document.getElementById('context-flow-loop-pause'), mode: 'loop' });
+observeContextFlow(document.getElementById('context-flow-reduced-example'), { pauseButton: document.getElementById('context-flow-reduced-replay'), mode: 'loop', reduced: true });
+observeContextFlow(document.getElementById('context-flow-line-example'), { replayButton: document.getElementById('context-flow-line-replay') });
+observeContextFlow(document.getElementById('context-flow-line-reduced-example'), { replayButton: document.getElementById('context-flow-line-reduced-replay'), reduced: true });
 
 
 for (const [name, publicSafe] of [['Research helper', false], ['Build helper', false], ['Review helper', false], ['Public fallback', true]]) {
@@ -193,7 +207,7 @@ function renderHighlightExample() {
   const indicator = document.createElement('span'); indicator.className = 'ds-disclosure-indicator'; indicator.setAttribute('aria-hidden', 'true'); indicator.append(icon('chevron-down', { size: 14 })); summary.append(indicator);
   const note = document.createElement('p'); note.textContent = 'The expanded text stays in normal document flow. Native Enter and Space actions are immediate, and the optional public reference remains a separate link.'; details.append(summary, note);
   const actions = document.createElement('div'); actions.className = 'ds-highlight-actions';
-  const link = document.createElement('a'); link.className = 'ds-touch-target'; link.href = '#profile-patterns'; link.textContent = 'Example reference ↗'; actions.append(link);
+  const link = document.createElement('a'); link.className = 'ds-touch-target'; link.href = '#profile-patterns'; link.textContent = 'Example reference'; actions.append(link);
   content.append(statusBadge('Component example', { tone: 'neutral' }), title, description, details, actions); card.append(visual, content); slot.replaceChildren(card);
 }
 highlightState.addEventListener('change', renderHighlightExample); renderHighlightExample();
@@ -214,3 +228,14 @@ const weekButtons = sampleCounts.map((count, index) => {
   button.addEventListener('keydown', event => { const next = event.key === 'ArrowRight' ? Math.min(6, index + 1) : event.key === 'ArrowLeft' ? Math.max(0, index - 1) : event.key === 'Home' ? 0 : event.key === 'End' ? 6 : null; if (next !== null) { event.preventDefault(); weekButtons[next].click(); weekButtons[next].focus(); weekButtons[next].scrollIntoView({ block: 'nearest', inline: 'nearest' }); } });
   item.append(button); weekExample.append(item); return button;
 });
+
+const selectExample = document.getElementById('select-agent-example');
+const selectFeedback = document.getElementById('select-example-feedback');
+selectExample.addEventListener('change', () => { selectFeedback.textContent = `Selected: ${selectExample.selectedOptions[0]?.label || 'No choice'}. Local example only.`; });
+document.getElementById('select-example-form').addEventListener('submit', event => { event.preventDefault(); selectFeedback.textContent = 'The example choice is valid. Nothing was submitted to a server.'; });
+document.getElementById('select-example-form').addEventListener('reset', () => { selectFeedback.textContent = 'The example is reset to its original choice.'; });
+document.getElementById('select-programmatic').addEventListener('click', () => { selectExample.value = 'custom'; selectFeedback.textContent = 'The native value was changed programmatically. The visible select stays in sync.'; });
+document.getElementById('select-disabled-preview').addEventListener('change', event => { selectExample.disabled = event.target.checked; });
+let gallerySelects = observeSelects(document.body);
+window.addEventListener('pagehide', () => gallerySelects.dispose());
+window.addEventListener('pageshow', event => { if (event.persisted) gallerySelects = observeSelects(document.body); });

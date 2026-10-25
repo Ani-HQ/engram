@@ -58,7 +58,7 @@ export function taskReportingSetup(data, { onInspect, onManage, copyControl } = 
       h("span", { class: "task-reporting-connection-copy" }, h("strong", {}, name),
         identity && identity !== name && h("span", { class: "task-reporting-identity" }, identity),
         h("span", { class: "task-reporting-connection-meta" }, kind, validReports && ` · ${plural(state.reportCount, "report")} received`)),
-      h("span", { class: "task-reporting-connection-state" }, state.label, icon("chevron-right", { size: 12 })),
+      h("span", { class: "task-reporting-connection-state" }, state.label),
     ], () => onInspect?.(connection), { class: `task-reporting-connection ${state.state}`, title: state.detail, "aria-label": `${name}: ${state.label}. ${state.detail}` });
   };
 
@@ -67,7 +67,7 @@ export function taskReportingSetup(data, { onInspect, onManage, copyControl } = 
     h("h2", { id: "detail-title" }, "See what your agents do"),
     h("p", { class: "task-reporting-intro" }, "Tasks appear when an agent sends a work report to Engram. Connecting an agent gives it access; reporting is a separate step."),
     h("ol", { class: "task-reporting-steps" },
-      step(1, "Reconnect and refresh tools", reconnectDetail, onManage && button([summary.reconnect ? "Review connections" : "Open Connections", icon("arrow-up-right", { size: 12 })], () => onManage(), { class: "text task-reporting-link" })),
+      step(1, "Reconnect and refresh tools", reconnectDetail, onManage && button(summary.reconnect ? "Review connections" : "Open Connections", () => onManage(), { class: "text task-reporting-link" })),
       step(2, "Use write access", writeDetail),
       step(3, "Report actual work", reportDetail)),
     h("details", { class: "task-reporting-instructions" },

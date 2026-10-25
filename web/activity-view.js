@@ -64,7 +64,7 @@ function resourceControl(resource, activity, onResource, { action = null, primar
   const label = resource.kind === "memory" ? "Open memory" : resource.kind === "url" ? "Open resource" : "Copy resource";
   const chip = resourceChip(concise ? label : resource.label, {
     visual: visualIcon(serviceVisual(resource.service), { size: 16 }),
-    trailing: onResource ? icon(resource.kind === "resource" ? "copy" : "arrow-up-right", { size: 12 }) : null,
+    trailing: onResource && resource.kind === "resource" ? icon("copy", { size: 12 }) : null,
     onClick: onResource ? () => onResource(resource, { activity, action }) : undefined,
     title: onResource ? `${label}: ${resource.label}` : resource.label,
     actionLabel: onResource ? `${label}: ${resource.label}` : undefined,
@@ -99,7 +99,7 @@ export function activityCard(activity, { onOpen, onFilter, onResource, filters =
   return h("article", { class: `activity-card activity-row ds-card activity-${presentation.kind}${activity.status === "running" ? " is-running" : ""}${context ? " has-context" : ""}`, "data-activity-id": activity.id },
     rowMark(activity, tools, onFilter),
     h("div", { class: "activity-row-main" },
-      button([h("span", { class: "activity-title" }, presentation.title), icon("chevron-right", { size: 13, class: "activity-open-arrow" })], () => onOpen?.(activity),
+      button([h("span", { class: "activity-title" }, presentation.title)], () => onOpen?.(activity),
         { class: "activity-open", "data-open-activity": activity.id, "data-focus-key": `open:${activity.id}`, "aria-label": `Open ${memory ? "memory operation" : presentation.kind}: ${presentation.title}` }),
       context && h("p", { class: "activity-row-context" }, h("span", { class: "activity-context-label" }, `${context.label} · `), context.text),
       h("div", { class: "activity-row-meta" },

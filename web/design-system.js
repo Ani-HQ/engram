@@ -1,5 +1,6 @@
 // Shared components. Fixed SVG nodes, text and local product marks:
 // no markup parsing, arbitrary asset URLs or external hosts. Motion is opt-in.
+export { enhanceSelect, observeSelects } from './select-control.js';
 const namespace = 'http://www.w3.org/2000/svg';
 const tones = new Set(['neutral', 'accent', 'lime', 'lilac', 'apricot', 'success', 'warning', 'danger', 'info']);
 function node(tag, attrs = {}, text) {
@@ -198,6 +199,179 @@ export function observeLoadingMotion(root = document) {
   const visibility = () => { for (const [target, visible] of targets) pause(target, visible); };
   document.addEventListener('visibilitychange', visibility); scan();
   return () => { disposed = true; observer.disconnect(); mutation?.disconnect(); document.removeEventListener('visibilitychange', visibility); for (const target of targets.keys()) target.removeAttribute('data-motion-paused'); targets.clear(); };
+}
+
+/** One finite illustration, never a request, connection, or activity state. */
+export function observeContextFlow(root, { replayButton, pauseButton, mode = 'finite', autoplay = true, reduced = false } = {}) {
+  if (mode === 'loop') return observeLoopingContextFlow(root, { pauseButton, autoplay, reduced });
+  if (!root?.setAttribute) return { play: () => false, dispose() {} };
+  const doc = root.ownerDocument;
+  const view = doc?.defaultView;
+  const preference = view?.matchMedia?.('(prefers-reduced-motion: reduce)');
+  const supported = Boolean(view?.IntersectionObserver && view?.requestAnimationFrame);
+  let disposed = false, seen = false, visible = !supported, intersecting = !supported;
+  let manualRun = false, measuredAt = 0, frame = null, timer = null, generation = 0;
+  const isReduced = () => reduced || preference?.matches || Boolean(root.closest?.('[data-motion="reduced"]')) || !supported;
+  const setState = value => root.setAttribute('data-flow-state', value);
+  const stop = (state = isReduced() ? 'static' : 'idle') => {
+    generation++;
+    if (frame !== null) view.cancelAnimationFrame(frame);
+    if (timer !== null) view.clearTimeout(timer);
+    frame = timer = null; manualRun = false; measuredAt = 0; setState(state);
+  };
+  const play = (event, manual = true) => {
+    if (disposed || !root.isConnected || doc.hidden || replayButton?.disabled || replayButton?.getAttribute('aria-disabled') === 'true') return false;
+    let freshAt = 0;
+    // A deliberate action gets one fresh viewport check, never a per-frame read.
+    if (manual && root.getBoundingClientRect) {
+      const bounds = root.getBoundingClientRect();
+      const height = view.innerHeight || doc.documentElement.clientHeight;
+      const width = view.innerWidth || doc.documentElement.clientWidth;
+      intersecting = bounds.width > 0 && bounds.height > 0 && bounds.bottom > 0 && bounds.right > 0 && bounds.top < height && bounds.left < width;
+      freshAt = view.performance?.now?.() ?? 0;
+    }
+    if (!(manual ? intersecting : visible)) { stop(); return false; }
+    seen = true; stop(); manualRun = manual; measuredAt = freshAt;
+    if (isReduced() || event?.detail === 0 || event?.type === 'keydown' || doc.documentElement?.getAttribute('data-input') === 'keyboard') {
+      setState('static'); return true;
+    }
+    const current = generation;
+    const canContinue = () => !doc.hidden && root.isConnected && (manual ? intersecting : visible);
+    // Two frames let an interrupted CSS sequence reset without forcing layout.
+    frame = view.requestAnimationFrame(() => {
+      if (current !== generation || disposed) return;
+      if (!canContinue()) { stop(); return; }
+      frame = view.requestAnimationFrame(() => {
+        if (current !== generation || disposed) return;
+        if (!canContinue()) { stop(); return; }
+        frame = null;
+        setState('playing');
+        timer = view.setTimeout(() => {
+          if (current !== generation || disposed) return;
+          if (!canContinue()) { stop(); return; }
+          timer = null; setState('complete');
+        }, 2640);
+      });
+    });
+    return true;
+  };
+  const visibility = () => { if (doc.hidden) stop(); else if (visible && autoplay && !seen) play(undefined, false); };
+  const keyboard = event => { if (!['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) { seen = true; stop('static'); } };
+  const changedPreference = () => { if (isReduced()) stop('static'); };
+  const replay = event => play(event);
+  const pagehide = event => { if (event.persisted) stop(); else dispose(); };
+  const observer = supported ? new view.IntersectionObserver(entries => {
+    if (disposed) return;
+    for (const entry of entries) if (entry.target === root) {
+      // Ignore an observer sample taken before a deliberate fresh bounds check.
+      if (manualRun && typeof entry.time === 'number' && entry.time < measuredAt) continue;
+      intersecting = entry.isIntersecting && entry.intersectionRatio > 0;
+      visible = entry.isIntersecting && entry.intersectionRatio >= .5;
+      if (!intersecting || (!visible && !manualRun)) stop();
+      else if (visible && !doc.hidden && autoplay && !seen) play(undefined, false);
+    }
+  }, { threshold: [0, .5] }) : null;
+  const removal = view?.MutationObserver ? new view.MutationObserver(() => { if (!root.isConnected) dispose(); }) : null;
+  function dispose() {
+    if (disposed) return;
+    stop('idle'); disposed = true;
+    observer?.disconnect(); removal?.disconnect();
+    doc?.removeEventListener('visibilitychange', visibility); doc?.removeEventListener('keydown', keyboard);
+    view?.removeEventListener('pagehide', pagehide); replayButton?.removeEventListener('click', replay);
+    preference?.removeEventListener?.('change', changedPreference);
+    root.removeAttribute('data-flow-state');
+  }
+  setState(isReduced() ? 'static' : 'idle');
+  doc?.addEventListener('visibilitychange', visibility); doc?.addEventListener('keydown', keyboard);
+  view?.addEventListener('pagehide', pagehide); replayButton?.addEventListener('click', replay);
+  preference?.addEventListener?.('change', changedPreference);
+  observer?.observe(root);
+  if (doc?.documentElement) removal?.observe(doc.documentElement, { childList: true, subtree: true });
+  return { play, dispose };
+}
+
+/** Explicitly opted-in decorative loop; CSS owns time, JS owns permission. */
+function observeLoopingContextFlow(root, { pauseButton, autoplay, reduced }) {
+  if (!root?.setAttribute) return { play: () => false, pause() {}, dispose() {} };
+  const doc = root.ownerDocument, view = doc?.defaultView;
+  const preference = view?.matchMedia?.('(prefers-reduced-motion: reduce)');
+  const supported = Boolean(view?.IntersectionObserver && pauseButton);
+  let disposed = false, entered = false, intersecting = false, userPaused = !autoplay, keyboardPaused = false;
+  let measuredAt = 0;
+  const isReduced = () => reduced || preference?.matches || Boolean(root.closest?.('[data-motion="reduced"]')) || !supported;
+  const measure = () => {
+    if (!root.getBoundingClientRect) return;
+    const bounds = root.getBoundingClientRect();
+    const width = Math.max(0, Math.min(bounds.right, view.innerWidth) - Math.max(0, bounds.left));
+    const height = Math.max(0, Math.min(bounds.bottom, view.innerHeight) - Math.max(0, bounds.top));
+    intersecting = bounds.width > 0 && bounds.height > 0 && width > 0 && height > 0;
+    measuredAt = view.performance?.now?.() ?? 0;
+    if (autoplay && width * height / (bounds.width * bounds.height) >= .5) entered = true;
+  };
+  const sync = () => {
+    if (disposed) return;
+    const staticMode = isReduced() || keyboardPaused;
+    const paused = staticMode || userPaused || !entered || !intersecting || doc.hidden;
+    root.setAttribute('data-flow-state', staticMode ? 'static' : 'playing');
+    root.setAttribute('data-flow-paused', String(Boolean(paused)));
+    if (pauseButton) {
+      pauseButton.textContent = isReduced() ? 'Reduced motion' : userPaused || keyboardPaused ? 'Resume animation' : 'Pause animation';
+      pauseButton.disabled = Boolean(isReduced());
+      if (root.id) pauseButton.setAttribute('aria-controls', root.id);
+    }
+  };
+  const play = () => {
+    if (disposed || !root.isConnected || doc.hidden || isReduced()) return false;
+    measure();
+    if (!intersecting) return false;
+    entered = true; userPaused = keyboardPaused = false; sync(); return true;
+  };
+  const pause = () => { if (!disposed) { userPaused = true; sync(); } };
+  const toggle = () => { if (userPaused || keyboardPaused) play(); else pause(); };
+  const keyboard = event => {
+    if (event.target === pauseButton || ['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) return;
+    keyboardPaused = true; sync();
+  };
+  const visibility = () => sync();
+  const pagehide = event => { if (event.persisted) { intersecting = false; sync(); } else dispose(); };
+  const pageshow = event => { if (event.persisted && !disposed && root.isConnected) { measure(); sync(); } };
+  const observer = supported ? new view.IntersectionObserver(entries => {
+    if (disposed) return;
+    for (const entry of entries) if (entry.target === root) {
+      if (typeof entry.time === 'number' && entry.time < measuredAt) continue;
+      intersecting = entry.isIntersecting && entry.intersectionRatio > 0;
+      if (autoplay && entry.intersectionRatio >= .5) entered = true;
+      sync();
+    }
+  }, { threshold: [0, .5] }) : null;
+  const removal = view?.MutationObserver ? new view.MutationObserver(() => { if (!root.isConnected) dispose(); }) : null;
+  function dispose() {
+    if (disposed) return;
+    disposed = true; observer?.disconnect(); removal?.disconnect();
+    doc?.removeEventListener('visibilitychange', visibility); doc?.removeEventListener('keydown', keyboard);
+    view?.removeEventListener('pagehide', pagehide); view?.removeEventListener('pageshow', pageshow); pauseButton?.removeEventListener('click', toggle);
+    preference?.removeEventListener?.('change', visibility);
+    root.removeAttribute('data-flow-mode'); root.removeAttribute('data-flow-paused'); root.removeAttribute('data-flow-state');
+  }
+  root.setAttribute('data-flow-mode', 'loop'); sync();
+  observer?.observe(root); if (doc?.documentElement) removal?.observe(doc.documentElement, { childList: true, subtree: true });
+  doc?.addEventListener('visibilitychange', visibility); doc?.addEventListener('keydown', keyboard);
+  view?.addEventListener('pagehide', pagehide); view?.addEventListener('pageshow', pageshow); pauseButton?.addEventListener('click', toggle);
+  preference?.addEventListener?.('change', visibility);
+  return { play, pause, dispose };
+}
+
+/** Decorative shared circuit layers; no logos, text, status or event handlers. */
+export function contextFlowArt() {
+  const art = document.createElement('span'); art.className = 'ds-context-core-art'; art.setAttribute('aria-hidden', 'true');
+  for (const className of ['ds-context-glow', 'ds-context-ring ds-context-ring--outer', 'ds-context-ring ds-context-ring--inner', 'ds-context-sheen']) {
+    const layer = document.createElement('span'); layer.className = className; art.append(layer);
+  }
+  for (let index = 0; index < 3; index++) {
+    const orbit = document.createElement('span'); orbit.className = 'ds-context-orbit'; orbit.setAttribute('data-orbit', String(index));
+    const particle = document.createElement('span'); particle.className = 'ds-context-particle'; orbit.append(particle); art.append(orbit);
+  }
+  return art;
 }
 
 /** Static geometry for an explicitly illustrative highlight, never activity. */
