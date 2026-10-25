@@ -7,6 +7,7 @@ export function devReviewPage(url: URL, head = false): Response {
     ["/pricing", "Pricing"], ["/support", "Support"],
     ["/privacy", "Privacy"], ["/self-host", "Self-host"],
     ["/design-system", "Design system"],
+    ["/__open-source-review", "Open-source support copy"],
     ["/__mail-preview/preference/confirm", "Email preferences"],
     ["/__mail-preview/preference/unsubscribed", "Email preference saved"],
     ["/__mail-preview/preference/unavailable", "Email link unavailable"],

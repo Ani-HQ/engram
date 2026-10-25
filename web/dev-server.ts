@@ -5,6 +5,7 @@ import { PLANS } from "../gateway/src/plans";
 import { PUBLIC_PAGE_FILES } from "../gateway/src/site-routes";
 import { devReviewPage } from "./dev-review";
 import { devMailPreview } from "../dev/mail-preview";
+import { openSourceSupportPreview } from "../dev/open-source-support-preview";
 import { parsePolicies } from "../gateway/src/policies";
 import { parseReportedSource } from "../gateway/src/agent-source";
 import { activityDetail, activityPage, latestLogicalActions } from "./activity-model.js";
@@ -101,6 +102,7 @@ if (import.meta.main) {
 
 export async function devFetch(req: Request): Promise<Response> {
   const url = new URL(req.url);
+  if (url.pathname === "/__open-source-review") return ["GET", "HEAD"].includes(req.method) ? openSourceSupportPreview(req.method === "HEAD") : new Response("Method Not Allowed", { status: 405 });
   const mailPreview = await devMailPreview(req);
   if (mailPreview) return mailPreview;
   if (url.pathname === "/__review" && ["GET", "HEAD"].includes(req.method)) return devReviewPage(url, req.method === "HEAD");

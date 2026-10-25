@@ -209,6 +209,9 @@ describe("hosted payment sessions", () => {
     expect(checkout.body.get("customer")).toBe("cus_123");
     expect(checkout.body.get("subscription_data[metadata][engram_org_id]")).toBe("7");
     expect(checkout.body.get("success_url")).toBe("https://engram.example/app?billing=success#billing");
+    expect(checkout.body.get("custom_text[submit][message]")).toBe("As Engram earns revenue, we’ll use a portion to sponsor open-source projects.");
+    expect(checkout.body.get("mode")).toBe("subscription");
+    expect([...checkout.body.keys()].filter(key => key.startsWith("line_items["))).toEqual(["line_items[0][price]", "line_items[0][quantity]"]);
     expect(checkout.init?.headers).toMatchObject({ "Idempotency-Key": "engram-checkout-7-1" });
     expect(JSON.stringify(remote.calls)).not.toContain(owner.name);
     expect((await handleBillingApi(request("/checkout", { plan: "cloud" }), owner, deps)).status).toBe(200);
