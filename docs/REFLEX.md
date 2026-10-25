@@ -23,9 +23,11 @@ Hosted customer use also requires an active Cloud subscription, a positive
 monthly soft budget and acceptance of the explicitly approved rate version.
 Customer billing remains off until its separate operator configuration is
 approved. A provisioner can apply an authorized operator-funded default to one
-unambiguously selected personal owner: enabled, a $1 USD monthly soft budget,
+unambiguously selected sole owner: enabled, a $1 USD monthly soft budget,
 and no customer charge. This is a scoped, one-time bootstrap, not a default for
-other accounts; rerunning it does not undo a later opt-out. See [Billing](BILLING.md).
+other accounts; email-only selection applies to personal workspaces, while an
+existing team requires its explicit workspace ID as well. Rerunning the setup
+does not undo a later opt-out. See [Billing](BILLING.md).
 
 ## What is stored where
 

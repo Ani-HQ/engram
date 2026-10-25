@@ -246,7 +246,7 @@ class ReleaseTests(unittest.TestCase):
     def test_jev_billing_is_disabled_and_stale_permissions_are_not_inherited(self):
         existing = self.service["spec"]["template"]["spec"]["containers"][0]["env"]
         existing.extend({"name": name, "value": "unsafe-stale"} for name in (
-            "ENGRAM_JEV_MARKUP_BPS", "ENGRAM_JEV_OPERATOR_EMAIL", "ENGRAM_JEV_OPERATOR_MONTHLY_BUDGET_USD",
+            "ENGRAM_JEV_MARKUP_BPS", "ENGRAM_JEV_OPERATOR_EMAIL", "ENGRAM_JEV_OPERATOR_WORKSPACE_ID", "ENGRAM_JEV_OPERATOR_MONTHLY_BUDGET_USD",
             "ENGRAM_JEV_BILLING_WORKER_ENABLED", "REFLEX_API_KEY", "TYPESAFE_API_KEY", "REFLEX_ENDPOINT"))
         body = release.service_body(self.service, self.args, "engram-candidate")
         env = {entry["name"]: entry for entry in body["spec"]["template"]["spec"]["containers"][0]["env"]}
@@ -262,13 +262,25 @@ class ReleaseTests(unittest.TestCase):
         base = ["release.py", "plan", "--project", "ani-hq", "--image", self.args.image]
         with patch("sys.argv", [*base, "--jev-enable-customer-billing"]), self.assertRaisesRegex(RuntimeError, "explicitly approved"):
             release.main()
-        for flags in (["--jev-markup-bps", "-1"], ["--jev-markup-bps", "10001"], ["--jev-operator-budget-usd", "0"], ["--jev-owner-email", "multiple@example.com,other@example.com"]):
+        for flags in (["--jev-markup-bps", "-1"], ["--jev-markup-bps", "10001"], ["--jev-operator-budget-usd", "0"], ["--jev-owner-email", "multiple@example.com,other@example.com"], ["--jev-owner-workspace", "1"], ["--jev-owner-email", "private-owner@example.test", "--jev-owner-workspace", "0"], ["--jev-owner-email", "private-owner@example.test", "--jev-owner-workspace", "2147483648"]):
             with patch("sys.argv", [*base, *flags]), self.assertRaises(RuntimeError): release.main()
         output = io.StringIO()
         with patch("sys.argv", [*base, "--jev-owner-email", "private-owner@example.com", "--jev-enable-customer-billing", "--jev-markup-bps", "0"]), contextlib.redirect_stdout(output):
             release.main()
         self.assertNotIn("private-owner@example.com", output.getvalue())
         self.assertIn('"jevOwnerBootstrapRequested": true', output.getvalue())
+
+    def test_explicit_jev_workspace_selector_is_passed_only_to_provisioner(self):
+        self.args.jev_owner_email = "private-owner@example.test"
+        self.args.jev_owner_workspace = 7
+        with patch.object(release, "cloud") as operation:
+            release.provision(self.args)
+        deploy_command = operation.call_args_list[0].args[1]
+        setting = next(item for item in deploy_command if item.startswith("--set-env-vars="))
+        self.assertIn("ENGRAM_JEV_OPERATOR_WORKSPACE_ID=7", setting)
+        self.assertIn("ENGRAM_JEV_OPERATOR_EMAIL=private-owner@example.test", setting)
+        self.assertNotIn("ENGRAM_JEV_OPERATOR_WORKSPACE_ID", release.runtime_environment(self.args))
+        self.assertIn("ENGRAM_JEV_OPERATOR_WORKSPACE_ID", release.REMOVE_RUNTIME)
 
     def test_jev_worker_enable_approval_is_explicit_and_no_secret_is_read(self):
         self.args.jev_enable_customer_billing = True

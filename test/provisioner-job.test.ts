@@ -5,31 +5,46 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repository = fileURLToPath(new URL("..", import.meta.url));
-async function job(result: { ready: number; failed: number; pending: number }, migrationFailure = false, operatorReason?: string) {
+async function job(result: { ready: number; failed: number; pending: number }, migrationFailure = false, operatorReason?: string, workspaceId?: string) {
   const directory = mkdtempSync(join(tmpdir(), "engram-provisioner-job-"));
-  const closed = join(directory, "closed"), preload = join(directory, "preload.ts");
+  const closed = join(directory, "closed"), configured = join(directory, "configured"), migrated = join(directory, "migrated"), preload = join(directory, "preload.ts");
   const source = `import {mock} from 'bun:test';import{writeFileSync}from'node:fs';
     ${operatorReason ? "process.env.ENGRAM_JEV_OPERATOR_EMAIL='private-operator@example.test';" : "delete process.env.ENGRAM_JEV_OPERATOR_EMAIL;"}
-    mock.module(${JSON.stringify(join(repository,"gateway/src/jev.ts"))},()=>({configureJevOperatorDefault:async()=>({applied:${operatorReason === 'applied'},reason:${JSON.stringify(operatorReason ?? 'already-configured')}})}));
+    ${workspaceId === undefined ? "delete process.env.ENGRAM_JEV_OPERATOR_WORKSPACE_ID;" : `process.env.ENGRAM_JEV_OPERATOR_WORKSPACE_ID=${JSON.stringify(workspaceId)};`}
+    mock.module(${JSON.stringify(join(repository,"gateway/src/jev.ts"))},()=>({configureJevOperatorDefault:async(db,input)=>{writeFileSync(${JSON.stringify(configured)},JSON.stringify(input));return {applied:${operatorReason === 'applied'},reason:${JSON.stringify(operatorReason ?? 'already-configured')}}}}));
     mock.module(${JSON.stringify(join(repository, "gateway/src/config.ts"))},()=>({databaseSecurity:{authority:'provisioner'}}));
-    mock.module(${JSON.stringify(join(repository, "gateway/src/db.ts"))},()=>({sql:{},migrate:async()=>{${migrationFailure ? "throw Object.assign(new Error('private-password-and-tenant-content'),{code:'42501',detail:'private-password-and-tenant-content'})" : ""}},closeDatabasePools:async()=>{writeFileSync(${JSON.stringify(closed)},'closed')}}));
+    mock.module(${JSON.stringify(join(repository, "gateway/src/db.ts"))},()=>({sql:{},migrate:async()=>{writeFileSync(${JSON.stringify(migrated)},'yes');${migrationFailure ? "throw Object.assign(new Error('private-password-and-tenant-content'),{code:'42501',detail:'private-password-and-tenant-content'})" : ""}},closeDatabasePools:async()=>{writeFileSync(${JSON.stringify(closed)},'closed')}}));
     mock.module(${JSON.stringify(join(repository, "gateway/src/provisioning.ts"))},()=>({provisionPendingWorkspaces:async()=>(${JSON.stringify(result)})}));`;
   try {
     writeFileSync(preload, source);
     const child = Bun.spawn([process.execPath, "--preload", preload, "gateway/src/jobs/provision.ts"], { cwd: repository, stdin: "ignore", stdout: "pipe", stderr: "pipe" });
     const [stdout, stderr, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
     expect(readFileSync(closed, "utf8")).toBe("closed");
-    return { stdout, stderr, code };
+    const optionalFile = (path: string) => { try { return readFileSync(path,'utf8'); } catch { return undefined; } };
+    return { stdout, stderr, code, configured: optionalFile(configured), migrated: optionalFile(migrated) };
   } finally { rmSync(directory, { recursive: true, force: true }); }
 }
 
 describe("provisioner job completion", () => {
   test("explicit operator target fails closed when absent or ambiguous, but reruns honor optout", async () => {
-    for (const reason of ['owner-not-found','ambiguous-owner']) {
+    for (const reason of ['owner-not-found','ambiguous-owner','configuration-conflict']) {
       const result = await job({ready:0,failed:0,pending:0},false,reason);
       expect(result.code).toBe(1); expect(result.stdout).toBe(''); expect(result.stderr).not.toContain('private-operator');
     }
     expect((await job({ready:0,failed:0,pending:0},false,'already-configured')).code).toBe(0);
+  });
+  test("passes an explicit workspace only to the bootstrap and rejects malformed selectors before migration", async () => {
+    const explicit = await job({ready:0,failed:0,pending:0},false,'applied','123');
+    expect(explicit.code).toBe(0);
+    expect(JSON.parse(explicit.configured!)).toEqual({email:'private-operator@example.test',workspaceId:123});
+    const implicit = await job({ready:0,failed:0,pending:0},false,'already-configured');
+    expect(JSON.parse(implicit.configured!)).toEqual({email:'private-operator@example.test'});
+    for (const invalid of ['0','-1','01','1.5','1e2','2147483648','NaN']) {
+      const result = await job({ready:0,failed:0,pending:0},false,'applied',invalid);
+      expect(result.code).toBe(1); expect(result.configured).toBeUndefined(); expect(result.migrated).toBeUndefined();
+    }
+    const missingEmail = await job({ready:0,failed:0,pending:0},false,undefined,'123');
+    expect(missingEmail.code).toBe(1); expect(missingEmail.migrated).toBeUndefined();
   });
   test("succeeds only when every queued workspace is ready", async () => {
     const result = await job({ ready: 2, failed: 0, pending: 0 });

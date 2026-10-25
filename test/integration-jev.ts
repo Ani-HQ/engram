@@ -15,7 +15,7 @@ export async function checkJev(db: postgres.Sql): Promise<number> {
   let checks = 1;
   const equal = (a: unknown,b: unknown,message: string) => { assert.deepEqual(a,b,message); checks++; };
   const check = (value: unknown,message: string) => { assert.ok(value,message); checks++; };
-  const base = 840001, ids = [base,base+1,base+2], prefix = `jev-${randomUUID()}`;
+  const base = 840001, ids = [base,base+1,base+2,base+3,base+4], prefix = `jev-${randomUUID()}`;
   const now = new Date(), later = new Date(now.getTime()+2000), periodEnd = new Date(now.getTime()+30*86400000);
   const env = { JEV_API_KEY:'disposable-no-provider-key',REFLEX_MODEL:'jev-1.13.0',ENGRAM_JEV_BILLING_ENABLED:'1',ENGRAM_JEV_BILLING_WORKER_ENABLED:'1',ENGRAM_JEV_MARKUP_BPS:'0' };
   const oldMode = config.deploymentMode, originalFetch = globalThis.fetch;
@@ -110,6 +110,71 @@ export async function checkJev(db: postgres.Sql): Promise<number> {
     await db`INSERT INTO org_members (org_id,email,role) VALUES (${base+1},${`${prefix}-extra-owner@example.test`},'owner')`;
     equal(await configureJevOperatorDefault(db,{email:operatorEmail}),{applied:false,reason:'ambiguous-owner'},'Ambiguous personal ownership is distinguishable and fails closed');
     await db`DELETE FROM org_members WHERE email=${`${prefix}-extra-owner@example.test`}`;
+    const operatorEnv = {...env,ENGRAM_JEV_BILLING_ENABLED:'0',ENGRAM_JEV_MARKUP_BPS:''};
+    const team = base+3, otherTeam = base+4;
+    equal(await configureJevOperatorDefault(db,{email:owner(team).email!}),{applied:false,reason:'owner-not-found'},'Email-only bootstrap never selects a team');
+    equal(await configureJevOperatorDefault(db,{email:owner(team).email!,workspaceId:otherTeam}),{applied:false,reason:'owner-not-found'},'Explicit approval must match the exact owner and workspace');
+    await db`UPDATE orgs SET provisioning_status='pending' WHERE id=${team}`;
+    equal(await configureJevOperatorDefault(db,{email:owner(team).email!,workspaceId:team}),{applied:false,reason:'owner-not-found'},'Only a Ready workspace can receive the initial operator default');
+    await db`UPDATE orgs SET provisioning_status='ready' WHERE id=${team}`;
+    equal(await configureJevOperatorDefault(db,{email:owner(team).email!,workspaceId:team}),{applied:true,reason:'applied'},'An explicitly selected sole-owned team receives an operator grant');
+    equal((await db`SELECT explicit_workspace_approved FROM jev_operator_access WHERE org_id=${team}`)[0].explicit_workspace_approved,true,'Explicit workspace approval is stored on the first grant');
+    const teamCall = await reserve('explicit-team',team,{env:operatorEnv}); check(teamCall,'The explicitly approved team can reserve operator-funded usage');
+    await settleJevCall(teamCall!.id,{model:'jev-1.13.0',inputTokens:1000,outputTokens:0},{db,now});
+    equal((await db`SELECT funding,customer_nanos FROM jev_usage_calls WHERE id=${teamCall!.id}`)[0],{funding:'operator-funded',customer_nanos:'0'},'Explicit team approval never charges a customer');
+    await db`INSERT INTO org_members (org_id,email,role) VALUES (${team},${`${prefix}-team-member@example.test`},'member')`;
+    equal((await getJevSummary(owner(team),{db,env:operatorEnv,now})).eligibility,'operator-funded','Ordinary team members do not invalidate the explicit sole-owner approval');
+    await db`UPDATE org_members SET role='owner' WHERE email=${`${prefix}-team-member@example.test`}`;
+    equal(await reserve('extra-team-owner',team,{env:operatorEnv}),null,'A second owner invalidates operator funding');
+    equal(await configureJevOperatorDefault(db,{email:owner(team).email!,workspaceId:team}),{applied:false,reason:'ambiguous-owner'},'Explicit targeting cannot bypass sole ownership');
+    await db`DELETE FROM org_members WHERE email=${`${prefix}-team-member@example.test`}`;
+    await put(team,{enabled:false,monthlyBudgetUsd:'1'});
+    equal(await configureJevOperatorDefault(db,{email:owner(team).email!,workspaceId:team}),{applied:false,reason:'already-configured'},'Explicit bootstrap retries preserve a later optout');
+    equal((await db`SELECT enabled FROM workspace_jev_settings WHERE org_id=${team}`)[0].enabled,false,'Explicit target optout remains disabled');
+    await enable(team);
+    await db`UPDATE jev_operator_access SET revoked_at=now() WHERE org_id=${team}`;
+    equal(await configureJevOperatorDefault(db,{email:owner(team).email!,workspaceId:team}),{applied:false,reason:'already-configured'},'A revoked explicit grant is never recreated by retry');
+    equal(await reserve('revoked-explicit-team',team,{env:operatorEnv}),null,'Revocation blocks further operator-funded calls');
+    await db`UPDATE jev_operator_access SET revoked_at=NULL WHERE org_id=${team}`;
+    await db`DELETE FROM org_members WHERE org_id=${team} AND email=${owner(team).email!}`;
+    equal(await reserve('removed-explicit-owner',team,{env:operatorEnv}),null,'Removing the historical owner invalidates the grant');
+    await db`INSERT INTO org_members (org_id,email,role) VALUES (${team},${owner(team).email!},'owner')`;
+    equal(await reserve('recreated-explicit-owner',team,{env:operatorEnv}),null,'Recreating the same email cannot inherit the historical grant');
+    equal(await configureJevOperatorDefault(db,{email:owner(team).email!,workspaceId:team}),{applied:false,reason:'configuration-conflict'},'A different membership binding requires deliberate grant reconciliation');
+    equal((await db`SELECT explicit_workspace_approved FROM jev_operator_access WHERE org_id=${base+1}`)[0].explicit_workspace_approved,false,'Implicit personal grants retain the migration default');
+    await enable(base+1);
+    await db`UPDATE orgs SET kind='team' WHERE id=${base+1}`;
+    equal(await reserve('converted-implicit-personal',base+1,{env:operatorEnv}),null,'A personal grant does not survive conversion into a team');
+    equal(await configureJevOperatorDefault(db,{email:operatorEmail,workspaceId:base+1}),{applied:false,reason:'configuration-conflict'},'Retrying with an explicit selector never upgrades an existing implicit grant');
+    equal((await db`SELECT explicit_workspace_approved FROM jev_operator_access WHERE org_id=${base+1}`)[0].explicit_workspace_approved,false,'A conflict leaves the stored approval unchanged');
+    await db`UPDATE orgs SET kind='personal' WHERE id=${base+1}`;
+    const promotionEmail = `${prefix}-promotion@example.test`;
+    await db`INSERT INTO org_members (org_id,email,role) VALUES (${otherTeam},${promotionEmail},'member')`;
+    let releasePromotion!: () => void, promotionStarted!: () => void;
+    const promotionGate = new Promise<void>(resolve => { releasePromotion=resolve; });
+    const promoted = new Promise<void>(resolve => { promotionStarted=resolve; });
+    const promotion = db.begin(async tx => {
+      await tx`UPDATE org_members SET role='owner' WHERE org_id=${otherTeam} AND email=${promotionEmail}`;
+      promotionStarted(); await promotionGate;
+    });
+    await promoted;
+    const bootstrapDb = { begin: (callback: any) => db.begin(async tx => {
+      await tx`SELECT set_config('application_name',${prefix},true)`;
+      return callback(tx);
+    }) } as unknown as postgres.Sql;
+    const bootstrap = configureJevOperatorDefault(bootstrapDb,{email:owner(otherTeam).email!,workspaceId:otherTeam});
+    try {
+      let waiting = false;
+      for (let attempt=0;attempt<100;attempt++) {
+        const [blocked] = await db`SELECT count(*)::int AS n FROM pg_stat_activity WHERE application_name=${prefix} AND wait_event_type='Lock'`;
+        if (blocked.n > 0) { waiting=true;break; }
+        await Bun.sleep(10);
+      }
+      check(waiting,'Bootstrap waits for an in-flight role change on every existing member');
+    } finally { releasePromotion(); }
+    await promotion;
+    equal(await bootstrap,{applied:false,reason:'ambiguous-owner'},'The post-lock owner check sees a concurrently promoted owner');
+    equal(Number((await db`SELECT count(*) AS n FROM jev_operator_access WHERE org_id=${otherTeam}`)[0].n),0,'Concurrent ownership changes cannot mint an operator approval');
     await enable(base+2);
     await db`UPDATE orgs SET policies=jsonb_set(policies,'{jevProcessing}','false'::jsonb) WHERE id=${base+2}`;
     equal(await reserve('legacy-consent',base+2),null,'Legacy external-AI consent is insufficient for Jev');

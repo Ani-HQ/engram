@@ -42,7 +42,8 @@ function providerConfigured(env: NodeJS.ProcessEnv) {
 }
 async function funding(db: postgres.Sql, orgId: number, now: Date) {
   const [operator] = await db`SELECT a.org_id FROM jev_operator_access a JOIN org_members m ON m.id = a.owner_member_id AND m.org_id = a.org_id AND m.role = 'owner'
-    JOIN orgs o ON o.id = a.org_id AND o.kind = 'personal' WHERE a.org_id = ${orgId} AND a.revoked_at IS NULL
+    JOIN orgs o ON o.id = a.org_id WHERE a.org_id = ${orgId} AND a.revoked_at IS NULL
+      AND (o.kind = 'personal' OR a.explicit_workspace_approved)
       AND (SELECT count(*) FROM org_members owners WHERE owners.org_id = o.id AND owners.role = 'owner') = 1`;
   if (operator) return { kind: 'operator-funded' as const, customer: null, subscription: null };
   const [row] = await db`SELECT b.stripe_customer_id,b.stripe_subscription_id FROM workspace_billing b
@@ -160,23 +161,34 @@ export async function failJevCall(id: string, reason: 'timeout'|'network'|'http_
   await db`UPDATE jev_usage_calls SET status = 'unknown', error_code = ${reason}, settled_at = ${now} WHERE id = ${id} AND status = 'reserved' AND (${orgId ?? null}::integer IS NULL OR org_id = ${orgId ?? null})`;
 }
 
-export async function configureJevOperatorDefault(db: postgres.Sql, input: { email: string }): Promise<{ applied: boolean; reason: 'applied'|'already-configured'|'owner-not-found'|'ambiguous-owner' }> {
+export async function configureJevOperatorDefault(db: postgres.Sql, input: { email: string; workspaceId?: number }): Promise<{ applied: boolean; reason: 'applied'|'already-configured'|'owner-not-found'|'ambiguous-owner'|'configuration-conflict' }> {
   const email = input.email.trim().toLowerCase();
+  if (input.workspaceId !== undefined && (!Number.isInteger(input.workspaceId) || input.workspaceId < 1 || input.workspaceId > 2147483647)) throw new JevError('Operator workspace must be a positive PostgreSQL integer.');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { applied: false, reason: 'owner-not-found' };
   const budget = parseJevBudget(process.env.ENGRAM_JEV_OPERATOR_MONTHLY_BUDGET_USD ?? '1');
   if (budget === 0n) throw new JevError('Operator Jev budget must be positive.');
   return db.begin(async tx => {
-    const rows = await tx`SELECT o.id,m.id AS member_id,(SELECT count(*) FROM org_members owner WHERE owner.org_id = o.id AND owner.role = 'owner') AS owner_count
-      FROM orgs o JOIN org_members m ON m.org_id = o.id AND m.email = ${email} AND m.role = 'owner'
-      WHERE o.kind = 'personal' FOR UPDATE OF o FOR SHARE OF m`;
+    const rows = await tx`SELECT o.id FROM orgs o
+      WHERE (${input.workspaceId ?? null}::integer IS NULL AND o.kind = 'personal' OR o.id = ${input.workspaceId ?? null})
+        AND o.provisioning_status = 'ready'
+        AND EXISTS (SELECT 1 FROM org_members m WHERE m.org_id = o.id AND m.email = ${email} AND m.role = 'owner')
+      ORDER BY o.id FOR UPDATE OF o`;
     if (!rows.length) return { applied: false, reason: 'owner-not-found' };
-    if (rows.length !== 1 || Number(rows[0].owner_count) !== 1) return { applied: false, reason: 'ambiguous-owner' };
+    if (rows.length !== 1) return { applied: false, reason: 'ambiguous-owner' };
     const row = rows[0];
-    const inserted = await tx`INSERT INTO jev_operator_access (org_id,owner_member_id,operator_role) VALUES (${row.id},${row.member_id},current_user)
+    // Lock every existing membership before checking roles. The org lock also
+    // fences a concurrent new membership's foreign-key check.
+    const members = await tx`SELECT id,email,role FROM org_members WHERE org_id = ${row.id} ORDER BY id FOR SHARE`;
+    const owner = members.find(member => member.email === email && member.role === 'owner');
+    if (!owner) return { applied: false, reason: 'owner-not-found' };
+    if (members.filter(member => member.role === 'owner').length !== 1) return { applied: false, reason: 'ambiguous-owner' };
+    const [prior] = await tx`SELECT owner_member_id,explicit_workspace_approved FROM jev_operator_access WHERE org_id = ${row.id}`;
+    if (prior) return { applied: false, reason: prior.owner_member_id !== owner.id || (input.workspaceId !== undefined && !prior.explicit_workspace_approved) ? 'configuration-conflict' : 'already-configured' };
+    const inserted = await tx`INSERT INTO jev_operator_access (org_id,owner_member_id,operator_role,explicit_workspace_approved) VALUES (${row.id},${owner.id},current_user,${input.workspaceId !== undefined})
       ON CONFLICT (org_id) DO NOTHING RETURNING org_id`;
     if (!inserted.length) return { applied: false, reason: 'already-configured' };
     await tx`INSERT INTO workspace_jev_settings (org_id,enabled,monthly_budget_nanos,accepted_by_member_id,accepted_at)
-      VALUES (${row.id},true,${budget.toString()},${row.member_id},now())
+      VALUES (${row.id},true,${budget.toString()},${owner.id},now())
       ON CONFLICT (org_id) DO UPDATE SET enabled = true, monthly_budget_nanos = EXCLUDED.monthly_budget_nanos, accepted_by_member_id = EXCLUDED.accepted_by_member_id, accepted_at = EXCLUDED.accepted_at`;
     await tx`UPDATE orgs SET policies = jsonb_set(policies,'{jevProcessing}','true'::jsonb) WHERE id = ${row.id}`;
     return { applied: true, reason: 'applied' };

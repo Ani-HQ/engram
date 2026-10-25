@@ -39,7 +39,7 @@ alone does not grant consent. Self-hosters provide their own server-side
 `JEV_API_KEY` (legacy `REFLEX_API_KEY`/`TYPESAFE_API_KEY` fallbacks remain supported)
 and explicitly opt in. Hosted customer Jev also requires an active Cloud
 subscription, an accepted approved rate and a positive soft budget. One expressly
-authorized personal operator workspace can receive a one-time operator-funded
+authorized operator workspace can receive a one-time operator-funded
 default with a $1 USD monthly soft budget; this does not opt other accounts in or
 enable Voyage/OpenAI. It is not a customer billing charge.
 

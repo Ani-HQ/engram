@@ -1,8 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 process.env.ENGRAM_DB_URL_TEMPLATE ??= 'postgresql://postgres:postgres@localhost:1/__DB__';
-const { jevPricing, parseJevBudget, usd } = await import('../gateway/src/jev');
+const { configureJevOperatorDefault, jevPricing, parseJevBudget, usd } = await import('../gateway/src/jev');
 
 describe('Jev exact currency and approved pricing', () => {
+  test('rejects invalid explicit workspace selectors before touching the database', async () => {
+    const database = { begin: () => { throw new Error('Database must not be touched'); } } as any;
+    for (const workspaceId of [0,-1,1.5,NaN,Infinity,2147483648,'1',null]) {
+      await expect(configureJevOperatorDefault(database,{email:'owner@example.test',workspaceId:workspaceId as any})).rejects.toThrow('positive PostgreSQL integer');
+    }
+  });
   test('keeps dollars as precise integer nanodollars', () => {
     expect(parseJevBudget('1.23')).toBe(1_230_000_000n);
     expect(usd(42n)).toBe('0.000000042');

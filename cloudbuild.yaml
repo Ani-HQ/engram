@@ -114,6 +114,7 @@ steps:
       - 'ENGRAM_JEV_BILLING_ENABLED=${_JEV_BILLING_ENABLED}'
       - 'ENGRAM_JEV_MARKUP_BPS=${_JEV_MARKUP_BPS}'
       - 'ENGRAM_JEV_OPERATOR_EMAIL=${_JEV_OPERATOR_EMAIL}'
+      - 'ENGRAM_JEV_OPERATOR_WORKSPACE_ID=${_JEV_OPERATOR_WORKSPACE_ID}'
       - 'ENGRAM_JEV_OPERATOR_MONTHLY_BUDGET_USD=${_JEV_OPERATOR_BUDGET_USD}'
     args:
       - -c
@@ -137,6 +138,7 @@ substitutions:
   # Beta policy: pass provider cost through, without a markup. Activation stays explicit.
   _JEV_MARKUP_BPS: '0'
   _JEV_OPERATOR_EMAIL: ''
+  _JEV_OPERATOR_WORKSPACE_ID: ''
   _JEV_OPERATOR_BUDGET_USD: '1'
 images:
   - 'gcr.io/$PROJECT_ID/engram:$BUILD_ID'
