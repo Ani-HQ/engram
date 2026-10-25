@@ -50,6 +50,39 @@ class JevBillingInfrastructureTests(unittest.TestCase):
             self.assertEqual(billing.verify(self.args)["state"], "PAUSED")
         self.assertTrue(all(not set(call.args[1]) & {"create", "update", "resume", "execute", "access"} for call in cloud.call_args_list))
 
+    def test_cloudsql_and_gen2_belong_to_execution_metadata(self):
+        execution = self.job["spec"]["template"]
+        self.assertEqual(execution["metadata"]["annotations"], {
+            "run.googleapis.com/execution-environment": "gen2",
+            "run.googleapis.com/cloudsql-instances": "ani-hq:us-central1:engram-pg"})
+        self.assertNotIn("metadata", execution["spec"]["template"])
+        execution["metadata"]["annotations"].update({
+            "run.googleapis.com/client-name": "gcloud",
+            "run.googleapis.com/client-version": "reviewed-client"})
+        with patch.object(billing, "cloud", side_effect=self.fixture):
+            self.assertEqual(billing.verify(self.args)["state"], "PAUSED")
+
+    def test_missing_wrong_or_misnested_execution_annotations_fail_closed(self):
+        baseline = copy.deepcopy(self.job)
+        for prepared in (True, False):
+            for mutation in ("missing-cloudsql", "wrong-cloudsql", "wrong-generation", "wrong-nesting", "extra-nested-metadata"):
+                with self.subTest(prepared=prepared, mutation=mutation):
+                    self.job = copy.deepcopy(baseline)
+                    execution = self.job["spec"]["template"]
+                    annotations = execution["metadata"]["annotations"]
+                    if mutation == "missing-cloudsql":
+                        annotations.pop("run.googleapis.com/cloudsql-instances")
+                    elif mutation == "wrong-cloudsql":
+                        annotations["run.googleapis.com/cloudsql-instances"] = "ani-hq:us-central1:other-db"
+                    elif mutation == "wrong-generation":
+                        annotations["run.googleapis.com/execution-environment"] = "gen1"
+                    elif mutation == "wrong-nesting":
+                        execution["spec"]["template"]["metadata"] = execution.pop("metadata")
+                    else:
+                        execution["spec"]["template"]["metadata"] = copy.deepcopy(execution["metadata"])
+                    with patch.object(billing, "cloud", side_effect=self.fixture), self.assertRaises(RuntimeError):
+                        billing.verify(self.args, prepared=prepared)
+
     def test_scheduler_uses_google_api_oauth_without_public_endpoint_or_overrides(self):
         flags = billing.schedule_flags(self.args)
         self.assertIn("--http-method=POST", flags)

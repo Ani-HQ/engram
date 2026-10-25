@@ -52,9 +52,11 @@ def job_body(args, enabled=False):
             for name, ref in secret_refs.items()]
     return {"apiVersion": "run.googleapis.com/v1", "kind": "Job",
             "metadata": {"name": MAIL_JOB, "namespace": args.project},
-            "spec": {"template": {"spec": {"taskCount": 1, "parallelism": 1,
-                "template": {"metadata": {"annotations": {"run.googleapis.com/execution-environment": "gen2"}},
-                    "spec": {"serviceAccountName": f"engram-runtime@{args.project}.iam.gserviceaccount.com",
+            "spec": {"template": {"metadata": {"annotations": {
+                "run.googleapis.com/execution-environment": "gen2",
+                "run.googleapis.com/cloudsql-instances": values["ENGRAM_CLOUDSQL_INSTANCE"]}},
+                "spec": {"taskCount": 1, "parallelism": 1,
+                "template": {"spec": {"serviceAccountName": f"engram-runtime@{args.project}.iam.gserviceaccount.com",
                         "maxRetries": 0, "timeoutSeconds": "600",
                         "containers": [{"image": args.image, "env": env,
                             "resources": {"limits": {"cpu": "1", "memory": "512Mi"}}}]}}}}}}
@@ -83,14 +85,19 @@ def verify(args, prepared=True):
             raise RuntimeError("A required mail secret version is not enabled")
     job = cloud(args, ["run", "jobs", "describe", MAIL_JOB, f"--region={args.region}"])
     task = job["spec"]["template"]["spec"]["template"]["spec"]
-    expected = job_body(args)["spec"]["template"]["spec"]["template"]["spec"]
+    expected_job = job_body(args)
+    expected = expected_job["spec"]["template"]["spec"]["template"]["spec"]
+    annotations = job["spec"]["template"].get("metadata", {}).get("annotations", {})
+    required_annotations = expected_job["spec"]["template"]["metadata"]["annotations"]
     env = {item["name"]: item for item in task["containers"][0]["env"]}
     expected_env = {item["name"]: item for item in expected["containers"][0]["env"]}
     delivery_flag = env.pop("ENGRAM_ONBOARDING_EMAILS", {}).get("value")
     expected_env.pop("ENGRAM_ONBOARDING_EMAILS", None)
     run = job["spec"]["template"]["spec"]
     container = task["containers"][0]
-    if task.get("serviceAccountName") != expected["serviceAccountName"] or len(task.get("containers", [])) != 1 or \
+    if any(annotations.get(name) != value for name, value in required_annotations.items()) or \
+            run["template"].get("metadata") or \
+            task.get("serviceAccountName") != expected["serviceAccountName"] or len(task.get("containers", [])) != 1 or \
             container.get("image") != args.image or env != expected_env or task.get("volumes") or \
             container.get("command") or container.get("args") or container.get("sandboxLauncher") or \
             int(run.get("taskCount", 0)) != 1 or int(run.get("parallelism", 0)) != 1 or \
