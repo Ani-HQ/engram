@@ -72,6 +72,12 @@ versions. Rolling traffic back leaves saved presentation content in the database
   scenario but were not executed here: no local PostgreSQL or Docker runtime
   was available. Unit and fixture persistence checks passed.
 
+The subsequent [production release](RELEASE.md#interface-system-and-public-profile-layouts--25-october-2026)
+executed those assertions against real PostgreSQL in CI before migration and
+activation. The database gate passed 705 checks, with all seven Cloud Build
+release gates green. Production schema readiness and canonical assets were
+verified after deployment.
+
 Screenshots were saved outside the repository under the current chat's
 `profile-layouts` artifact directory. Sample publication used only the local
 fixture server; no production account or profile was changed.

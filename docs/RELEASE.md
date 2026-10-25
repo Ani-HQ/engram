@@ -4,6 +4,47 @@ Private operator captures and verification records described in the historical
 release entries are retained outside the public source release. Their local
 paths and raw contents are not published here.
 
+## Interface system and public profile layouts — 25 October 2026
+
+The graphite/mint interface system is live across the app, public pages, email,
+and social cards. Public profiles offer Living studio and Field notes, with
+immediate owner previews and up to three explicitly written highlights. Local
+product marks and fallback avatars require no remote runtime asset requests.
+
+Cloud Build `f0d35357-f3f9-49e6-af54-d0dd20017c77` passed all seven release gates
+for runtime source `75eecda5fc6e4361b6e39f8c7adb848b4cc65805`. Ready revision
+`engram-r-1792944177` serves 100% of observed production traffic using
+`gcr.io/ani-hq/engram@sha256:3a06945a7dfad697d60e92abee21ac259eafd69082fd03d0786ad639df7539ea`.
+[Source PR 38](https://github.com/Ani-HQ/engram/pull/38) contains the implementation
+and release record.
+
+Real PostgreSQL passed 705 checks, including presentation upgrade/idempotence,
+typed JSON-array persistence, legacy-client preservation, and tenant separation.
+Restricted authority passed 78 checks; the managed provisioner passed 36.
+Actual Docker startup authority passed 54 checks and pinned GBrain isolation
+passed 25. The exact image's private Cloud Run isolation check also passed and
+its temporary service was removed. GitHub source CI is green.
+
+The separate provisioner completed the additive migration before staging. The
+predecessor showcase marker remains `2026102501`; presentation readiness uses
+its own exact `2026102502` marker. A read-only production check confirmed both
+markers, required columns/constraints, and ready workspaces. Existing revisions
+retain their original readiness contract for cold starts and traffic rollback.
+
+Authenticated candidate smoke passed and confirmed temporary credential
+revocation with `cleanupRequired: false`. Candidate and canonical checks each
+matched 175 assets/page routes with CSP, MIME, and nosniff intact. Canonical
+health, hosted plans, private-route authentication, email-only sign-in policy,
+and MCP method protection passed. All 17 final revision/image/traffic/worker
+control checks passed. Desktop and 390px live browser checks found no page
+overflow. Existing mail and billing workers resumed on the reviewed image;
+customer Jev billing remains enabled with its existing zero markup.
+
+Successful backup `1792918800000`, completed at 09:51:26 UTC on 25 October,
+was verified before staging. Rollback preserves `engram-r-1792928379`.
+The activated state is archived at
+`gs://ani-hq_cloudbuild/engram-releases/f0d35357-f3f9-49e6-af54-d0dd20017c77/release-state.json`.
+
 ## Verified email-only hosted console — 24 October 2026
 
 Hosted sign-in and invitation entry no longer offer access-token login.
