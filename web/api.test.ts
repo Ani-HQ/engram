@@ -43,6 +43,18 @@ describe("private workspace API requests", () => {
     expect(calls[3].url).toBe("/api/orgs"); expect(JSON.parse(String(calls[3].options.body))).toEqual({ email: "friend@example.com", inviteCode: "example-code" });
     await api.signupPolicy(); expect(calls[4].url).toBe("/api/signup-policy"); expect(calls[4].options.cache).toBe("no-store");
   });
+  test("copies an existing signup invitation with a scoped uncached console POST", async () => {
+    const inviteUrl = "https://engram.example/app#invite=example-private-alias";
+    globalThis.fetch = (async (url: any, options: RequestInit) => { calls.push({ url: String(url), options }); return Response.json({ inviteUrl }); }) as typeof fetch;
+    expect(await workspaceApi(7).signupInviteLink("invite/opaque")).toEqual({ inviteUrl });
+    expect(calls[0].url).toBe("/api/admin/signup-invites/invite%2Fopaque/link");
+    expect(calls[0].options.method).toBe("POST"); expect(calls[0].options.cache).toBe("no-store");
+    expect(JSON.parse(String(calls[0].options.body))).toEqual({});
+    expect(new Headers(calls[0].options.headers).get("X-Engram-Workspace")).toBe("7");
+    expect(new Headers(calls[0].options.headers).get("X-Engram-Console")).toBe("1");
+    expect(calls[0].options.credentials).toBe("same-origin");
+    expect(calls[0].url).not.toContain("example-private-alias");
+  });
   test("reads getting started evidence with the originating workspace and no mutation", async () => {
     await workspaceApi(7).onboarding();
     expect(calls[0].url).toBe("/api/onboarding");

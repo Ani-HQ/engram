@@ -133,6 +133,8 @@ mock.module("../../gateway/src/write-coordination", () => ({
   },
 }));
 
+const realContextAccess = await import("../../gateway/src/context-sharing-access");
+mock.module("../../gateway/src/context-sharing-access", () => ({ ...realContextAccess, listApprovedTeamItems: async () => [] }));
 const { callTool: scopedCallTool, slugForRemember, shrinkToolDef, SERVER_INSTRUCTIONS } =
   await import("../../gateway/src/proxy");
 

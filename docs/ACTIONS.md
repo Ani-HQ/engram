@@ -126,8 +126,10 @@ permanently finished or prevent another contributor from adding work later. With
 ID, a keyed logical action keeps a stable activity URL across updates; legacy
 unkeyed actions and observed Engram calls remain individual activities.
 
-Contributor names, tools, approaches, and action details are private workspace
-data. The public profile and live stream retain their aggregate-only schema.
+Contributor aliases, raw tools, approaches, and action details are private
+workspace data. Public profiles share aggregate counts by default. A separate
+owner option adds fixed action labels, canonical agent products and services,
+statuses, evidence, and receipt times; it never publishes the original text.
 
 ## Source registration and attribution
 
@@ -159,8 +161,9 @@ not treated as a known harness. A connector can report its harness explicitly.
 Source snapshots on reported action events remain immutable after a connection
 registration edit. Future requests use the new registration; retrying an old
 event returns its original snapshot. Observed memory operations resolve the
-connection's current registered display source. Source metadata and task content
-remain private and are excluded from public activity aggregates.
+connection's current registered display source. Custom source labels and task
+content remain private. The optional public activity stream maps known harness
+values to canonical product names; unknown products become Agent.
 
 The additive migration requires activity feature version `2026102301`, while
 the base authority schema stays at `2026102202` for old-runtime compatibility.
@@ -292,12 +295,12 @@ selects another local port.
 
 ## Public activity profile
 
-Workspace owners can create a profile under **Public profile**. Its aggregate
+Workspace owners can create a profile under **Public profile**. Its
 preview is private until the owner publishes it. The profile counts all activity
 in the selected workspace; it does not combine other workspaces implicitly.
 
-- `GET /api/showcase`: owner settings, public URLs, and a private aggregate preview.
-- `PUT /api/showcase`: replace `{ slug, displayName, bio, published }` as an owner.
+- `GET /api/showcase`: owner settings, public URLs, and a private safe preview.
+- `PUT /api/showcase`: replace `{ slug, displayName, bio, published, showActivity }` as an owner; omitted `showActivity` defaults to false.
 - `GET /u/:slug`: public profile with social preview metadata.
 - `GET /api/public/activity/:slug`: public JSON, with CORS for portfolio websites.
 - `GET /api/public/activity/:slug/card.svg`: scalable image for portfolio embeds.
@@ -305,8 +308,11 @@ in the selected workspace; it does not combine other workspaces implicitly.
 
 Public JSON contains the explicitly chosen profile name/bio, action totals,
 unique contributor count (`activeAgents`), active days, an 84-day UTC contribution
-grid, broad tool categories, and the latest activity timestamp. It never returns
-agent names, action summaries, resource paths/URLs, details, runs, or transcripts.
+grid, broad tool categories, and the latest activity timestamp. With explicit
+`showActivity: true`, it also includes up to 20 latest logical actions represented
+by canonical agent products, services, fixed action labels, status, evidence,
+and receipt times. It never returns personal agent aliases, original action
+summaries, resource names/paths/URLs, details, runs, or transcripts.
 Counts combine agent reports and directly observed Engram operations. They are
 activity counts, not a productivity or success score.
 

@@ -1,11 +1,12 @@
 // Local, in-memory demo only. Production APIs and authentication live in gateway/.
 import { extname, normalize } from "node:path";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { PLANS } from "../gateway/src/plans";
 import { PUBLIC_PAGE_FILES } from "../gateway/src/site-routes";
 import { devReviewPage } from "./dev-review";
 import { devMailPreview } from "../dev/mail-preview";
 import { openSourceSupportPreview } from "../dev/open-source-support-preview";
+import { devSharing, devSharedMcp, demoSharedPages } from "./dev-sharing";
 import { parsePolicies } from "../gateway/src/policies";
 import { parseReportedSource } from "../gateway/src/agent-source";
 import { activityDetail, activityPage, latestLogicalActions } from "./activity-model.js";
@@ -67,7 +68,7 @@ const reviewWorkspaces = new Map(demoReviews.map(item => [item.id, session.org.i
 function publicDemoProfile(slug: string) { return [...showcaseProfiles.entries()].find(([, profile]) => profile.slug === slug && profile.published); }
 function demoPublication(slug: string) {
   const entry = publicDemoProfile(slug);
-  return entry ? `${entry[0]}:${showcaseRevisions.get(entry[0]) || 0}` : null;
+  return entry ? `${entry[0]}:${showcaseRevisions.get(entry[0]) || 0}:${entry[1].showActivity === true}` : null;
 }
 const demoStreams = createShowcaseStreamManager({
   publication: async slug => demoPublication(slug),
@@ -79,6 +80,7 @@ const demoStreams = createShowcaseStreamManager({
 const invitations = new Map<number, any[]>();
 const signupInvitations = new Map<string, any>();
 const signupCodes = new Map<string, string>();
+const signupCopyAliases = new Map<string, string>();
 const signupLinks = new Map<string, { inviteId: string; email: string }>();
 let demoFriendGrant = { active: true, source: "invite", durationDays: 60, unlimitedKnowledgeTransfers: true, extensionUrl: "https://x.com/anirudh_twt", grantedAt: new Date(Date.now() - 13 * 86_400_000).toISOString(), expiresAt: new Date(Date.now() + 47 * 86_400_000).toISOString(), revokedAt: null as string | null };
 function demoAccess() {
@@ -102,6 +104,9 @@ if (import.meta.main) {
 
 export async function devFetch(req: Request): Promise<Response> {
   const url = new URL(req.url);
+  const sharedMcp = await devSharedMcp(req);
+  if (sharedMcp) return sharedMcp;
+  if (url.pathname.startsWith("/api/") && /^Bearer egs_/.test(req.headers.get("authorization") || "")) return json({ error: "Approved-context credentials cannot access workspace APIs." }, 401);
   if (url.pathname === "/__open-source-review") return ["GET", "HEAD"].includes(req.method) ? openSourceSupportPreview(req.method === "HEAD") : new Response("Method Not Allowed", { status: 405 });
   const mailPreview = await devMailPreview(req);
   if (mailPreview) return mailPreview;
@@ -117,6 +122,8 @@ export async function devFetch(req: Request): Promise<Response> {
 
 async function handleApi(req: Request, url: URL): Promise<Response> {
   const route = `${req.method} ${url.pathname}`;
+  const signupLink = url.pathname.match(/^\/api\/admin\/signup-invites\/([^/]+)\/link$/);
+  const signupLinkHeaders = signupLink ? { "Cache-Control": "no-store" } : {};
   if (route === "GET /api/plans") return json({ mode: demoSelfHosted ? "self-hosted" : "hosted", trialDays: 14, currency: "usd", checkoutAvailable: false, plans: PLANS, addons: { jev: demoJevPricing }, demo: true });
   if (route === "GET /api/signup-policy") return json({ mode: demoSelfHosted ? "open" : "invite-only", complimentary: true, verificationRequired: true, inviteCodeRequired: !demoSelfHosted, tokenSignInAllowed: demoSelfHosted, demo: true });
   if (route === "POST /api/session" && !demoSelfHosted) return json({ error: "Sign in with an email link. Access tokens connect agents only.", code: "token_sign_in_disabled" }, 403);
@@ -155,15 +162,17 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   }
   // An initial visit is signed in to the demo. An explicit sign-out stays signed out.
   if (req.headers.get("cookie")?.split(";").some(value => value.trim() === "engram_dev=0")) {
-    return json({ error: "unauthorized" }, 401);
+    return json({ error: "unauthorized" }, 401, signupLinkHeaders);
   }
   if (route === "GET /api/me") {
     if (req.headers.get("x-engram-workspace") && req.headers.get("x-engram-workspace") !== String(session.org.id)) return json({ error: "The selected workspace changed." }, 409);
     return json(demoSession(), 200, { "Cache-Control": "no-store" });
   }
   const expectedWorkspace = req.headers.get("x-engram-workspace");
-  if (expectedWorkspace && expectedWorkspace !== String(session.org.id)) return json({ error: "The selected workspace changed. Please start the export again." }, 409);
+  if (expectedWorkspace && expectedWorkspace !== String(session.org.id)) return json({ error: "The selected workspace changed. Please start the export again." }, 409, signupLinkHeaders);
   const workspaceId = session.org.id;
+  const sharing = await devSharing(req, session);
+  if (sharing) return sharing;
   if (url.pathname === "/api/jev") {
     const headers = { "Cache-Control": "no-store" };
     if (!expectedWorkspace) return json({ error: "Select a workspace and try again." }, 400, headers);
@@ -192,7 +201,25 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     return json({ org: { ...session.org } });
   }
   if (url.pathname.startsWith("/api/admin/signup-invites")) {
-    if (!demoSession().capabilities.manageSignupInvites) return json({ error: "Operator access is required.", code: "forbidden" }, 403);
+    if (!demoSession().capabilities.manageSignupInvites) return json({ error: "Operator access is required.", code: "forbidden" }, 403, signupLinkHeaders);
+    if (req.method === "POST" && signupLink) {
+      if (req.headers.get("x-engram-console") !== "1") return json({ error: "Use the signed-in console to copy an invitation link.", code: "forbidden" }, 403, signupLinkHeaders);
+      if (!expectedWorkspace) return json({ error: "Select a workspace and try again." }, 400, signupLinkHeaders);
+      let id;
+      try { id = decodeURIComponent(signupLink[1]); } catch { return json({ error: "Invitation not found." }, 404, signupLinkHeaders); }
+      if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(id)) return json({ error: "Invitation not found." }, 404, signupLinkHeaders);
+      const invite = signupInvitations.get(id);
+      if (!invite) return json({ error: "Invitation not found." }, 404, signupLinkHeaders);
+      if (invite.revokedAt || invite.redeemedAt || Date.parse(invite.expiresAt) <= Date.now()) return json({ error: "This invitation is no longer available to share.", code: "invite_unavailable" }, 409, signupLinkHeaders);
+      // A local sample alias addresses the same in-memory invitation. Production
+      // signs its alias; this loopback fixture never creates a real signup grant.
+      let alias = signupCopyAliases.get(id);
+      if (!alias) {
+        alias = `eg_link_v1_${id}_${randomBytes(32).toString("base64url")}`;
+        signupCopyAliases.set(id, alias); signupCodes.set(alias, id);
+      }
+      return json({ inviteUrl: `${url.origin}/app#invite=${encodeURIComponent(alias)}` }, 200, signupLinkHeaders);
+    }
     if (route === "GET /api/admin/signup-invites") return json({ invites: [...signupInvitations.values()].reverse().slice(0, 100), more: signupInvitations.size > 100 });
     if (route === "POST /api/admin/signup-invites") {
       const body = await bodyObject(req);
@@ -210,7 +237,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
       if (invite.complimentaryAppliedAt) { invite.complimentaryRevokedAt = invite.revokedAt; demoFriendGrant.revokedAt = invite.revokedAt; }
       return json({ invite, revocationPending: false });
     }
-    return json({ error: "not found" }, 404);
+    return json({ error: "not found" }, 404, signupLinkHeaders);
   }
   if (route === "GET /api/billing") { const access = demoAccess(); return json({ mode: demoSelfHosted ? "self-hosted" : "hosted", planId: access.complimentary?.active ? "complimentary" : "trial", status: access.complimentary?.active ? "complimentary" : "trial", ...access, trialEndsAt: new Date(Date.now() + 14 * 86_400_000).toISOString(), currentPeriodEndsAt: null, cancelAtPeriodEnd: false, checkoutAvailable: false, portalAvailable: false }); }
   if (route === "POST /api/billing/checkout" || route === "POST /api/billing/portal") return json({ error: "Payments are disabled in the local preview. No charge was made." }, 503);
@@ -229,8 +256,8 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
         showcaseRevisions.set(session.org.id, (showcaseRevisions.get(session.org.id) || 0) + 1);
         await demoStreams.refresh();
       }
-      const profile = showcaseProfiles.get(session.org.id) ?? { slug: "", displayName: "", bio: "", published: false };
-      return json({ profile, urls: showcaseUrls(profile, url.origin), preview: showcaseActivity(profile) }, 200, { "Cache-Control": "no-store" });
+      const profile = showcaseProfiles.get(session.org.id) ?? { slug: "", displayName: "", bio: "", published: false, showActivity: false };
+      return json({ profile, urls: showcaseUrls(profile, url.origin), preview: showcaseActivity(profile, session.org.id, true) }, 200, { "Cache-Control": "no-store" });
     } catch (error) {
       if (error instanceof ShowcaseError) return json({ error: error.message }, error.status);
       return json({ error: "Profile could not be saved" }, 400);
@@ -241,7 +268,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   if (route === "GET /api/activities") return listActivities(url);
   if (req.method === "GET" && url.pathname.startsWith("/api/activities/")) return getActivity(url);
   if (route === "GET /api/pages") {
-    const source = url.searchParams.get("fixture") === "empty" ? [] : pages.filter((page: any) => pageWorkspaces.get(page.slug) === session.org.id);
+    const source = url.searchParams.get("fixture") === "empty" ? [] : [...pages.filter((page: any) => pageWorkspaces.get(page.slug) === session.org.id), ...demoSharedPages(session.org.id)];
     const scope = url.searchParams.get("scope");
     const rows = source.filter((row: any) => !scope || row.scope === scope).sort((a: any, b: any) => b.updated_at.localeCompare(a.updated_at));
     return json({ ...windowRows(rows, url, "pages", 48), scopes: [...new Set(source.map((row: any) => row.scope))] });
@@ -249,12 +276,12 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   if (route === "GET /api/search") {
     const q = (url.searchParams.get("q") || "").trim().toLowerCase();
     const scope = url.searchParams.get("scope");
-    const results = q ? pages.filter((row: any) => pageWorkspaces.get(row.slug) === session.org.id && (!scope || row.scope === scope) && `${row.slug} ${row.title} ${row.body || ""}`.toLowerCase().includes(q)).map((row: any) => ({ ...row, snippet: row.body })) : [];
+    const results = q ? [...pages.filter((row: any) => pageWorkspaces.get(row.slug) === session.org.id), ...demoSharedPages(session.org.id)].filter((row: any) => (!scope || row.scope === scope) && `${row.slug} ${row.title} ${row.body || ""}`.toLowerCase().includes(q)).map((row: any) => ({ ...row, snippet: row.body })) : [];
     return json({ results: results.slice(0, integer(url, "limit", 48, 100)) });
   }
   if (route === "GET /api/page") {
     const slug = url.searchParams.get("slug");
-    const row = pages.find((page: any) => page.slug === slug && pageWorkspaces.get(page.slug) === session.org.id);
+    const row = pages.find((page: any) => page.slug === slug && pageWorkspaces.get(page.slug) === session.org.id) || demoSharedPages(session.org.id).find(page => page.slug === slug);
     return row ? json(details.get(slug!) || { page: row, links: [], timeline: [] }) : json({ error: "not found" }, 404);
   }
   if (route === "POST /api/capture") return capture(req);
@@ -449,7 +476,7 @@ async function handleDemoReview(req: Request, url: URL) {
   return json({ ok: true, item, demo: true }, 200, headers);
 }
 
-function showcaseActivity(profile: ShowcaseProfile, workspaceId = session.org.id) {
+function showcaseActivity(profile: ShowcaseProfile, workspaceId = session.org.id, preview = false) {
   const rows = latestDemoActions(workspaceId).filter((row: any) => !["list_actions", "record_action", "whoami"].includes(row.tool));
   const now = new Date();
   const cutoff = now.getTime() - 15 * 60_000;
@@ -479,7 +506,7 @@ function showcaseActivity(profile: ShowcaseProfile, workspaceId = session.org.id
     last_activity_at: rows.map((row: any) => row.recordedAt).sort().at(-1) || null,
     daily: [...days].map(([date, count]) => ({ date, count })),
     tools: [...categories].map(([category, count]) => ({ category, count })),
-  }, now);
+  }, now, { rows: rows.map((row: any) => ({ id: row.id, agent: row.agent, action_key: row.actionKey, tool: row.tool, resource: row.resource, status: row.status, evidence: row.evidence, recorded_at: row.recordedAt, harness: row.harness })), scope: `demo:${workspaceId}:${profile.slug}`, key: "local-preview-public-activity-key", preview });
 }
 
 async function publicShowcase(req: Request, url: URL): Promise<Response | null> {

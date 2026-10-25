@@ -70,9 +70,21 @@ At widths of 600px and below, native text inputs, selects, and textareas use `--
 | Dialog | `.ds-dialog` on native `dialog` | Title via `aria-labelledby`, native focus management, Escape support, return focus to opener |
 | Feedback | `.ds-notice[data-tone]`, `.ds-toast` | Label state; errors should remain until a user can act; avoid disappearing essential instructions |
 
+### Content fit and keyboard navigation
+
+Buttons, badges, and stickers stay within the available width and wrap long labels and unbroken identifiers. Badge icons do not shrink. Surfaces must also provide shrinkable text columns (`minmax(0, 1fr)` or `min-width: 0`) and reserve the actual width of a status instead of a fixed estimate. At narrow widths, move supporting status/time metadata into normal document flow and keep the visible status label. Do not hide overflow to conceal a clipped control or place status over a title.
+
+`.ds-icon-button` and the legacy `.icon-button` alias share a 44×44px target, including inside compact toolbars. Use an accessible name. `.ds-skip-link` on a normal link exposes a keyboard skip action when focused; point it at a main region with `tabindex="-1"`. Hash-routed apps must handle that local focus action without changing the selected view. Focus on dark navigation uses a paper outline. Dialogs contain overscroll so reaching a drawer's end does not scroll the page behind it. The gallery's content-fit examples exercise constrained badges, long actions, enabled/disabled icon actions, and the skip link.
+
+Search/filter results use the shared `.ds-results` region for every state, with no extra bottom margin on immediately preceding filter controls. An empty filtered search should say there are no matches and offer a clear/reset action; it must not imply the whole workspace has no content. Pending checks show their current busy state without a simultaneous invitation to start the same check.
+
 Use the exact pulse asset `/brand/engram-mark.svg` and its existing variants. Do not redraw, recolor, or replace the canonical mark. The SVG motif is supporting illustration, not a second logo.
 
 ### Product identification
+
+`resourceChip(label, { visual, trailing, onClick, title, actionLabel, disabled })` renders the shared `.ds-resource-chip`. `visual` and optional `trailing` are already-created local DOM nodes (for example `visualIcon(providerVisual('github'))`); label text is never parsed as markup. A callback creates a native button; without one it is a static span. It has a pill boundary, a nonshrinking 16px mark, and an ellipsized label with a full title. Action chips use a 36px desktop target and 44px for coarse pointers. Keep the resource's existing open/copy semantics and supply a descriptive action label. The gallery includes real local marks, redacted labels, a long name, and a disabled action.
+
+Resource identity and tool identity are separate display hints. Resolve a provider from a recognized resource host/scheme or an explicit tool namespace; do not label a local path as GitHub just because it is code. Unknown repositories use the Git/repository treatment. Public chips only show an allowlisted provider and resource type. Repository owners/names, document titles, URLs, private source labels, and arbitrary tool names do not belong in a public chip. Product marks never establish resource visibility or prove a successful operation.
 
 Use the actual locally vendored mark, not a generic icon, initial, invented glyph, remote image URL, or lookalike. `.ds-product-logo` presents the source at 24×24px; `data-size="28"` selects 28×28px. `object-fit: contain` preserves the original drawing proportions within that box. Do not add filters, recolor the source, or stretch it. A neutral `.ds-product-logo-frame` is optional; do not color the backplate to manufacture a status.
 
@@ -181,3 +193,18 @@ Browser opt-out confirmation, completed, and unavailable states use `.ds-mail-pr
 4. Keep operational copy plain and product claims tied to source. Public copy follows `.agents/product-marketing-context.md`; never invent proof, guarantees, pricing, or telemetry.
 5. Check desktop and a narrow viewport, keyboard navigation, reduced motion, readable contrast, and local-only assets. Keep secrets out of mockups, URLs, screenshots, and sample data.
 6. Review surface composition with its owner. All frontend changes must consume or extend this system before user review. Publishing or deployment is a separate user-authorized step; the current redesign is local for review.
+
+Heading groups explicitly preserve the shared h2/h3 type scale above legacy generic heading rules; the supporting-caption gallery demonstrates the card heading.
+
+## Reviewed sharing composition
+
+The Sharing view composes existing cards, heading groups, fields, option rows,
+notices and buttons. Keep the natural-language instruction, recipient choice and
+exact excerpt approval as separate steps with visible explanatory copy. Candidates
+start unchecked. Label semantic suggestions and text fallback distinctly; neither
+is an access grant. Excerpt edits can shorten source text, with errors beside the
+field and a fresh-preview action for changed or expired sources. Pin requests to
+the workspace and discard stale completions on navigation. Mask an isolated agent
+credential, clear it on navigation, and offer explicit copy/replace actions. Use
+status feedback for preview, approval, clipboard, replacement and revocation;
+keep all actions keyboard immediate and stack controls at narrow widths.

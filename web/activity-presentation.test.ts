@@ -12,6 +12,9 @@ class Element {
   setAttribute(key: string, value: string) { this.attrs[key] = value; }
   addEventListener(key: string, value: Function) { this.events[key] = value; }
   append(...children: Element[]) { this.children.push(...children); }
+  set className(value: string) { this.attrs.class = value; }
+  get className(): string { return this.attrs.class || ""; }
+  set textContent(value: string) { this.value = String(value); this.children = []; }
   get textContent(): string { return this.value + this.children.map(child => child.textContent).join(""); }
 }
 function render(work: () => Element) {
@@ -72,10 +75,10 @@ describe("recorded activity presentation", () => {
   });
 
   test("resource descriptors permit explicit web URLs and memory slugs without executable links", () => {
-    expect(resourcePresentation("engram://deployment-approvals")).toEqual({ raw: "engram://deployment-approvals", label: "Deployment approvals", kind: "memory", slug: "deployment-approvals", href: null });
+    expect(resourcePresentation("engram://deployment-approvals")).toEqual({ raw: "engram://deployment-approvals", service: "memory", resourceKind: "memory", label: "Deployment approvals", kind: "memory", slug: "deployment-approvals", href: null });
     expect(resourcePresentation("topics/release-policy", { memory: true })?.slug).toBe("topics/release-policy");
     expect(resourcePresentation("https://github.com/example/repo/pull/42")?.href).toBe("https://github.com/example/repo/pull/42");
-    for (const value of ["javascript:alert(1)", "data:text/html,hello", "file:///etc/passwd", "https://user:password@example.com/", "https://example.com/\\evil", "https://example.com/\npath", "engram://../secret", "engram://%2e%2e/secret", "engram://page?capture=1", "engram://javascript:alert(1)"]) {
+    for (const value of ["javascript:alert(1)", "data:text/html,hello", "file:///etc/passwd", "https://user:password@example.com/", "https://example.com/\\evil", "https://example.com/\npath", "https://github.com/team/%ZZ", "https://github.com/team/%2Frepo", "engram://../secret", "engram://%2e%2e/secret", "engram://page?capture=1", "engram://javascript:alert(1)"]) {
       const descriptor = resourcePresentation(value);
       expect(descriptor?.href).toBeNull();
       expect(descriptor?.slug).toBeNull();
@@ -87,6 +90,58 @@ describe("recorded activity presentation", () => {
     expect(activityPresentation(input).primaryResource).toBeNull();
     expect(activityPresentation({ ...input, resources: [input.resources[0], input.resources[0]] }).primaryResource?.raw).toBe(input.resources[0]);
     expect(activityPresentation({ ...input, resource: input.resources[1] }).primaryResource?.raw).toBe(input.resources[1]);
+  });
+
+  test("shows an unambiguous recorded repository context among several artifacts", () => {
+    const repo = "repo:Ani-HQ/engram";
+    const input = { ...operation, kind: "task", tools: ["github.create_pull_request", "files.write"], resources: [repo, "web/app.js"], actions: [
+      { ...operation.actions[0], tool: "github.create_pull_request", resource: repo },
+      { ...operation.actions[0], id: "2", tool: "files.write", resource: "web/app.js" },
+    ] };
+    expect(activityPresentation(input).primaryResource).toMatchObject({ raw: repo, service: "github", resourceKind: "repository", label: "Ani-HQ/engram" });
+    expect(activityPresentation({ ...input, actions: [{ ...input.actions[0], resource: "elsewhere" }, input.actions[1]] }).primaryResource?.service).toBe("git");
+    const conflicting = { ...input, actions: [input.actions[0], { ...input.actions[0], tool: "gitlab.create_merge_request" }] };
+    expect(activityPresentation(conflicting).primaryResource?.service).toBe("git");
+    expect(activityPresentation({ ...input, resources: [repo, "repo:Another/project"] }).primaryResource).toBeNull();
+  });
+
+  test("grouped cards retain one actual repository context from PR, issue and file URLs", () => {
+    const github = ["https://github.com/Ani-HQ/engram/pull/42", "https://github.com/Ani-HQ/engram/issues/12", "https://github.com/Ani-HQ/engram/blob/main/web/app.js"];
+    const gitlab = ["https://gitlab.com/team/subgroup/project/-/merge_requests/8", "https://gitlab.com/team/subgroup/project/-/issues/3", "https://gitlab.com/team/subgroup/project/-/blob/main/app.js"];
+    const grouped = (resources: string[]) => ({ ...operation, kind: "task", tools: ["files.write", "github.create_pull_request"], resources, actions: [] });
+    for (const url of [...github, ...gitlab]) {
+      expect(activityPresentation(grouped(["web/app.js", url, "docs/notes.md"])).primaryResource?.raw).toBe(url);
+    }
+    expect(activityPresentation(grouped(["web/app.js", ...github])).primaryResource?.raw).toBe(github[0]);
+    expect(activityPresentation(grouped(["web/app.js", ...gitlab])).primaryResource?.raw).toBe(gitlab[0]);
+    expect(activityPresentation(grouped([...github, "https://github.com/Ani-HQ/engram"])).primaryResource?.resourceKind).toBe("repository");
+    for (const resources of [
+      [...github, "https://github.com/another/project/pull/42"],
+      [...github, "https://github.com/another/project/blob/main/app.js"],
+      [...gitlab, "https://gitlab.com/team/another/project/-/issues/3"],
+      [github[0], gitlab[0]],
+    ]) expect(activityPresentation(grouped(resources)).primaryResource).toBeNull();
+    const card = render(() => activityCard(grouped(["web/app.js", github[0]])) as Element);
+    expect(nodes(card).some(node => node.attrs.class?.includes("ds-resource-chip") && node.textContent === "Ani-HQ/engram #42")).toBeTrue();
+  });
+
+  test("resource chips show provider marks without exposing URL query secrets in labels", () => {
+    const raw = "https://github.com/Ani-HQ/engram/pull/42?token=supersecret#review";
+    let selected: any;
+    const input = { ...operation, kind: "task", resources: [raw], tools: ["browser.navigate"], actions: [] };
+    const card = render(() => activityCard(input, { onResource: resource => { selected = resource; } }) as Element);
+    const chip = nodes(card).find(node => node.attrs.class?.includes("ds-resource-chip"))!;
+    expect(chip.attrs.title).toBe("Open resource: Ani-HQ/engram #42");
+    expect(chip.attrs["aria-label"]).toBe("Open resource: Ani-HQ/engram #42");
+    expect(chip.textContent).toBe("Ani-HQ/engram #42");
+    expect(nodes(chip).some(node => node.attrs["data-brand"] === "github")).toBeTrue();
+    expect(chip.textContent).not.toContain("supersecret");
+    chip.events.click();
+    expect(selected.raw).toBe(raw); expect(selected.href).toBe(raw);
+    const local = render(() => activityCard({ ...input, resources: ["web/app.js"], tools: ["github.read_file"] }) as Element);
+    const localChip = nodes(local).find(node => node.attrs.class?.includes("ds-resource-chip"))!;
+    expect(nodes(localChip).some(node => node.attrs["data-brand"] === "github")).toBeFalse();
+    expect(nodes(localChip).some(node => node.attrs["data-icon"] === "file-text")).toBeTrue();
   });
 
   test("orders logical steps by lifecycle start and keeps the source array unchanged", () => {

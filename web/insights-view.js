@@ -2,9 +2,10 @@ import { h } from "./profile.js";
 import { icon } from "./icons.js";
 import { relativeTime } from "./activity-view.js";
 import { citedSources, confidenceLabel, methodLabel } from "./insight-model.js";
+import { statusBadge } from "./design-system.js";
 
 const button = (label, action, attrs = {}) => h("button", { type: "button", onclick: action, ...attrs }, label);
-const badge = text => h("span", { class: "insight-badge" }, text);
+const badge = text => statusBadge(text, { tone: "lilac" });
 const method = value => badge(methodLabel(value));
 
 export function aiConfiguration(external = {}, { settings = true } = {}) {
@@ -45,7 +46,7 @@ export function attentionResults(data, { onSource, onActivity, onCopy }) {
       finding.method === "model" && h("p", { class: "insight-caveat" }, "Confidence is the model’s judgment strength, not a verified probability."),
       sources(result, finding.sources || [], onSource),
       h("div", { class: "insight-card-actions" }, (finding.activityIds || []).map((id, index) => button(["Open activity", finding.activityIds.length > 1 ? ` ${index + 1}` : "", icon("arrow-up-right", { size: 12 })], () => onActivity(id), { class: "text small" }))),
-    )) : h("div", { class: "insight-clear" }, icon("circle-check", { size: 20 }), h("div", {}, h("h2", {}, "No findings in the checked activity"), h("p", {}, "This means the available checks found no matching patterns. Activity outside Engram’s coverage is not included.")))),
+    )) : h("div", { class: "insight-clear ds-notice" }, icon("circle-check", { size: 20 }), h("div", {}, h("h2", {}, "No findings in the checked activity"), h("p", {}, "This means the available checks found no matching patterns. Activity outside Engram’s coverage is not included.")))),
     result.brief && h("section", { class: "insight-brief" }, h("div", { class: "insight-section-heading" }, h("h2", {}, "Handoff brief"), method(result.brief.method)),
       h("p", { class: "detail-note" }, result.brief.method === "model" ? `Generated from cited actions${result.brief.model ? ` with ${result.brief.model}` : ""}. Verify it before sharing.` : "An extract from recorded work and results, without generated conclusions."),
       h("p", { class: "insight-brief-text" }, result.brief.text), sources(result, result.brief.sources || [], onSource),

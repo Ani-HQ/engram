@@ -3,6 +3,7 @@ import { icon } from "./icons.js";
 import { renderMarkdown } from "./markdown.js";
 import { agentVisual, visualIcon } from "./tooling.js";
 import { memoryDocument, sourceExcerpt } from "./memory-document-model.js";
+import { statusBadge } from "./design-system.js";
 
 const action = (label, fn, attrs = {}) => h("button", { type: "button", onclick: fn, ...attrs }, label);
 function dateLabel(value, options = { day: "numeric", month: "short", year: "numeric" }) {
@@ -24,6 +25,9 @@ function entryDate(entry) {
 /** A reader over the returned memory, without inference or content rewriting. */
 export function memoryDocumentView(data, { copyControl } = {}) {
   const page = data?.page || {}, model = memoryDocument(page);
+  const snapshot = page.type === "shared-context";
+  const snapshotBadge = snapshot ? statusBadge("Read-only snapshot", { tone: "info" }) : null;
+  if (snapshotBadge) snapshotBadge.prepend(icon("shield-check", { size: 13 }));
   const root = h("article", { class: "memory-document" });
   const titleText = (model.title === model.slug ? model.slug.split("/").filter(Boolean).at(-1) : model.title) || model.slug || "Untitled memory";
   const title = h("h2", { id: "detail-title", class: "memory-document-title" }, titleText);
@@ -31,8 +35,9 @@ export function memoryDocumentView(data, { copyControl } = {}) {
     model.entries.length ? h("span", {}, icon("layers", { size: 13 }), `${model.entries.length} ${model.entries.length === 1 ? "entry" : "entries"}`) : h("span", {}, icon("file-text", { size: 13 }), "Saved memory"),
     dateLabel(page.updated_at) && h("time", { datetime: page.updated_at, title: timestamp(page.updated_at) }, icon("clock", { size: 13 }), `Updated ${dateLabel(page.updated_at)}`));
   const header = h("header", { class: "memory-document-header" },
-    h("div", { class: "memory-document-topline" }, h("span", { class: "memory-document-symbol", "aria-hidden": "true" }, icon("file-text", { size: 20 }))),
-    title, h("p", { class: "memory-document-path" }, model.slug), metadata);
+    h("div", { class: "memory-document-topline" }, h("span", { class: "memory-document-symbol", "aria-hidden": "true" }, icon("file-text", { size: 20 })), snapshotBadge),
+    title, h("p", { class: "memory-document-path" }, model.slug), metadata,
+    snapshot && h("p", { class: "detail-note" }, "Approved snapshot. Changes and access are managed by the sharing owner."));
 
   const read = h("section", { id: "memory-reader-panel", role: "tabpanel", "aria-labelledby": "memory-reader-tab", tabindex: "0", class: "memory-reader-panel" });
   const source = h("section", { id: "memory-source-panel", role: "tabpanel", "aria-labelledby": "memory-source-tab", tabindex: "0", hidden: true, class: "memory-source-panel" },

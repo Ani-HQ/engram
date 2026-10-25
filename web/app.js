@@ -18,6 +18,8 @@ import { agentConnectionGuide, accessKeyConfiguration, onboardingProgress, shoul
 import { parseInviteEntry, parseSignupPolicy, signupAuthMode, signupEntryMode, emailLinkRecovery } from "./signup-model.js";
 import { signupView } from "./signup-view.js";
 import { signupAdminPanel } from "./signup-admin.js";
+import { sharingView } from "./sharing-view.js";
+import { statusBadge } from "./design-system.js";
 import { createJevSettingsPanel } from "./jev-settings.js";
 import { createAccessClock, friendAccessCard, friendAccessPresentation } from "./access-view.js";
 import { applyWorkspaceName, createWorkspaceNameEditor, captureSetupFocus, restoreSetupFocus } from "./workspace-name.js";
@@ -44,7 +46,9 @@ let sessionMutation = false, authEpoch = 0;
 let insightTimer, pendingInsightRun = false;
 let provisioningTimer, provisioningChecking = false, provisioningError = "", provisioningAttempt = 0;
 let connectionDraft = null, connectionFocusPending = null, skipDetailReturnFocus = false;
+const connectionKeyRequests = new Map();
 let signupPolicy = null, signupPolicyRequest = null, authPanel = null, signupAdmin = null, jevSettingsPanel = null, pendingInviteEntry = null;
+let sharingPanel = null;
 let workspaceNameEpoch = 0;
 let accessSnapshot = null, accessClock = () => null, accessRefreshTimer, accessRequest = 0, accessError = "", accessRefreshing = false;
 const setupByWorkspace = new Map();
@@ -161,7 +165,7 @@ function showDetail(title, body, { activity = false, memory = false, reporting =
 }
 function empty(title, description, action) { return el("div", { class: "empty" }, el("div", { class: "empty-icon" }, icon("activity", { size: 22 })), el("h2", {}, title), el("p", {}, description), action); }
 function heading(title, description, side) {
-  const labels = { activity: "THE WORK, IN VIEW", attention: "TAKE A CLOSER LOOK", memory: "GOOD CONTEXT LIVES HERE", connect: "BRING YOUR AGENTS", showcase: "A WINDOW INTO THE WORK", workspace: "YOUR SPACE. YOUR RULES.", billing: "THE PRACTICAL BITS" };
+  const labels = { activity: "THE WORK, IN VIEW", attention: "TAKE A CLOSER LOOK", memory: "GOOD CONTEXT LIVES HERE", connect: "BRING YOUR AGENTS", sharing: "SHARE THE USEFUL SLICE", showcase: "A WINDOW INTO THE WORK", workspace: "YOUR SPACE. YOUR RULES.", billing: "THE PRACTICAL BITS" };
   return el("div", { class: "page-heading" }, el("div", { class: "ds-heading-group" }, el("span", { class: "ds-eyebrow page-eyebrow" }, labels[state.view] || "YOUR WORKSPACE"), el("h1", {}, title), el("p", {}, description)), side);
 }
 function notice(message, retry) {
@@ -178,7 +182,7 @@ function writeRoute() {
 }
 function readRoute() {
   const [view, query = ""] = location.hash.slice(1).split("?");
-  state.view = ["activity", "attention", "memory", "connect", "showcase", "workspace", "billing"].includes(view) ? view : "activity";
+  state.view = ["activity", "attention", "memory", "connect", "sharing", "showcase", "workspace", "billing"].includes(view) ? view : "activity";
   if (state.view !== "connect") connectionFocusPending = null;
   const params = new URLSearchParams(query);
   state.activityKind = normalizeActivityKind(params.get("kind"));
@@ -263,6 +267,7 @@ async function refreshSetup() {
 }
 function render() {
   const setupFocus = captureSetupFocus(document.querySelector("#setup-slot"));
+  sharingPanel?.dispose(); sharingPanel = null;
   authPanel?.dispose(); authPanel = null;
   signupAdmin?.dispose(); signupAdmin = null;
   jevSettingsPanel?.dispose(); jevSettingsPanel = null;
@@ -274,12 +279,14 @@ function render() {
     return;
   }
   const orgs = state.session.orgs?.length ? state.session.orgs : [state.session.org];
-  const titles = { activity: "Activity", attention: "Attention", memory: "Memory", connect: "Connections", showcase: "Public profile", workspace: "Workspace", billing: "Plan & billing" };
+  const titles = { activity: "Activity", attention: "Attention", memory: "Memory", connect: "Connections", sharing: "Sharing", showcase: "Public profile", workspace: "Workspace", billing: "Plan & billing" };
   const navigation = [["activity", "Activity", "activity"], ["attention", "Attention", "layers"], ["memory", "Memory", "brain"], ["connect", "Connections", "plug"]];
+  if (["owner", "member"].includes(state.session.role)) navigation.push(["sharing", "Sharing", "share-2"]);
   if (state.session.role === "owner") navigation.push(["showcase", "Public profile", "globe"]);
   if (["owner", "member"].includes(state.session.role)) navigation.push(["workspace", "Workspace", "settings-2"]);
   if (state.session.role === "owner") navigation.push(["billing", "Plan & billing", "file-text"]);
   root.replaceChildren(
+    el("a", { class: "ds-button ds-skip-link", href: "#main", onclick: event => { event.preventDefault(); const main = document.querySelector("#main"); main?.focus(); main?.scrollIntoView(); } }, "Skip to content"),
     ...(state.demo ? [el("div", { class: "demo" }, "LOCAL PREVIEW", el("span", {}, "Sample data · No connected accounts are being monitored"))] : []),
     el("div", { class: "app-shell" },
       el("aside", { class: "sidebar", "aria-label": "Workspace navigation" },
@@ -290,11 +297,19 @@ function render() {
       el("div", { class: "main-column" },
         el("div", { class: "app-topbar" }, el("div", { class: "breadcrumbs" }, el("span", {}, state.session.org.name), icon("chevron-right", { size: 13 }), el("span", {}, titles[state.view])),
           el("div", { class: "topbar-actions" }, setupState() && button("Get started", openSetup, { class: "text small setup-resume", "aria-controls": "setup-slot" }), state.session.role === "owner" && state.view !== "showcase" && button([icon("share-2", { size: 14 }), "Share activity"], () => { location.hash = "showcase"; }, { class: "small" }), iconButton("log-out", "Sign out", signOut, { class: "icon-button mobile-signout" }))),
-        el("main", { class: "workspace", id: "main" }, el("div", { id: "friend-access-slot" }), el("div", { id: "setup-slot" }, setupPanel()), state.view === "activity" ? activityView() : state.view === "attention" ? attentionView() : state.view === "memory" ? memoryView() : state.view === "showcase" ? showcaseView() : ["workspace", "billing"].includes(state.view) ? accountView() : connectView()))));
+        el("main", { class: "workspace", id: "main", tabindex: -1 }, el("div", { id: "friend-access-slot" }), el("div", { id: "setup-slot" }, setupPanel()), state.view === "activity" ? activityView() : state.view === "attention" ? attentionView() : state.view === "memory" ? memoryView() : state.view === "sharing" ? selectiveSharingView() : state.view === "showcase" ? showcaseView() : ["workspace", "billing"].includes(state.view) ? accountView() : connectView()))));
   renderFriendAccess();
   if (state.view === "showcase" && state.showcase?.profile.published) watchPreview();
   setSessionControlsBusy(sessionMutation);
   restoreSetupFocus(document.querySelector("#setup-slot"), setupFocus);
+  requestAnimationFrame(revealCurrentNavigation);
+}
+function revealCurrentNavigation() {
+  const nav = document.querySelector(".nav"), active = nav?.querySelector('[aria-current="page"]');
+  if (!active || nav.scrollWidth <= nav.clientWidth) return;
+  const bounds = nav.getBoundingClientRect(), selected = active.getBoundingClientRect();
+  if (selected.left < bounds.left) nav.scrollLeft -= bounds.left - selected.left;
+  else if (selected.right > bounds.right) nav.scrollLeft += selected.right - bounds.right;
 }
 function renderFriendAccess() {
   clearTimeout(accessRefreshTimer);
@@ -334,11 +349,13 @@ function watchPreview() {
   previewWatcher = watchPublicActivity(state.showcase.urls.stream || `${state.showcase.urls.json}/stream`, {
     snapshot: data => {
       if (state.session?.org.id !== orgId || state.view !== "showcase" || data.profile.slug !== slug) return;
-      state.showcase.preview = data;
+      // The owner endpoint can preview safe events before opting in. An
+      // aggregate-only public update must not erase that private preview.
+      state.showcase.preview = { ...data, activity: data.activity?.enabled ? data.activity : state.showcase.preview?.activity || data.activity };
       const card = document.querySelector(".profile-preview-content .public-profile");
-      if (card) updateProfileCard(card, { ...data, profile: { ...data.profile, ...state.showcaseDraft } });
+      if (card) updateProfileCard(card, showcasePreviewData(state.showcase.preview));
     },
-    state: value => { if (status?.isConnected) status.textContent = { live: "Live public preview", connecting: "Connecting…", reconnecting: "Reconnecting…", paused: "Preview paused", closed: "Preview disconnected" }[value] || "Public preview"; },
+    state: value => { if (status?.isConnected) status.textContent = Boolean(state.showcaseDraft?.showActivity) !== Boolean(state.showcase?.profile.showActivity) ? "Unsaved sharing preview" : { live: "Live public preview", connecting: "Connecting…", reconnecting: "Reconnecting…", paused: "Preview paused", closed: "Preview disconnected" }[value] || "Public preview"; },
     closed: () => { if (status?.isConnected) status.textContent = "Preview changed · reload to reconnect"; },
   });
   if (document.hidden) previewWatcher.pause();
@@ -485,7 +502,7 @@ async function loadActivity({ append = false, quiet = false } = {}) {
     const optionsChanged = identitiesChanged || JSON.stringify([state.agents, state.tools]) !== JSON.stringify([data.agents, data.tools]);
     state.agents = data.agents ?? []; state.tools = data.tools ?? []; state.more = Boolean(data.more); state.demo ||= Boolean(data.demo); state.error = "";
     state.activityStats = data.stats || {}; state.checkedAt = data.checkedAt;
-    if (!quiet) announcements.textContent = `${state.activities.length} activities loaded`;
+    if (!quiet) announcements.textContent = `${state.activities.length} ${state.activities.length === 1 ? "activity" : "activities"} loaded`;
     if (optionsChanged) {
       for (const [label, values, selected, placeholder] of [["Filter by agent", state.agents, state.filters.agent, "All agents"], ["Filter by tool", state.tools, state.filters.tool, "All tools"]]) {
         const control = document.querySelector(`select[aria-label="${label}"]`);
@@ -605,7 +622,7 @@ function attentionView() {
     state.insightsActivityId && el("div", { class: "insight-scope" }, icon("layers", { size: 13 }), "Checking one activity", button("Check all activity", () => { state.insightsActivityId = ""; state.insights = null; render(); }, { class: "text small", disabled: pending })),
     el("form", { class: "insight-toolbar", onsubmit: event => { event.preventDefault(); runInsights(); } }, el("div", { class: "search-field" }, icon("search", { size: 15 }), query), run),
     el("p", { class: "detail-note" }, "Optional: describe an intent to find related work. The result identifies whether matching used text or a configured model."),
-    el("div", { id: "insights-results", "aria-busy": String(state.insightBusy) }, insightResults()),
+    el("div", { id: "insights-results", class: "ds-results", "aria-busy": String(state.insightBusy || pending) }, insightResults()),
   ];
 }
 function insightResults() {
@@ -613,14 +630,14 @@ function insightResults() {
   return [state.insightError && notice(state.insightError, () => loadInsights()),
     pending && el("div", { class: "insight-job", role: "status" }, icon("loader-circle", { size: 16, class: "spin" }), el("div", {}, job.status === "queued" ? "Checks queued" : "Checking recorded activity", el("p", {}, "This is a read-only check. Your agents and memory are not changed."))),
     ["failed", "cancelled"].includes(job?.status) && notice(job.status === "cancelled" ? "This check was cancelled. You can run it again." : "The check could not finish. Run checks to try again."),
-    !state.insights && state.insightBusy ? skeletonRows(3) : attentionResults(state.insights, { onSource: openInsightSource, onActivity: id => openInsightSource(id), onCopy: async text => { if (await copy(text)) toast("Brief copied"); } }),
+    !state.insights && state.insightBusy ? skeletonRows(3) : (state.insights?.result || !pending) && attentionResults(state.insights, { onSource: openInsightSource, onActivity: id => openInsightSource(id), onCopy: async text => { if (await copy(text)) toast("Brief copied"); } }),
     state.insights?.external && aiConfiguration(state.insights.external),
   ];
 }
 function refreshInsights() {
   const target = document.querySelector("#insights-results");
   if (state.view !== "attention" || !target) return;
-  target.replaceChildren(...insightResults().flat(Infinity).filter(Boolean)); target.setAttribute("aria-busy", String(state.insightBusy));
+  target.replaceChildren(...insightResults().flat(Infinity).filter(Boolean)); target.setAttribute("aria-busy", String(state.insightBusy || ["queued", "running"].includes(state.insights?.job?.status)));
   const run = document.querySelector(".insight-toolbar button");
   if (run) { const pending = ["queued", "running"].includes(state.insights?.job?.status); run.disabled = state.insightBusy || pending || state.session.canWrite === false; run.replaceChildren(icon(pending ? "loader-circle" : "layers", { size: 14, class: pending ? "spin" : "" }), pending ? "Checking…" : "Run checks"); }
 }
@@ -674,21 +691,21 @@ function memoryView() {
   const tabs = el("div", { class: "memory-tabs", role: "group", "aria-label": "Memory views" }, ["saved", "review"].map(tab => button(tab === "saved" ? "Saved memory" : "Review proposals", () => { if (state.memoryTab === tab) return; state.memoryTab = tab; state.error = ""; state.more = false; ++generation; writeRoute(); render(); loadView(); }, { "aria-pressed": String(state.memoryTab === tab) })));
   if (state.memoryTab === "review") return [heading("Memory", "Review proposed relationships and organization before they change shared memory."), tabs,
     el("div", { class: "filters" }, select("Review state", state.reviewState, [["pending", "Pending"], ["deferred", "Deferred"], ["applied", "Applied"], ["rejected", "Rejected"]], value => { state.reviewState = value; writeRoute(); loadReviews(); })),
-    el("div", { id: "review-results", "aria-busy": String(state.loading) }, reviewResults())];
+    el("div", { id: "review-results", class: "ds-results", "aria-busy": String(state.loading) }, reviewResults())];
   return [heading("Memory", "Keep the useful bits: decisions, preferences, and context for whatever comes next.", state.session.canWrite !== false && button([icon("plus", { size: 15 }), "Add memory"], captureMemory, { class: "primary small" })),
     tabs,
     el("div", { class: "filters" }, el("div", { class: "search-field memory-search" }, icon("search", { size: 16 }), el("input", { type: "search", class: "search", placeholder: "Search memory…", "aria-label": "Search memory", value: state.memoryQuery, oninput: event => { state.memoryQuery = event.target.value; clearTimeout(searchTimer); searchTimer = setTimeout(loadMemories, 250); } }), el("kbd", {}, "/"))),
-    el("div", { id: "memory-results", "aria-busy": String(state.loading) }, memoryResults())];
+    el("div", { id: "memory-results", class: "ds-results", "aria-busy": String(state.loading) }, memoryResults())];
 }
 function memoryResults() {
   return [state.error && notice(state.error, loadMemories),
     ...state.memories.map(memory => button([
       el("span", { class: "memory-icon" }, icon("file-text", { size: 19 })),
-      el("div", {}, el("span", { class: "action-title" }, memory.title || memory.slug), el("p", { class: "muted" }, memory.snippet || memory.slug)),
+      el("span", { class: "memory-row-copy" }, el("strong", { class: "action-title" }, memory.title || memory.slug), memory.type === "shared-context" && statusBadge("Approved snapshot · read-only", { tone: "lilac" }), el("span", { class: "muted" }, memory.snippet || (memory.type === "shared-context" ? "An approved excerpt shared with this workspace." : memory.slug))),
       el("span", { class: "memory-date" }, memory.updated_at ? day(memory.updated_at) : icon("chevron-right", { size: 14 })),
     ], () => memoryDetail(memory.slug), { class: "memory-row ds-card" })),
-    !state.memories.length && !state.error && (state.loading ? skeletonRows(4) : empty("Keep the good bits.", "Save a decision, preference, or project detail here. Your connected agents can pick it up later.", state.session.canWrite !== false && button([icon("plus", { size: 14 }), "Add your first memory"], captureMemory))),
-    state.more && button("Load more", () => loadMemories({ append: true }), { class: "small", disabled: state.loading })];
+    !state.memories.length && !state.error && (state.loading ? skeletonRows(4) : state.memoryQuery ? empty("No matching memory", "Try another search or clear it to see your saved memory.", button("Clear search", () => { state.memoryQuery = ""; const search = document.querySelector('input[aria-label="Search memory"]'); if (search) { search.value = ""; search.focus(); } loadMemories(); })) : empty("Keep the good bits.", "Save a decision, preference, or project detail here. Your connected agents can pick it up later.", state.session.canWrite !== false && button([icon("plus", { size: 14 }), "Add your first memory"], captureMemory))),
+    state.more && button(state.loading ? "Loading…" : "Load more", () => loadMemories({ append: true }), { class: "small", disabled: state.loading })];
 }
 function refreshMemoryResults() {
   const target = document.querySelector("#memory-results");
@@ -721,8 +738,8 @@ async function memoryDetail(slug) {
 }
 function captureMemory() {
   const workspaceId = state.session.org.id;
-  const title = el("input", { placeholder: "A short title", required: true, maxlength: 160 });
-  const text = el("textarea", { placeholder: "A decision, useful context, or something to remember…", required: true });
+  const title = el("input", { name: "title", autocomplete: "off", placeholder: "A short title…", required: true, maxlength: 160 });
+  const text = el("textarea", { name: "memory", placeholder: "A decision, useful context, or something to remember…", required: true });
   const save = el("button", { class: "primary", type: "submit" }, "Save memory");
   const feedback = el("p", { class: "detail-note", role: "alert" });
   showDetail("New memory", el("form", { class: "stack", onsubmit: async event => {
@@ -793,13 +810,22 @@ async function reviewDetail(id) {
   }
 }
 function connectView() {
-  const workspaceId = state.session.org.id, scopedApi = workspaceApi(workspaceId);
+  const workspaceId = state.session.org.id, epoch = authEpoch, scopedApi = workspaceApi(workspaceId);
+  const requestKey = `${epoch}:${workspaceId}`;
+  const isCurrent = () => authEpoch === epoch && state.session?.org.id === workspaceId;
+  const creating = connectionKeyRequests.has(requestKey);
   const canConnect = ["owner", "member"].includes(state.session.role);
-  const name = el("input", { placeholder: "e.g. mac-claude", value: connectionDraft?.name || "", required: true, maxlength: 100, name: "agent-name" });
+  const name = el("input", { placeholder: "e.g. mac-claude…", value: connectionDraft?.name || "", required: true, maxlength: 100, name: "agent-name", autocomplete: "off", spellcheck: "false", autocapitalize: "none", "aria-describedby": "connection-key-feedback" });
   const source = select("Agent source", connectionDraft?.harness || "", [["", "Choose a source"], ...agentSources, ["vscode", "VS Code"]], () => {});
   source.required = true;
   const permission = select("Connection permission", connectionDraft?.canWrite === false ? "read" : "write", [["read", "Read only"], ["write", "Read and write"]], () => {});
-  const mint = el("button", { class: "primary", type: "submit" }, icon("plus", { size: 15 }), "Create connection");
+  const mint = el("button", { class: "primary", type: "submit", disabled: creating }, ...(creating ? [el("span", { class: "ds-spinner", "aria-hidden": "true" }), "Creating key…"] : [icon("plus", { size: 15 }), "Create access key"]));
+  name.readOnly = creating; source.disabled = creating; permission.disabled = creating;
+  const keyFeedback = el("p", { id: "connection-key-feedback", class: "form-feedback detail-note ds-notice", "data-tone": "danger", role: "alert" }, connectionDraft?.error || "");
+  const retainDraft = () => { if (sessionMutation || !isCurrent() || !name.isConnected) return; connectionDraft = { name: name.value, harness: source.value, canWrite: permission.value === "write" }; keyFeedback.textContent = ""; };
+  name.addEventListener("input", retainDraft);
+  source.addEventListener("change", retainDraft);
+  permission.addEventListener("change", retainDraft);
   return el("div", { class: "connect-layout" },
     heading("Connections", "Give each agent a way in. See its permissions and when it last called Engram.", iconButton("refresh-cw", "Refresh connections", loadConnections, { disabled: state.loading })),
     state.error && notice(state.error, loadConnections),
@@ -817,12 +843,20 @@ function connectView() {
     el("h3", {}, "MCP endpoint"), el("p", { class: "detail-note" }, "Add this URL as a custom connector in your agent. Sign in when prompted."),
     el("div", { class: "endpoint" }, el("code", {}, state.mcp || `${location.origin}/mcp`), copyButton("Copy", () => state.mcp || `${location.origin}/mcp`)),
     canConnect && el("div", { class: "section" }, el("h2", {}, "Create an access key"), el("p", {}, "For agents that use a key instead of sign-in. Give each installation a name so its calls stay attributable."),
-      el("form", { class: "inline-form connection-key-form", id: "connection-key-form", onsubmit: async event => {
-        event.preventDefault(); busy(mint, "Connecting…", true);
-        try { const data = await scopedApi.mintToken({ name: name.value, harness: source.value, canWrite: permission.value === "write" }); if (workspaceId !== state.session?.org.id) return; connectionDraft = null; state.token = data; tokenDetail(data); name.value = ""; loadConnections(); }
-        catch (error) { if (workspaceId !== state.session?.org.id) return; if (error instanceof AuthError) return expired("Your session expired. Please sign in again."); toast(errorMessage(error)); }
-        finally { busy(mint, "Create connection", false); }
-      } }, field("Agent name", name), field("Source", source), field("Permission", permission), mint)),
+      el("form", { class: "inline-form connection-key-form", id: "connection-key-form", "aria-busy": String(creating), onsubmit: async event => {
+        event.preventDefault(); if (sessionMutation || !isCurrent() || mint.disabled || connectionKeyRequests.has(requestKey)) return;
+        retainDraft(); const input = { name: name.value, harness: source.value, canWrite: permission.value === "write" };
+        const request = {}; connectionKeyRequests.set(requestKey, request);
+        busy(mint, "Creating key…", true); name.readOnly = true; source.disabled = true; permission.disabled = true;
+        const form = event.currentTarget; form.setAttribute("aria-busy", "true");
+        try { const data = await scopedApi.mintToken(input); if (!isCurrent()) return; connectionDraft = null; state.token = data; tokenDetail(data); name.value = ""; loadConnections(); }
+        catch (error) { if (!isCurrent()) return; if (error instanceof AuthError) return expired("Your session expired. Please sign in again."); connectionDraft = { ...connectionDraft, error: errorMessage(error) }; keyFeedback.textContent = errorMessage(error); }
+        finally {
+          if (connectionKeyRequests.get(requestKey) === request) connectionKeyRequests.delete(requestKey);
+          busy(mint, "Create access key", false); name.readOnly = false; source.disabled = false; permission.disabled = false; form.setAttribute("aria-busy", "false");
+          if (isCurrent() && state.view === "connect" && !form.isConnected) render();
+        }
+      } }, field("Agent name", name), field("Source", source), field("Permission", permission), mint, keyFeedback)),
     el("div", { class: "section" }, el("h2", {}, "Task reporting"), el("p", {}, "Memory access and task reporting are separate. An agent needs write access and a reporting workflow to send task progress and results."), button("Set up reporting", taskReportingHelp, { class: "small" })),
     el("div", { class: "section" }, el("h2", {}, "One history, two ways to use it"),
       el("p", {}, "Ask a connected agent to show activity by agent, tool, resource, or result. The Activity view reads the same records."),
@@ -883,7 +917,7 @@ function focusConnectionKey(afterLoad = false) {
 function connectionSource(token) {
   const workspaceId = state.session.org.id;
   const source = select("Agent source", token.harness || "other", agentSources, () => {});
-  const sourceLabel = el("input", { value: token.sourceLabel || "", maxlength: 100, placeholder: "Optional source label" });
+  const sourceLabel = el("input", { name: "source-label", value: token.sourceLabel || "", autocomplete: "off", maxlength: 100, placeholder: "Optional source label…" });
   const feedback = el("p", { class: "detail-note", role: "alert" });
   const save = el("button", { type: "submit", class: "primary" }, "Save source");
   showDetail("Connection source", el("form", { class: "stack", onsubmit: async event => {
@@ -938,14 +972,15 @@ function disconnect(name) {
   showDetail("Connection", [el("h2", { id: "detail-title" }, `Disconnect ${name}?`), el("p", { class: "detail-note" }, "This revokes its access to Engram. Its existing activity and memory stay available."), confirmButton]);
 }
 function showcaseView() {
-  if (state.session.role !== "owner") return [heading("Public profile", "A shareable view of your agents’ work."), empty("Managed by your workspace owner", "Only workspace owners can publish activity totals.")];
-  if (!state.showcase) return [heading("Public profile", "Share the shape of your agents’ work. Activity counts are public; task content stays private."), state.error ? notice(state.error, loadShowcase) : profileSkeleton()];
+  if (state.session.role !== "owner") return [heading("Public profile", "A shareable view of your agents’ work."), empty("Managed by your workspace owner", "Only workspace owners can publish a profile and choose its sharing scope.")];
+  if (!state.showcase) return [heading("Public profile", "A live window into your agents’ work, with private details left out."), state.error ? notice(state.error, loadShowcase) : profileSkeleton()];
   const draft = state.showcaseDraft;
   const saved = state.showcase.profile;
   const publicUrl = saved.published ? state.showcase.urls.page : `${location.origin}/u/${draft.slug || "your-name"}`;
   const name = el("input", { name: "displayName", autocomplete: "name", value: draft.displayName, placeholder: "Your name", required: true, maxlength: 80 });
-  const slug = el("input", { name: "slug", value: draft.slug, placeholder: "your-name", required: true, minlength: 3, maxlength: 48, pattern: "[a-z0-9]+(?:-[a-z0-9]+)*", "aria-describedby": "slug-hint" });
+  const slug = el("input", { name: "slug", value: draft.slug, autocomplete: "off", autocapitalize: "none", spellcheck: "false", placeholder: "your-name", required: true, minlength: 3, maxlength: 48, pattern: "[a-z0-9]+(?:-[a-z0-9]+)*", "aria-describedby": "slug-hint" });
   const bio = el("textarea", { name: "bio", maxlength: 160, rows: 3, placeholder: "A line about you and the work your agents do.", "aria-describedby": "bio-hint" }, draft.bio);
+  const showActivity = el("input", { type: "checkbox", name: "showActivity", checked: Boolean(draft.showActivity), "aria-describedby": "activity-sharing-note" });
   const feedback = el("div", { role: "alert", class: "form-feedback" });
   const save = el("button", { type: "submit", class: "primary" }, icon("check", { size: 15 }), "Save changes");
   const publish = button([icon(saved.published ? "eye-off" : "globe", { size: 15 }), saved.published ? "Unpublish" : "Publish profile"], async () => {
@@ -954,29 +989,32 @@ function showcaseView() {
   }, { class: saved.published ? "small" : "primary small" });
   const preview = el("div", { class: "profile-preview-content" }, showcasePreview());
   const update = () => {
-    state.showcaseDraft = { ...draft, displayName: name.value, slug: slug.value, bio: bio.value };
+    state.showcaseDraft = { ...draft, displayName: name.value, slug: slug.value, bio: bio.value, showActivity: showActivity.checked };
     preview.replaceChildren(showcasePreview());
     const count = document.querySelector("#bio-hint"); if (count) count.textContent = `${bio.value.length} / 160`;
     const changedAddress = document.querySelector("#slug-change-hint"); if (changedAddress) changedAddress.hidden = !(saved.published && slug.value !== saved.slug);
     const permalink = document.querySelector("#profile-permalink"); if (permalink && !saved.published) permalink.textContent = `${location.origin}/u/${slug.value || "your-name"}`;
-    save.disabled = ["slug", "displayName", "bio"].every(key => state.showcaseDraft[key] === saved[key]);
+    const previewStatus = document.querySelector(".preview-label > span"); if (previewStatus) previewStatus.textContent = Boolean(showActivity.checked) !== Boolean(saved.showActivity) ? "Unsaved sharing preview" : "What others will see";
+    save.disabled = ["slug", "displayName", "bio"].every(key => state.showcaseDraft[key] === saved[key]) && Boolean(showActivity.checked) === Boolean(saved.showActivity);
   };
-  [name, slug, bio].forEach(node => node.addEventListener("input", update));
-  save.disabled = ["slug", "displayName", "bio"].every(key => draft[key] === saved[key]);
+  [name, slug, bio, showActivity].forEach(node => node.addEventListener("input", update));
+  save.disabled = ["slug", "displayName", "bio"].every(key => draft[key] === saved[key]) && Boolean(draft.showActivity) === Boolean(saved.showActivity);
   const form = el("form", { class: "showcase-form stack", onsubmit: async event => { event.preventDefault(); await persistShowcase(saved.published, save, feedback); } },
     field("Display name", name),
     field("Profile URL", el("div", { class: "slug-field" }, el("span", {}, "/u/"), slug)),
     el("p", { id: "slug-hint", class: "field-hint" }, "3–48 lowercase letters, numbers, or hyphens."),
     el("p", { id: "slug-change-hint", class: "field-hint", hidden: true }, "Changing this address makes the old link unavailable."),
-    field("About you", bio), el("p", { class: "field-hint counter", id: "bio-hint" }, `${bio.value.length} / 160`), feedback,
+    field("About you", bio), el("p", { class: "field-hint counter", id: "bio-hint" }, `${bio.value.length} / 160`),
+    el("label", { class: "ds-option" }, showActivity, el("span", {}, el("strong", {}, "Share a redacted activity stream"), el("small", { id: "activity-sharing-note" }, "Show agent products, services, broad action labels, status, and receipt times. Task text, repository and document names, URLs, and personal agent aliases stay private."))),
+    el("p", { class: "field-hint" }, "Off shares counts and broad categories only. Review the preview before saving; changes to a published profile become public when saved."), feedback,
     el("div", { class: "form-actions" }, save, el("span", { class: "field-hint" }, saved.published ? "Changes update your public page." : "Saving keeps your profile private.")));
   const urls = state.showcase.urls;
   return [
-    heading("Public profile", "Share the shape of your agents’ work. Activity counts are public; task content stays private.", publish),
+    heading("Public profile", "A live window into your agents’ work, with private details left out.", publish),
     state.error && notice(state.error),
     el("div", { class: "showcase-layout" },
       el("div", { class: "showcase-controls" },
-        el("section", { class: "visibility-panel" }, el("div", { class: "visibility-title" }, icon(saved.published ? "globe" : "eye-off", { size: 17 }), el("strong", {}, saved.published ? "Your profile is public" : "Only you can see this"), el("span", { class: "visibility-badge" }, saved.published ? "Published" : "Draft")), el("p", {}, `Shows live working counts and activity totals for ${state.session.org.name}. Task content, resources, and agent names stay private.`)),
+        el("section", { class: "visibility-panel" }, el("div", { class: "visibility-title" }, icon(saved.published ? "globe" : "eye-off", { size: 17 }), el("strong", {}, saved.published ? "Your profile is public" : "Only you can see this"), el("span", { class: "visibility-badge" }, saved.published ? "Published" : "Draft")), el("p", {}, `Shares activity from ${state.session.org.name}. ${saved.showActivity ? "Agent products and broad action labels are included." : "The saved sharing scope includes counts and broad categories only."} Original task text and resource names are not published.`)),
         form,
         el("section", { class: "share-links section" }, el("h3", {}, "Share anywhere"), el("p", {}, "Share the live profile link, or connect the same updates to your website."),
           el("div", { class: "share-link-row" }, el("span", { class: "share-link-label" }, icon("link", { size: 14 }), "Profile"), el("code", { id: "profile-permalink" }, publicUrl), copyButton("Copy", () => state.showcase.urls.page, { disabled: !saved.published })),
@@ -984,7 +1022,7 @@ function showcaseView() {
           saved.published && el("div", { class: "share-link-row" }, el("span", { class: "share-link-label" }, icon("activity", { size: 14 }), "Live API"), el("code", {}, urls.stream || `${urls.json}/stream`), copyButton("Copy", urls.stream || `${urls.json}/stream`)),
           saved.published && el("div", { class: "profile-link-actions" }, el("a", { href: urls.page, target: "_blank", rel: "noopener", class: "button-link" }, icon("external-link", { size: 14 }), "Open profile"), el("a", { href: urls.card, target: "_blank", rel: "noopener", class: "button-link" }, icon("share-2", { size: 14 }), "Social card")),
           !saved.published && el("p", { class: "field-hint" }, "Publish to activate the profile, JSON endpoint, and live stream. Unpublishing disables all three."),
-          saved.published && el("details", {}, el("summary", {}, "Live website embed"), el("p", { class: "detail-note" }, "Paste this into your website for live counts, or use EventSource in your own design. The stream shares aggregates only."), el("pre", {}, liveEmbed(urls.stream || `${urls.json}/stream`)), copyButton("Copy live embed", liveEmbed(urls.stream || `${urls.json}/stream`))),
+          saved.published && el("details", {}, el("summary", {}, "Live website embed"), el("p", { class: "detail-note" }, "Paste this into your website for live counts, or use EventSource in your own design. JSON and the stream follow the sharing scope saved above."), el("pre", {}, liveEmbed(urls.stream || `${urls.json}/stream`)), copyButton("Copy live embed", liveEmbed(urls.stream || `${urls.json}/stream`))),
           saved.published && el("details", {}, el("summary", {}, "Image card embed"), el("p", { class: "detail-note" }, "A scalable snapshot for pages that do not run JavaScript."), el("pre", {}, `<a href="${urls.page}">\n  <img src="${urls.json}/card.svg"\n       alt="My agent activity on Engram" />\n</a>`), copyButton("Copy image embed", `<a href="${urls.page}"><img src="${urls.json}/card.svg" alt="My agent activity on Engram" /></a>`)))),
       el("div", { class: "showcase-preview" }, el("div", { class: "preview-label" }, icon("eye", { size: 14 }), "Public preview", el("span", {}, "What others will see")), preview)),
   ];
@@ -1031,7 +1069,11 @@ function liveEmbed(streamUrl) {
 function showcasePreview() {
   const snapshot = state.showcase?.preview;
   if (!snapshot) return profileSkeleton();
-  return profileCard({ ...snapshot, profile: { ...snapshot.profile, ...state.showcaseDraft } }, { compact: true });
+  return profileCard(showcasePreviewData(snapshot), { compact: true });
+}
+function showcasePreviewData(snapshot) {
+  const enabled = Boolean(state.showcaseDraft?.showActivity);
+  return { ...snapshot, profile: { ...snapshot.profile, ...state.showcaseDraft }, activity: { enabled, events: enabled ? snapshot.activity?.events || [] : [] } };
 }
 async function loadShowcase() {
   if (state.session.role !== "owner") return;
@@ -1072,6 +1114,7 @@ async function switchOrg(orgId) {
   sessionMutation = true; setSessionControlsBusy(true);
   ++accessRequest; clearTimeout(accessRefreshTimer); accessError = "";
   invalidateWorkspaceNames();
+  sharingPanel?.dispose(); sharingPanel = null;
   signupAdmin?.dispose(); signupAdmin = null;
   jevSettingsPanel?.dispose(); jevSettingsPanel = null;
   const epoch = authEpoch;
@@ -1086,7 +1129,22 @@ async function switchOrg(orgId) {
   } catch (error) {
     if (epoch !== authEpoch) return;
     if (error instanceof AuthError) return expired("Your session expired. Please sign in again."); toast(errorMessage(error)); render();
-  } finally { sessionMutation = false; setSessionControlsBusy(false); if (workspacePending(state.session)) scheduleProvisioning(); }
+  } finally {
+    sessionMutation = false; setSessionControlsBusy(false);
+    // Sharing's controller starts requests only after the workspace switch ends.
+    if (epoch === authEpoch && state.session && state.view === "sharing") render();
+    if (workspacePending(state.session)) scheduleProvisioning();
+  }
+}
+
+function selectiveSharingView() {
+  const title = heading("Sharing", "Describe what belongs with your team or another agent. Review the exact excerpts before granting access.");
+  if (!["owner", "member"].includes(state.session.role)) return [title, empty("Managed by your workspace owner", "Use your human account to review and share context.")];
+  const workspaceId = state.session.org.id, epoch = authEpoch;
+  sharingPanel = sharingView({ api: workspaceApi(workspaceId), copy: value => navigator.clipboard.writeText(value),
+    fail: error => { if (error instanceof AuthError) expired(); },
+    isCurrent: () => !sessionMutation && authEpoch === epoch && state.view === "sharing" && state.session?.org.id === workspaceId });
+  return [title, sharingPanel.element];
 }
 
 function accountView() {
@@ -1127,6 +1185,7 @@ async function signOut() {
   if (sessionMutation) return;
   sessionMutation = true; ++authEpoch; setSessionControlsBusy(true);
   invalidateWorkspaceNames();
+  sharingPanel?.dispose(); sharingPanel = null;
   signupAdmin?.dispose(); signupAdmin = null;
   jevSettingsPanel?.dispose(); jevSettingsPanel = null;
   try { await api.logout(); expired(); }
@@ -1137,6 +1196,7 @@ function expired(message = "") {
   ++authEpoch;
   ++accessRequest; clearTimeout(accessRefreshTimer); accessSnapshot = null; accessError = "";
   invalidateWorkspaceNames();
+  sharingPanel?.dispose(); sharingPanel = null;
   signupAdmin?.dispose(); signupAdmin = null;
   jevSettingsPanel?.dispose(); jevSettingsPanel = null;
   setupReader.invalidate(); setupByWorkspace.clear();
@@ -1147,6 +1207,7 @@ function expired(message = "") {
 }
 function renderAuth(mode = "email", message = "") {
   mode = signupAuthMode(mode, signupPolicy);
+  sharingPanel?.dispose(); sharingPanel = null;
   authPanel?.dispose(); signupAdmin?.dispose(); signupAdmin = null;
   jevSettingsPanel?.dispose(); jevSettingsPanel = null;
   authPanel = signupView({ mode, policy: signupPolicy, message, api, inviteEntry: pendingInviteEntry, inviteSubmitted: () => { pendingInviteEntry = null; },
@@ -1183,6 +1244,7 @@ async function loadView() {
   else if (state.view === "attention") { if (pendingInsightRun) { pendingInsightRun = false; await runInsights(); } else await loadInsights(); }
   else if (state.view === "memory") { if (state.memoryTab === "review") await loadReviews(); else await loadMemories(); }
   else if (state.view === "showcase") await loadShowcase();
+  else if (state.view === "sharing") return;
   else if (["workspace", "billing"].includes(state.view)) await loadAccount();
   else await loadConnections();
 }
@@ -1214,8 +1276,9 @@ async function pollProvisioning() {
 window.addEventListener("hashchange", () => {
   if (captureInviteEntry()) { if (state.session) expired(); openAuth(pendingInviteEntry ? "" : "This invite link could not be read. Ask for a fresh link, or enter a code manually."); return; }
   if (!state.session) { openAuth(); return; }
-  clearTimeout(searchTimer); clearTimeout(insightTimer); ++generation; closeDetail(); state.insightBusy = false; state.error = ""; state.more = false; readRoute(); render(); window.scrollTo(0, 0); loadView();
+  clearTimeout(searchTimer); clearTimeout(insightTimer); ++generation; closeDetail(); state.insightBusy = false; state.error = ""; state.more = false; readRoute(); render(); window.scrollTo(0, 0); document.querySelector("#main")?.focus({ preventScroll: true }); loadView();
 });
+window.addEventListener("resize", () => requestAnimationFrame(revealCurrentNavigation), { passive: true });
 document.addEventListener("click", event => {
   const link = event.target.closest?.("a.wikilink");
   if (link && state.session) { event.preventDefault(); memoryDetail(link.dataset.slug); }
@@ -1233,7 +1296,7 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) { previewWatcher?.pause(); clearTimeout(activityRefreshTimer); clearTimeout(insightTimer); clearTimeout(provisioningTimer); clearTimeout(accessRefreshTimer); }
   else { if (workspacePending(state.session)) { scheduleProvisioning(0); return; } if (friendAccessPresentation(state.session?.access)) refreshFriendAccess(); previewWatcher?.resume(); if (currentActivity && dialog.open) fetchActivityDetail({ quiet: true }); if (state.view === "attention" && ["queued", "running"].includes(state.insights?.job?.status)) loadInsights({ jobId: state.insights.job.id, quiet: true }); }
 });
-window.addEventListener("pagehide", () => { pendingInviteEntry = null; authPanel?.clearSecrets(); signupAdmin?.clearSecrets(); previewWatcher?.pause(); clearTimeout(activityRefreshTimer); clearTimeout(insightTimer); clearTimeout(provisioningTimer); clearTimeout(accessRefreshTimer); });
+window.addEventListener("pagehide", () => { pendingInviteEntry = null; authPanel?.clearSecrets(); signupAdmin?.clearSecrets(); sharingPanel?.clearSecrets(); previewWatcher?.pause(); clearTimeout(activityRefreshTimer); clearTimeout(insightTimer); clearTimeout(provisioningTimer); clearTimeout(accessRefreshTimer); });
 window.addEventListener("pageshow", event => {
   if (!event.persisted) return;
   if (workspacePending(state.session)) { scheduleProvisioning(0); return; }

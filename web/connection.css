@@ -25,13 +25,15 @@
 .connection-row { display:flex; align-items:flex-start; gap:12px; padding:16px 0; border-bottom:1px solid #ededed; }
 .connection-row .connection-avatar { width:33px; height:33px; margin-top:1px; border-radius:10px; }
 .connection-copy { flex:1; min-width:0; }
+.connection-copy p { overflow-wrap:anywhere; }
 .connection-name { display:flex; flex-wrap:wrap; align-items:center; gap:6px 9px; }
 .connection-name strong { font-size:12px; font-weight:500; overflow-wrap:anywhere; }
 .connection-auth-kind { font-size:9px; color:#888; }
 .connection-copy p { margin-top:4px; font-size:10px; color:#737373; }
 .connection-counts { display:flex; flex-wrap:wrap; align-items:center; gap:6px; font-variant-numeric:tabular-nums; }
-.connection-row-end { display:grid; justify-items:end; gap:7px; max-width:46%; }
-.connection-state { display:inline-flex; align-items:center; gap:5px; font-size:10px; color:#777; white-space:nowrap; }
+.connection-row-end { display:grid; justify-items:end; gap:7px; min-width:0; max-width:46%; }
+.connection-state { display:inline-flex; align-items:center; gap:5px; max-width:100%; font-size:10px; color:var(--ds-muted); white-space:normal; overflow-wrap:anywhere; }
+.connection-state .icon { flex-shrink:0; }
 .connection-state.reconnect { color:#444; }
 .connection-row-end .connection-actions { gap:9px; flex-wrap:wrap; justify-content:flex-end; }
 .connection-row-end button { font-size:10px; padding:3px 0; min-height:26px; }
@@ -41,6 +43,7 @@
 .connection-guide ol { padding-left:19px; }
 .connection-guide li { margin:9px 0; }
 .connection-key-form { scroll-margin-top:24px; }
+.connection-key-form .form-feedback { flex-basis:100%; margin:0; }
 @media (hover:hover) and (pointer:fine) { .agent-presence { transition:background 130ms ease,border-color 130ms ease,transform 130ms var(--ease-out); } .agent-presence:hover { box-shadow:none; background:#fafafa; border-color:#ccc; } .agent-presence:active { transform:scale(.985); } }
 :root[data-input="keyboard"] .agent-presence { transition:none; transform:none; }
 @media (prefers-reduced-motion:reduce) { .agent-presence { transition:none; transform:none!important; } }

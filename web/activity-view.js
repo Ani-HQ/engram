@@ -1,6 +1,7 @@
 import { h } from "./profile.js";
 import { icon } from "./icons.js";
-import { agentVisual, toolVisual, visualIcon } from "./tooling.js";
+import { agentVisual, toolVisual, serviceVisual, visualIcon } from "./tooling.js";
+import { resourceChip } from "./design-system.js";
 import { activityPresentation, actionPresentation, resourcePresentation, chronologicalActions, contributorName } from "./activity-presentation.js";
 
 const plural = (count, word) => `${count} ${count === 1 ? word : word === "approach" ? "approaches" : `${word}s`}`;
@@ -61,11 +62,17 @@ export function activityFilters(stats, selected, onChange) {
 }
 function resourceControl(resource, activity, onResource, { action = null, primary = false, concise = false } = {}) {
   const label = resource.kind === "memory" ? "Open memory" : resource.kind === "url" ? "Open resource" : "Copy resource";
-  const children = [icon(resource.kind === "memory" ? "file-text" : "link", { size: 14 }),
-    h("span", { class: "activity-resource-label" }, concise ? label : resource.label), icon(resource.kind === "resource" ? "copy" : "arrow-up-right", { size: 12 })];
-  return onResource ? button(children, () => onResource(resource, { activity, action }),
-    { class: `activity-resource${primary ? " primary" : ""}`, title: `${label}: ${resource.raw}`, "aria-label": `${label}: ${resource.label}`, "data-focus-key": `resource:${resource.raw}` })
-    : h("span", { class: "activity-resource readonly", title: resource.raw }, children.slice(0, 2));
+  const chip = resourceChip(concise ? label : resource.label, {
+    visual: visualIcon(serviceVisual(resource.service), { size: 16 }),
+    trailing: onResource ? icon(resource.kind === "resource" ? "copy" : "arrow-up-right", { size: 12 }) : null,
+    onClick: onResource ? () => onResource(resource, { activity, action }) : undefined,
+    title: onResource ? `${label}: ${resource.label}` : resource.label,
+    actionLabel: onResource ? `${label}: ${resource.label}` : undefined,
+  });
+  chip.setAttribute("class", `ds-resource-chip activity-resource${onResource ? "" : " readonly"}`);
+  chip.setAttribute("data-focus-key", `resource:${resource.raw}`);
+  if (primary) chip.setAttribute("data-primary-resource", "true");
+  return chip;
 }
 function contributorChips(activity, onFilter, filters = {}, limit = 3, onOpen) {
   const agents = activity.agents || [];
@@ -135,7 +142,7 @@ function actionEntry(action, activity, onResource) {
   const startedAt = action.startedAt || action.occurredAt;
   const key = JSON.stringify([action.agent, action.actionKey || action.id]);
   const stale = action.status === "running" && (!validDate(action.recordedAt) || Date.now() - new Date(action.recordedAt).valueOf() >= 900_000);
-  const resource = resourcePresentation(action.resource, { memory: presentation.memory }) || presentation.memoryContext?.target;
+  const resource = resourcePresentation(action.resource, { memory: presentation.memory, tool: action.tool }) || presentation.memoryContext?.target;
   const agent = (activity.agents || []).find(agent => agent.name === action.agent) || { name: action.agent };
   return h("li", { class: `work-log-step ${action.status}${stale ? " stale" : ""}`, "data-log-key": key, "data-action-id": action.id },
     h("div", { class: "work-log-marker", "aria-hidden": "true" }, icon(stale ? "clock" : action.status === "running" ? "loader-circle" : action.status === "failed" ? "x" : "check", { size: 13, class: action.status === "running" && !stale ? "working-spinner" : "" })),

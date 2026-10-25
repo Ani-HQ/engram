@@ -11,9 +11,11 @@
 .task-reporting-step-copy p { margin:0; font-size:11px; line-height:1.8; color:#737373; overflow-wrap:anywhere; }
 .task-reporting-setup button.task-reporting-link { display:inline-flex; align-items:center; gap:5px; min-height:32px; padding:3px 0; margin-top:5px; font-size:10px; color:#333; border:0; border-radius:4px; background:transparent; box-shadow:none; }
 .task-reporting-instructions { margin:0 0 28px; border:1px solid #e4e4e4; border-radius:var(--radius-card,14px); background:#fafafa; overflow:hidden; }
-.task-reporting-instructions>summary { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 14px; list-style:none; color:#424242; font-size:11px; min-height:44px; }
+.task-reporting-instructions>summary { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 14px; list-style:none; color:#424242; font-size:11px; min-height:44px; cursor:pointer; }
 .task-reporting-instructions>summary::-webkit-details-marker { display:none; }
 .task-reporting-instructions>summary>span { display:inline-flex; align-items:center; gap:8px; }
+.task-reporting-instructions>summary>span { min-width:0; overflow-wrap:anywhere; }
+.task-reporting-instructions>summary .icon { flex-shrink:0; }
 .task-reporting-instructions[open]>summary { border-bottom:1px solid #e6e6e6; }
 .task-reporting-instructions[open]>summary>.icon { transform:rotate(180deg); }
 .task-reporting-instruction-body { padding:13px 14px 14px; min-width:0; }
@@ -33,7 +35,7 @@
 .task-reporting-connection-copy strong { font-size:11px; font-weight:500; line-height:1.5; overflow-wrap:anywhere; }
 .task-reporting-identity,.task-reporting-connection-meta { display:block; color:#777; font-size:9px; line-height:1.6; overflow-wrap:anywhere; }
 .task-reporting-identity { font-family:var(--mono,"SFMono-Regular",Consolas,monospace); }
-.task-reporting-connection-state { display:inline-flex; align-items:center; gap:7px; color:#666; font-size:10px; line-height:1.6; white-space:nowrap; }
+.task-reporting-connection-state { display:inline-flex; align-items:center; gap:7px; min-width:0; color:var(--ds-muted); font-size:10px; line-height:1.6; white-space:normal; overflow-wrap:anywhere; }
 .task-reporting-connection-state>.icon { flex-shrink:0; color:#999; }
 .task-reporting-empty,.task-reporting-bounds { font-size:10px; color:#777; line-height:1.8; margin:10px 0 0; }
 .task-reporting-empty { padding:12px 0; }

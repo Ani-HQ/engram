@@ -81,6 +81,25 @@ export function statusBadge(value, { tone = 'neutral' } = {}) {
   const badge = document.createElement('span'); badge.className = 'ds-badge'; badge.dataset.tone = tones.has(tone) ? tone : 'neutral'; badge.textContent = String(value); return badge;
 }
 
+/** A resource identity with a locally rendered mark. Text never becomes markup. */
+export function resourceChip(value, { visual, trailing, onClick, title, actionLabel, disabled = false } = {}) {
+  const interactive = typeof onClick === 'function';
+  const chip = document.createElement(interactive ? 'button' : 'span');
+  chip.className = 'ds-resource-chip';
+  chip.setAttribute('title', String(title || value));
+  if (interactive) {
+    chip.setAttribute('type', 'button'); chip.disabled = Boolean(disabled);
+    if (actionLabel) chip.setAttribute('aria-label', String(actionLabel));
+    chip.addEventListener('click', onClick);
+  }
+  if (visual instanceof Node) {
+    const mark = document.createElement('span'); mark.className = 'ds-resource-chip-mark'; mark.setAttribute('aria-hidden', 'true'); mark.append(visual); chip.append(mark);
+  }
+  const label = document.createElement('span'); label.className = 'ds-resource-chip-label'; label.textContent = String(value); chip.append(label);
+  if (trailing instanceof Node) { trailing.setAttribute('aria-hidden', 'true'); chip.append(trailing); }
+  return chip;
+}
+
 export function sticker(value, { tone = 'lime', tilt = 'left' } = {}) {
   const badge = statusBadge(value, { tone }); badge.className = `ds-sticker${['left', 'right'].includes(tilt) ? ` ds-sticker--${tilt}` : ''}`; return badge;
 }

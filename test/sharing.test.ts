@@ -42,10 +42,16 @@ const entry = itemFromEntry({
 });
 
 describe("share rule matching", () => {
-  test("an empty match copies everything", () => {
-    const match = parseShareMatch({});
+  test("sharing everything requires explicit confirmation while stored rules retain their scope", () => {
+    const match = parseShareMatch({matchAll:true});
     expect(ruleMatches(match, trail)).toBe(true);
     expect(ruleMatches(match, entry)).toBe(true);
+    expect(()=>parseShareMatch({})).toThrow("matchAll");
+    expect(parseShareMatch({}, {allowStoredAll:true})).toEqual(match);
+  });
+
+  test("unknown natural-language fields and malformed or mistyped filters never widen a rule", () => {
+    for (const value of [null,[],"share work only",{intent:"only work"},{topics:"engram"},{topics:[42]},{topics:[""]},{all:false},{matchAll:false},{topics:["engram"],topic:["billing"]},{repos:[]},{since:"not-a-date"},{since:123},{since:"2026-11-01",until:"2026-10-01"},{matchAll:true,topics:["engram"]}]) expect(()=>parseShareMatch(value)).toThrow();
   });
 
   test("matches by repo, topic, harness, and date", () => {

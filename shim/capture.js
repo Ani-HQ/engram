@@ -19,6 +19,7 @@ const PATTERNS = [
   { re: /\bxox[baprs]-[A-Za-z0-9-]{20,}\b/g, label: 'REDACTED_TOKEN' },
   { re: /\bAKIA[0-9A-Z]{16}\b/g, label: 'REDACTED_ACCESS_KEY' },
   { re: /\beng_[A-Za-z0-9_-]{20,}\b/g, label: 'REDACTED_TOKEN' },
+  { re: /\begs_[A-Za-z0-9_-]{20,}(?![A-Za-z0-9_-])/g, label: 'REDACTED_TOKEN' },
   { re: /\bens_[A-Za-z0-9_-]{20,}\b/g, label: 'REDACTED_TOKEN' },
   { re: /\binv_[A-Za-z0-9_-]{20,}\b/g, label: 'REDACTED_TOKEN' },
   { re: /\bBearer\s+[A-Za-z0-9._\-+/=]{16,}/gi, label: 'Bearer REDACTED_TOKEN' },

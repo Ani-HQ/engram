@@ -59,6 +59,8 @@ mock.module("../../gateway/src/audit", () => ({
   provenanceFor: async () => new Map(),
 }));
 
+const realContextAccess = await import("../../gateway/src/context-sharing-access");
+mock.module("../../gateway/src/context-sharing-access", () => ({ ...realContextAccess, listApprovedTeamItems: async () => [] }));
 const proxy = await import("../../gateway/src/proxy");
 const { runWithContext } = await import("../../gateway/src/context");
 const { parsePolicies, normalizeToken } = await import("../../gateway/src/policies");

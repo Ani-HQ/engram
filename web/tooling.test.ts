@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { agentSources, agentVisual, brandIcon, toolCatalog, toolVisual, visualIcon } from "./tooling.js";
+import { agentSources, agentVisual, brandIcon, toolCatalog, toolVisual, visualIcon, providerVisual, serviceVisual } from "./tooling.js";
 
 class TestElement {
   attributes: Record<string, string> = {};
@@ -51,6 +51,19 @@ describe("local tooling identity", () => {
     expect(toolVisual("browser.navigate")).toMatchObject({ label: "Browser", icon: "globe", brand: null });
     expect(toolVisual("drive.read")).toMatchObject({ label: "Files", brand: null });
     expect(toolVisual("database.query")).toMatchObject({ label: "Database", brand: null });
+  });
+
+  test("canonical provider visuals are a separate fixed lookup from tool inference", () => {
+    expect(providerVisual("github")).toEqual({ label: "GitHub", icon: "code", brand: "github" });
+    expect(serviceVisual("googledocs")).toMatchObject({ label: "Google Docs", brand: "googledocs" });
+    expect(providerVisual("gitlab")).toEqual({ label: "GitLab", icon: "git-branch", brand: null });
+    expect(providerVisual("code")).toEqual({ label: "Code", icon: "code", brand: null });
+    expect(providerVisual("git")).toMatchObject({ label: "Git", brand: "git" });
+    expect(providerVisual("cloud")).toMatchObject({ label: "Deployment", brand: null });
+    expect(providerVisual("data")).toMatchObject({ label: "Database", brand: null });
+    for (const value of ["__proto__", "constructor", "github.create_pull_request", "https://github.com/team/repo", "mygithub", null, { service: "github" }]) {
+      expect(providerVisual(value)).toEqual({ label: "Other service", icon: "link", brand: null });
+    }
   });
 
   test("uses namespace boundaries instead of incidental substrings or resource URLs", () => {

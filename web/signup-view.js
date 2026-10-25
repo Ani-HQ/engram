@@ -12,18 +12,18 @@ export function signupView({ mode = "email", policy, message = "", api, changeMo
   authIntroPlayed = true;
   let active = true, pending = false;
   const create = mode === "create", inviteOnly = policy?.mode === "invite-only", tokenAllowed = policy?.tokenSignInAllowed === true;
-  const email = h("input", { type: "email", required: true, autocomplete: "email", placeholder: "you@example.com", maxlength: 254 });
-  const token = tokenAllowed ? h("input", { type: "password", required: true, autocomplete: "off", placeholder: "Access token" }) : null;
+  const email = h("input", { type: "email", name: "email", required: true, autocomplete: "email", placeholder: "you@example.com", maxlength: 254, spellcheck: "false", autocapitalize: "none", "aria-describedby": "auth-feedback" });
+  const token = tokenAllowed ? h("input", { type: "password", name: "access-token", required: true, autocomplete: "off", placeholder: "Access token", spellcheck: "false", autocapitalize: "none", "aria-describedby": "auth-feedback" }) : null;
   const linked = create && typeof inviteEntry?.code === "string" && inviteEntry.code.length > 0;
-  const code = h("input", { type: "password", required: true, readonly: linked, autocomplete: "off", placeholder: "Your invite code", spellcheck: "false", autocapitalize: "none", ...(linked ? { "aria-describedby": "invite-link-note" } : {}) });
+  const code = h("input", { type: "password", name: "invite-code", required: true, readonly: linked, autocomplete: "off", placeholder: "Your invite code", spellcheck: "false", autocapitalize: "none", "aria-describedby": linked ? "invite-link-note auth-feedback" : "auth-feedback" });
   if (linked) { code.value = inviteEntry.code; email.value = inviteEntry.email || ""; }
-  const name = create && policy && !inviteOnly ? h("input", { placeholder: "My workspace", maxlength: 100, autocomplete: "organization" }) : null;
+  const name = create && policy && !inviteOnly ? h("input", { name: "workspace-name", placeholder: "My workspace", maxlength: 100, autocomplete: "organization" }) : null;
   const label = mode === "token" ? "Sign in" : create ? inviteOnly ? "Verify email & join" : "Create workspace" : "Email me a sign-in link";
   const submit = h("button", { type: "submit", class: "primary", disabled: create && !policy }, label);
-  const feedback = h("div", { role: "status", "aria-live": "polite", class: "detail-note" }, message);
+  const feedback = h("div", { id: "auth-feedback", role: "status", "aria-live": "polite", "aria-atomic": "true", class: "detail-note ds-notice", "data-tone": "neutral" }, message);
   const form = h("form", { class: "stack", onsubmit: async event => {
     event.preventDefault(); if (!active || pending || (create && !policy)) return;
-    pending = true; submit.disabled = true; submit.setAttribute("aria-busy", "true"); submit.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), mode === "token" ? "Signing in…" : "Sending verification link…"); feedback.textContent = "";
+    pending = true; submit.disabled = true; form.setAttribute("aria-busy", "true"); submit.setAttribute("aria-busy", "true"); submit.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), mode === "token" ? "Signing in…" : "Sending verification link…"); feedback.textContent = ""; feedback.setAttribute("role", "status"); feedback.setAttribute("aria-live", "polite");
     try {
       if (mode === "token") {
         const session = await api.login(token.value.trim());
@@ -37,10 +37,11 @@ export function signupView({ mode = "email", policy, message = "", api, changeMo
         // It is cleared on navigation/pagehide and is never put in attributes.
         if (!linked) code.value = "";
         if (create) inviteSubmitted();
+        feedback.setAttribute("data-tone", "success");
         feedback.replaceChildren(result.url ? h("a", { href: result.url }, "Continue to verify your email →") : `Check ${address} for a verification link. Open it to ${create ? "finish joining your workspace" : "sign in"}.`);
       }
-    } catch (error) { if (active) feedback.textContent = error.message || "Please try again."; }
-    finally { pending = false; if (active) { submit.disabled = create && !policy; submit.removeAttribute("aria-busy"); submit.textContent = label; } }
+    } catch (error) { if (active) { feedback.setAttribute("role", "alert"); feedback.setAttribute("aria-live", "assertive"); feedback.setAttribute("data-tone", "danger"); feedback.textContent = error.message || "Please try again."; } }
+    finally { pending = false; if (active) { form.removeAttribute("aria-busy"); submit.disabled = create && !policy; submit.removeAttribute("aria-busy"); submit.textContent = label; } }
   } }, field(mode === "token" ? "Access token" : "Email", mode === "token" ? token : email), create && inviteOnly && field(linked ? "Invite code · included in your link" : "Invite code", code),
     linked && h("p", { class: "field-hint", id: "invite-link-note" }, "The code comes from your link. You can change the email address above; verify that inbox to claim the invitation. Email-bound invitations must use their invited address."),
     name && h("details", { class: "signup-workspace-name" }, h("summary", {}, "Name your workspace (optional)"), field("Workspace name", name)), submit, feedback);

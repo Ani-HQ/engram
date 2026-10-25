@@ -1,4 +1,6 @@
-import { memoryOrbit, memoryStream } from './design-system.js';
+import { memoryOrbit, memoryStream, resourceChip } from './design-system.js';
+import { icon } from './icons.js';
+import { toolVisual, visualIcon } from './tooling.js';
 import { createJevSettingsPanel } from './jev-settings.js';
 import { friendAccessCard } from './access-view.js';
 
@@ -13,6 +15,11 @@ document.querySelector('#orbit-example').append(memoryOrbit());
 document.querySelector('#agent-orbit-example').append(memoryOrbit({ agents: true, label: 'Illustrative agent ecosystem: Claude, OpenClaw, Grok Bot, Muse and Instinct around shared memory. Not live connections.' }));
 document.querySelector('#ink-orbit-example').append(memoryOrbit({ compact: true, className: 'ds-orbit--on-ink' }));
 document.querySelector('#stream-example').append(memoryStream({ label: 'A decision is saved to shared memory and recalled for the next task. This is an illustration.' }));
+const resourceExamples = document.querySelector('#resource-chip-examples');
+for (const [tool, label] of [['github.create_pull_request', 'example / shared-memory'], ['googledocs.get_document', 'Project notes'], ['linear.get_issue', 'ENG-42'], ['figma.get_file', 'Activity canvas']]) {
+  resourceExamples.append(resourceChip(label, { visual: visualIcon(toolVisual(tool), { size: 16 }), trailing: icon('arrow-up-right', { size: 12 }), onClick: () => { document.querySelector('#resource-chip-feedback').textContent = `Selected illustrative resource: ${label}. No resource was opened.`; } }));
+}
+document.querySelector('#redacted-chip-examples').append(resourceChip('GitHub · Repository', { visual: visualIcon(toolVisual('github'), { size: 16 }) }), resourceChip('Google Docs · Document', { visual: visualIcon(toolVisual('googledocs'), { size: 16 }) }), resourceChip('A deliberately long resource name that stays inside its available space', { visual: icon('file-text', { size: 16 }), onClick: () => {}, disabled: true }));
 let consentExample;
 const sampleJev = { enabled: false, available: false, canManage: true, configured: true, eligibility: 'operator-funded', unavailableReason: 'disabled', pricing: { currency: 'usd', inputPerMillionUsd: null, outputPerMillionUsd: null, markupBps: null, rateVersion: null }, budget: { monthlyUsd: '0' }, usage: { calls: 0, inputTokens: '0', outputTokens: '0', pendingCalls: 0, unknownCalls: 0 } };
 function renderConsentExample(data) {
@@ -25,6 +32,7 @@ const friendExample = { serverNow: '2026-10-25T09:00:00.000Z', canWrite: true, e
 document.querySelector('#friend-access-example').append(friendAccessCard(friendExample));
 document.querySelector('#friend-expired-example').append(friendAccessCard({ ...friendExample, serverNow: '2026-12-12T09:00:00.000Z', canWrite: false, entitlementSource: 'none', complimentary: { ...friendExample.complimentary, active: false, unlimitedKnowledgeTransfers: false } }));
 const motionOrbit = document.querySelector('#motion-orbit');
+for (const id of ['long-action-example', 'icon-action-example']) document.getElementById(id).addEventListener('click', () => { document.getElementById('fit-feedback').textContent = 'Preview received. The control keeps its full label and focus.'; });
 motionOrbit.append(memoryOrbit());
 
 document.addEventListener('pointerdown', () => { document.documentElement.dataset.input = 'pointer'; }, { passive: true });

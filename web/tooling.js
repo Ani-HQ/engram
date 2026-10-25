@@ -70,6 +70,19 @@ export const toolCatalog = Object.freeze([
   ['database', 'Database', 'database', null, ['database', 'db', 'mysql', 'sql', 'sqlite', 'spreadsheet', 'sheets', 'query']],
 ].map(([id, label, iconName, brand, namespaces]) => Object.freeze({ id, label, icon: iconName, brand, namespaces: Object.freeze(namespaces) })));
 
+/** Fixed provider identity only. Resource parsing and tool namespace inference
+ * are separate boundaries; arbitrary input can never supply an asset URL. */
+export function providerVisual(service) {
+  const aliases = { cloud: "deployment", data: "database" };
+  const id = typeof service === "string" && Object.hasOwn(aliases, service) ? aliases[service] : service;
+  if (id === "code") return { label: "Code", icon: "code", brand: null };
+  const entry = toolCatalog.find(entry => entry.id === id);
+  if (entry) return { label: entry.label, icon: entry.icon, brand: entry.brand };
+  if (id === "gitlab") return { label: "GitLab", icon: "git-branch", brand: null };
+  return { label: "Other service", icon: "link", brand: null };
+}
+export const serviceVisual = providerVisual;
+
 const escapePattern = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const toolRules = toolCatalog.map(entry => [entry, new RegExp(`^(?:${entry.namespaces.map(escapePattern).join('|')})(?:$|[._:/-])`)]);
 const memoryOperations = new Set(['remember', 'recall', 'search', 'get_page', 'list_pages', 'put_page', 'add_tag', 'add_link', 'add_timeline_entry']);

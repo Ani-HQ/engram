@@ -126,6 +126,9 @@ describe("email-bound beta signup", () => {
     expect(view.textContent).toContain("Check friend@example.com for a verification link");
     expect(view.textContent).toContain("No card required.");
     expect(input(view, "password").value).toBe("");
+    const feedback = find(view, item => item.attrs.id === "auth-feedback");
+    expect(feedback.attrs.role).toBe("status"); expect(feedback.attrs["data-tone"]).toBe("success");
+    expect(input(view, "email").attrs["aria-describedby"]).toContain("auth-feedback");
   });
 
   test("retains fields on rejection and clears detached fields and late login callbacks", async () => {
@@ -134,6 +137,9 @@ describe("email-bound beta signup", () => {
     input(view, "email").value = "friend@example.com"; input(view, "password").value = "wrong-code";
     await submit(view).fire("submit");
     expect(input(view, "email").value).toBe("friend@example.com"); expect(input(view, "password").value).toBe("wrong-code"); expect(view.textContent).toContain("Invite is invalid");
+    const feedback = find(view, item => item.attrs.id === "auth-feedback");
+    expect(feedback.attrs.role).toBe("alert"); expect(feedback.attrs["data-tone"]).toBe("danger");
+    expect(submit(view).attrs["aria-busy"]).toBeUndefined();
     panel.dispose(); expect(input(view, "password").value).toBe("");
     let finish: (value: any) => void = () => {}; let signedIn = false;
     const login = signupView({ mode: "token", policy: open, api: { login: () => new Promise(resolve => { finish = resolve; }) }, changeMode() {}, signedIn() { signedIn = true; } });
@@ -175,6 +181,80 @@ describe("email-bound beta signup", () => {
 });
 
 describe("operator early access invitations", () => {
+  test("listed unused invitations copy a usable link on demand after reopening without exposing credentials in inventory", async () => {
+    const copied: string[] = [], requested: string[] = [];
+    const link = "https://engram.example/app#invite=eg_link_v1_private_sample";
+    const api = { signupInvites: async () => ({ invites: [invite], more: false }), signupInviteLink: async (id: string) => { requested.push(id); return { inviteUrl: link }; } };
+    for (let reopen = 0; reopen < 2; reopen++) {
+      const panel = signupAdminPanel({ session: operator, api, copy: async (value: string) => { copied.push(value); } })!;
+      const view = panel.element as Element; view.open = true; await view.fire("toggle");
+      expect(requested).toHaveLength(reopen);
+      await button(view, "Copy link").fire("click");
+      expect(requested[reopen]).toBe(invite.id); expect(copied[reopen]).toBe(link);
+      expect(view.textContent).toContain("Invite link copied");
+      expect(view.textContent).not.toContain("eg_link_v1_private_sample");
+      expect(all(view).some(item => item.value === link || Object.values(item.attrs).includes(link))).toBe(false);
+      panel.dispose();
+    }
+  });
+
+  test("only unused and unexpired invitation rows offer copying", async () => {
+    let calls = 0;
+    const variants = [invite, { ...invite, id: "expired", expiresAt: "2020-01-01" }, { ...invite, id: "redeemed", redeemedAt: "2026-10-24" }, { ...invite, id: "revoked", revokedAt: "2026-10-24" }, { ...invite, id: "unknown", expiresAt: null }];
+    const panel = signupAdminPanel({ session: operator, api: { signupInvites: async () => ({ invites: variants }), signupInviteLink: async () => { calls++; return { inviteUrl: "https://engram.example/app#invite=eg_link_v1_sample" }; } }, copy: async () => {} })!;
+    const view = panel.element as Element; view.open = true; await view.fire("toggle");
+    const buttons = all(view).filter(item => item.tag === "button" && item.textContent === "Copy link");
+    expect(buttons.map(item => item.disabled)).toEqual([false, true, true, true, true]);
+    for (const item of buttons) await item.fire("click");
+    expect(calls).toBe(1);
+  });
+
+  test("copy requests cannot duplicate or copy after the panel closes or is disposed", async () => {
+    for (const dispose of [false, true]) {
+      let finish: (value: any) => void = () => {}, calls = 0; const copied: string[] = [];
+      const panel = signupAdminPanel({ session: operator, api: { signupInvites: async () => ({ invites: [invite] }), signupInviteLink: () => { calls++; return new Promise(resolve => { finish = resolve; }); } }, copy: async (value: string) => { copied.push(value); } })!;
+      const view = panel.element as Element; view.open = true; await view.fire("toggle");
+      const control = button(view, "Copy link"), pending = control.fire("click"); await control.fire("click");
+      expect(calls).toBe(1); expect(control.disabled).toBe(true);
+      if (dispose) panel.dispose(); else { view.open = false; await view.fire("toggle"); view.open = true; await view.fire("toggle"); }
+      finish({ inviteUrl: "https://engram.example/app#invite=late_secret" }); await pending;
+      expect(copied).toEqual([]); expect(all(view).some(item => item.value.includes("late_secret"))).toBe(false);
+      expect(control.disabled).toBe(false);
+    }
+  });
+
+  test("clipboard refusal retains a masked selectable link and permits a fresh user-initiated copy", async () => {
+    const link = "https://engram.example/app#invite=eg_link_v1_clipboard_sample";
+    let copies = 0, requests = 0;
+    const panel = signupAdminPanel({ session: operator, api: { signupInvites: async () => ({ invites: [invite] }), signupInviteLink: async () => { requests++; return { inviteUrl: link }; } }, copy: async () => { if (++copies === 1) throw new Error("denied"); } })!;
+    const view = panel.element as Element; view.open = true; await view.fire("toggle"); await button(view, "Copy link").fire("click");
+    const secret = input(view, "password"); expect(secret.value).toBe(link); expect(secret.attrs.value).toBeUndefined();
+    expect(view.textContent).toContain("Could not copy automatically"); expect(view.textContent).not.toContain("eg_link_v1_clipboard_sample");
+    const region = find(view, item => item.attrs.class === "signup-issued");
+    await button(region, "Copy link").fire("click"); expect(copies).toBe(2); expect(requests).toBe(1); expect(view.textContent).toContain("Invite link copied");
+    panel.dispose(); expect(secret.value).toBe("");
+  });
+
+  test("a slower earlier row cannot overwrite the most recently selected invitation", async () => {
+    let finishFirst: (value: any) => void = () => {};
+    const copied: string[] = [], latest = "https://engram.example/app#invite=latest_link";
+    const panel = signupAdminPanel({ session: operator, api: { signupInvites: async () => ({ invites: [invite, { ...invite, id: "second" }] }), signupInviteLink: async (id: string) => id === invite.id ? new Promise(resolve => { finishFirst = resolve; }) : { inviteUrl: latest } }, copy: async (value: string) => { copied.push(value); } })!;
+    const view = panel.element as Element; view.open = true; await view.fire("toggle");
+    const buttons = all(view).filter(item => item.tag === "button" && item.textContent === "Copy link");
+    const first = buttons[0].fire("click"); await buttons[1].fire("click");
+    finishFirst({ inviteUrl: "https://engram.example/app#invite=older_link" }); await first;
+    expect(copied).toEqual([latest]); expect(all(view).some(item => item.value.includes("older_link"))).toBe(false);
+    expect(buttons.every(item => !item.disabled)).toBe(true);
+  });
+
+  test("link retrieval failures keep rows usable for retry and reject unsafe URLs", async () => {
+    let requests = 0, copies = 0;
+    const panel = signupAdminPanel({ session: operator, api: { signupInvites: async () => ({ invites: [invite] }), signupInviteLink: async () => { if (++requests === 1) throw new Error("Try again"); return { inviteUrl: "javascript:alert(1)" }; } }, copy: async () => { copies++; } })!;
+    const view = panel.element as Element; view.open = true; await view.fire("toggle"); const control = button(view, "Copy link");
+    await control.fire("click"); expect(control.disabled).toBe(false); expect(view.textContent).toContain("Try again");
+    await control.fire("click"); expect(control.disabled).toBe(false); expect(view.textContent).toContain("could not be loaded"); expect(copies).toBe(0);
+  });
+
   test("an optional recipient creates an unbound single-use link shown and copied once", async () => {
     const copied: string[] = [], payloads: any[] = [], unbound = { ...invite, email: null, emailBound: false, accessDurationDays: 60 };
     const inviteUrl = "https://engram.example/app#invite=eg_inv_sample_once";

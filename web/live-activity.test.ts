@@ -42,6 +42,34 @@ describe("public live activity client", () => {
     Source.instances.at(-1)!.emit("error"); await Promise.resolve(); await Promise.resolve();
     expect(states.at(-1)).toBe("reconnecting"); expect(reasons).toEqual(["unpublished"]); retrying.stop();
   });
+  test("verification applies a reduced public scope without claiming the live stream recovered", async () => {
+    const values: any[] = [], states: string[] = [];
+    const initial = { ...data, activity: { enabled: true, events: [{ id: "previously-public" }] } };
+    const reduced = { ...data, activity: { enabled: false, events: [] } };
+    const watcher = watchPublicActivity("/api/public/activity/sample/stream", {
+      snapshot: value => values.push(value), state: value => states.push(value), closed() {},
+    }, { EventSourceClass: Source, fetcher: async () => Response.json(reduced) });
+    const source = Source.instances.at(-1)!;
+    source.emit("snapshot", initial); source.emit("error");
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(values).toEqual([initial, reduced]);
+    expect(values.at(-1).activity.events).toEqual([]);
+    expect(states.at(-1)).toBe("reconnecting");
+    expect(Source.instances.at(-1)).toBe(source);
+    watcher.stop();
+  });
+  test("a verification body that finishes after pausing cannot restore the previous public view", async () => {
+    const values: any[] = [];
+    let finish: (value: any) => void = () => {};
+    const body = new Promise(resolve => { finish = resolve; });
+    const watcher = watchPublicActivity("/api/public/activity/sample/stream", { snapshot: value => values.push(value), state() {}, closed() {} }, {
+      EventSourceClass: Source, fetcher: async () => ({ ok: true, status: 200, json: () => body }),
+    });
+    Source.instances.at(-1)!.emit("error");
+    await Promise.resolve(); watcher.pause(); finish(data);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(values).toEqual([]); watcher.stop();
+  });
   test("a server outage removes the stale view and reconnects after checking publication again", async () => {
     const states: string[] = [], reasons: string[] = [], values: any[] = [];
     let interrupted = 0, checks = 0;

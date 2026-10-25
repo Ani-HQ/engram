@@ -12,12 +12,13 @@
   <link rel="stylesheet" href="/design-system.css">
 </head>
 <body class="ds-gallery">
+  <a class="ds-button ds-skip-link" href="#main">Skip to content</a>
   <div class="ds-gallery-shell">
     <header class="ds-gallery-header">
       <a class="ds-gallery-brand" href="/" aria-label="Engram home"><img src="/brand/engram-mark.svg" width="35" height="35" alt="">engram</a>
       <nav aria-label="Design-system sections"><a href="#foundations">Foundations</a><a href="#components">Components</a><a href="#motion">Motion</a></nav>
     </header>
-    <main id="main">
+    <main id="main" tabindex="-1">
       <section class="ds-gallery-hero" aria-labelledby="gallery-title">
         <div class="ds-heading-group">
           <span class="ds-eyebrow">Field notes / Design system / 01</span>
@@ -64,6 +65,22 @@
         </div>
       </section>
 
+      <section id="resource-chips" class="ds-gallery-section" aria-labelledby="resource-chips-title">
+        <div class="ds-gallery-section-heading"><div class="ds-heading-group"><span class="ds-eyebrow">Resources / recognizable context</span><h2 id="resource-chips-title">The right mark.<br><span class="ds-editorial">A useful clue.</span></h2></div><p>A local product mark identifies the resource provider. Private activity can show the recorded resource name. Public activity uses a broad provider and resource type, with private names omitted.</p></div>
+        <div class="ds-gallery-grid">
+          <article class="ds-card"><h3 class="ds-gallery-card-title">A resource you can act on.</h3><div class="ds-gallery-card-example"><div class="ds-row" id="resource-chip-examples"></div></div><p class="ds-hint" id="resource-chip-feedback" role="status">Illustrative resources. These controls do not open or change anything.</p></article>
+          <article class="ds-card"><h3 class="ds-gallery-card-title">Context with names withheld.</h3><div class="ds-gallery-card-example ds-gallery-constrained" id="redacted-chip-examples"></div><p class="ds-hint">Provider labels remain recognizable. A mark does not prove authorization, visibility, or success.</p></article>
+        </div>
+      </section>
+
+      <section id="content-fit" class="ds-gallery-section" aria-labelledby="content-fit-title">
+        <div class="ds-gallery-section-heading"><div class="ds-heading-group"><span class="ds-eyebrow">Controls / content that fits</span><h2 id="content-fit-title">Room for the<br><span class="ds-editorial">whole label.</span></h2></div><p>Long labels wrap inside their container. Status text stays visible, icons keep their proportions, and icon actions have the same 44px target at every width. Tab from the top of the page to try Skip to content.</p></div>
+        <div class="ds-gallery-grid">
+          <article class="ds-card"><h3 class="ds-gallery-card-title">Status has space to speak.</h3><div class="ds-gallery-card-example ds-gallery-constrained"><span class="ds-badge" data-tone="danger">Needs attention</span><span class="ds-badge" data-tone="warning">Awaiting an update from the connected agent</span><span class="ds-badge">workspace-with-an-unusually-long-unbroken-identifier</span></div><p class="ds-hint">Constrained to 220px to check wrapping. Sample states only.</p></article>
+          <article class="ds-card"><h3 class="ds-gallery-card-title">Actions stay within reach.</h3><div class="ds-gallery-card-example ds-gallery-constrained"><button type="button" id="long-action-example">Preview an action with a longer label that needs more than one line</button><div class="ds-row"><button class="ds-icon-button" type="button" id="icon-action-example" aria-label="Preview refresh">↻</button><button class="ds-icon-button" type="button" disabled aria-label="Refresh unavailable">↻</button></div></div><p class="ds-hint" id="fit-feedback" role="status">Local control examples. No data changes.</p></article>
+        </div>
+      </section>
+
       <section id="results-spacing" class="ds-gallery-section" aria-labelledby="results-spacing-title">
         <div class="ds-gallery-section-heading"><div class="ds-heading-group"><span class="ds-eyebrow">Search / room for the result</span><h2 id="results-spacing-title">Space to see<br><span class="ds-editorial">what comes next.</span></h2></div><p>The same space-6 gap separates controls from results, whether the result is populated, empty, or loading.</p></div>
         <div class="ds-gallery-grid"><article class="ds-card"><label class="ds-field">Search example<input type="search" value="a quiet search" readonly></label><div class="ds-results"><p class="ds-notice">No matching examples. Try another search.</p></div></article><article class="ds-card"><label class="ds-field">Search example<input type="search" value="a useful decision" readonly></label><div class="ds-results"><p class="ds-notice">A matching decision appears here.</p></div></article></div>
@@ -81,7 +98,7 @@
 
       <section class="ds-gallery-section" aria-labelledby="caption-title">
         <div class="ds-gallery-section-heading"><div class="ds-heading-group"><span class="ds-eyebrow">Cards / supporting text</span><h2 id="caption-title">A little room<br><span class="ds-editorial">for the small print.</span></h2></div><p>A caption follows the card’s content inset, with 16px of breathing room above. A shared padding value keeps card groups aligned at every screen size.</p></div>
-        <div><article class="ds-card ds-heading-group"><span class="ds-badge" data-tone="lilac">Illustrative card</span><h3>Useful context, with room around it.</h3><p>Keep the supporting note aligned with this text.</p></article><p class="ds-card-caption ds-hint">A supporting caption. Its left edge follows the card content, including the border.</p></div>
+        <div><article class="ds-card ds-heading-group"><span class="ds-badge" data-tone="lilac">Illustrative card</span><h3>Useful context, with room around it.</h3><p>Keep the supporting note aligned with this text. Heading groups preserve the shared type scale when a surface also loads legacy styles.</p></article><p class="ds-card-caption ds-hint">A supporting caption. Its left edge follows the card content, including the border.</p></div>
       </section>
 
       <section class="ds-gallery-section" aria-labelledby="memory-title">

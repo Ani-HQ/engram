@@ -1,11 +1,13 @@
 import { resolve } from "node:path";
 import { renderAsync } from "@resvg/resvg-js";
+import { publicActivityEvents, type PublicActivityEvent } from "./public-activity";
 
 export interface ShowcaseProfile {
   slug: string;
   displayName: string;
   bio: string;
   published: boolean;
+  showActivity?: boolean;
 }
 
 export interface PublicActivity {
@@ -21,6 +23,7 @@ export interface PublicActivity {
   daily: { date: string; count: number }[];
   tools: { category: string; count: number }[];
   updatedAt: string | null;
+  activity: { enabled: boolean; events: PublicActivityEvent[] };
   live: {
     workingAgents: number;
     recentlyActiveAgents: number;
@@ -38,7 +41,7 @@ export class ShowcaseError extends Error {
   constructor(message: string, public status = 400) { super(message); }
 }
 
-const PROFILE_FIELDS = new Set(["slug", "displayName", "bio", "published"]);
+const PROFILE_FIELDS = new Set(["slug", "displayName", "bio", "published", "showActivity"]);
 export const SHOWCASE_CATEGORIES = ["code", "files", "email", "calendar", "cloud", "browser", "data", "memory", "other"] as const;
 const CATEGORY_SET = new Set<string>(SHOWCASE_CATEGORIES);
 
@@ -71,7 +74,8 @@ export function parseShowcaseInput(value: unknown): ShowcaseProfile {
   if (typeof input.displayName !== "string" || input.displayName.trim().length > 80) throw new ShowcaseError("Display name must be at most 80 characters");
   if (typeof input.bio !== "string" || input.bio.trim().length > 160) throw new ShowcaseError("Bio must be at most 160 characters");
   if (typeof input.published !== "boolean") throw new ShowcaseError("published must be true or false");
-  return { slug: input.slug, displayName: input.displayName.trim(), bio: input.bio.trim(), published: input.published };
+  if (input.showActivity !== undefined && typeof input.showActivity !== "boolean") throw new ShowcaseError("showActivity must be true or false");
+  return { slug: input.slug, displayName: input.displayName.trim(), bio: input.bio.trim(), published: input.published, showActivity: input.showActivity === true };
 }
 
 export function showcaseUrls(profile: ShowcaseProfile, origin: string) {
@@ -89,7 +93,7 @@ function count(value: unknown): number {
   return Number.isSafeInteger(number) && number >= 0 ? number : 0;
 }
 
-export function publicActivitySnapshot(profile: ShowcaseProfile, row: any = {}, now = new Date()): PublicActivity {
+export function publicActivitySnapshot(profile: ShowcaseProfile, row: any = {}, now = new Date(), eventSource: { rows?: unknown; scope?: string; key?: string; preview?: boolean } = {}): PublicActivity {
   const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const counts = new Map<string, number>();
   for (const day of Array.isArray(row.daily) ? row.daily : []) {
@@ -117,6 +121,7 @@ export function publicActivitySnapshot(profile: ShowcaseProfile, row: any = {}, 
     tools: [...categories].filter(([, total]) => total > 0).map(([category, total]) => ({ category, count: total }))
       .sort((a, b) => b.count - a.count || a.category.localeCompare(b.category)),
     updatedAt: last && Number.isFinite(last.getTime()) ? last.toISOString() : null,
+    activity: { enabled: profile.showActivity === true, events: publicActivityEvents(eventSource.rows, { enabled: profile.showActivity === true || eventSource.preview === true, scope: eventSource.scope || "", key: eventSource.key || "", now }) },
     live: {
       workingAgents: count(row.working_agents), recentlyActiveAgents: count(row.recently_active_agents),
       completedAgents: count(row.completed_agents), failedAgents: count(row.failed_agents),

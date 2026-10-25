@@ -16,8 +16,8 @@ export function provisioningPanel({ session, checking, error, retry, signOut, sw
   const failed = session.org.provisioningStatus === "failed";
   const choices = (session.orgs || []).filter(org => org.id !== session.org.id);
   return h("main", { class: "auth provisioning", "aria-labelledby": "provisioning-title" },
-    h("a", { class: "wordmark", href: "/" }, h("span", { class: "brand-mark" }, icon("activity", { size: 17 })), "engram"),
-    h("div", { role: "status", "aria-live": "polite" }, icon(failed ? "circle-alert" : "loader-circle", { size: 22, class: failed ? "" : "spin" }),
+    h("a", { class: "wordmark", href: "/" }, h("img", { class: "brand-mark", src: "/brand/engram-mark.svg", width: 32, height: 32, alt: "" }), "engram"),
+    h("div", { role: "status", "aria-live": "polite" }, failed ? icon("circle-x", { size: 22 }) : h("span", { class: "ds-spinner", "aria-hidden": "true" }),
       h("h1", { id: "provisioning-title" }, failed ? "Setup needs another try." : "Making room for your ideas."),
       h("p", {}, failed ? "We couldn’t finish setting up this workspace. Check again in a moment." : `Your account is ready. We’re setting up ${session.org.name} so your agents have a place to work.`)),
     error && h("p", { class: "notice", role: "alert" }, error),
@@ -43,14 +43,17 @@ export function planCards(catalog, cloudHref = "/app#start", cloudLabel = "Start
 }
 
 export function billingPanel({ billing, catalog, jev, jevError, api, notify, fail, refresh }) {
-  const feedback = h("p", { class: "form-feedback", role: "status" });
+  const feedback = h("p", { class: "form-feedback", role: "status", "aria-live": "polite" });
   const plan = billingPresentation(billing);
   const { hosted, complimentary } = plan;
+  const needsAttention = hosted && (billing.canWrite !== true || (!complimentary && ["past_due", "unpaid", "incomplete", "incomplete_expired", "trial_expired", "canceled", "paused"].includes(billing.status)) || plan.label === "Subscription needs attention");
+  const trial = hosted && !complimentary && !needsAttention && ["trial", "trialing"].includes(billing.status);
   const redirect = async (button, operation) => {
-    const original = button.textContent;
-    button.disabled = true; button.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), "Opening…"); feedback.textContent = "";
+    if (button.disabled) return;
+    const original = [...button.childNodes];
+    button.disabled = true; button.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), "Opening…"); feedback.setAttribute("role", "status"); feedback.textContent = "Opening billing…";
     try { const result = await operation(); window.location.assign(result.url); }
-    catch (error) { fail(error); feedback.textContent = error.message || "Please try again."; button.disabled = false; button.textContent = original; }
+    catch (error) { fail(error); feedback.setAttribute("role", "alert"); feedback.textContent = error.message || "Billing could not open. Please try again."; button.disabled = false; button.replaceChildren(...original); }
   };
   const subscribe = action("Subscribe to Cloud · $19 / month", event => redirect(event.currentTarget, () => api.checkout("cloud")), { class: "primary", disabled: !billing.checkoutAvailable });
   const manage = action([icon("external-link", { size: 14 }), "Manage subscription"], event => redirect(event.currentTarget, api.billingPortal), { disabled: !billing.portalAvailable });
@@ -58,7 +61,7 @@ export function billingPanel({ billing, catalog, jev, jevError, api, notify, fai
   return h("div", { class: "account-content" },
     returnState === "success" && h("div", { class: "notice", role: "status" }, "Checkout returned successfully. Your plan updates after payment confirmation.", action("Refresh plan", refresh, { class: "text small" })),
     returnState === "canceled" && h("div", { class: "notice", role: "status" }, "Checkout was canceled. Your plan has not changed."),
-    h("section", { class: "billing-summary ds-card" }, h("div", { class: "ds-heading-group" }, h("span", { class: "eyebrow ds-eyebrow" }, "CURRENT PLAN"), h("h2", {}, plan.title), h("p", { class: "detail-note" }, plan.description)), h("span", { class: "plan-status ds-badge", "data-tone": "lime" }, icon("circle-check", { size: 14 }), plan.label),
+    h("section", { class: "billing-summary ds-card" }, h("div", { class: "ds-heading-group" }, h("span", { class: "eyebrow ds-eyebrow" }, "CURRENT PLAN"), h("h2", {}, plan.title), h("p", { class: "detail-note" }, plan.description)), h("span", { class: "plan-status ds-badge", "data-tone": needsAttention ? "warning" : trial ? "info" : "success" }, icon(needsAttention ? "info" : trial ? "clock" : "circle-check", { size: 14 }), plan.label),
       hosted && h("dl", { class: "billing-dates" }, h("dt", {}, plan.dateLabel), h("dd", {}, plan.noExpiry ? "No expiry" : date(plan.dateValue))),
       plan.subscriptionLabel && h("p", { class: "detail-note" }, `Existing Stripe subscription: ${plan.subscriptionLabel}. Complimentary access does not cancel a subscription. Manage it below.`),
       hosted && h("div", { class: "form-actions" }, plan.showSubscribe && subscribe, billing.portalAvailable && manage),
@@ -77,28 +80,30 @@ export function billingPanel({ billing, catalog, jev, jevError, api, notify, fai
 
 export function workspacePanel({ session, members, invites, api, saved, notify, fail }) {
   const owner = session.role === "owner";
-  const feedback = h("p", { role: "status", class: "form-feedback" });
+  const feedback = h("p", { role: "status", "aria-live": "polite", class: "form-feedback" });
   const policies = session.org.policies;
   const ai = h("input", { type: "checkbox", name: "external-ai", checked: policies.externalAiProcessing === true });
   const writes = h("input", { type: "checkbox", name: "agent-writes", checked: policies.agentsMayWrite !== false });
   const save = h("button", { type: "submit", class: "primary small" }, "Save privacy settings");
   const settings = h("form", { class: "stack", onsubmit: async event => {
-    event.preventDefault(); save.disabled = true; feedback.textContent = "";
-    try { const result = await api.savePolicies({ externalAiProcessing: ai.checked, agentsMayWrite: writes.checked }); saved(result.policies); notify("Workspace settings saved"); }
-    catch (error) { fail(error); feedback.textContent = error.message || "Please try again."; }
-    finally { save.disabled = false; }
-  } }, h("label", { class: "setting-toggle" }, writes, h("span", {}, h("strong", {}, "Allow agents to write"), h("small", {}, "Individual connection permissions also apply."))),
-    h("label", { class: "setting-toggle" }, ai, h("span", {}, h("strong", {}, "Allow embeddings & generated briefs"), h("small", {}, "Allows configured Voyage embeddings to process relevant memory text and queries, and OpenAI to process bounded activity context for optional generated briefs. This permission does not enable Jev. Provider keys stay on the server; provider terms and retention apply."))), feedback, owner && save);
+    event.preventDefault(); if (!owner || save.disabled) return;
+    save.disabled = true; ai.disabled = true; writes.disabled = true; settings.setAttribute("aria-busy", "true"); save.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), "Saving…"); feedback.setAttribute("role", "status"); feedback.textContent = "Saving privacy settings…";
+    try { const result = await api.savePolicies({ externalAiProcessing: ai.checked, agentsMayWrite: writes.checked }); feedback.textContent = "Privacy settings saved."; saved(result.policies); notify("Workspace settings saved"); }
+    catch (error) { fail(error); feedback.setAttribute("role", "alert"); feedback.textContent = error.message || "Privacy settings could not be saved. Please try again."; }
+    finally { save.disabled = false; ai.disabled = !owner; writes.disabled = !owner; settings.setAttribute("aria-busy", "false"); save.textContent = "Save privacy settings"; }
+  } }, h("label", { class: "ds-option" }, writes, h("span", {}, h("strong", {}, "Allow agents to write"), h("small", {}, "Individual connection permissions also apply."))),
+    h("label", { class: "ds-option" }, ai, h("span", {}, h("strong", {}, "Allow embeddings & generated briefs"), h("small", {}, "Allows configured Voyage embeddings to process relevant memory text and queries, and OpenAI to process bounded activity context for optional generated briefs. This permission does not enable Jev. Provider keys stay on the server; provider terms and retention apply."))), feedback, owner && save);
   ai.disabled = !owner; writes.disabled = !owner;
-  const email = h("input", { type: "email", required: true, placeholder: "teammate@example.com", "aria-label": "Teammate email" });
+  const email = h("input", { type: "email", name: "teammate-email", required: true, autocomplete: "email", spellcheck: "false", placeholder: "teammate@example.com", "aria-describedby": "workspace-invite-feedback" });
   const send = h("button", { type: "submit", class: "small" }, "Invite member");
-  const inviteFeedback = h("p", { role: "status", class: "detail-note" });
-  const invite = h("form", { class: "stack", onsubmit: async event => {
-    event.preventDefault(); send.disabled = true; inviteFeedback.textContent = "";
+  const inviteFeedback = h("p", { id: "workspace-invite-feedback", role: "status", "aria-live": "polite", class: "form-feedback detail-note" });
+  const invite = h("form", { class: "stack workspace-invite-form", onsubmit: async event => {
+    event.preventDefault(); if (!owner || send.disabled) return;
+    send.disabled = true; email.readOnly = true; invite.setAttribute("aria-busy", "true"); send.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), "Inviting…"); inviteFeedback.setAttribute("role", "status"); inviteFeedback.textContent = "Creating invitation…";
     try { const result = await api.invite(email.value.trim()); email.value = ""; inviteFeedback.replaceChildren(result.url ? h("span", {}, "Invite created. ", link("Open invitation", result.url)) : "Invitation emailed. The link expires in seven days."); }
-    catch (error) { fail(error); inviteFeedback.textContent = error.message || "Please try again."; }
-    finally { send.disabled = false; }
-  } }, h("div", { class: "inline-form" }, email, send), inviteFeedback);
+    catch (error) { fail(error); inviteFeedback.setAttribute("role", "alert"); inviteFeedback.textContent = error.message || "The invitation could not be created. Please try again."; }
+    finally { send.disabled = false; email.readOnly = false; invite.setAttribute("aria-busy", "false"); send.textContent = "Invite member"; }
+  } }, h("div", { class: "inline-form" }, h("label", { class: "field" }, "Teammate email", email), send), inviteFeedback);
   return h("div", { class: "account-content" },
     section("Privacy & access", "These settings apply to this workspace. Only an owner can change them.", settings),
     section("People", session.org.kind === "personal" ? "A personal workspace has one owner. Shared work belongs in a team workspace." : "Everyone in this workspace can read its shared memory and activity.", h("div", {}, members.map(member => h("div", { class: "token-row" }, h("div", {}, h("span", {}, member.email), h("small", {}, member.role)), owner && member.role !== "owner" && action("Remove", async event => {
@@ -114,7 +119,8 @@ export function workspacePanel({ session, members, invites, api, saved, notify, 
 }
 
 async function exportWorkspace(button, session, api, fail, notify) {
-  const original = button.textContent; button.disabled = true;
+  if (button.disabled) return;
+  const original = [...button.childNodes]; button.disabled = true;
   const memories = [], actions = [];
   try {
     let more = true, offset = 0;
@@ -136,5 +142,5 @@ async function exportWorkspace(button, session, api, fail, notify) {
     const url = URL.createObjectURL(blob), download = h("a", { href: url, download: `engram-${session.org.slug}.json` });
     download.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); notify("Export downloaded");
   } catch (error) { fail(error); notify(error.message || "Export failed. Please retry."); }
-  finally { button.disabled = false; button.textContent = original; }
+  finally { button.disabled = false; button.replaceChildren(...original); }
 }

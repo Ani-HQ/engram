@@ -4,8 +4,8 @@ Owners publish a workspace's public activity profile from **Public profile** in 
 
 | Route | Use |
 | --- | --- |
-| `GET /u/:slug` | Shareable profile page with automatically updating counts. |
-| `GET /api/public/activity/:slug` | One current aggregate snapshot, with CORS. |
+| `GET /u/:slug` | Shareable profile page with live counts and an optional redacted activity stream. |
+| `GET /api/public/activity/:slug` | One current public snapshot, with CORS. |
 | `GET /api/public/activity/:slug/stream` | Live snapshots over SSE, with CORS. |
 | `GET /api/public/activity/:slug/card.svg` | Scalable image snapshot for websites. |
 | `GET /api/public/activity/:slug/card.png` | Social preview image snapshot. |
@@ -20,7 +20,7 @@ The response uses `Content-Type: text/event-stream`. Each connection starts with
 retry: 5000
 
 event: snapshot
-data: {"profile":{...},"stats":{...},"daily":[...],"tools":[...],"updatedAt":"...","live":{...}}
+data: {"profile":{...},"stats":{...},"daily":[...],"tools":[...],"updatedAt":"...","live":{...},"activity":{"enabled":false,"events":[]}}
 
 ```
 
@@ -46,7 +46,31 @@ Each snapshot has the same schema as the JSON endpoint. The `live` object contai
 - Stale actions are still recorded as running but have no recent report. They are excluded from working now. A new running heartbeat with a fresh `eventId` refreshes them; retrying the same report does not.
 - `stats` and category/day totals use each logical action's latest state. A keyed running action followed by its completion counts once. Historical reports without an `actionKey` remain individual events.
 
-Snapshots contain no agent names, tool identifiers, task summaries, resources, details, run IDs, action/event keys, or transcripts. The profile's chosen name/bio is public. Counts refer to authenticated reporting identities, which need not correspond one-to-one to a physical agent process.
+The profile's chosen name/bio is public. Counts refer to authenticated reporting identities, which need not correspond one-to-one to a physical agent process. Raw tool identifiers, private agent aliases, task summaries, resources, details, run IDs, action/event keys, and transcripts are excluded.
+
+### Optional redacted activity
+
+An owner can enable **Share a redacted activity stream** in Public profile. `showActivity` defaults to `false`, including for existing published profiles. The owner can inspect the private preview before saving. JSON and SSE follow the same saved setting; turning it off retires the old publication binding and subsequent snapshots return `activity: { enabled: false, events: [] }`.
+
+When enabled, `activity.events` contains at most 20 latest logical actions, newest receipt first:
+
+```json
+{
+  "id": "opaque-public-id",
+  "agent": { "product": "codex", "label": "Codex" },
+  "service": "github",
+  "action": "Reviewing a pull request",
+  "status": "running",
+  "evidence": "reported",
+  "updatedAt": "2026-10-25T10:00:00.000Z"
+}
+```
+
+Agent products and services come from fixed allowlists; unknown products are labeled Agent. Action descriptions are fixed templates derived from operation types. They never reuse or redact a private task's free text. Repository owners/names, document titles, URL paths/query strings, memory queries, personal aliases, and custom source labels are omitted. Public identifiers are keyed projections scoped to the profile, not private action IDs. A running action without a receipt in the last 15 minutes becomes `stale`; it does not claim the agent is still working. `observed` identifies Engram operations, while external work remains `reported`.
+
+The private owner-settings response can include these same safe events for a prospective preview before opt-in. That authenticated preview is never evidence that the events are already public. Social image cards retain aggregate counts.
+
+Upgrades add `action_profiles.show_activity` with a `false` default and advance the separate showcase schema marker to `2026102501`. Apply the normal provisioner migration before rolling out runtime-only instances; their readiness check rejects an older schema. Existing publication choices and sharing scope are preserved.
 
 ## Use it on a website
 
@@ -92,7 +116,7 @@ Replace the host and slug with the URLs copied from Engram:
 </script>
 ```
 
-`snapshot` is a complete current view, not a raw event log or replay cursor. Reconnecting always starts from current state. A website should close its connection when its widget is removed. The built-in profile pauses hidden pages, reconnects when visible, distinguishes connection states, and updates counts without resetting keyboard focus in the chart. A transient server failure clears its old public view and retries; returning through browser history fetches a fresh public snapshot.
+`snapshot` is a complete current view, not a raw event log or replay cursor. Reconnecting always starts from current state. A website should close its connection when its widget is removed. The built-in profile pauses hidden pages, reconnects when visible, distinguishes connection states, and updates the stream and counts without resetting keyboard focus in the chart. A transient server failure clears its old public view and retries; returning through browser history fetches a fresh public snapshot.
 
 ## Publication, retries, and resource limits
 

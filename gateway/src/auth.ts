@@ -23,7 +23,9 @@ export async function authenticate(
 }
 
 export async function authenticateSecret(raw: string, audience?: string): Promise<TokenRecord | null> {
-  if (!raw) return null;
+  // Snapshot credentials are deliberately unusable as workspace credentials,
+  // even if a hash were accidentally inserted into the ordinary token table.
+  if (!raw || raw.startsWith("egs_")) return null;
   if (isJwt(raw)) {
     try {
       return await authenticateJwt(raw, audience ?? "");
@@ -39,7 +41,7 @@ export async function authenticateSecret(raw: string, audience?: string): Promis
 // also re-check live membership so a revoked owner cannot keep managing billing
 // or other workspace settings until their old cookie expires.
 export async function authenticateStoredSecret(raw: string, db: postgres.Sql = sql): Promise<TokenRecord | null> {
-  if (!raw) return null;
+  if (!raw || raw.startsWith("egs_")) return null;
   const hash = sha256(raw);
   const token = await lookupToken(hash, db);
   if (token) return token;

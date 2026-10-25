@@ -98,6 +98,8 @@ mock.module("../../gateway/src/review/store", () => ({
   getReviewItem: async () => null,
 }));
 
+const realSharedRead = await import("../../gateway/src/shared-context-read");
+mock.module("../../gateway/src/shared-context-read", () => ({ ...realSharedRead, approvedTeamContextPages: async () => [] }));
 const {
   captureMarkdown,
   clearSessionCookie,
