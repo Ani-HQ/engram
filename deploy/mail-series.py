@@ -70,10 +70,10 @@ def replace_job(args, enabled=False):
         cloud(args, ["run", "jobs", "replace", str(path), f"--region={args.region}"])
 
 
-def schedule_flags(args):
+def schedule_flags(args, *, update=False):
     return [f"--location={args.region}", "--schedule=*/15 * * * *", "--time-zone=Etc/UTC",
             f"--uri={target(args)}", "--http-method=POST", "--message-body={}",
-            "--headers=Content-Type=application/json", f"--oauth-service-account-email={identity(args)}",
+            "--update-headers=Content-Type=application/json" if update else "--headers=Content-Type=application/json", f"--oauth-service-account-email={identity(args)}",
             "--oauth-token-scope=https://www.googleapis.com/auth/cloud-platform",
             "--attempt-deadline=30s", "--max-retry-attempts=0"]
 
@@ -143,7 +143,8 @@ def prepare(args):
     cloud(args, ["run", "jobs", "add-iam-policy-binding", MAIL_JOB, f"--region={args.region}",
                  "--member=serviceAccount:" + identity(args), "--role=roles/run.invoker"])
     existing = cloud(args, ["scheduler", "jobs", "describe", MAIL_SCHEDULE, f"--location={args.region}"], missing=True)
-    configured = cloud(args, ["scheduler", "jobs", "update" if existing else "create", "http", MAIL_SCHEDULE, *schedule_flags(args)])
+    updating = existing is not None
+    configured = cloud(args, ["scheduler", "jobs", "update" if updating else "create", "http", MAIL_SCHEDULE, *schedule_flags(args, update=updating)])
     if configured.get("state") != "PAUSED":
         cloud(args, ["scheduler", "jobs", "pause", MAIL_SCHEDULE, f"--location={args.region}"])
     verify(args)
