@@ -42,7 +42,7 @@ export function activityStatus(activity, { compact = false } = {}) {
 export function agentAvatar(name, { working = false, size = "", label = false, harness, sourceLabel, displayName } = {}) {
   const visual = agentVisual(name, { harness, sourceLabel });
   return h("span", { class: `activity-avatar ${size}${working ? " is-working" : ""}`, title: displayName && displayName !== name ? `${displayName} · ${name}` : name, "aria-hidden": label ? null : "true" },
-    visual.brand || visual.label === "Codex" ? visualIcon(visual, { size: size === "large" ? 19 : size === "row" ? 18 : 14 }) : h("span", {}, visual.initials),
+    visualIcon(visual, { size: size === "large" ? 19 : size === "row" ? 18 : 14 }),
     working && h("span", { class: "avatar-working-dot" }));
 }
 function agentChip(agent, onFilter, currentFilter, { avatar = true } = {}) {

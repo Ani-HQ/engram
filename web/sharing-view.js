@@ -16,7 +16,7 @@ export function sharingView({ api, fail = () => {}, isCurrent = () => true, copy
   let catalog = null, preview = null, candidates = [], previewTimer, previewBusy = false, commitBusy = false, loadBusy = false;
   const pendingGrants = new Map(), secretFields = new Set();
   const current = () => active && isCurrent();
-  const feedback = h("p", { class: "sharing-feedback", role: "status", "aria-live": "polite", "aria-atomic": "true" });
+  const feedback = h("p", { id: prefix + "-feedback", class: "sharing-feedback", tabindex: -1, role: "status", "aria-live": "polite", "aria-atomic": "true" });
   const notice = (text, tone = "neutral", alert = false) => h("div", { class: "ds-notice", "data-tone": tone, role: alert ? "alert" : "status" }, text);
   const report = (text, error = false) => { feedback.setAttribute("role", error ? "alert" : "status"); feedback.textContent = text; };
   const intro = h("div", { class: "ds-heading-group" }, statusBadge("Review before sharing", { tone: "lilac" }),
@@ -71,6 +71,14 @@ export function sharingView({ api, fail = () => {}, isCurrent = () => true, copy
     [instruction, recipientKind, team, agent].forEach(field => { field.disabled = commitBusy; });
     previewButton.disabled = commitBusy || previewBusy || loadBusy;
     refresh.disabled = loadBusy || commitBusy || pendingGrants.size > 0;
+    form.setAttribute("aria-busy", String(previewBusy || commitBusy));
+    review.setAttribute("aria-busy", String(previewBusy || commitBusy));
+    loadState.setAttribute("aria-busy", String(loadBusy));
+    grantsList.setAttribute("aria-busy", String(loadBusy || pendingGrants.size > 0));
+    previewButton.setAttribute("aria-busy", String(previewBusy));
+    refresh.setAttribute("aria-busy", String(loadBusy));
+    if (loadBusy) refresh.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), "Refreshing shares…");
+    else refresh.textContent = "Refresh shares";
     cancelPreview.hidden = !previewBusy;
     if (!previewBusy) previewButton.textContent = "Preview matching text";
   }
@@ -173,7 +181,7 @@ export function sharingView({ api, fail = () => {}, isCurrent = () => true, copy
     commitBusy = true; lockForm(); renderCommitState(); acknowledge.disabled = true;
     candidates.forEach(item => { item.checkbox.disabled = true; item.editor.disabled = true; });
     review.querySelectorAll("button").forEach(control => { control.disabled = true; });
-    shareButton.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), "Sharing approved text…"); report("");
+    shareButton.setAttribute("aria-busy", "true"); shareButton.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), "Sharing approved text…"); report("");
     try {
       const result = await api.sharingCommit({ previewId: data.previewId, selections, acknowledged: true });
       if (!current() || epoch !== scope) return;
@@ -189,7 +197,8 @@ export function sharingView({ api, fail = () => {}, isCurrent = () => true, copy
       candidates.forEach(item => { item.checkbox.disabled = false; item.editor.disabled = false; });
       review.querySelectorAll("button").forEach(control => { control.disabled = false; });
       acknowledge.disabled = false; shareButton.textContent = "Share approved text";
-    } finally { if (current() && epoch === scope) { commitBusy = false; lockForm(); renderCommitState(); } }
+      if ([shareButton, document.body].includes(document.activeElement)) feedback.focus();
+    } finally { if (current() && epoch === scope) { commitBusy = false; shareButton.setAttribute("aria-busy", "false"); lockForm(); renderCommitState(); } }
   }
   function clearCredential() {
     for (const field of secretFields) { field.value = ""; field.removeAttribute("value"); }
@@ -203,10 +212,21 @@ export function sharingView({ api, fail = () => {}, isCurrent = () => true, copy
     const title = h("h3", { tabindex: "-1" }, "Connect this one agent.");
     const show = button("Show token", () => { if (!current() || !token.value) return; token.type = token.type === "password" ? "text" : "password"; show.textContent = token.type === "password" ? "Show token" : "Hide token"; }, { class: "small" });
     const copyToken = button("Copy token", async () => {
-      if (!current() || !token.value) return;
-      try { if (await copy(token.value) === false) throw new Error(); if (current() && token.value) report("Read-only token copied. Store it privately; it is shown only in this view."); }
-      catch { if (current()) report("Could not copy. Show the token, then select and copy it.", true); }
-    }, { class: "small" });
+      if (!current() || !token.value || copyToken.disabled) return;
+      const epoch = scope;
+      const stillCurrent = () => current() && epoch === scope && secretFields.has(token) && Boolean(token.value);
+      copyToken.disabled = true; copyToken.removeAttribute("data-feedback"); copyToken.setAttribute("aria-busy", "true"); copyToken.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), "Copying token…");
+      try {
+        if (await copy(token.value) === false) throw new Error();
+        if (!stillCurrent()) return;
+        copyToken.setAttribute("data-feedback", "success"); copyToken.replaceChildren(icon("check", { size: 14, class: "ds-feedback-icon" }), "Token copied");
+        report("Read-only token copied. Store it privately; it is shown only in this view.");
+      } catch {
+        if (!stillCurrent()) return;
+        copyToken.setAttribute("data-feedback", "error"); copyToken.textContent = "Copy token";
+        report("Could not copy. Show the token, then select and copy it.", true);
+      } finally { if (stillCurrent()) { copyToken.disabled = false; copyToken.setAttribute("aria-busy", "false"); } }
+    }, { class: "small", "aria-describedby": prefix + "-feedback" });
     credentials.replaceChildren(h("section", { class: "sharing-credential ds-card" },
       h("div", { class: "ds-heading-group" }, statusBadge("Read-only · approved text only", { tone: "lime" }), title,
         h("p", {}, "Use this separate endpoint and token in the receiving agent. It can read only this approved snapshot. This is not a personal workspace credential.")),
@@ -230,6 +250,7 @@ export function sharingView({ api, fail = () => {}, isCurrent = () => true, copy
           if (!current() || pendingGrants.has(share.id) || share.revokedAt) return;
           if (!confirmed) { confirmed = true; control.textContent = confirmLabel; cancel.hidden = false; return; }
           const attempt = {}, epoch = scope; pendingGrants.set(share.id, attempt); invalidateCatalogLoad(); lockForm(); control.disabled = true; cancel.disabled = true; clearCredential(); report("");
+          actions.setAttribute("aria-busy", "true"); control.setAttribute("aria-busy", "true"); control.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), kind === "revoke" ? "Revoking sharing…" : "Replacing token…");
           try {
             const result = kind === "revoke" ? await api.revokeSharing(share.id) : await api.rotateSharingToken(share.id);
             if (!current() || epoch !== scope || pendingGrants.get(share.id) !== attempt) return;
@@ -238,8 +259,8 @@ export function sharingView({ api, fail = () => {}, isCurrent = () => true, copy
               catalog.shares = catalog.shares.map(item => item.id === share.id ? updated : item); renderGrants();
               report("Sharing revoked. Previously read or exported copies cannot be recalled."); grantsHeading.focus({ preventScroll: true });
             } else { showCredential(result.credential); report("Agent token replaced. The previous token no longer works."); }
-          } catch (error) { if (current() && epoch === scope) { report(error.message || "The change could not be confirmed. Refresh shares and try again.", true); fail(error); } }
-          finally { if (pendingGrants.get(share.id) === attempt) { pendingGrants.delete(share.id); lockForm(); control.disabled = false; cancel.disabled = false; confirmed = false; control.textContent = label; cancel.hidden = true; } }
+          } catch (error) { if (current() && epoch === scope) { report(error.message || "The change could not be confirmed. Refresh shares and try again.", true); fail(error); if ([control, document.body].includes(document.activeElement)) feedback.focus(); } }
+          finally { if (pendingGrants.get(share.id) === attempt) { pendingGrants.delete(share.id); lockForm(); control.disabled = false; actions.setAttribute("aria-busy", "false"); control.setAttribute("aria-busy", "false"); cancel.disabled = false; confirmed = false; control.textContent = label; cancel.hidden = true; } }
         }, { class: kind === "revoke" ? "text small" : "small" });
         actions.append(control, cancel);
       };

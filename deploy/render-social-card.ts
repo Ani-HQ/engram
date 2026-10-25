@@ -2,30 +2,33 @@
 import { Resvg } from "@resvg/resvg-js";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { designColor as color } from "../gateway/src/design-tokens";
 
 const root = resolve(import.meta.dir, "..");
-const css = readFileSync(resolve(root, "web/design-system.css"), "utf8");
-function color(name: string) {
-  const value = css.match(new RegExp(`--ds-${name}:\\s*(#[a-f0-9]{6})\\s*;`, "i"))?.[1];
-  if (!value) throw new Error(`Missing design token ${name}`);
-  return value;
-}
-const paper = color("paper"), ink = color("ink"), lime = color("lime"), lilac = color("lilac"), apricot = color("apricot");
+const paper = color("paper"), ink = color("ink"), surface = color("surface"), line = color("line"), muted = color("muted"), accent = color("accent"), accentMuted = color("accent-muted");
 const mark = readFileSync(resolve(root, "web/brand/engram-mark.svg"), "utf8")
-  .replace('width="64" height="64"', 'x="60" y="53" width="43" height="43"');
+  .replace('width="64" height="64"', 'x="64" y="48" width="36" height="36"');
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
 <title>Engram — Your agents. Same drive.</title>
-<defs><pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1" fill="${ink}" opacity=".13"/></pattern></defs>
-<rect width="1200" height="630" fill="${paper}"/><rect x="700" width="500" height="630" fill="url(#dots)"/>
+<defs><pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="${line}" stroke-opacity=".45"/></pattern></defs>
+<rect width="1200" height="630" fill="${paper}"/><rect x="660" y="113" width="540" height="440" fill="url(#grid)"/>
 ${mark}
-<text x="117" y="84" fill="${ink}" font-family="Arial,sans-serif" font-size="34" font-weight="700" letter-spacing="-1.6">engram</text>
-<text x="62" y="205" fill="${ink}" font-family="Arial,sans-serif" font-size="69" font-weight="700" letter-spacing="-3">Your agents.</text>
-<text x="60" y="300" fill="${ink}" font-family="Georgia,serif" font-style="italic" font-size="86" letter-spacing="-4">Same drive.</text>
-<text x="64" y="365" fill="${ink}" font-family="Arial,sans-serif" font-size="22">Shared context for every agent. Your team, when you choose.</text>
-<rect x="63" y="450" width="254" height="48" rx="24" fill="${lime}" stroke="${ink}"/><text x="190" y="480" text-anchor="middle" fill="${ink}" font-family="monospace" font-size="14">SHARED MEMORY FOR AGENTS</text>
-<g transform="translate(915 297)"><ellipse rx="208" ry="102" transform="rotate(-25)" fill="none" stroke="${ink}" stroke-width="1.5"/><ellipse rx="146" ry="181" transform="rotate(25)" fill="none" stroke="${ink}" stroke-dasharray="4 8"/><circle r="96" fill="${lilac}" stroke="${ink}" stroke-width="2"/><path d="M-48 4h20l14-34L3 36 19-8h27" fill="none" stroke="${ink}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="-160" cy="100" r="24" fill="${lime}" stroke="${ink}" stroke-width="2"/><rect x="91" y="-130" width="103" height="54" rx="12" fill="${apricot}" stroke="${ink}" stroke-width="2"/><text x="143" y="-97" text-anchor="middle" fill="${ink}" font-family="monospace" font-size="14">remember</text><circle cx="-123" cy="-110" r="9" fill="${ink}"/><path d="M160 123v24m-12-12h24M-200-22v20m-10-10h20" stroke="${ink}" stroke-width="2"/></g>
-<path d="M62 551h1076" stroke="${ink}" stroke-width="1"/><text x="64" y="585" fill="${ink}" font-family="monospace" font-size="15">MANY AGENTS. ONE THREAD.</text><text x="1137" y="585" text-anchor="end" fill="${ink}" font-family="monospace" font-size="15">engram.ani.computer</text>
+<g font-family="Inter,Arial,sans-serif">
+<text x="111" y="75" fill="${ink}" font-size="29" font-weight="600" letter-spacing="-1.2">engram</text>
+<text x="64" y="186" fill="${muted}" font-family="monospace" font-size="13" letter-spacing="1.4">SHARED MEMORY FOR AI AGENTS</text>
+<text x="60" y="278" fill="${ink}" font-size="72" font-weight="550" letter-spacing="-3.6">Your agents.</text>
+<text x="60" y="362" fill="${accent}" font-size="72" font-weight="550" letter-spacing="-3.6">Same drive.</text>
+<text x="64" y="417" fill="${muted}" font-size="20">Carry context between agents.</text>
+<text x="64" y="449" fill="${muted}" font-size="20">Share selected memories with your team.</text>
+<g fill="none" stroke="${line}" stroke-width="1.5"><path d="M839 208v65m-63 50H720v88h119m63-88h176v88H965"/><path d="M839 240h239v61"/></g>
+<rect x="754" y="153" width="170" height="55" rx="6" fill="${surface}" stroke="${line}"/><text x="839" y="186" fill="${ink}" font-size="16" text-anchor="middle">Your agents</text>
+<rect x="754" y="273" width="170" height="100" rx="8" fill="${accentMuted}" stroke="${accent}" stroke-opacity=".65"/><text x="839" y="316" fill="${accent}" font-size="18" text-anchor="middle" font-weight="550">Shared memory</text><text x="839" y="343" fill="${muted}" font-family="monospace" font-size="12" text-anchor="middle">remember / recall</text>
+<rect x="994" y="301" width="142" height="44" rx="6" fill="${surface}" stroke="${line}"/><text x="1065" y="328" fill="${ink}" font-size="14" text-anchor="middle">Project context</text>
+<rect x="776" y="411" width="126" height="44" rx="6" fill="${surface}" stroke="${line}"/><text x="839" y="438" fill="${ink}" font-size="14" text-anchor="middle">Decisions</text>
+<circle cx="839" cy="240" r="3" fill="${accent}"/>
+<path d="M64 547h1072" stroke="${line}"/><text x="64" y="585" fill="${muted}" font-family="monospace" font-size="13">MANY AGENTS. ONE THREAD.</text><text x="1136" y="585" text-anchor="end" fill="${muted}" font-family="monospace" font-size="13">engram.ani.computer</text>
+</g>
 </svg>`;
 writeFileSync(resolve(root, "web/brand/engram-social.svg"), svg + "\n");
-writeFileSync(resolve(root, "web/brand/engram-social.png"), new Resvg(svg, { font: { loadSystemFonts: true } }).render().asPng());
+writeFileSync(resolve(root, "web/brand/engram-social.png"), new Resvg(svg, { font: { loadSystemFonts: false, fontDirs: [resolve(root, "web/vendor")], defaultFontFamily: "Inter" } }).render().asPng());
 console.log("Generated 1200×630 social SVG and PNG from shared design tokens.");

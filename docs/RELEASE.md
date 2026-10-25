@@ -4,6 +4,26 @@ Private operator captures and verification records described in the historical
 release entries are retained outside the public source release. Their local
 paths and raw contents are not published here.
 
+## Interface system and public profile layouts — 25 October 2026
+
+The graphite/mint interface system is live across the app, public pages, email,
+and social cards. Public profiles offer Living studio and Field notes, with
+immediate owner previews and up to three explicitly written highlights. Local
+product marks and fallback avatars require no remote runtime asset requests.
+
+[Source PR 38](https://github.com/Ani-HQ/engram/pull/38) contains the implementation
+and review documentation. Validation covers the unit suite, actual PostgreSQL
+upgrade/idempotence and typed JSON-array persistence, tenant separation,
+restricted authority, managed provisioning, and actual engine isolation.
+
+The additive migration preserves predecessor schema contracts and adds a
+separate presentation-readiness marker. Legacy clients preserve saved layout
+and highlights when omitted. Candidate smoke, runtime asset/header checks,
+and desktop/phone browser review completed before release verification.
+
+Operational deployment identifiers, rollback state, and detailed verification
+records are retained in the private operator artifact store.
+
 ## Verified email-only hosted console — 24 October 2026
 
 Hosted sign-in and invitation entry no longer offer access-token login.

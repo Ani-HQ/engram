@@ -166,5 +166,5 @@ function relatedMemories(links, currentSlug) {
     seen.add(link.slug); return true;
   }).slice(0, 12);
   if (!valid.length) return null;
-  return h("section", { class: "memory-related" }, h("h3", {}, "Linked memories"), h("div", {}, valid.map(link => h("a", { href: `#${encodeURIComponent(link.slug)}`, class: "wikilink memory-related-link", "data-slug": link.slug }, icon("file-text", { size: 14 }), h("span", {}, link.title || link.slug), icon("arrow-up-right", { size: 13 })))));
+  return h("section", { class: "memory-related" }, h("h3", {}, "Linked memories"), h("div", {}, valid.map(link => h("a", { href: `#${encodeURIComponent(link.slug)}`, class: "wikilink memory-related-link ds-touch-target", "data-slug": link.slug }, icon("file-text", { size: 14 }), h("span", {}, link.title || link.slug), icon("arrow-up-right", { size: 13 })))));
 }

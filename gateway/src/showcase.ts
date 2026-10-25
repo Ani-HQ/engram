@@ -1,5 +1,5 @@
 import type postgres from "postgres";
-import { ShowcaseError, parseShowcaseInput, publicActivitySnapshot, renderShowcaseCard, renderShowcasePage, renderShowcasePng, renderUnavailableShowcasePage, showcaseUrls, validShowcaseSlug, type ShowcaseProfile, type PublicActivity } from "./showcase-view";
+import { ShowcaseError, SHOWCASE_PAYLOAD_LIMIT, parseShowcaseInput, publicActivitySnapshot, renderShowcaseCard, renderShowcasePage, renderShowcasePng, renderUnavailableShowcasePage, showcasePresentation, showcaseUrls, validShowcaseSlug, type ShowcaseProfile, type PublicActivity } from "./showcase-view";
 export * from "./showcase-view";
 import { config, databaseSecurity, dbUrl } from "./config";
 import { currentOrg } from "./context";
@@ -24,27 +24,33 @@ function owner(token: TokenRecord, write = false): TokenRecord {
 
 function mapProfile(row: any): ShowcaseProfile {
   // Avoid publishing the workspace name or token identity as implicit defaults.
-  if (!row) return { slug: "", displayName: "", bio: "", published: false, showActivity: false };
-  return { slug: String(row.slug), displayName: String(row.display_name), bio: String(row.bio), published: row.published === true, showActivity: row.show_activity === true };
+  if (!row) return { slug: "", displayName: "", bio: "", published: false, showActivity: false, layout: "studio", highlights: [] };
+  return { slug: String(row.slug), displayName: String(row.display_name), bio: String(row.bio), published: row.published === true, showActivity: row.show_activity === true, ...showcasePresentation({ layout: row.layout, highlights: row.highlights }) };
 }
 
 export async function getShowcaseSettings(token: TokenRecord, origin: string, db: postgres.Sql = sql) {
   const actor = owner(token);
-  const rows = await db`SELECT slug, display_name, bio, published, show_activity FROM action_profiles WHERE org_id = ${actor.orgId}`;
+  const rows = await db`SELECT slug, display_name, bio, published, show_activity, layout, highlights FROM action_profiles WHERE org_id = ${actor.orgId}`;
   const profile = mapProfile(rows[0]);
   return { profile, urls: showcaseUrls(profile, config.publicUrl || origin), preview: await getOrgActivitySnapshot(profile, actor.orgId, db, undefined, true) };
 }
 
 export async function updateShowcaseSettings(token: TokenRecord, raw: unknown, origin: string, db: postgres.Sql = sql) {
   const actor = owner(token, true);
-  const profile = parseShowcaseInput(raw);
+  let profile = parseShowcaseInput(raw);
+  const input = raw as Record<string, unknown>;
   if (profile.published) await requireHostedWriteAccess(actor);
   try {
-    await db`
-      INSERT INTO action_profiles (org_id, slug, display_name, bio, published, show_activity)
-      VALUES (${actor.orgId}, ${profile.slug}, ${profile.displayName}, ${profile.bio}, ${profile.published}, ${profile.showActivity === true})
+    const rows = await db`
+      INSERT INTO action_profiles (org_id, slug, display_name, bio, published, show_activity, layout, highlights)
+      VALUES (${actor.orgId}, ${profile.slug}, ${profile.displayName}, ${profile.bio}, ${profile.published}, ${profile.showActivity === true}, ${profile.layout}, ${db.json(profile.highlights as postgres.JSONValue)})
       ON CONFLICT (org_id) DO UPDATE SET slug = EXCLUDED.slug, display_name = EXCLUDED.display_name,
-        bio = EXCLUDED.bio, published = EXCLUDED.published, show_activity = EXCLUDED.show_activity, updated_at = now()`;
+        bio = EXCLUDED.bio, published = EXCLUDED.published, show_activity = EXCLUDED.show_activity,
+        layout = CASE WHEN ${Object.hasOwn(input, "layout")} THEN EXCLUDED.layout ELSE action_profiles.layout END,
+        highlights = CASE WHEN ${Object.hasOwn(input, "highlights")} THEN EXCLUDED.highlights ELSE action_profiles.highlights END,
+        updated_at = now()
+      RETURNING slug, display_name, bio, published, show_activity, layout, highlights`;
+    if (rows[0]) profile = mapProfile(rows[0]);
   } catch (error: any) {
     if (error?.code === "23505") throw new ShowcaseError("That showcase address is already taken", 409);
     throw error;
@@ -71,7 +77,7 @@ async function publishedSnapshot(slug: string, db: postgres.Sql, now?: Date, exp
 
 async function publishedProfile(slug: string, db: postgres.Sql) {
   const profiles = await db`
-    SELECT org_id, slug, display_name, bio, published, show_activity, updated_at::text AS publication_revision FROM action_profiles
+    SELECT org_id, slug, display_name, bio, published, show_activity, layout, highlights, updated_at::text AS publication_revision FROM action_profiles
     WHERE slug = ${slug} AND published = true`;
   return profiles[0] ?? null;
 }
@@ -80,7 +86,7 @@ const streamManagers = new WeakMap<postgres.Sql, ReturnType<typeof createShowcas
 function publicationKey(row: any): string {
   // This internal binding never enters the public projection or SSE frames.
   // Keep PostgreSQL's full timestamp precision instead of truncating to JS ms.
-  return JSON.stringify([row.org_id, row.publication_revision, row.slug, row.display_name, row.bio, row.show_activity === true]);
+  return JSON.stringify([row.org_id, row.publication_revision, row.slug, row.display_name, row.bio, row.show_activity === true, showcasePresentation({ layout: row.layout, highlights: row.highlights })]);
 }
 function streams(db: postgres.Sql) {
   let manager = streamManagers.get(db);
@@ -158,9 +164,9 @@ export async function handleShowcaseApi(req: Request, token: TokenRecord, db: po
     if (req.method !== "PUT") return Response.json({ error: "method not allowed" }, { status: 405, headers: { ...NO_STORE, Allow: "GET, PUT" } });
     // Check identity before reading untrusted input or revealing validation errors.
     owner(token, true);
-    if (Number(req.headers.get("content-length")) > 10_000) throw new ShowcaseError("Profile payload is too large", 413);
+    if (Number(req.headers.get("content-length")) > SHOWCASE_PAYLOAD_LIMIT) throw new ShowcaseError("Profile payload is too large", 413);
     const raw = await req.text();
-    if (raw.length > 10_000) throw new ShowcaseError("Profile payload is too large", 413);
+    if (new TextEncoder().encode(raw).byteLength > SHOWCASE_PAYLOAD_LIMIT) throw new ShowcaseError("Profile payload is too large", 413);
     let input: unknown;
     try { input = JSON.parse(raw); } catch { throw new ShowcaseError("Expected a profile object"); }
     return Response.json(await updateShowcaseSettings(token, input, origin, db), { headers: NO_STORE });

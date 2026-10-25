@@ -15,6 +15,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { PROFILE_PRESENTATION_SCHEMA_VERSION } from "../gateway/src/showcase-schema";
 
 const template = process.env.ENGRAM_TEST_DB_URL_TEMPLATE;
 if (!template) throw new Error("Set ENGRAM_TEST_DB_URL_TEMPLATE to a disposable local PostgreSQL test cluster");
@@ -76,7 +77,23 @@ try {
     await sql`TRUNCATE oauth_clients CASCADE`;
   }
   await migrate();
+  // Simulate the immediately preceding profile schema only inside this guarded,
+  // disposable cluster, then exercise the real additive upgrade on a saved row.
+  await sql`ALTER TABLE action_profiles DROP COLUMN layout, DROP COLUMN highlights`;
+  await sql`ALTER TABLE engram_schema_state DROP COLUMN profile_presentation_version`;
+  const predecessorMarkers = (await sql`SELECT version, activity_version, billing_version, signup_version, signup_access_version, mail_series_version, jev_version, showcase_version, context_sharing_version FROM engram_schema_state WHERE id = true`)[0];
+  equal(predecessorMarkers.showcase_version, 2026102501, "The predecessor runtime retains its exact showcase readiness marker");
+  await sql`INSERT INTO action_profiles (org_id, slug, display_name, bio, published) VALUES (1, 'legacy-presentation-row', 'Legacy public name', 'Owner-written legacy bio', true)`;
   await migrate();
+  equal((await sql`SELECT version, activity_version, billing_version, signup_version, signup_access_version, mail_series_version, jev_version, showcase_version, context_sharing_version FROM engram_schema_state WHERE id = true`)[0], predecessorMarkers, "The presentation upgrade leaves all predecessor readiness markers unchanged for cold starts and traffic rollback");
+  equal((await sql`SELECT profile_presentation_version FROM engram_schema_state WHERE id = true`)[0].profile_presentation_version, PROFILE_PRESENTATION_SCHEMA_VERSION, "The additive presentation marker becomes ready separately from the predecessor contracts");
+  const upgradedProfile = (await sql`SELECT slug, display_name, bio, published, layout, highlights FROM action_profiles WHERE org_id = 1`)[0];
+  equal(upgradedProfile, { slug: "legacy-presentation-row", display_name: "Legacy public name", bio: "Owner-written legacy bio", published: true, layout: "studio", highlights: [] }, "Additive presentation migration preserves an existing published profile and defaults only its new fields");
+  await migrate();
+  equal((await sql`SELECT version, activity_version, billing_version, signup_version, signup_access_version, mail_series_version, jev_version, showcase_version, context_sharing_version FROM engram_schema_state WHERE id = true`)[0], predecessorMarkers, "Repeating the additive migration still preserves all predecessor readiness markers");
+  equal((await sql`SELECT profile_presentation_version FROM engram_schema_state WHERE id = true`)[0].profile_presentation_version, PROFILE_PRESENTATION_SCHEMA_VERSION, "Repeating the additive migration retains exact presentation readiness");
+  equal((await sql`SELECT slug, display_name, bio, published, layout, highlights FROM action_profiles WHERE org_id = 1`)[0], upgradedProfile, "Repeating the presentation migration leaves the original owner choices intact");
+  await sql`DELETE FROM action_profiles WHERE org_id = 1 AND slug = 'legacy-presentation-row'`;
   equal(Number((await sql`SELECT count(*) AS n FROM orgs`)[0].n), 1, "Central migrations are repeatable without duplicating the legacy workspace");
   equal(Number((await sql`SELECT count(*) AS n FROM pg_indexes WHERE schemaname = 'public' AND indexname IN ('tokens_org_name_idx', 'action_events_org_time_idx')`)[0].n), 2, "Tenant identity and action indexes exist on PostgreSQL");
 
@@ -208,6 +225,19 @@ try {
   await updateShowcaseSettings(ownerB, { slug: "integration-b", displayName: "Public B", bio: "Only aggregates", published: true }, "https://integration.example");
   const publicA = (await getPublicActivity("integration-a"))!;
   const publicB = (await getPublicActivity("integration-b"))!;
+  equal([publicA.profile.layout, publicA.profile.highlights], ["studio", []], "Legacy profile writes receive the new safe presentation defaults");
+  const publicHighlights = [{ title: "A public release note", body: "This text was explicitly selected by the owner.", url: "https://example.com/releases" }];
+  const presented = await updateShowcaseSettings(ownerA, { slug: "integration-a", displayName: "Public A", bio: "Owner-written highlights", published: true, layout: "field-notes", highlights: publicHighlights }, "https://integration.example");
+  equal([presented.profile.layout, presented.profile.highlights], ["field-notes", publicHighlights], "PostgreSQL returns the saved layout and bounded highlight records");
+  const storedPresentation = (await sql`SELECT layout, highlights FROM action_profiles WHERE org_id = 2`)[0];
+  equal([storedPresentation.layout, storedPresentation.highlights], ["field-notes", publicHighlights], "Owner-approved presentation persists in the current tenant's profile row");
+  await updateShowcaseSettings(ownerA, { slug: "integration-a", displayName: "Public A", bio: "Only aggregates", published: true }, "https://integration.example");
+  equal([(await getPublicActivity("integration-a"))?.profile.layout, (await getPublicActivity("integration-a"))?.profile.highlights], ["field-notes", publicHighlights], "An old client's update atomically preserves saved layout and highlights");
+  equal([publicB.profile.layout, publicB.profile.highlights], ["studio", []], "Another tenant receives none of the owner's chosen highlights");
+  await rejects(() => sql`UPDATE action_profiles SET layout = 'unknown' WHERE org_id = 2`, error => error.code === "23514", "The database rejects an unsupported layout independently of request validation");
+  await rejects(() => sql`UPDATE action_profiles SET highlights = ${sql.json(Array.from({ length: 4 }, () => ({ ...publicHighlights[0] })))} WHERE org_id = 2`, error => error.code === "23514", "The database bounds stored highlight arrays to three records");
+  await updateShowcaseSettings(ownerA, { slug: "integration-a", displayName: "Public A", bio: "Only aggregates", published: true, layout: "studio", highlights: [] }, "https://integration.example");
+  equal((await getPublicActivity("integration-a"))?.profile.highlights, [], "An explicit empty highlight list clears previously approved public text");
   equal(publicA.stats, { totalActions: 4, completedActions: 3, failedActions: 1, runningActions: 0, activeAgents: 2, activeDays: 1 }, "Public totals aggregate only tenant A's actions");
   equal(publicB.stats.totalActions, 3, "Public tenant B totals stay separate");
   equal(publicA.tools, [{ category: "memory", count: 2 }, { category: "code", count: 1 }, { category: "email", count: 1 }], "Public categories execute in PostgreSQL and reveal generic tool groups only");

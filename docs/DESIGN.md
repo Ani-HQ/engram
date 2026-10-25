@@ -2,10 +2,16 @@
 
 The current visual language and contribution rules live in
 [the design system](DESIGN-SYSTEM.md), with a working gallery at `/design-system`.
-Every frontend change must reuse or contribute to that system. Warm paper, ink,
-lime, lilac and orbital graphics connect the public website to the working app.
+Every frontend change must reuse or contribute to that system. Graphite surfaces,
+restrained mint accents, fine borders, and compact Inter typography connect the
+public website to the working app. The Supabase-inspired direction keeps Engram's
+canonical pulse identity and its explicit distinction between observed calls and
+agent reports.
 The interface separates private investigation from a public profile with counts
-and an optional redacted activity stream. It uses self-hosted Inter, local SVG assets and system monospace for
+and an optional redacted activity stream. Owners can choose Living studio or
+Field notes and write up to three public highlights. Both compositions use the
+same shared controls, art, type, and spacing; see [profile layouts](PROFILE-LAYOUTS.md).
+It uses self-hosted Inter, local SVG assets and system monospace for
 identifiers, with no remote runtime scripts, fonts or icons.
 
 For local review, run `bun web/dev-server.ts`. The public homepage is `/`, the
@@ -31,6 +37,19 @@ does not guarantee a refreshed connector logo or verify a caller's identity.
 ## Mobbin references
 
 The references were searched and visually inspected through Mobbin:
+
+- [Supabase storage](https://mobbin.com/screens/8c7c28a3-f148-41ff-9e7e-b1544e123f98):
+  compact grouped navigation, fine table boundaries, and a restrained primary
+  accent. Applied to the workspace shell, record rows, forms, and shared controls.
+- [Supabase project overview](https://mobbin.com/screens/f7b56631-0797-4c65-ae46-d1ad66a70cab):
+  clear panel hierarchy and useful empty states. Applied to connection setup,
+  account settings, and shared panels, with Engram's graphite and mint palette.
+- [Supabase observability](https://mobbin.com/screens/4c0e7feb-f664-40ac-924d-cd9a52210007):
+  quiet controls and a readable technical information hierarchy. Applied to
+  activity filters, attention results, and contribution charts. The references
+  inform composition; their product content and capabilities are not reused.
+
+Earlier behavior and document-reading references remain relevant:
 
 - [Claude history](https://mobbin.com/screens/ad99258d-5421-4a4e-9b4b-432c690feb26):
   compact persistent navigation, quiet list separators, and search close to the
@@ -107,7 +126,12 @@ The references were searched and visually inspected through Mobbin:
   chronological order. Status marks stay still; keyboard navigation is immediate,
   and reduced-motion settings remove decorative movement.
 - The contribution grid has accessible labels, native tooltips, and arrow-key
-  exploration. Counts use tabular numerals and the grid uses UTC dates.
+  exploration. Counts use tabular numerals and the grid uses UTC dates. At widths
+  of 600px and below, each date remains a 44×44px native button. A bounded
+  horizontal viewport scrolls the month labels, weekday axis, and date grid as
+  one composition, with a visible swipe/arrow-key hint. The selected-date caption
+  stays outside that viewport. Roving focus and Home/End/arrow keys remain
+  immediate; unchanged live updates preserve the explored date and scroll position.
 - Mobile navigation stays visible and provides sign-out. Forms and previews stack
   without horizontal overflow. Reduced-motion settings disable decorative motion.
 

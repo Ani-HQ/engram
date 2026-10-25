@@ -365,9 +365,23 @@ export async function migrate() {
       bio          text NOT NULL DEFAULT '' CHECK (length(bio) <= 160),
       published    boolean NOT NULL DEFAULT false,
       show_activity boolean NOT NULL DEFAULT false,
+      layout       text NOT NULL DEFAULT 'studio',
+      highlights   jsonb NOT NULL DEFAULT '[]'::jsonb,
       updated_at   timestamptz NOT NULL DEFAULT now()
     )`;
   await sql`ALTER TABLE action_profiles ADD COLUMN IF NOT EXISTS show_activity boolean NOT NULL DEFAULT false`;
+  await sql`ALTER TABLE action_profiles ADD COLUMN IF NOT EXISTS layout text NOT NULL DEFAULT 'studio'`;
+  await sql`ALTER TABLE action_profiles ADD COLUMN IF NOT EXISTS highlights jsonb NOT NULL DEFAULT '[]'::jsonb`;
+  await sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'action_profiles_layout_valid' AND conrelid = 'action_profiles'::regclass) THEN
+        ALTER TABLE action_profiles ADD CONSTRAINT action_profiles_layout_valid CHECK (layout IN ('studio', 'field-notes'));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'action_profiles_highlights_valid' AND conrelid = 'action_profiles'::regclass) THEN
+        ALTER TABLE action_profiles ADD CONSTRAINT action_profiles_highlights_valid
+          CHECK (jsonb_typeof(highlights) = 'array' AND jsonb_array_length(highlights) <= 3);
+      END IF;
+    END $$`;
 
   await sql`
     CREATE TABLE IF NOT EXISTS org_members (

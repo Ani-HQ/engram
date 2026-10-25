@@ -369,7 +369,7 @@ describe("local activity demo", () => {
 
   test("previews real aggregate counts privately before explicit publication", async () => {
     const settings = await (await request("/api/showcase")).json();
-    expect(settings.profile).toEqual({ slug: "", displayName: "", bio: "", published: false, showActivity: false });
+    expect(settings.profile).toEqual({ slug: "", displayName: "", bio: "", published: false, showActivity: false, layout: "studio", highlights: [] });
     expect(settings.urls.page).toBeNull();
     const data = await (await request("/api/actions?limit=100")).json();
     const expected = data.actions.filter((row: any) => !["list_actions", "record_action", "whoami"].includes(row.tool));
@@ -386,7 +386,7 @@ describe("local activity demo", () => {
     const invalid = await request("/api/showcase", { method: "PUT", body: JSON.stringify({ ...profile, slug: "../private" }) });
     expect(invalid.status).toBe(400);
     const saved = await (await request("/api/showcase", { method: "PUT", body: JSON.stringify(profile) })).json();
-    expect(saved.profile).toEqual({ ...profile, showActivity: false });
+    expect(saved.profile).toEqual({ ...profile, showActivity: false, layout: "studio", highlights: [] });
     expect(saved.urls.card).toBe("http://localhost:8099/api/public/activity/demo-agents/card.png");
     const dataResponse = await request("/api/public/activity/demo-agents", { headers: { Cookie: "engram_dev=0" } });
     expect(dataResponse.status).toBe(200);
@@ -394,7 +394,7 @@ describe("local activity demo", () => {
     expect(dataResponse.headers.get("cache-control")).toBe("no-store");
     const data = await dataResponse.json();
     expect(data.stats.totalActions).toBe(saved.preview.stats.totalActions);
-    expect(data.profile).toEqual({ slug: profile.slug, displayName: profile.displayName, bio: profile.bio });
+    expect(data.profile).toEqual({ slug: profile.slug, displayName: profile.displayName, bio: profile.bio, layout: "studio", highlights: [] });
     expect(data).not.toHaveProperty("actions");
     expect(data).not.toHaveProperty("agents");
     for (const value of ["ada@example.com", "github.create_pull_request", "file://demo-test", "run-job-check"]) expect(JSON.stringify(data)).not.toContain(value);
@@ -412,6 +412,25 @@ describe("local activity demo", () => {
     expect([...new Uint8Array(await png.arrayBuffer()).subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
     await request("/api/showcase", { method: "PUT", body: JSON.stringify({ ...profile, published: false }) });
     for (const path of ["/u/demo-agents", "/api/public/activity/demo-agents", "/api/public/activity/demo-agents/card.svg", "/api/public/activity/demo-agents/card.png"]) expect((await request(path)).status).toBe(404);
+  });
+
+  test("persists owner-written layouts and highlights through legacy updates and public JSON/SSE", async () => {
+    const previous = (await (await request("/api/showcase")).json()).profile;
+    const profile = { slug: "layout-demo", displayName: "Public notes", bio: "Written for this page", published: true, layout: "field-notes", highlights: [{ title: "Public release", body: "An owner-approved note.", url: "https://example.com/releases" }] };
+    const put = (value: unknown) => request("/api/showcase", { method: "PUT", body: JSON.stringify(value) });
+    try {
+      const result = await (await put(profile)).json();
+      expect(result.profile).toEqual({ ...profile, showActivity: false });
+      expect((await (await request("/api/public/activity/layout-demo")).json()).profile).toEqual({ slug: profile.slug, displayName: profile.displayName, bio: profile.bio, layout: profile.layout, highlights: profile.highlights });
+      const stream = await request("/api/public/activity/layout-demo/stream"), reader = stream.body!.getReader();
+      try { expect(JSON.parse(new TextDecoder().decode((await reader.read()).value).split("data: ")[1].trim()).profile.highlights).toEqual(profile.highlights); }
+      finally { await reader.cancel(); }
+      const legacy = { slug: profile.slug, displayName: profile.displayName, bio: "Changed in an older client", published: true };
+      expect((await (await put(legacy)).json()).profile).toMatchObject({ layout: "field-notes", highlights: profile.highlights });
+      expect((await put({ ...profile, highlights: [{ ...profile.highlights[0], url: "javascript:alert(1)" }] })).status).toBe(400);
+      expect((await (await request("/api/showcase")).json()).profile.highlights).toEqual(profile.highlights);
+      expect((await (await put({ ...legacy, layout: "studio", highlights: [] })).json()).profile).toMatchObject({ layout: "studio", highlights: [] });
+    } finally { await put(previous); }
   });
 
   test("streams working to completed as one logical action and closes the stream when unpublished", async () => {

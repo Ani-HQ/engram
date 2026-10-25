@@ -31,12 +31,12 @@ export function mailPreferencePage(state: MailPreferenceState): string {
 <title>${confirmation ? 'Email preferences' : state === 'unsubscribed' ? 'Email preference saved' : 'Email link unavailable'} · Engram</title>
 <link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/design-system.css">
 </head><body class="ds-mail-preference"><div class="ds-mail-preference-shell">
-<header class="ds-mail-preference-header"><a href="/" aria-label="Engram home"><img src="/brand/engram-mark.svg" width="32" height="32" alt=""><span>engram</span></a><span class="ds-eyebrow">YOUR INBOX. YOUR CALL.</span></header>
+<header class="ds-mail-preference-header"><a class="ds-touch-target" href="/" aria-label="Engram home"><img src="/brand/engram-mark.svg" width="32" height="32" alt=""><span>engram</span></a><span class="ds-eyebrow">YOUR INBOX. YOUR CALL.</span></header>
 <main class="ds-card ds-mail-preference-card" aria-labelledby="mail-preference-title">
 <div class="ds-heading-group"><span class="ds-badge" data-tone="${view.tone}">${view.badge}</span><h1 id="mail-preference-title">${view.title}</h1><p>${view.description}</p></div>
 <p class="ds-mail-preference-note">${view.note}</p>
-${confirmation ? '<form method="post" class="ds-mail-preference-actions"><button class="primary" type="submit">Stop getting-started emails</button><a href="/app#signin">Back to Engram</a></form><p class="ds-mail-preference-hint">Opening this page has not changed your preferences. The button confirms your choice.</p>' : '<div class="ds-mail-preference-actions"><a class="ds-button primary" href="/app#signin">Back to Engram</a><a href="/support">Get support</a></div>'}
+${confirmation ? '<form method="post" class="ds-mail-preference-actions"><button class="primary" type="submit">Stop getting-started emails</button><a class="ds-touch-target" href="/app#signin">Back to Engram</a></form><p class="ds-mail-preference-hint">Opening this page has not changed your preferences. The button confirms your choice.</p>' : '<div class="ds-mail-preference-actions"><a class="ds-button primary" href="/app#signin">Back to Engram</a><a class="ds-touch-target" href="/support">Get support</a></div>'}
 </main>
-<footer class="ds-mail-preference-footer"><span>Good context stays with you.</span><nav aria-label="Help and privacy"><a href="/support">Support</a><a href="/privacy">Privacy</a></nav></footer>
+<footer class="ds-mail-preference-footer"><span>Good context stays with you.</span><nav aria-label="Help and privacy"><a class="ds-touch-target" href="/support">Support</a><a class="ds-touch-target" href="/privacy">Privacy</a></nav></footer>
 </div></body></html>`;
 }

@@ -1,6 +1,6 @@
-import { memoryOrbit, memoryStream, resourceChip } from './design-system.js';
+import { memoryOrbit, memoryStream, resourceChip, loadingState, progressBar, setProgress, observeLoadingMotion, statusBadge, highlightArt, profileLayoutPreview } from './design-system.js';
 import { icon } from './icons.js';
-import { toolVisual, visualIcon } from './tooling.js';
+import { agentVisual, toolVisual, visualIcon } from './tooling.js';
 import { createJevSettingsPanel } from './jev-settings.js';
 import { friendAccessCard } from './access-view.js';
 
@@ -65,7 +65,7 @@ document.querySelector('#motion-replay').addEventListener('click', event => {
   const feedback = document.querySelector('#motion-feedback');
   if (reduced() || event.detail === 0) { motionOrbit.replaceChildren(memoryOrbit()); feedback.textContent = 'Feedback received. Movement is skipped for reduced motion and keyboard input.'; return; }
   motionOrbit.replaceChildren(memoryOrbit({ motion: 'intro' }));
-  feedback.textContent = 'One finite SVG reveal: 220ms nodes and 500ms rings. No loop.';
+  feedback.textContent = 'One finite SVG reveal: 120ms nodes, 180ms core, 220ms connectors. No loop.';
 });
 document.querySelector('#loading-replay').addEventListener('click', async () => {
   const button = document.querySelector('#loading-replay'), example = document.querySelector('#loading-example'), feedback = document.querySelector('#loading-feedback');
@@ -73,4 +73,144 @@ document.querySelector('#loading-replay').addEventListener('click', async () => 
   button.disabled = true; example.setAttribute('aria-busy', 'true'); feedback.textContent = 'Loading component preview. No real data is being fetched.';
   await new Promise(resolve => setTimeout(resolve, 1200));
   example.setAttribute('aria-busy', 'false'); button.disabled = false; feedback.textContent = reduced() ? 'Preview finished. Loading stayed static because reduced motion is enabled.' : 'Preview finished. The skeleton is still again.';
+});
+
+
+// Native tab controls retain immediate keyboard feedback and never fetch data.
+const previewTabs = [...document.querySelectorAll('.ds-gallery-workspace [role="tab"]')];
+function selectPreviewTab(tab, focus = false) {
+  for (const item of previewTabs) {
+    const selected = item === tab;
+    item.setAttribute('aria-selected', String(selected)); item.tabIndex = selected ? 0 : -1;
+    document.getElementById(item.getAttribute('aria-controls')).hidden = !selected;
+  }
+  if (focus) tab.focus();
+}
+for (const [index, tab] of previewTabs.entries()) {
+  tab.addEventListener('click', () => selectPreviewTab(tab));
+  tab.addEventListener('keydown', event => {
+    const next = event.key === 'ArrowRight' ? (index + 1) % previewTabs.length : event.key === 'ArrowLeft' ? (index + previewTabs.length - 1) % previewTabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? previewTabs.length - 1 : null;
+    if (next !== null) { event.preventDefault(); selectPreviewTab(previewTabs[next], true); }
+  });
+}
+for (const id of ['preview-clear', 'preview-retry']) document.getElementById(id).addEventListener('click', () => {
+  selectPreviewTab(previewTabs[0]);
+  document.getElementById('workspace-preview-feedback').textContent = 'Preview restored. No network request was made.';
+});
+
+
+const previewStage = document.getElementById('pending-preview-stage');
+const previewState = document.getElementById('pending-preview-state');
+const previewStatus = document.getElementById('pending-preview-status');
+function renderPendingPreview() {
+  const state = previewState.value;
+  previewStage.setAttribute('data-motion', document.getElementById('pending-preview-reduced').checked ? 'reduced' : 'normal');
+  if (state === 'loading') previewStage.replaceChildren(loadingState({ label: 'Loading preview…', description: 'A controlled waiting-state preview. No request is sent.', lines: 3 }));
+  else {
+    const box = document.createElement('div'); box.className = 'ds-stack';
+    const note = document.createElement('p'); note.className = 'ds-notice';
+    const labels = { idle: 'Ready when you are. Start the example to see its pending state.', success: 'Example saved. The confirmed result stays visible.', error: 'The example could not load. Your entered text is preserved. Try again.', disabled: 'Choose a workspace before starting this example.' };
+    note.textContent = labels[state];
+    if (state === 'success' || state === 'error') { note.dataset.tone = state === 'error' ? 'danger' : 'success'; note.setAttribute('role', state === 'error' ? 'alert' : 'status'); }
+    const action = document.createElement('button'); action.type = 'button'; action.className = 'ds-button'; action.disabled = state === 'disabled';
+    action.textContent = state === 'error' ? 'Retry preview' : state === 'disabled' ? 'Unavailable' : 'Start preview';
+    action.addEventListener('click', () => { previewState.value = 'loading'; renderPendingPreview(); });
+    box.append(note, action); previewStage.replaceChildren(box);
+  }
+  previewStatus.textContent = `${state[0].toUpperCase() + state.slice(1)} preview. ${state === 'loading' ? 'Waiting-state motion only; no request is sent.' : 'No request in progress.'}`;
+}
+previewState.addEventListener('change', renderPendingPreview);
+document.getElementById('pending-preview-reduced').addEventListener('change', renderPendingPreview);
+renderPendingPreview();
+const measuredBar = progressBar({ label: 'Sample setup checks observed', value: 0, max: 3, valueText: '0 of 3 sample checks observed.' });
+document.getElementById('measured-progress-example').append(measuredBar);
+document.getElementById('measured-preview-count').addEventListener('change', event => {
+  const value = Number(event.target.value);
+  setProgress(measuredBar, { label: 'Sample setup checks observed', value, max: 3, valueText: `${value} of 3 sample checks observed.` });
+  document.getElementById('measured-preview-label').textContent = `${value} of 3 observed`;
+});
+document.getElementById('copy-feedback-preview').addEventListener('click', event => {
+  const button = event.currentTarget; button.dataset.feedback = 'success';
+  const check = icon('check', { size: 14 }); check.classList.add('ds-feedback-icon');
+  button.replaceChildren(check, 'Copied state preview');
+  document.getElementById('copy-preview-status').textContent = 'Copied-state preview. Your clipboard was not changed.';
+});
+const navigationToggle = document.getElementById('navigation-example-toggle');
+const navigationPanel = document.getElementById('navigation-example-content');
+document.getElementById('navigation-example-icon').append(icon('chevron-down', { size: 14 }));
+function closeNavigationPreview() { navigationToggle.setAttribute('aria-expanded', 'false'); navigationPanel.hidden = true; }
+navigationToggle.addEventListener('click', () => {
+  const open = navigationToggle.getAttribute('aria-expanded') === 'true';
+  navigationToggle.setAttribute('aria-expanded', String(!open)); navigationPanel.hidden = open;
+});
+for (const element of [navigationToggle, navigationPanel]) element.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && !navigationPanel.hidden) { event.preventDefault(); closeNavigationPreview(); navigationToggle.focus(); }
+});
+navigationPanel.addEventListener('click', event => { if (event.target.closest('a')) closeNavigationPreview(); });
+const stopLoadingMotion = observeLoadingMotion(document.body);
+window.addEventListener('pagehide', event => { if (!event.persisted) stopLoadingMotion(); });
+
+
+for (const [name, publicSafe] of [['Research helper', false], ['Build helper', false], ['Review helper', false], ['Public fallback', true]]) {
+  const sample = document.createElement('div'); sample.className = 'ds-gallery-avatar-example';
+  const label = document.createElement('span'); label.textContent = name;
+  sample.append(visualIcon(agentVisual(publicSafe ? '' : name, { harness: 'custom', publicSafe }), { size: 36 }), label);
+  document.getElementById('avatar-examples').append(sample);
+}
+
+
+// Local structural layout choices preserve native radio semantics.
+document.getElementById('layout-preview-studio').append(profileLayoutPreview('studio'));
+document.getElementById('layout-preview-notes').append(profileLayoutPreview('field-notes'));
+const layoutChoices = document.getElementById('layout-choice-example');
+layoutChoices.addEventListener('change', event => {
+  if (event.target.type === 'radio') document.getElementById('layout-choice-feedback').textContent = `${event.target.value === 'studio' ? 'Living studio' : 'Field notes'} selected. Local preview only.`;
+});
+document.getElementById('layout-choice-disabled').addEventListener('change', event => {
+  layoutChoices.disabled = event.target.checked;
+  document.getElementById('layout-choice-feedback').textContent = event.target.checked ? 'Layout choice is disabled for this preview. Its selection is preserved.' : 'Layout choice is available. Use arrow keys to change the selected radio.';
+});
+document.getElementById('focus-row-icon').append(icon('file-text', { size: 18 }));
+const highlightState = document.getElementById('highlight-preview-state');
+function renderHighlightExample() {
+  const slot = document.getElementById('highlight-card-example');
+  if (highlightState.value === 'loading') { slot.replaceChildren(loadingState({ label: 'Loading highlight preview…', description: 'A local waiting-state example. No public content is fetched.', lines: 3 })); return; }
+  if (highlightState.value === 'empty' || highlightState.value === 'error') {
+    const box = document.createElement('div'); box.className = 'ds-card ds-stack';
+    const note = document.createElement('p'); note.className = 'ds-notice';
+    note.textContent = highlightState.value === 'error' ? 'This example could not load. Retry the local preview.' : 'This example has no approved highlights to show.';
+    if (highlightState.value === 'error') { note.dataset.tone = 'danger'; note.setAttribute('role', 'alert'); }
+    const reset = document.createElement('button'); reset.type = 'button'; reset.textContent = highlightState.value === 'error' ? 'Retry preview' : 'Show the example';
+    reset.addEventListener('click', () => { highlightState.value = 'ready'; renderHighlightExample(); }); box.append(note, reset); slot.replaceChildren(box); return;
+  }
+  const card = document.createElement('article'); card.className = 'ds-card ds-highlight-card';
+  const visual = document.createElement('div'); visual.className = 'ds-highlight-visual'; visual.setAttribute('aria-hidden', 'true'); visual.append(highlightArt({ variant: 'orbit' }));
+  const content = document.createElement('div'); content.className = 'ds-highlight-content';
+  const title = document.createElement('h3'); title.className = 'ds-highlight-title'; title.textContent = 'An illustrative highlight';
+  const description = document.createElement('p'); description.className = 'ds-highlight-description'; description.textContent = 'A short, deliberately public note. The art is decorative and makes no claim about activity or results.';
+  const details = document.createElement('details'); details.className = 'ds-highlight-disclosure';
+  const summary = document.createElement('summary'); summary.append('Read the example note');
+  const indicator = document.createElement('span'); indicator.className = 'ds-disclosure-indicator'; indicator.setAttribute('aria-hidden', 'true'); indicator.append(icon('chevron-down', { size: 14 })); summary.append(indicator);
+  const note = document.createElement('p'); note.textContent = 'The expanded text stays in normal document flow. Native Enter and Space actions are immediate, and the optional public reference remains a separate link.'; details.append(summary, note);
+  const actions = document.createElement('div'); actions.className = 'ds-highlight-actions';
+  const link = document.createElement('a'); link.className = 'ds-touch-target'; link.href = '#profile-patterns'; link.textContent = 'Example reference ↗'; actions.append(link);
+  content.append(statusBadge('Component example', { tone: 'neutral' }), title, description, details, actions); card.append(visual, content); slot.replaceChildren(card);
+}
+highlightState.addEventListener('change', renderHighlightExample); renderHighlightExample();
+const weekExample = document.getElementById('week-pulse-example');
+const sampleCounts = [2, 0, 4, 3, 7, 1, 5];
+const weekButtons = sampleCounts.map((count, index) => {
+  const date = `2026-10-${19 + index}`;
+  const day = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][index];
+  const item = document.createElement('li'); item.className = 'ds-week-day';
+  const button = document.createElement('button'); button.type = 'button'; button.className = 'ds-week-button'; button.tabIndex = index === 6 ? 0 : -1;
+  button.setAttribute('aria-label', `${count} sample actions on ${date} UTC`); button.setAttribute('aria-pressed', String(index === 6)); button.style.setProperty('--ds-pulse-ratio', String(count / 7));
+  const bar = document.createElement('span'); bar.className = 'ds-week-bar'; bar.setAttribute('aria-hidden', 'true');
+  const fill = document.createElement('span'); fill.className = 'ds-week-bar-fill'; bar.append(fill);
+  const label = document.createElement('span'); label.className = 'ds-week-label'; label.textContent = day;
+  const value = document.createElement('span'); value.className = 'ds-week-count'; value.textContent = String(count); button.append(bar, label, value);
+  const select = focus => { for (const other of weekButtons) { other.tabIndex = other === button ? 0 : -1; other.setAttribute('aria-pressed', String(other === button)); } document.getElementById('week-pulse-feedback').textContent = `${date} UTC: ${count} sample actions. Component data only.`; if (focus) { button.focus(); button.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } };
+  button.addEventListener('click', () => select(false));
+  button.addEventListener('keydown', event => { const next = event.key === 'ArrowRight' ? Math.min(6, index + 1) : event.key === 'ArrowLeft' ? Math.max(0, index - 1) : event.key === 'Home' ? 0 : event.key === 'End' ? 6 : null; if (next !== null) { event.preventDefault(); weekButtons[next].click(); weekButtons[next].focus(); weekButtons[next].scrollIntoView({ block: 'nearest', inline: 'nearest' }); } });
+  item.append(button); weekExample.append(item); return button;
 });

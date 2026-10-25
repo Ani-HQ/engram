@@ -12,21 +12,21 @@ function targetLabel(slug) {
 }
 
 const paragraph = short => h("div", { class: `memory-loading-paragraph${short ? " short" : ""}` },
-  h("span", {}), h("span", {}), h("span", {}), !short && h("span", {}));
+  h("span", { class: "ds-skeleton" }), h("span", { class: "ds-skeleton" }), h("span", { class: "ds-skeleton" }), !short && h("span", { class: "ds-skeleton" }));
 
 // The page arrives in one response. The scaffold expresses waiting, never
 // staged progress, inferred content, or a completed part of the request.
 export function memoryLoading(slug) {
   const target = targetLabel(slug);
-  return h("section", { class: "memory-loading", role: "status", "aria-live": "polite", "aria-atomic": "false" },
+  return h("section", { class: "memory-loading", role: "status", "aria-busy": "true", "aria-live": "polite", "aria-atomic": "false" },
     h("header", { class: "memory-loading-header" },
       h("div", { class: "memory-loading-kicker", "aria-hidden": "true" }, icon("file-text", { size: 14 }), "Memory"),
       h("h2", { id: "detail-title", class: "memory-loading-title" }, title),
       h("p", { class: "memory-loading-subtitle" }, "Retrieving the content and links saved in this memory."),
       target && h("p", { class: "memory-loading-target" }, target)),
     h("div", { class: "memory-loading-sheet", "aria-hidden": "true" },
-      h("div", { class: "memory-loading-sheet-title" }),
-      h("div", { class: "memory-loading-metadata" }, h("span", {}), h("span", {})),
+      h("div", { class: "memory-loading-sheet-title ds-skeleton" }),
+      h("div", { class: "memory-loading-metadata" }, h("span", { class: "ds-skeleton" }), h("span", { class: "ds-skeleton" })),
       h("div", { class: "memory-loading-rule" }), paragraph(false), paragraph(true)),
     h("p", { class: "memory-loading-delayed", hidden: true }, waiting));
 }
