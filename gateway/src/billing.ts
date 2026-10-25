@@ -11,6 +11,7 @@ import { SIGNUP_EXTENSION_URL } from "./signup-invites";
 
 const HEADERS = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
 const STRIPE_VERSION = "2026-09-30.endive";
+export const CHECKOUT_OPEN_SOURCE_MESSAGE = "As Engram earns revenue, we’ll use a portion to sponsor open-source projects.";
 const WEBHOOK_LIMIT = 512_000;
 const LIVE_STATUSES = new Set(["active", "trialing"]);
 const KNOWN_STATUSES = new Set(["active", "trialing", "past_due", "canceled", "unpaid", "incomplete", "incomplete_expired", "paused"]);
@@ -290,6 +291,7 @@ async function checkout(token: TokenRecord, plan: unknown, input: BillingDepende
       mode: "subscription", customer, "line_items[0][price]": deps.settings.cloudMonthlyPriceId, "line_items[0][quantity]": "1",
       client_reference_id: String(actor.orgId), "metadata[engram_org_id]": String(actor.orgId), "subscription_data[metadata][engram_org_id]": String(actor.orgId),
       success_url: `${origin}/app?billing=success#billing`, cancel_url: `${origin}/app?billing=canceled#billing`,
+      "custom_text[submit][message]": CHECKOUT_OPEN_SOURCE_MESSAGE,
     }, `engram-checkout-${actor.orgId}-${generation}`);
     const id = stripeId(result.id, "cs");
     const url = redirectUrl(result.url, "checkout.stripe.com");

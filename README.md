@@ -172,6 +172,8 @@ Run the unit suite with `bun test`. Real PostgreSQL tenant and billing checks ar
 
 The memory engine is [gbrain](https://github.com/garrytan/gbrain) by Garry Tan (MIT). engram builds a pinned fork, [`Ani-HQ/gbrain`](https://github.com/Ani-HQ/gbrain). The pin and the Cloud SQL patches are in the `Dockerfile` and `deploy/patch-gbrain.py`.
 
+As Engram earns revenue, we’ll use a portion to sponsor open-source projects. Engram depends on gbrain and other open-source tools; this commitment is broader than any one project.
+
 ## License
 
 [MIT](LICENSE).

@@ -34,11 +34,11 @@ export function planCards(catalog, cloudHref = "/app#start", cloudLabel = "Start
   return h("div", { class: "plan-grid" }, catalog.plans.map(plan => h("section", { class: `plan-card ds-card ${plan.id === "cloud" ? "cloud-plan" : ""}`, "data-tone": plan.id === "cloud" ? "lilac" : null },
     h("div", { class: "plan-label" }, icon(plan.id === "cloud" ? "cloud" : "terminal", { size: 18 }), plan.name),
     h("p", { class: "plan-description" }, plan.description),
-    h("div", { class: "plan-price" }, h("strong", {}, `$${beta && plan.id === "cloud" ? 0 : plan.monthlyPrice}`), h("span", {}, plan.id === "cloud" ? beta ? "/ invited early access" : "/ workspace / month" : "/ Engram licence")),
+    h("div", { class: "plan-price" }, h("strong", {}, beta && plan.id === "cloud" ? "60 days free" : `$${plan.monthlyPrice}`), h("span", {}, plan.id === "cloud" ? beta ? "with an invite" : "/ workspace / month" : "/ Engram licence")),
     h("p", { class: "field-hint" }, plan.id === "cloud" ? beta ? "Closed beta · invited access" : "USD · launch pricing · taxes may apply" : "You cover your infrastructure costs."),
     h("ul", { class: "plan-features" }, plan.features.map(feature => h("li", {}, icon("check", { size: 14 }), beta && plan.id === "cloud" && feature === "Cancel any time" ? "Single-use invitation and email verification" : feature))),
     link(plan.id === "cloud" ? cloudLabel : "Self-host Engram", plan.id === "cloud" ? cloudHref : "/self-host", plan.id === "cloud" ? "button primary" : "button"),
-    h("p", { class: "field-hint" }, plan.id === "cloud" ? beta ? "60 days of friend access after email verification. No card needed. Jev is separate." : "No card needed to try it. Subscribe when you're ready." : "Open source · MIT licence"),
+    h("p", { class: "field-hint" }, plan.id === "cloud" ? beta ? "Starts after email verification. No card needed. Jev is separate." : "No card needed to try it. Subscribe when you're ready." : "Open source · MIT licence"),
   )));
 }
 
@@ -66,6 +66,8 @@ export function billingPanel({ billing, catalog, jev, jevError, api, notify, fai
       hosted && !complimentary && !billing.checkoutAvailable && h("p", { class: "detail-note" }, "The operator has not connected hosted billing on this installation yet."), feedback),
     jevUsageSummary(jev, { error: jevError, refresh }),
     complimentary ? h("p", { class: "detail-note" }, link("Compare hosting options", "/pricing", "text small")) : planCards(catalog, "/pricing", "View pricing"),
+    section("Built with open source", "As Engram earns revenue, we’ll use a portion to sponsor open-source projects.",
+      h("p", { class: "detail-note" }, "Engram’s memory engine is ", link("gbrain", "https://github.com/garrytan/gbrain"), " by Garry Tan. Engram uses a pinned fork and other open-source tools.")),
     section("Your space, your boundaries", "The same access and publishing controls apply on hosted and self-hosted workspaces.", h("div", { class: "trust-list" },
       h("p", {}, icon("shield-check", { size: 16 }), "Workspace-scoped access and agent credentials."),
       h("p", {}, icon("eye-off", { size: 16 }), "Jev and embeddings/generated briefs have separate workspace permissions."),
