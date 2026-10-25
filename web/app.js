@@ -1140,6 +1140,7 @@ async function switchOrg(orgId) {
 function selectiveSharingView() {
   const title = heading("Sharing", "Describe what belongs with your team or another agent. Review the exact excerpts before granting access.");
   if (!["owner", "member"].includes(state.session.role)) return [title, empty("Managed by your workspace owner", "Use your human account to review and share context.")];
+  if (state.session.role === "member") return [title, empty("Start from your personal workspace", "Choose your personal workspace in the workspace picker to review and share excerpts. Approved team snapshots are available in Memory.")];
   const workspaceId = state.session.org.id, epoch = authEpoch;
   sharingPanel = sharingView({ api: workspaceApi(workspaceId), copy: value => navigator.clipboard.writeText(value),
     fail: error => { if (error instanceof AuthError) expired(); },
