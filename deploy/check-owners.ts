@@ -63,7 +63,7 @@ export async function inspectOwners(db: postgres.Sql) {
   });
 }
 
-async function cloudRead(project: string, args: string[], signal: AbortSignal, failure: string, maxBytes: number): Promise<string> {
+export async function cloudRead(project: string, args: string[], signal: AbortSignal, failure: string, maxBytes: number): Promise<string> {
   const child = Bun.spawn(["gcloud", ...args, "--project", project, "--quiet", "--verbosity=error", "--no-log-http"], {
     env: { ...process.env, CLOUDSDK_CORE_LOG_HTTP: "false", CLOUDSDK_CORE_VERBOSITY: "error", CLOUDSDK_CORE_DISABLE_FILE_LOGGING: "true" }, stdout: "pipe", stderr: "ignore", stdin: "ignore",
   });
