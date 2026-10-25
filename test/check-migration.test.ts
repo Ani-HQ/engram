@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { inspectMigration, migrationSettings } from "../deploy/check-migration";
-import { SHOWCASE_SCHEMA_VERSION } from "../gateway/src/showcase-schema";
+import { PROFILE_PRESENTATION_SCHEMA_VERSION, SHOWCASE_SCHEMA_VERSION } from "../gateway/src/showcase-schema";
 import { CONTEXT_SHARING_SCHEMA_VERSION } from "../gateway/src/context-sharing-schema";
 
 function fixture() {
   const state = {
-    mode: "on", schema: [{ version: 2026102202, activity_version: 2026102301, billing_version: 2026102401, showcase_version: SHOWCASE_SCHEMA_VERSION, context_sharing_version: CONTEXT_SHARING_SCHEMA_VERSION }], owner: [{ owners: 1, selected_owner: 1 }],
+    mode: "on", schema: [{ version: 2026102202, activity_version: 2026102301, billing_version: 2026102401, showcase_version: SHOWCASE_SCHEMA_VERSION, profile_presentation_version: PROFILE_PRESENTATION_SCHEMA_VERSION as number | null | undefined, context_sharing_version: CONTEXT_SHARING_SCHEMA_VERSION }], owner: [{ owners: 1, selected_owner: 1 }],
     orgs: [{ total: 1, ready: 1, legacy_binding: 1, invalid_bindings: 0 }], legacy: [{ active: 0 }],
     roles: ["engram_gateway_runtime", "engram_tenant_1"].map(rolname => ({ rolname, rolcanlogin: true, rolsuper: false, rolcreatedb: false, rolcreaterole: false, rolreplication: false, rolbypassrls: false, rolinherit: false, rolconnlimit: rolname === "engram_tenant_1" ? 12 : -1, memberships: 0 })),
     privileges: [{ runtime_gateway: true, runtime_database_create: false, engine_gateway: false, runtime_memory: false, engine_own: true, engine_database_create: false, runtime_schema_usage: true, runtime_schema_create: false, runtime_version_update: false, runtime_grant_read: true, runtime_grant_write: false, runtime_grant_audit_write: false }],
@@ -65,6 +65,13 @@ describe("read-only migration cutover checks", () => {
     expect((await inspectMigration(f.db, "verified@example.com")).checks.schema).toBe(false);
     f.state.schema[0].activity_version = 2026102301;
     expect(f.state.schema[0].version).toBe(2026102202);
+    expect(f.state.schema[0].showcase_version).toBe(2026102501);
+    expect((await inspectMigration(f.db, "verified@example.com")).checks.schema).toBe(true);
+    for (const marker of [undefined, null, PROFILE_PRESENTATION_SCHEMA_VERSION-1, PROFILE_PRESENTATION_SCHEMA_VERSION+1]) {
+      f.state.schema[0].profile_presentation_version = marker;
+      expect((await inspectMigration(f.db, "verified@example.com")).checks.schema).toBe(false);
+    }
+    f.state.schema[0].profile_presentation_version = PROFILE_PRESENTATION_SCHEMA_VERSION;
     expect((await inspectMigration(f.db, "verified@example.com")).checks.schema).toBe(true);
     f.state.schema[0].showcase_version--;
     expect((await inspectMigration(f.db, "verified@example.com")).checks.schema).toBe(false);

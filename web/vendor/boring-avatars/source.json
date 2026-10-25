@@ -1,0 +1,19 @@
+{
+  "repository": "https://github.com/boringdesigners/boring-avatars",
+  "commit": "d0ff2582a8921b643a89de4a4912be28938a828b",
+  "license": "MIT",
+  "assets": [
+    {
+      "file": "upstream/avatar-beam.tsx",
+      "sha256": "9a09a91abf65746973c772a50b20e68bfec574cc8b7f2c230ac84431b57b58ee"
+    },
+    {
+      "file": "upstream/utilities.ts",
+      "sha256": "900b49d60363289abb81e6133948262dd623c03ef48fd9afaaa482715474911a"
+    },
+    {
+      "file": "LICENSE",
+      "sha256": "528d05b9822f5bfe55d99d68521d12e79fb02cbf40909402fd1c11a488831ecc"
+    }
+  ]
+}

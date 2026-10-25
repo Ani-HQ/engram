@@ -4,6 +4,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { PLANS } from "../gateway/src/plans";
 import { PUBLIC_PAGE_FILES } from "../gateway/src/site-routes";
 import { devReviewPage } from "./dev-review";
+import { reviewApi, uiReviewPage, uiReviewGallery } from "./dev-ui-review";
 import { devMailPreview } from "../dev/mail-preview";
 import { openSourceSupportPreview } from "../dev/open-source-support-preview";
 import { devSharing, devSharedMcp, demoSharedPages } from "./dev-sharing";
@@ -13,7 +14,7 @@ import { activityDetail, activityPage, latestLogicalActions } from "./activity-m
 import { analyzeActions, logicalActivityId } from "../gateway/src/insights-engine";
 import { reviewPlan } from "./insight-model.js";
 import { createShowcaseStreamManager } from "../gateway/src/showcase-stream";
-import { ShowcaseError, parseShowcaseInput, publicActivitySnapshot, renderShowcaseCard, renderShowcasePage, renderShowcasePng, renderUnavailableShowcasePage, showcaseCategory, showcaseUrls, validShowcaseSlug, type ShowcaseProfile } from "../gateway/src/showcase-view";
+import { ShowcaseError, SHOWCASE_PAYLOAD_LIMIT, parseShowcaseInput, publicActivitySnapshot, renderShowcaseCard, renderShowcasePage, renderShowcasePng, renderUnavailableShowcasePage, showcaseCategory, showcaseUrls, validShowcaseSlug, type ShowcaseProfile } from "../gateway/src/showcase-view";
 
 // The standalone demo uses parser code only. Its in-memory handlers never call
 // database/provider operations, and a local preview cannot inherit hosted DB
@@ -104,6 +105,10 @@ if (import.meta.main) {
 
 export async function devFetch(req: Request): Promise<Response> {
   const url = new URL(req.url);
+  const reviewGallery = await uiReviewGallery(req);
+  if (reviewGallery) return reviewGallery;
+  if (url.pathname === '/__ui-review' && ['GET', 'HEAD'].includes(req.method)) return uiReviewPage(req.method === 'HEAD');
+  if (url.pathname === '/__ui-review/app' && ['GET', 'HEAD'].includes(req.method)) return serveStatic(new URL('/app', url), req.method === 'HEAD');
   const sharedMcp = await devSharedMcp(req);
   if (sharedMcp) return sharedMcp;
   if (url.pathname.startsWith("/api/") && /^Bearer egs_/.test(req.headers.get("authorization") || "")) return json({ error: "Approved-context credentials cannot access workspace APIs." }, 401);
@@ -115,7 +120,7 @@ export async function devFetch(req: Request): Promise<Response> {
   if (url.pathname === "/hosted") return Response.redirect("https://engram.ani.computer/pricing", 302);
   const showcase = await publicShowcase(req, url);
   if (showcase) return showcase;
-  if (url.pathname.startsWith("/api/")) return handleApi(req, url);
+  if (url.pathname.startsWith("/api/")) return reviewApi(req, () => handleApi(req, url));
   if (!["GET", "HEAD"].includes(req.method)) return new Response("Method Not Allowed", { status: 405 });
   return serveStatic(url, req.method === "HEAD");
 }
@@ -248,7 +253,14 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     try {
       if (req.method !== "GET" && req.method !== "PUT") return json({ error: "method not allowed" }, 405, { Allow: "GET, PUT" });
       if (req.method === "PUT") {
-        const profile = parseShowcaseInput(await bodyObject(req));
+        if (Number(req.headers.get("content-length")) > SHOWCASE_PAYLOAD_LIMIT) throw new ShowcaseError("Profile payload is too large", 413);
+        const raw = await req.text();
+        if (new TextEncoder().encode(raw).byteLength > SHOWCASE_PAYLOAD_LIMIT) throw new ShowcaseError("Profile payload is too large", 413);
+        let input: unknown;
+        try { input = JSON.parse(raw); } catch { throw new ShowcaseError("Expected a profile object"); }
+        const profile = parseShowcaseInput(input), previous = showcaseProfiles.get(session.org.id);
+        if (!Object.hasOwn(input as object, "layout")) profile.layout = previous?.layout ?? "studio";
+        if (!Object.hasOwn(input as object, "highlights")) profile.highlights = previous?.highlights ?? [];
         if ([...showcaseProfiles].some(([orgId, value]) => orgId !== session.org.id && value.slug === profile.slug)) {
           return json({ error: "That showcase address is already taken" }, 409);
         }
@@ -256,7 +268,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
         showcaseRevisions.set(session.org.id, (showcaseRevisions.get(session.org.id) || 0) + 1);
         await demoStreams.refresh();
       }
-      const profile = showcaseProfiles.get(session.org.id) ?? { slug: "", displayName: "", bio: "", published: false, showActivity: false };
+      const profile = showcaseProfiles.get(session.org.id) ?? { slug: "", displayName: "", bio: "", published: false, showActivity: false, layout: "studio", highlights: [] };
       return json({ profile, urls: showcaseUrls(profile, url.origin), preview: showcaseActivity(profile, session.org.id, true) }, 200, { "Cache-Control": "no-store" });
     } catch (error) {
       if (error instanceof ShowcaseError) return json({ error: error.message }, error.status);

@@ -1,6 +1,10 @@
 import { resolve } from "node:path";
 import { renderAsync } from "@resvg/resvg-js";
 import { publicActivityEvents, type PublicActivityEvent } from "./public-activity";
+import { designColor } from "./design-tokens";
+
+export type ShowcaseLayout = "studio" | "field-notes";
+export interface ShowcaseHighlight { title: string; body: string; url: string; }
 
 export interface ShowcaseProfile {
   slug: string;
@@ -8,10 +12,12 @@ export interface ShowcaseProfile {
   bio: string;
   published: boolean;
   showActivity?: boolean;
+  layout?: ShowcaseLayout;
+  highlights?: ShowcaseHighlight[];
 }
 
 export interface PublicActivity {
-  profile: Pick<ShowcaseProfile, "slug" | "displayName" | "bio">;
+  profile: Pick<ShowcaseProfile, "slug" | "displayName" | "bio"> & { layout: ShowcaseLayout; highlights: ShowcaseHighlight[] };
   stats: {
     totalActions: number;
     completedActions: number;
@@ -41,7 +47,9 @@ export class ShowcaseError extends Error {
   constructor(message: string, public status = 400) { super(message); }
 }
 
-const PROFILE_FIELDS = new Set(["slug", "displayName", "bio", "published", "showActivity"]);
+const PROFILE_FIELDS = new Set(["slug", "displayName", "bio", "published", "showActivity", "layout", "highlights"]);
+const HIGHLIGHT_FIELDS = new Set(["title", "body", "url"]);
+export const SHOWCASE_PAYLOAD_LIMIT = 32_768;
 export const SHOWCASE_CATEGORIES = ["code", "files", "email", "calendar", "cloud", "browser", "data", "memory", "other"] as const;
 const CATEGORY_SET = new Set<string>(SHOWCASE_CATEGORIES);
 
@@ -66,6 +74,33 @@ export function validShowcaseSlug(value: unknown): value is string {
   return typeof value === "string" && /^(?=.{3,48}$)[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
 }
 
+function parseHighlights(value: unknown): ShowcaseHighlight[] {
+  if (!Array.isArray(value) || value.length > 3) throw new ShowcaseError("Choose up to three profile highlights");
+  return value.map((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item) || Object.keys(item).some(key => !HIGHLIGHT_FIELDS.has(key))) throw new ShowcaseError(`Highlight ${index + 1} has unknown or invalid fields`);
+    if (typeof item.title !== "string" || !item.title.trim() || item.title.trim().length > 80) throw new ShowcaseError(`Highlight ${index + 1} needs a title from 1 to 80 characters`);
+    if (typeof item.body !== "string" || item.body.trim().length > 600) throw new ShowcaseError(`Highlight ${index + 1} text must be at most 600 characters`);
+    if (item.url !== undefined && typeof item.url !== "string") throw new ShowcaseError(`Highlight ${index + 1} link must be an HTTP or HTTPS URL`);
+    const url = (item.url || "").trim();
+    if (url.length > 2048 || /[\u0000-\u001f\u007f]/.test(url)) throw new ShowcaseError(`Highlight ${index + 1} link must be at most 2,048 characters without control characters`);
+    if (url) {
+      if (!/^https?:\/\//i.test(url)) throw new ShowcaseError(`Highlight ${index + 1} link must be an absolute HTTP or HTTPS URL`);
+      let parsed: URL;
+      try { parsed = new URL(url); } catch { throw new ShowcaseError(`Highlight ${index + 1} link must be an HTTP or HTTPS URL`); }
+      if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) throw new ShowcaseError(`Highlight ${index + 1} link must use HTTP or HTTPS without credentials`);
+    }
+    return { title: item.title.trim(), body: item.body.trim(), url };
+  });
+}
+
+// Legacy rows have no presentation fields. Corrupt stored highlights must not
+// introduce unsafe links or arbitrary record fields into the public projection.
+export function showcasePresentation(value: { layout?: unknown; highlights?: unknown }): { layout: ShowcaseLayout; highlights: ShowcaseHighlight[] } {
+  let highlights: ShowcaseHighlight[] = [];
+  try { highlights = parseHighlights(value.highlights ?? []); } catch { /* Invalid stored highlights stay out of the projection. */ }
+  return { layout: value.layout === "field-notes" ? "field-notes" : "studio", highlights };
+}
+
 export function parseShowcaseInput(value: unknown): ShowcaseProfile {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new ShowcaseError("Expected a profile object");
   const input = value as Record<string, unknown>;
@@ -75,7 +110,9 @@ export function parseShowcaseInput(value: unknown): ShowcaseProfile {
   if (typeof input.bio !== "string" || input.bio.trim().length > 160) throw new ShowcaseError("Bio must be at most 160 characters");
   if (typeof input.published !== "boolean") throw new ShowcaseError("published must be true or false");
   if (input.showActivity !== undefined && typeof input.showActivity !== "boolean") throw new ShowcaseError("showActivity must be true or false");
-  return { slug: input.slug, displayName: input.displayName.trim(), bio: input.bio.trim(), published: input.published, showActivity: input.showActivity === true };
+  if (Object.hasOwn(input, "layout") && !["studio", "field-notes"].includes(input.layout as string)) throw new ShowcaseError("Choose the Studio or Field notes profile layout");
+  const highlights = Object.hasOwn(input, "highlights") ? parseHighlights(input.highlights) : [];
+  return { slug: input.slug, displayName: input.displayName.trim(), bio: input.bio.trim(), published: input.published, showActivity: input.showActivity === true, layout: input.layout === "field-notes" ? "field-notes" : "studio", highlights };
 }
 
 export function showcaseUrls(profile: ShowcaseProfile, origin: string) {
@@ -111,7 +148,7 @@ export function publicActivitySnapshot(profile: ShowcaseProfile, row: any = {}, 
   const last = row.updated_at ? new Date(row.updated_at) : null;
   const received = row.last_activity_at ? new Date(row.last_activity_at) : null;
   return {
-    profile: { slug: profile.slug, displayName: profile.displayName, bio: profile.bio },
+    profile: { slug: profile.slug, displayName: profile.displayName, bio: profile.bio, ...showcasePresentation(profile) },
     stats: {
       totalActions: count(row.total_actions), completedActions: count(row.completed_actions),
       failedActions: count(row.failed_actions), runningActions: count(row.running_actions),
@@ -170,13 +207,16 @@ export function renderShowcaseCard(activity: PublicActivity): string {
     return Math.min(maximum, 500 / Math.max(1, units));
   };
   const peak = Math.max(1, ...daily.map(day => day.count));
-  const cells = daily.map((day, i) => `<rect x="${650 + Math.floor(i / 7) * 34}" y="${202 + (i % 7) * 34}" width="26" height="26" rx="5" fill="${day.count ? `rgb(${Math.round(205 - 187 * day.count / peak)},${Math.round(205 - 187 * day.count / peak)},${Math.round(205 - 187 * day.count / peak)})` : "#eeeeee"}"/>`).join("");
+  const paper = designColor("paper"), ink = designColor("ink"), surface = designColor("surface"), line = designColor("line"), muted = designColor("muted"), accent = designColor("accent");
+  const chart = [0, 1, 2, 3, 4].map(level => designColor(`chart-${level}`));
+  const cells = daily.map((day, i) => `<rect x="${650 + Math.floor(i / 7) * 34}" y="${202 + (i % 7) * 34}" width="26" height="26" rx="4" fill="${chart[day.count ? Math.max(1, Math.ceil(day.count / peak * 4)) : 0]}"/>`).join("");
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="${escape(name)} agent activity">
-<rect width="1200" height="630" fill="#fff"/><rect x="32" y="32" width="1136" height="566" rx="24" fill="#fff" stroke="#dedede"/>
-<g font-family="Inter, Arial, sans-serif" fill="#111"><text x="78" y="109" font-size="26" font-weight="600" letter-spacing="-1">engram</text>
-<text x="78" y="201" font-size="17" fill="#666">AGENT ACTIVITY</text><text x="78" y="254" font-size="${fittedSize(shortName, 39)}" font-weight="600" letter-spacing="-1">${escape(shortName)}</text>
-<text x="78" y="363" font-size="${fittedSize(actions, 76)}" font-weight="500" letter-spacing="-2">${actions}</text><text x="81" y="398" font-size="20" fill="#666">actions across ${stats.activeAgents.toLocaleString("en-US")} agents</text>
-<text x="78" y="547" font-size="19" fill="#666">engram / ${escape(profile.slug)}</text><text x="650" y="492" font-size="17" fill="#666">The last 12 weeks</text></g>${cells}</svg>`;
+<rect width="1200" height="630" fill="${paper}"/><rect x="32" y="32" width="1136" height="566" rx="12" fill="${surface}" stroke="${line}"/>
+<path d="M78 139h1044M78 512h1044" stroke="${line}"/>
+<g font-family="Inter, Arial, sans-serif" fill="${ink}"><text x="78" y="109" font-size="26" font-weight="600" letter-spacing="-1">engram</text><circle cx="1110" cy="100" r="5" fill="${accent}"/>
+<text x="78" y="201" font-size="15" letter-spacing="1" fill="${muted}">AGENT ACTIVITY</text><text x="78" y="254" font-size="${fittedSize(shortName, 39)}" font-weight="600" letter-spacing="-1">${escape(shortName)}</text>
+<text x="78" y="363" font-size="${fittedSize(actions, 76)}" font-weight="500" letter-spacing="-2">${actions}</text><text x="81" y="398" font-size="20" fill="${muted}">actions across ${stats.activeAgents.toLocaleString("en-US")} agents</text>
+<text x="78" y="554" font-size="17" fill="${muted}">engram / ${escape(profile.slug)}</text><text x="650" y="492" font-size="16" fill="${muted}">The last 12 weeks</text></g>${cells}</svg>`;
 }
 
 export async function renderShowcasePng(activity: PublicActivity): Promise<Buffer> {

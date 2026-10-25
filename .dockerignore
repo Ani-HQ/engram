@@ -6,5 +6,6 @@ docs
 *.md
 web/fixtures
 web/dev-server.ts
+web/dev-ui-review.ts
 web/*.test.ts
 launch-demo

@@ -137,6 +137,34 @@ describe("local tooling identity", () => {
     expect(agentVisual("oauth:subject:%malformed").brand).toBeNull();
   });
 
+  test("unknown agents get stable local faces while known products retain real logos", () => withDocument(() => {
+    const atlas = agentVisual("Atlas", { harness: "other" });
+    expect(atlas.avatar).toEqual(agentVisual("Atlas", { harness: "other" }).avatar);
+    expect(atlas.avatar).not.toEqual(agentVisual("Milo", { harness: "other" }).avatar);
+    expect(atlas.brand).toBeNull();
+    const face = visualIcon(atlas) as unknown as TestElement;
+    expect(face.tagName).toBe("svg"); expect(face.getAttribute("data-avatar")).toBe("beam");
+    for (const [name, brand] of [["Codex", "codex"], ["Claude Code", "claude"], ["Cursor", "cursor"], ["ChatGPT", "openai"]]) {
+      const visual = agentVisual(name);
+      expect(visual.brand).toBe(brand); expect(visual.avatar).toBeUndefined();
+      const logo = visualIcon(visual) as unknown as TestElement;
+      expect(logo.getAttribute("data-brand")).toBe(brand);
+      expect(logo.getAttribute("data-avatar")).toBeUndefined();
+    }
+    // An explicit custom source cannot inherit a product logo from its alias.
+    expect(agentVisual("Codex-private-runner", { harness: "other" }).brand).toBeNull();
+  }));
+
+  test("public fallback faces and metadata do not depend on private aliases", () => {
+    const options = { harness: "other", publicSafe: true };
+    const first = agentVisual("secret-alias-one", { ...options, sourceLabel: "Private source" });
+    const second = agentVisual("secret-alias-two", { ...options, sourceLabel: "Other source" });
+    expect(first).toEqual(second);
+    expect(first).toMatchObject({ label: "Custom agent", initials: "AG", brand: null });
+    expect(JSON.stringify(first)).not.toMatch(/secret|Private source|Other source/);
+    expect(agentVisual("private-alias", { harness: "codex", publicSafe: true })).toMatchObject({ label: "Codex", brand: "codex", initials: "AG" });
+  });
+
   test("brand rendering uses fixed local paths and DOM-safe labels", () => withDocument(() => {
     const malicious = '\"><img src=x onerror=alert(1)>';
     const known = brandIcon("slack", { size: 13, label: malicious, class: "tool-mark" }) as unknown as TestElement;

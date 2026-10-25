@@ -48,6 +48,12 @@ Each snapshot has the same schema as the JSON endpoint. The `live` object contai
 
 The profile's chosen name/bio is public. Counts refer to authenticated reporting identities, which need not correspond one-to-one to a physical agent process. Raw tool identifiers, private agent aliases, task summaries, resources, details, run IDs, action/event keys, and transcripts are excluded.
 
+### Owner-written layout and highlights
+
+The profile projection includes `layout` (`"studio"` or `"field-notes"`) and `highlights`, an array of up to three records. An owner writes and approves these public records in Public profile; they are not generated from private memory or task activity. Each record contains a trimmed `title` (1–80 characters), `body` (0–600 characters), and an optional `url` (empty or up to 2,048 characters, absolute HTTP/HTTPS without credentials or control characters). Unknown nested keys are rejected. Render titles and bodies as text, and use the validated URL only as a link destination.
+
+Older records default to `layout: "studio"` and `highlights: []`. Legacy clients that omit these new fields on update preserve the saved values; an explicit empty array clears highlights. The owner settings response, public JSON and public SSE snapshots use the same normalized fields. Invalid stored highlight records are excluded rather than projected. Changing these fields changes the publication revision; unpublishing still removes all public endpoints.
+
 ### Optional redacted activity
 
 An owner can enable **Share a redacted activity stream** in Public profile. `showActivity` defaults to `false`, including for existing published profiles. The owner can inspect the private preview before saving. JSON and SSE follow the same saved setting; turning it off retires the old publication binding and subsequent snapshots return `activity: { enabled: false, events: [] }`.
@@ -70,7 +76,9 @@ Agent products and services come from fixed allowlists; unknown products are lab
 
 The private owner-settings response can include these same safe events for a prospective preview before opt-in. That authenticated preview is never evidence that the events are already public. Social image cards retain aggregate counts.
 
-Upgrades add `action_profiles.show_activity` with a `false` default and advance the separate showcase schema marker to `2026102501`. Apply the normal provisioner migration before rolling out runtime-only instances; their readiness check rejects an older schema. Existing publication choices and sharing scope are preserved.
+Upgrades retain `action_profiles.show_activity` with its `false` default and add `layout` (non-null text, default `studio`) plus `highlights` (non-null JSONB, default `[]`). Database constraints bound the supported layouts and array size. The existing `showcase_version` readiness marker remains exactly `2026102501`; a separate `profile_presentation_version` marker records `2026102502`. All predecessor readiness markers remain unchanged, so existing runtime revisions can cold-start after migration and serve a traffic rollback. The new runtime requires both exact marker values and rejects absent or mismatched presentation readiness. Apply the normal provisioner migration before rolling out new runtime instances. The additive migration preserves existing publication choices and sharing scope and can run repeatedly; a traffic rollback does not remove the new columns or stored owner content.
+
+Use the existing provisioner delivery path (`bun gateway/src/jobs/provision.ts`, with the restricted runtime/provisioner identities described in [ORGS.md](ORGS.md)), or the release staging workflow that runs that job. Do not give the public runtime migration credentials. The guarded `test/integration-postgres.ts` scenario verifies an old published row across the additive upgrade, repeats the migration, checks unchanged predecessor markers plus separate presentation readiness, preserves owner text/publication choice, and exercises storage constraints and legacy updates. It requires the documented disposable local PostgreSQL cluster; the in-memory demo does not need that migration and mirrors validation and field-preservation behavior.
 
 ## Use it on a website
 

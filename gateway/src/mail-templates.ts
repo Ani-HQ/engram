@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { designColor as color, designPixels as pixels, designToken as token } from "./design-tokens";
 
 export const EMAIL_TEMPLATE_IDS = ["login", "verify-signup", "team-invite", "agent-authorize", "welcome", "connect-agent", "first-memory", "second-agent"] as const;
 export type EmailTemplateId = typeof EMAIL_TEMPLATE_IDS[number];
@@ -13,27 +13,10 @@ export type RenderedEmail = { subject: string; preheader: string; text: string; 
 
 // Email clients need literal inline values. Resolve them from the same source
 // used by the console and public pages, rather than maintaining another palette.
-const designSource = readFileSync(new URL("../../web/design-system.css", import.meta.url), "utf8");
-function token(name: string, ancestors: string[] = []): string {
-  if (ancestors.includes(name)) throw new Error("Circular email design token.");
-  const value = designSource.match(new RegExp(`--ds-${name}:\\s*([^;]+);`, "i"))?.[1]?.trim();
-  if (!value) throw new Error(`Missing email design token: ${name}`);
-  const alias = value.match(/^var\(--ds-([a-z0-9-]+)\)$/);
-  return alias ? token(alias[1], [...ancestors, name]) : value;
-}
-function color(name: string) {
-  const value = token(name);
-  if (!/^#[a-f0-9]{6}$/i.test(value)) throw new Error(`Invalid email color token: ${name}`);
-  return value;
-}
-function pixels(name: string) {
-  const value = token(name), parsed = value.match(/^([0-9.]+)(px|rem)$/);
-  if (!parsed) throw new Error(`Invalid email size token: ${name}`);
-  return Number(parsed[1]) * (parsed[2] === "rem" ? 16 : 1);
-}
 export const EMAIL_DESIGN_TOKENS = Object.freeze({
   paper: color("paper"), ink: color("ink"), surface: color("surface"), muted: color("muted"), line: color("line"),
   lime: color("lime"), lilac: color("lilac"), apricot: color("apricot"),
+  accent: color("accent"), accentInk: color("accent-ink"), accentMuted: color("accent-muted"),
   font: token("email-font-sans"), editorial: token("email-font-editorial"), mono: token("email-font-mono"),
   width: pixels("email-width"), padding: pixels("email-padding"), labelTitleGap: pixels("gap-label-title"), titleBodyGap: pixels("gap-title-body"), actionGap: pixels("gap-heading-actions"),
   radius: pixels("radius-card"), controlRadius: pixels("radius-control"), headingSize: pixels("email-heading-size"), bodySize: pixels("email-body-size"),
@@ -127,16 +110,16 @@ export function renderEmail(input: EmailTemplateInput): RenderedEmail {
     ...(message.unsubscribeUrl ? ["", `Stop getting-started emails: ${message.unsubscribeUrl}`] : []), "", "Engram · Outcome Driven Holdings LLC"].join("\n");
   const paragraph = (value: string) => `<p style="margin:0 0 18px;color:${ds.ink};font-family:${escape(ds.font)};font-size:${ds.bodySize}px;line-height:1.75;">${escape(value)}</p>`;
   const steps = message.steps ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 24px;border-collapse:collapse;">${message.steps.map((step, index) => `<tr><td width="30" valign="top" style="padding:0 10px 12px 0;color:${ds.ink};font-family:${ds.mono};font-size:13px;line-height:1.8;">${index + 1}.</td><td valign="top" style="padding:0 0 12px;color:${ds.ink};font-family:${ds.font};font-size:15px;line-height:1.7;">${escape(step)}</td></tr>`).join("")}</table>` : "";
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>${escape(message.subject)}</title></head><body style="margin:0;padding:0;background-color:${ds.paper};color:${ds.ink};font-family:${ds.font};-webkit-text-size-adjust:100%;">
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark"><title>${escape(message.subject)}</title></head><body style="margin:0;padding:0;background-color:${ds.paper};color:${ds.ink};font-family:${ds.font};-webkit-text-size-adjust:100%;">
 <div style="display:none;font-size:1px;line-height:1px;color:${ds.paper};max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">${escape(message.preheader)}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;background-color:${ds.paper};"><tr><td align="center" style="padding:32px 12px;">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:${ds.width}px;border-collapse:separate;"><tr><td style="padding:0 0 24px;font-family:${ds.font};font-size:26px;font-weight:700;letter-spacing:-1px;color:${ds.ink};">engram<span style="color:${ds.muted};font-family:${ds.mono};font-size:11px;font-weight:400;letter-spacing:0;">&nbsp; / &nbsp;shared context</span></td></tr>
 <tr><td style="padding:${ds.padding}px;background-color:${ds.surface};border:1px solid ${ds.line};border-radius:${ds.radius}px;">
-<table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:separate;"><tr><td style="padding:6px 10px;background-color:${onboarding ? ds.lime : ds.lilac};border:1px solid ${ds.ink};border-radius:6px;font-family:${ds.mono};font-size:10px;font-weight:700;letter-spacing:1px;color:${ds.ink};">${escape(message.eyebrow)}</td></tr></table>
-<h1 style="margin:${ds.labelTitleGap}px 0 ${ds.titleBodyGap}px;font-family:${escape(ds.editorial)};font-size:${ds.headingSize}px;font-weight:400;letter-spacing:-1px;line-height:1.15;color:${ds.ink};">${escape(message.title)}</h1>
+<table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:separate;"><tr><td style="padding:5px 9px;background-color:${ds.accentMuted};border:1px solid ${ds.line};border-radius:${ds.controlRadius}px;font-family:${ds.mono};font-size:10px;font-weight:500;letter-spacing:1px;color:${ds.accent};">${escape(message.eyebrow)}</td></tr></table>
+<h1 style="margin:${ds.labelTitleGap}px 0 ${ds.titleBodyGap}px;font-family:${escape(ds.font)};font-size:${ds.headingSize}px;font-weight:550;letter-spacing:-.6px;line-height:1.2;color:${ds.ink};">${escape(message.title)}</h1>
 ${message.paragraphs.map(paragraph).join("")}${steps}
-<table role="presentation" cellpadding="0" cellspacing="0" style="margin:${ds.actionGap}px 0;border-collapse:separate;"><tr><td align="center" bgcolor="${ds.ink}" style="border-radius:10px;background-color:${ds.ink};mso-padding-alt:14px 20px;"><a href="${escape(message.url)}" style="display:inline-block;padding:14px 20px;border:1px solid ${ds.ink};border-radius:10px;color:${ds.paper};background-color:${ds.ink};font-family:${ds.font};font-size:15px;font-weight:600;line-height:1.4;text-decoration:none;">${escape(message.cta)}</a></td></tr></table>
-${message.note ? `<p style="margin:0;padding:16px;background-color:${ds.paper};border:1px solid ${ds.line};border-radius:10px;font-family:${ds.font};font-size:13px;line-height:1.75;color:${ds.muted};">${escape(message.note)}</p>` : ""}
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin:${ds.actionGap}px 0;border-collapse:separate;"><tr><td align="center" bgcolor="${ds.accent}" style="border-radius:${ds.controlRadius}px;background-color:${ds.accent};mso-padding-alt:12px 18px;"><a href="${escape(message.url)}" style="display:inline-block;padding:12px 18px;border:1px solid ${ds.accent};border-radius:${ds.controlRadius}px;color:${ds.accentInk};background-color:${ds.accent};font-family:${ds.font};font-size:14px;font-weight:600;line-height:1.4;text-decoration:none;">${escape(message.cta)}</a></td></tr></table>
+${message.note ? `<p style="margin:0;padding:16px;background-color:${ds.paper};border:1px solid ${ds.line};border-radius:${ds.controlRadius}px;font-family:${ds.font};font-size:13px;line-height:1.75;color:${ds.muted};">${escape(message.note)}</p>` : ""}
 <p style="margin:24px 0 0;font-family:${ds.font};font-size:14px;line-height:1.8;color:${ds.ink};">A little less catching up.<br>— Engram</p>
 </td></tr><tr><td style="padding:24px 2px 0;color:${ds.muted};font-family:${ds.font};font-size:12px;line-height:1.8;">
 <p style="margin:0 0 12px;">Questions? Reply to this email or contact ani@odstdio.com.</p><p style="margin:0 0 12px;">${escape(footer)}</p>

@@ -1,6 +1,7 @@
 import { api, AuthError, workspaceApi } from "./api.js";
 import { icon } from "./icons.js";
 import { profileCard, profileSkeleton, updateProfileCard } from "./profile.js";
+import { createProfilePresentationEditor, profilePresentationChanged, profilePresentationValue } from "./profile-presentation-editor.js";
 import { billingPanel, workspacePanel, workspacePending, provisioningPanel } from "./account.js";
 import { watchPublicActivity } from "./live-activity.js";
 import { activityFeed, activityFilters, activitySkeleton, activityDetail, activityDetailHeader, refreshActivityTimes } from "./activity-view.js";
@@ -19,7 +20,7 @@ import { parseInviteEntry, parseSignupPolicy, signupAuthMode, signupEntryMode, e
 import { signupView } from "./signup-view.js";
 import { signupAdminPanel } from "./signup-admin.js";
 import { sharingView } from "./sharing-view.js";
-import { statusBadge } from "./design-system.js";
+import { statusBadge, loadingState, observeLoadingMotion } from "./design-system.js";
 import { createJevSettingsPanel } from "./jev-settings.js";
 import { createAccessClock, friendAccessCard, friendAccessPresentation } from "./access-view.js";
 import { applyWorkspaceName, createWorkspaceNameEditor, captureSetupFocus, restoreSetupFocus } from "./workspace-name.js";
@@ -42,6 +43,8 @@ let showcaseSaving = false;
 let previewWatcher;
 let currentActivity, activityRequest = 0, activityRefreshTimer;
 let inputMode = "pointer";
+let navigationOpen = false;
+let accountFocusTarget = null;
 let sessionMutation = false, authEpoch = 0;
 let insightTimer, pendingInsightRun = false;
 let provisioningTimer, provisioningChecking = false, provisioningError = "", provisioningAttempt = 0;
@@ -93,18 +96,25 @@ function iconButton(name, label, action, attrs = {}) {
   return button(icon(name, { size: 16 }), action, { class: "icon-button", title: label, "aria-label": label, ...attrs });
 }
 function copyButton(label, value, attrs = {}) {
+  let copying = false, resetTimer;
   const node = button([icon("copy", { size: 14 }), label], async () => {
-    const original = [...node.childNodes];
-    if (await copy(typeof value === "function" ? value() : value)) {
-      node.replaceChildren(icon("check", { size: 14 }), "Copied");
-      setTimeout(() => { if (node.isConnected) node.replaceChildren(...original); }, 2000);
-    }
+    if (copying) return;
+    copying = true; clearTimeout(resetTimer); node.setAttribute('aria-busy', 'true'); node.setAttribute('aria-disabled', 'true');
+    node.replaceChildren(el('span', { class: 'ds-spinner', 'aria-hidden': 'true' }), 'Copying…');
+    const copied = await copy(typeof value === "function" ? value() : value);
+    copying = false; node.removeAttribute('aria-busy'); node.removeAttribute('aria-disabled');
+    if (!node.isConnected) return;
+    if (copied) {
+      node.dataset.feedback = 'success'; node.replaceChildren(icon("check", { size: 14, class: 'ds-feedback-icon' }), "Copied");
+      resetTimer = setTimeout(() => { if (node.isConnected) { node.replaceChildren(...original); delete node.dataset.feedback; } }, 2000);
+    } else node.replaceChildren(...original);
   }, { class: "small", ...attrs });
+  const original = [...node.childNodes];
   return node;
 }
-function busy(button, label, pending) { button.disabled = pending; button.replaceChildren(...(pending ? [el("span", { class: "ds-spinner", "aria-hidden": "true" }), label] : [label])); }
-function skeletonRows(count = 5) {
-  return el("div", { class: "skeleton-rows", role: "status", "aria-label": "Loading activity" }, Array.from({ length: count }, () => el("div", { class: "skeleton-row" }, el("span", { class: "skeleton-line" }), el("span", { class: "skeleton-line" }), el("div", {}, el("span", { class: "skeleton-line" }), el("span", { class: "skeleton-line short" })), el("span", { class: "skeleton-line" }))));
+function busy(button, label, pending) { button.disabled = pending; button.setAttribute('aria-busy', String(pending)); button.replaceChildren(...(pending ? [el("span", { class: "ds-spinner", "aria-hidden": "true" }), label] : [label])); }
+function skeletonRows(count = 5, label = "Loading workspace…") {
+  return loadingState({ label, lines: count });
 }
 const option = (value, label) => el("option", { value }, label);
 function select(label, value, options, change) {
@@ -121,7 +131,7 @@ function date(value, options) {
 function errorMessage(error) { return error instanceof Error ? error.message : "Something went wrong. Please try again."; }
 function toast(message) {
   document.querySelector(".toast")?.remove();
-  const node = el("div", { class: "toast", role: "status" }, message);
+  const node = el("div", { class: "toast ds-toast", role: "status", "aria-live": "polite" }, message);
   document.body.append(node);
   setTimeout(() => node.remove(), 3500);
 }
@@ -165,8 +175,7 @@ function showDetail(title, body, { activity = false, memory = false, reporting =
 }
 function empty(title, description, action) { return el("div", { class: "empty" }, el("div", { class: "empty-icon" }, icon("activity", { size: 22 })), el("h2", {}, title), el("p", {}, description), action); }
 function heading(title, description, side) {
-  const labels = { activity: "THE WORK, IN VIEW", attention: "TAKE A CLOSER LOOK", memory: "GOOD CONTEXT LIVES HERE", connect: "BRING YOUR AGENTS", sharing: "SHARE THE USEFUL SLICE", showcase: "A WINDOW INTO THE WORK", workspace: "YOUR SPACE. YOUR RULES.", billing: "THE PRACTICAL BITS" };
-  return el("div", { class: "page-heading" }, el("div", { class: "ds-heading-group" }, el("span", { class: "ds-eyebrow page-eyebrow" }, labels[state.view] || "YOUR WORKSPACE"), el("h1", {}, title), el("p", {}, description)), side);
+  return el("div", { class: "page-heading" }, el("div", { class: "ds-heading-group" }, el("h1", {}, title), el("p", {}, description)), side);
 }
 function notice(message, retry) {
   return el("div", { class: "notice", role: "alert" }, message, retry && button("Try again", retry, { class: "text small" }));
@@ -285,24 +294,46 @@ function render() {
   if (state.session.role === "owner") navigation.push(["showcase", "Public profile", "globe"]);
   if (["owner", "member"].includes(state.session.role)) navigation.push(["workspace", "Workspace", "settings-2"]);
   if (state.session.role === "owner") navigation.push(["billing", "Plan & billing", "file-text"]);
+  const workspaceKind = state.session.org.kind === "personal" ? "Personal workspace" : "Team workspace";
+  const navigationLink = ([key, label, name]) => el("a", { href: `#${key}`, "aria-current": state.view === key ? "page" : null, onclick: () => { if (navigationOpen) { setNavigationOpen(false); document.querySelector('#main')?.focus({ preventScroll: true }); } } }, icon(name, { size: 16 }), el("span", {}, label));
+  const workspaceNavigation = navigation.filter(([key]) => !["showcase", "workspace", "billing"].includes(key));
+  const manageNavigation = navigation.filter(([key]) => ["showcase", "workspace", "billing"].includes(key));
   root.replaceChildren(
     el("a", { class: "ds-button ds-skip-link", href: "#main", onclick: event => { event.preventDefault(); const main = document.querySelector("#main"); main?.focus(); main?.scrollIntoView(); } }, "Skip to content"),
     ...(state.demo ? [el("div", { class: "demo" }, "LOCAL PREVIEW", el("span", {}, "Sample data · No connected accounts are being monitored"))] : []),
     el("div", { class: "app-shell" },
-      el("aside", { class: "sidebar", "aria-label": "Workspace navigation" },
+      el("aside", { class: "sidebar", "aria-label": "Workspace navigation", "data-navigation-open": String(navigationOpen) },
         el("a", { class: "wordmark", href: "#activity", "aria-label": "engram home" }, el("img", { class: "brand-mark", src: "/brand/engram-mark.svg", width: 27, height: 27, alt: "" }), "engram"),
         el("div", { class: "workspace-picker" }, el("span", { class: "workspace-initial", "aria-hidden": "true" }, state.session.org.name.slice(0, 1).toUpperCase()), select("Workspace", String(state.session.org.id), orgs.map(org => [String(org.id), org.name]), switchOrg)),
-        el("nav", { class: "nav", "aria-label": "Main navigation" }, navigation.map(([key, label, name]) => el("a", { href: `#${key}`, "aria-current": state.view === key ? "page" : null }, icon(name, { size: 17 }), el("span", {}, label)))),
-        el("div", { class: "sidebar-bottom" }, el("a", { class: "workspace-note", href: "/privacy" }, icon("shield-check", { size: 14 }), "Private by default"), button([icon("log-out", { size: 15 }), "Sign out"], signOut, { class: "text" }))),
+        iconButton(navigationOpen ? "x" : "menu", "Navigation", () => setNavigationOpen(!navigationOpen), { class: "ds-icon-button ds-disclosure-toggle mobile-navigation-toggle", "aria-controls": "workspace-navigation", "aria-expanded": String(navigationOpen) }),
+        el("nav", { class: "nav", id: "workspace-navigation", "aria-label": "Main navigation" },
+          el("div", { class: "nav-group" }, el("span", { class: "nav-group-label" }, "Workspace"), workspaceNavigation.map(navigationLink)),
+          manageNavigation.length > 0 && el("div", { class: "nav-group" }, el("span", { class: "nav-group-label" }, "Manage"), manageNavigation.map(navigationLink))),
+        el("div", { class: "sidebar-bottom" },
+          el("a", { class: "workspace-note", href: "/privacy" }, icon("shield-check", { size: 14 }), "Privacy & data"),
+          el("div", { class: "sidebar-account" },
+            el("span", { class: "sidebar-account-avatar", "aria-hidden": "true" }, (state.session.email || state.session.name || "E").slice(0, 1).toUpperCase()),
+            el("div", { class: "sidebar-account-copy" }, el("span", { title: state.session.email || state.session.name }, state.session.email || state.session.name), el("small", {}, `${state.session.role.slice(0, 1).toUpperCase()}${state.session.role.slice(1)}`))),
+          button([icon("log-out", { size: 15 }), "Sign out"], signOut, { class: "text" }))),
       el("div", { class: "main-column" },
-        el("div", { class: "app-topbar" }, el("div", { class: "breadcrumbs" }, el("span", {}, state.session.org.name), icon("chevron-right", { size: 13 }), el("span", {}, titles[state.view])),
-          el("div", { class: "topbar-actions" }, setupState() && button("Get started", openSetup, { class: "text small setup-resume", "aria-controls": "setup-slot" }), state.session.role === "owner" && state.view !== "showcase" && button([icon("share-2", { size: 14 }), "Share activity"], () => { location.hash = "showcase"; }, { class: "small" }), iconButton("log-out", "Sign out", signOut, { class: "icon-button mobile-signout" }))),
+        el("div", { class: "app-topbar" }, el("div", { class: "breadcrumbs" }, el("span", {}, state.session.org.name), statusBadge(workspaceKind, { tone: "neutral", className: "workspace-kind-badge" }), icon("chevron-right", { size: 13 }), el("span", {}, titles[state.view])),
+          el("div", { class: "topbar-actions" }, setupState() && button("Setup", openSetup, { class: "text small setup-resume", "aria-label": "Open setup guide", "aria-controls": "setup-slot" }), state.session.role === "owner" && state.view !== "showcase" && button([icon("share-2", { size: 14 }), "Share activity"], () => { location.hash = "showcase"; }, { class: "small" }), iconButton("log-out", "Sign out", signOut, { class: "icon-button mobile-signout" }))),
         el("main", { class: "workspace", id: "main", tabindex: -1 }, el("div", { id: "friend-access-slot" }), el("div", { id: "setup-slot" }, setupPanel()), state.view === "activity" ? activityView() : state.view === "attention" ? attentionView() : state.view === "memory" ? memoryView() : state.view === "sharing" ? selectiveSharingView() : state.view === "showcase" ? showcaseView() : ["workspace", "billing"].includes(state.view) ? accountView() : connectView()))));
   renderFriendAccess();
   if (state.view === "showcase" && state.showcase?.profile.published) watchPreview();
   setSessionControlsBusy(sessionMutation);
   restoreSetupFocus(document.querySelector("#setup-slot"), setupFocus);
+  if (accountFocusTarget?.workspaceId === state.session.org.id && accountFocusTarget.view === state.view) {
+    const target = document.querySelector(`[data-account-focus="${accountFocusTarget.key}"]`);
+    if (target) { target.focus({ preventScroll: true }); accountFocusTarget = null; }
+  }
   requestAnimationFrame(revealCurrentNavigation);
+}
+function setNavigationOpen(open, restoreFocus = false) {
+  navigationOpen = Boolean(open);
+  const sidebar = document.querySelector('.sidebar'), toggle = sidebar?.querySelector('.mobile-navigation-toggle');
+  if (sidebar) sidebar.dataset.navigationOpen = String(navigationOpen);
+  if (toggle) { toggle.setAttribute('aria-expanded', String(navigationOpen)); toggle.replaceChildren(icon(navigationOpen ? 'x' : 'menu', { size: 18 })); if (restoreFocus) toggle.focus(); }
 }
 function revealCurrentNavigation() {
   const nav = document.querySelector(".nav"), active = nav?.querySelector('[aria-current="page"]');
@@ -355,7 +386,7 @@ function watchPreview() {
       const card = document.querySelector(".profile-preview-content .public-profile");
       if (card) updateProfileCard(card, showcasePreviewData(state.showcase.preview));
     },
-    state: value => { if (status?.isConnected) status.textContent = Boolean(state.showcaseDraft?.showActivity) !== Boolean(state.showcase?.profile.showActivity) ? "Unsaved sharing preview" : { live: "Live public preview", connecting: "Connecting…", reconnecting: "Reconnecting…", paused: "Preview paused", closed: "Preview disconnected" }[value] || "Public preview"; },
+    state: value => { if (status?.isConnected) status.textContent = Boolean(state.showcaseDraft?.showActivity) !== Boolean(state.showcase?.profile.showActivity) ? "Unsaved sharing preview" : profilePresentationChanged(state.showcaseDraft, state.showcase?.profile) || ["slug", "displayName", "bio"].some(key => state.showcaseDraft?.[key] !== state.showcase?.profile[key]) ? "Unsaved preview" : { live: "Live public preview", connecting: "Connecting…", reconnecting: "Reconnecting…", paused: "Preview paused", closed: "Preview disconnected" }[value] || "Public preview"; },
     closed: () => { if (status?.isConnected) status.textContent = "Preview changed · reload to reconnect"; },
   });
   if (document.hidden) previewWatcher.pause();
@@ -365,7 +396,7 @@ function activityView() {
   const search = el("input", { type: "search", class: "search", placeholder: "Search work, tools, or approaches…", "aria-label": "Search activity", value: state.filters.q,
     oninput: event => { state.filters.q = event.target.value; clearTimeout(searchTimer); searchTimer = setTimeout(() => { writeRoute(); loadActivity(); }, 250); } });
   return [
-    heading("Activity", memory ? "The context your agents found, saved, and changed. Follow each memory call." : state.activityKind === "tasks" ? "See the steps, progress, and outcomes your agents report." : "Follow the thread across your agents. Memory calls and reported work, together.", el("div", { class: "activity-refresh-controls" },
+    heading("Activity", memory ? "Memory calls recorded by Engram in this workspace." : state.activityKind === "tasks" ? "Steps, progress, and outcomes reported by your agents." : "Memory calls and agent-reported work across this workspace.", el("div", { class: "activity-refresh-controls" },
       el("span", { class: "activity-refresh-label" }, el("span", { class: "activity-refresh-dot", "aria-hidden": "true" }), state.activities.length > 100 ? "History view · Updates paused" : "Auto-updates every 5s"),
       iconButton("refresh-cw", "Refresh activity", () => loadActivity(), { id: "activity-refresh" }))),
     el("div", { id: "activity-agent-overview" }, activityAgents()),
@@ -616,8 +647,9 @@ function launchInsights({ q = "", activityId = "" } = {}) {
 }
 function attentionView() {
   const pending = ["queued", "running"].includes(state.insights?.job?.status);
+  const checking = state.insightBusy || pending;
   const query = el("input", { type: "search", class: "search", maxlength: 500, placeholder: "Describe the work you want to find…", "aria-label": "Search activity by intent", value: state.insightsQuery, oninput: event => state.insightsQuery = event.target.value });
-  const run = el("button", { type: "submit", class: "primary small", disabled: state.insightBusy || pending || state.session.canWrite === false }, icon(pending ? "loader-circle" : "layers", { size: 14, class: pending ? "spin" : "" }), pending ? "Checking…" : "Run checks");
+  const run = el("button", { type: "submit", class: "primary small", disabled: checking || state.session.canWrite === false, 'aria-busy': String(checking) }, icon(checking ? "loader-circle" : "layers", { size: 14, class: checking ? "spin" : "" }), checking ? "Checking…" : "Run checks");
   return [heading("Attention", "Spot connections and loose ends in recorded work. Follow each finding back to its evidence."),
     state.insightsActivityId && el("div", { class: "insight-scope" }, icon("layers", { size: 13 }), "Checking one activity", button("Check all activity", () => { state.insightsActivityId = ""; state.insights = null; render(); }, { class: "text small", disabled: pending })),
     el("form", { class: "insight-toolbar", onsubmit: event => { event.preventDefault(); runInsights(); } }, el("div", { class: "search-field" }, icon("search", { size: 15 }), query), run),
@@ -628,9 +660,9 @@ function attentionView() {
 function insightResults() {
   const job = state.insights?.job, pending = ["queued", "running"].includes(job?.status);
   return [state.insightError && notice(state.insightError, () => loadInsights()),
-    pending && el("div", { class: "insight-job", role: "status" }, icon("loader-circle", { size: 16, class: "spin" }), el("div", {}, job.status === "queued" ? "Checks queued" : "Checking recorded activity", el("p", {}, "This is a read-only check. Your agents and memory are not changed."))),
+    pending && loadingState({ label: job.status === "queued" ? "Checks queued…" : "Checking activity…", description: "Read-only checks. Your agents and memory stay unchanged.", lines: 2 }),
     ["failed", "cancelled"].includes(job?.status) && notice(job.status === "cancelled" ? "This check was cancelled. You can run it again." : "The check could not finish. Run checks to try again."),
-    !state.insights && state.insightBusy ? skeletonRows(3) : (state.insights?.result || !pending) && attentionResults(state.insights, { onSource: openInsightSource, onActivity: id => openInsightSource(id), onCopy: async text => { if (await copy(text)) toast("Brief copied"); } }),
+    !state.insights && state.insightBusy ? skeletonRows(3, "Starting checks…") : (state.insights?.result || !pending) && attentionResults(state.insights, { onSource: openInsightSource, onActivity: id => openInsightSource(id), onCopy: async text => { if (await copy(text)) toast("Brief copied"); } }),
     state.insights?.external && aiConfiguration(state.insights.external),
   ];
 }
@@ -639,7 +671,7 @@ function refreshInsights() {
   if (state.view !== "attention" || !target) return;
   target.replaceChildren(...insightResults().flat(Infinity).filter(Boolean)); target.setAttribute("aria-busy", String(state.insightBusy || ["queued", "running"].includes(state.insights?.job?.status)));
   const run = document.querySelector(".insight-toolbar button");
-  if (run) { const pending = ["queued", "running"].includes(state.insights?.job?.status); run.disabled = state.insightBusy || pending || state.session.canWrite === false; run.replaceChildren(icon(pending ? "loader-circle" : "layers", { size: 14, class: pending ? "spin" : "" }), pending ? "Checking…" : "Run checks"); }
+  if (run) { const checking = state.insightBusy || ["queued", "running"].includes(state.insights?.job?.status); run.disabled = checking || state.session.canWrite === false; run.setAttribute('aria-busy', String(checking)); run.replaceChildren(icon(checking ? "loader-circle" : "layers", { size: 14, class: checking ? "spin" : "" }), checking ? "Checking…" : "Run checks"); }
 }
 async function runInsights() {
   if (!state.session || state.view !== "attention" || state.insightBusy || ["queued", "running"].includes(state.insights?.job?.status) || sessionMutation) return;
@@ -692,7 +724,7 @@ function memoryView() {
   if (state.memoryTab === "review") return [heading("Memory", "Review proposed relationships and organization before they change shared memory."), tabs,
     el("div", { class: "filters" }, select("Review state", state.reviewState, [["pending", "Pending"], ["deferred", "Deferred"], ["applied", "Applied"], ["rejected", "Rejected"]], value => { state.reviewState = value; writeRoute(); loadReviews(); })),
     el("div", { id: "review-results", class: "ds-results", "aria-busy": String(state.loading) }, reviewResults())];
-  return [heading("Memory", "Keep the useful bits: decisions, preferences, and context for whatever comes next.", state.session.canWrite !== false && button([icon("plus", { size: 15 }), "Add memory"], captureMemory, { class: "primary small" })),
+  return [heading("Memory", "Decisions, preferences, and project context saved in this workspace.", state.session.canWrite !== false && button([icon("plus", { size: 15 }), "Add memory"], captureMemory, { class: "primary small" })),
     tabs,
     el("div", { class: "filters" }, el("div", { class: "search-field memory-search" }, icon("search", { size: 16 }), el("input", { type: "search", class: "search", placeholder: "Search memory…", "aria-label": "Search memory", value: state.memoryQuery, oninput: event => { state.memoryQuery = event.target.value; clearTimeout(searchTimer); searchTimer = setTimeout(loadMemories, 250); } }), el("kbd", {}, "/"))),
     el("div", { id: "memory-results", class: "ds-results", "aria-busy": String(state.loading) }, memoryResults())];
@@ -739,15 +771,15 @@ async function memoryDetail(slug) {
 function captureMemory() {
   const workspaceId = state.session.org.id;
   const title = el("input", { name: "title", autocomplete: "off", placeholder: "A short title…", required: true, maxlength: 160 });
-  const text = el("textarea", { name: "memory", placeholder: "A decision, useful context, or something to remember…", required: true });
+  const text = el("textarea", { name: "memory", autocomplete: "off", placeholder: "A decision, useful context, or something to remember…", required: true });
   const save = el("button", { class: "primary", type: "submit" }, "Save memory");
-  const feedback = el("p", { class: "detail-note", role: "alert" });
+  const feedback = el("p", { id: "capture-feedback", class: "detail-note", role: "alert", tabindex: -1 });
   showDetail("New memory", el("form", { class: "stack", onsubmit: async event => {
-    event.preventDefault(); busy(save, "Saving…", true); feedback.textContent = "";
+    event.preventDefault(); busy(save, "Saving…", true); event.currentTarget.setAttribute('aria-busy', 'true'); feedback.textContent = "";
     const requestId = detailGeneration;
     try { await api.capture({ title: title.value, text: text.value }, workspaceId); if (workspaceId !== state.session?.org.id || requestId !== detailGeneration) return; closeDetail(); toast("Memory saved"); loadMemories(); }
-    catch (error) { if (workspaceId !== state.session?.org.id || requestId !== detailGeneration) return; if (error instanceof AuthError) return expired("Your session expired. Please sign in again."); feedback.textContent = errorMessage(error); }
-    finally { busy(save, "Save memory", false); }
+    catch (error) { if (workspaceId !== state.session?.org.id || requestId !== detailGeneration) return; if (error instanceof AuthError) return expired("Your session expired. Please sign in again."); feedback.textContent = errorMessage(error); feedback.focus(); }
+    finally { busy(save, "Save memory", false); save.closest('form')?.setAttribute('aria-busy', 'false'); }
   } }, el("h2", { id: "detail-title" }, "Add memory"), field("Title", title), field("Memory", text), feedback, save));
 }
 function reviewResults() {
@@ -777,13 +809,13 @@ async function reviewDetail(id) {
   try {
     const data = await api.review(id, workspaceId);
     if (!dialog.open || requestId !== detailGeneration || workspaceId !== state.session?.org.id) return;
-    const { item, entry } = data, plan = reviewPlan(item, entry), feedback = el("p", { role: "status", class: "detail-note" });
+    const { item, entry } = data, plan = reviewPlan(item, entry), feedback = el("p", { role: "status", "aria-live": "polite", tabindex: -1, class: "detail-note" });
     const allowed = reviewAllowed(state.session), pending = item.state === "pending";
     const controls = el("div", { class: "review-actions" });
     for (const [action, label] of [["approve", "Apply proposed change"], ["defer", "Defer"], ["reject", "Reject"]]) {
-      controls.append(button(label, async () => {
+      controls.append(button(label, async event => {
         if (!allowed || !pending || (action === "approve" && !plan.supported)) return;
-        const version = detailGeneration; controls.querySelectorAll("button").forEach(node => node.disabled = true); feedback.textContent = "Saving decision…";
+        const version = detailGeneration, submit = event.currentTarget; controls.querySelectorAll("button").forEach(node => node.disabled = true); busy(submit, "Saving…", true); controls.setAttribute('aria-busy', 'true'); feedback.setAttribute('role', 'status'); feedback.textContent = "Saving decision…";
         try {
           await api.resolveReview(id, action, workspaceId);
           if (workspaceId !== state.session?.org.id || version !== detailGeneration) return;
@@ -791,7 +823,7 @@ async function reviewDetail(id) {
         } catch (error) {
           if (workspaceId !== state.session?.org.id || version !== detailGeneration) return;
           if (error instanceof AuthError) return expired();
-          feedback.textContent = errorMessage(error); controls.querySelectorAll("button").forEach(node => node.disabled = node.dataset.approval === "true" && !plan.supported);
+          busy(submit, label, false); controls.setAttribute('aria-busy', 'false'); feedback.setAttribute('role', 'alert'); feedback.textContent = errorMessage(error); controls.querySelectorAll("button").forEach(node => node.disabled = node.dataset.approval === "true" && !plan.supported); feedback.focus();
         }
       }, { class: action === "approve" ? "primary small" : "small", disabled: !allowed || !pending || (action === "approve" && !plan.supported), "data-approval": String(action === "approve") }));
     }
@@ -827,7 +859,7 @@ function connectView() {
   source.addEventListener("change", retainDraft);
   permission.addEventListener("change", retainDraft);
   return el("div", { class: "connect-layout" },
-    heading("Connections", "Give each agent a way in. See its permissions and when it last called Engram.", iconButton("refresh-cw", "Refresh connections", loadConnections, { disabled: state.loading })),
+    heading("Connections", "Manage agent access, permissions, and recorded contact with Engram.", iconButton("refresh-cw", "Refresh connections", loadConnections, { disabled: state.loading })),
     state.error && notice(state.error, loadConnections),
     state.connectionError && notice("Connection status could not load. Refresh to try again.", loadConnections),
     canConnect && (state.connections ? connectionInventory(state.connections, { onInspect: connectionHelp, actions: connection => {
@@ -976,37 +1008,80 @@ function showcaseView() {
   if (!state.showcase) return [heading("Public profile", "A live window into your agents’ work, with private details left out."), state.error ? notice(state.error, loadShowcase) : profileSkeleton()];
   const draft = state.showcaseDraft;
   const saved = state.showcase.profile;
+  const hasChanges = value => ["slug", "displayName", "bio"].some(key => value[key] !== saved[key]) || Boolean(value.showActivity) !== Boolean(saved.showActivity) || profilePresentationChanged(value, saved);
+  const workspaceId = state.session.org.id, epoch = authEpoch;
   const publicUrl = saved.published ? state.showcase.urls.page : `${location.origin}/u/${draft.slug || "your-name"}`;
-  const name = el("input", { name: "displayName", autocomplete: "name", value: draft.displayName, placeholder: "Your name", required: true, maxlength: 80 });
-  const slug = el("input", { name: "slug", value: draft.slug, autocomplete: "off", autocapitalize: "none", spellcheck: "false", placeholder: "your-name", required: true, minlength: 3, maxlength: 48, pattern: "[a-z0-9]+(?:-[a-z0-9]+)*", "aria-describedby": "slug-hint" });
-  const bio = el("textarea", { name: "bio", maxlength: 160, rows: 3, placeholder: "A line about you and the work your agents do.", "aria-describedby": "bio-hint" }, draft.bio);
+  const nameError = el("p", { id: "showcase-name-error", class: "ds-field-error", hidden: true });
+  const slugError = el("p", { id: "showcase-slug-error", class: "ds-field-error", hidden: true });
+  const bioError = el("p", { id: "showcase-bio-error", class: "ds-field-error", hidden: true });
+  const name = el("input", { name: "displayName", autocomplete: "name", value: draft.displayName, placeholder: "Your name", maxlength: 80, "aria-describedby": "showcase-name-error" });
+  const slug = el("input", { name: "slug", value: draft.slug, autocomplete: "off", autocapitalize: "none", spellcheck: "false", placeholder: "your-name", required: true, minlength: 3, maxlength: 48, pattern: "(?=.{3,48}$)[a-z0-9]+(?:-[a-z0-9]+)*", "aria-describedby": "slug-hint showcase-slug-error" });
+  const bio = el("textarea", { name: "bio", maxlength: 160, rows: 3, placeholder: "A line about you and the work your agents do.", "aria-describedby": "bio-hint showcase-bio-error" }, draft.bio);
   const showActivity = el("input", { type: "checkbox", name: "showActivity", checked: Boolean(draft.showActivity), "aria-describedby": "activity-sharing-note" });
-  const feedback = el("div", { role: "alert", class: "form-feedback" });
-  const save = el("button", { type: "submit", class: "primary" }, icon("check", { size: 15 }), "Save changes");
+  const feedback = el("div", { id: "showcase-feedback", role: "status", "aria-live": "polite", tabindex: -1, class: "form-feedback" });
+  const save = el("button", { type: "submit", class: "primary", "data-showcase-focus": "save", "aria-describedby": "showcase-feedback" }, icon("check", { size: 15 }), "Save changes");
+  let pending = false;
+  const isCurrent = () => !sessionMutation && authEpoch === epoch && state.session?.org.id === workspaceId && state.view === "showcase" && form.isConnected;
+  const setFieldError = (control, errorNode, message = "") => {
+    control.setAttribute("aria-invalid", String(Boolean(message)));
+    control.setCustomValidity(message);
+    errorNode.textContent = message; errorNode.hidden = !message;
+  };
+  const setFeedback = (message, error = false) => {
+    feedback.setAttribute("role", error ? "alert" : "status");
+    feedback.setAttribute("aria-live", error ? "assertive" : "polite");
+    feedback.textContent = message;
+  };
+  const validate = () => {
+    const errors = [
+      [slug, slugError, /^(?=.{3,48}$)[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug.value) ? "" : "Use 3–48 lowercase letters or numbers, with single hyphens between them."],
+      [name, nameError, name.value.trim().length <= 80 ? "" : "Use a display name of at most 80 characters."],
+      [bio, bioError, bio.value.trim().length <= 160 ? "" : "Use an About you description of at most 160 characters."],
+    ];
+    for (const [control, errorNode, message] of errors) setFieldError(control, errorNode, message);
+    const invalid = errors.find(([, , message]) => message);
+    if (invalid) { setFeedback("Check the highlighted profile field before saving.", true); invalid[0].focus(); return false; }
+    if (!presentation.validate()) { setFeedback("Check your highlight fields before saving.", true); return false; }
+    setFeedback(""); return true;
+  };
   const publish = button([icon(saved.published ? "eye-off" : "globe", { size: 15 }), saved.published ? "Unpublish" : "Publish profile"], async () => {
-    if (!saved.published && !form.reportValidity()) return;
-    await persistShowcase(!saved.published, publish, feedback, saved.published ? saved : state.showcaseDraft);
-  }, { class: saved.published ? "small" : "primary small" });
+    if (pending || !isCurrent()) return;
+    update();
+    if (!saved.published && !validate()) return;
+    await persistShowcase(!saved.published, publish, feedback, saved.published ? saved : state.showcaseDraft, controller);
+  }, { class: saved.published ? "small" : "primary small", "data-showcase-focus": "publish", "aria-describedby": "showcase-feedback" });
   const preview = el("div", { class: "profile-preview-content" }, showcasePreview());
+  const presentation = createProfilePresentationEditor({ profile: draft, isCurrent, onChange: () => { setFeedback(""); update(); } });
   const update = () => {
-    state.showcaseDraft = { ...draft, displayName: name.value, slug: slug.value, bio: bio.value, showActivity: showActivity.checked };
-    preview.replaceChildren(showcasePreview());
+    if (!isCurrent() || pending) return;
+    state.showcaseDraft = { ...draft, displayName: name.value, slug: slug.value, bio: bio.value, showActivity: showActivity.checked, ...presentation.read() };
+    const card = preview.querySelector('.public-profile');
+    if (card && state.showcase?.preview) updateProfileCard(card, showcasePreviewData(state.showcase.preview));
+    else preview.replaceChildren(showcasePreview());
     const count = document.querySelector("#bio-hint"); if (count) count.textContent = `${bio.value.length} / 160`;
     const changedAddress = document.querySelector("#slug-change-hint"); if (changedAddress) changedAddress.hidden = !(saved.published && slug.value !== saved.slug);
     const permalink = document.querySelector("#profile-permalink"); if (permalink && !saved.published) permalink.textContent = `${location.origin}/u/${slug.value || "your-name"}`;
-    const previewStatus = document.querySelector(".preview-label > span"); if (previewStatus) previewStatus.textContent = Boolean(showActivity.checked) !== Boolean(saved.showActivity) ? "Unsaved sharing preview" : "What others will see";
-    save.disabled = ["slug", "displayName", "bio"].every(key => state.showcaseDraft[key] === saved[key]) && Boolean(showActivity.checked) === Boolean(saved.showActivity);
+    const previewStatus = document.querySelector(".preview-label > span"); if (previewStatus) previewStatus.textContent = Boolean(showActivity.checked) !== Boolean(saved.showActivity) ? "Unsaved sharing preview" : hasChanges(state.showcaseDraft) ? "Unsaved preview" : "What others will see";
+    save.disabled = !hasChanges(state.showcaseDraft);
   };
+  for (const [control, errorNode] of [[name, nameError], [slug, slugError], [bio, bioError]]) control.addEventListener("input", () => { if (!pending && isCurrent()) { setFieldError(control, errorNode); setFeedback(""); } });
   [name, slug, bio, showActivity].forEach(node => node.addEventListener("input", update));
-  save.disabled = ["slug", "displayName", "bio"].every(key => draft[key] === saved[key]) && Boolean(draft.showActivity) === Boolean(saved.showActivity);
-  const form = el("form", { class: "showcase-form stack", onsubmit: async event => { event.preventDefault(); await persistShowcase(saved.published, save, feedback); } },
-    field("Display name", name),
+  save.disabled = !hasChanges(draft);
+  const controller = {
+    workspaceId, epoch, isCurrent,
+    setPending(value) { if (pending === value) return; pending = value; form.setAttribute("aria-busy", String(value)); for (const control of [name, slug, bio, showActivity, save, publish]) control.disabled = value; presentation.setPending(value); if (!value) update(); },
+    error(message, focus = true) { setFeedback(message, true); if (message === "That showcase address is already taken") { setFieldError(slug, slugError, "This profile address is already taken. Choose another address."); if (focus) slug.focus(); } else if (focus) feedback.focus(); },
+  };
+  const form = el("form", { class: "showcase-form stack", novalidate: true, onsubmit: async event => { event.preventDefault(); if (pending || !isCurrent()) return; update(); if (validate()) await persistShowcase(saved.published, save, feedback, state.showcaseDraft, controller); } },
+    presentation.layoutElement,
+    field("Display name", name), nameError,
     field("Profile URL", el("div", { class: "slug-field" }, el("span", {}, "/u/"), slug)),
-    el("p", { id: "slug-hint", class: "field-hint" }, "3–48 lowercase letters, numbers, or hyphens."),
+    el("p", { id: "slug-hint", class: "field-hint" }, "3–48 lowercase letters or numbers, with single hyphens between them."), slugError,
     el("p", { id: "slug-change-hint", class: "field-hint", hidden: true }, "Changing this address makes the old link unavailable."),
-    field("About you", bio), el("p", { class: "field-hint counter", id: "bio-hint" }, `${bio.value.length} / 160`),
+    field("About you", bio), el("p", { class: "field-hint counter", id: "bio-hint" }, `${bio.value.length} / 160`), bioError,
+    presentation.element,
     el("label", { class: "ds-option" }, showActivity, el("span", {}, el("strong", {}, "Share a redacted activity stream"), el("small", { id: "activity-sharing-note" }, "Show agent products, services, broad action labels, status, and receipt times. Task text, repository and document names, URLs, and personal agent aliases stay private."))),
-    el("p", { class: "field-hint" }, "Off shares counts and broad categories only. Review the preview before saving; changes to a published profile become public when saved."), feedback,
+    el("p", { class: "field-hint" }, "Off hides the activity stream. Counts, broad categories, and any highlights you write can still appear on a published profile. Review the preview before saving; saved changes to a published profile become public."), feedback,
     el("div", { class: "form-actions" }, save, el("span", { class: "field-hint" }, saved.published ? "Changes update your public page." : "Saving keeps your profile private.")));
   const urls = state.showcase.urls;
   return [
@@ -1014,7 +1089,7 @@ function showcaseView() {
     state.error && notice(state.error),
     el("div", { class: "showcase-layout" },
       el("div", { class: "showcase-controls" },
-        el("section", { class: "visibility-panel" }, el("div", { class: "visibility-title" }, icon(saved.published ? "globe" : "eye-off", { size: 17 }), el("strong", {}, saved.published ? "Your profile is public" : "Only you can see this"), el("span", { class: "visibility-badge" }, saved.published ? "Published" : "Draft")), el("p", {}, `Shares activity from ${state.session.org.name}. ${saved.showActivity ? "Agent products and broad action labels are included." : "The saved sharing scope includes counts and broad categories only."} Original task text and resource names are not published.`)),
+        el("section", { class: "visibility-panel" }, el("div", { class: "visibility-title" }, icon(saved.published ? "globe" : "eye-off", { size: 17 }), el("strong", {}, saved.published ? "Your profile is public" : "Only you can see this"), el("span", { class: "visibility-badge" }, saved.published ? "Published" : "Draft")), el("p", {}, `Shows recorded activity from ${state.session.org.name}. ${saved.showActivity ? "Agent products and broad action labels are included." : "The activity stream is off; counts and broad categories can appear."} ${saved.highlights?.length ? "Your saved highlights are included when published. " : ""}Private task text and resource names are never added automatically.`)),
         form,
         el("section", { class: "share-links section" }, el("h3", {}, "Share anywhere"), el("p", {}, "Share the live profile link, or connect the same updates to your website."),
           el("div", { class: "share-link-row" }, el("span", { class: "share-link-label" }, icon("link", { size: 14 }), "Profile"), el("code", { id: "profile-permalink" }, publicUrl), copyButton("Copy", () => state.showcase.urls.page, { disabled: !saved.published })),
@@ -1085,32 +1160,65 @@ async function loadShowcase() {
   } catch (error) { if (requestId === generation) { if (error instanceof AuthError) return expired("Your session expired. Please sign in again."); state.error = errorMessage(error); } }
   finally { if (requestId === generation) { state.loading = false; render(); } }
 }
-async function persistShowcase(published, submit, feedback, profile = state.showcaseDraft) {
-  if (showcaseSaving) return;
-  showcaseSaving = true;
-  const currentOrg = state.session.org.id;
-  document.querySelectorAll(".showcase-form input, .showcase-form textarea, .showcase-form button, .page-heading > button").forEach(node => node.disabled = true);
-  busy(submit, published ? "Saving…" : "Updating…", true); feedback.textContent = "";
+async function persistShowcase(published, submit, feedback, profile, controller) {
+  if (!controller?.isCurrent() || (showcaseSaving && showcaseSaving.isCurrent())) return;
+  const request = { isCurrent: controller.isCurrent };
+  showcaseSaving = request;
+  const currentOrg = controller.workspaceId;
+  const original = [...submit.childNodes];
+  const focusKey = submit.dataset.showcaseFocus;
+  // Revoking publication never saves an unreviewed draft or discards its edits.
+  const revoking = !published && state.showcase.profile.published;
+  const retainedDraft = revoking && (["slug", "displayName", "bio", "showActivity"].some(key => state.showcaseDraft[key] !== state.showcase.profile[key]) || profilePresentationChanged(state.showcaseDraft, state.showcase.profile)) ? { ...state.showcaseDraft, published: false } : null;
+  controller.setPending(true);
+  busy(submit, published ? "Saving…" : "Updating…", true);
+  feedback.setAttribute("role", "status"); feedback.setAttribute("aria-live", "polite");
+  feedback.textContent = published ? "Saving public profile…" : "Saving private profile…";
   try {
-    const data = await api.saveShowcase({ ...profile, published }, currentOrg);
-    if (state.session?.org.id !== currentOrg) return;
-    state.showcase = data; state.showcaseDraft = { ...data.profile };
-    if (state.view === "showcase") render();
-    toast(published ? "Public profile saved" : "Profile is private");
+    const presentation = profilePresentationValue(profile);
+    const data = await api.saveShowcase({ slug: profile.slug, displayName: profile.displayName.trim(), bio: profile.bio.trim(), showActivity: profile.showActivity === true, layout: presentation.layout, highlights: presentation.highlights.map(item => ({ title: item.title.trim(), body: item.body.trim(), url: item.url.trim() })), published }, currentOrg);
+    if (!controller.isCurrent() || showcaseSaving !== request) return;
+    const restoreFocus = document.activeElement === submit || document.activeElement === document.body;
+    state.showcase = data; state.showcaseDraft = retainedDraft || { ...data.profile };
+    state.error = "";
+    showcaseSaving = false;
+    render();
+    const message = data.profile.published ? "Public profile saved." : retainedDraft ? "Profile unpublished. Your unsaved edits are still in the form." : revoking ? "Profile is private." : "Profile saved privately.";
+    const savedFeedback = document.querySelector("#showcase-feedback");
+    if (savedFeedback) savedFeedback.textContent = message;
+    if (restoreFocus) {
+      const target = ["save", "publish"].includes(focusKey) && document.querySelector(`[data-showcase-focus="${focusKey}"]`);
+      (target && !target.disabled ? target : savedFeedback)?.focus({ preventScroll: true });
+    }
+    toast(message);
   } catch (error) {
-    if (state.session?.org.id !== currentOrg) return;
-    if (error instanceof AuthError) return expired("Your session expired. Please sign in again."); state.error = errorMessage(error);
-    if (state.view === "showcase") render();
-  } finally { showcaseSaving = false; }
+    if (!controller.isCurrent() || showcaseSaving !== request) return;
+    if (error instanceof AuthError) return expired("Your session expired. Please sign in again.");
+    const restoreFocus = document.activeElement === submit || document.activeElement === document.body;
+    controller.setPending(false);
+    submit.removeAttribute("aria-busy"); submit.replaceChildren(...original);
+    controller.error(errorMessage(error), restoreFocus);
+  } finally {
+    if (showcaseSaving === request) {
+      showcaseSaving = false;
+      if (controller.isCurrent()) { controller.setPending(false); submit.removeAttribute("aria-busy"); submit.replaceChildren(...original); }
+    }
+  }
 }
 
 function setSessionControlsBusy(pending) {
   const picker = document.querySelector('select[aria-label="Workspace"]');
-  if (picker) picker.disabled = Boolean(pending);
+  if (picker) {
+    picker.disabled = Boolean(pending); picker.parentElement.setAttribute('aria-busy', String(pending));
+    const spinner = picker.parentElement.querySelector('.workspace-switch-spinner');
+    if (pending && !spinner) picker.parentElement.append(el('span', { class: 'ds-spinner workspace-switch-spinner', 'aria-hidden': 'true' }));
+    else if (!pending) spinner?.remove();
+  }
   document.querySelectorAll('.sidebar-bottom button, .mobile-signout').forEach(control => { control.disabled = Boolean(pending); });
 }
 async function switchOrg(orgId) {
   if (sessionMutation || !state.session) return;
+  accountFocusTarget = null;
   sessionMutation = true; setSessionControlsBusy(true);
   ++accessRequest; clearTimeout(accessRefreshTimer); accessError = "";
   invalidateWorkspaceNames();
@@ -1159,16 +1267,20 @@ function accountView() {
   const notify = message => { if (workspaceId === state.session?.org.id) toast(message); };
   const scopedApi = workspaceApi(workspaceId);
   const epoch = authEpoch;
-  const isCurrent = () => !sessionMutation && authEpoch === epoch && state.view === "workspace" && state.session?.org.id === workspaceId;
+  const owningView = state.view;
+  const isPanelCurrent = () => !sessionMutation && authEpoch === epoch && state.view === owningView && state.session?.org.id === workspaceId;
+  const isCurrent = () => isPanelCurrent() && state.view === "workspace";
   if (!billing) signupAdmin = signupAdminPanel({ session: state.session, api: scopedApi, fail, copy: value => navigator.clipboard.writeText(value), isCurrent: () => !sessionMutation && state.view === "workspace" && state.session?.org.id === workspaceId && state.session?.capabilities?.manageSignupInvites === true });
-  if (!billing) jevSettingsPanel = createJevSettingsPanel({ data: state.account.jev, error: state.account.jevError, api: scopedApi, fail, refresh: loadAccount, isCurrent, saved: result => {
+  const keepAccountFocus = feedback => { if (feedback?.restoreFocus && ['privacy-save', 'jev-save'].includes(feedback.focusKey)) accountFocusTarget = { workspaceId, view: owningView, key: feedback.focusKey }; };
+  if (!billing) jevSettingsPanel = createJevSettingsPanel({ data: state.account.jev, error: state.account.jevError, api: scopedApi, fail, refresh: loadAccount, isCurrent, saved: (result, feedback) => {
     if (!isCurrent()) return;
+    keepAccountFocus(feedback);
     state.account.jev = result;
     state.session.org.policies.jevProcessing = result.enabled === true;
     if (state.account.external) state.account.external.jevConsented = result.enabled === true;
     toast("Jev settings saved"); render();
   } });
-  return [heading(title, description), billing ? billingPanel({ billing: state.account.billing, catalog: state.account.catalog, jev: state.account.jev, jevError: state.account.jevError, api: scopedApi, notify, fail, refresh: loadAccount }) : [workspacePanel({ session: state.session, members: state.account.members, invites: state.account.invites, api: scopedApi, notify, fail, saved: policies => { if (state.session?.org.id === workspaceId) { state.session.org.policies = policies; loadAccount(); } } }), jevSettingsPanel?.element, signupAdmin?.element, state.account.external && aiConfiguration(state.account.external, { settings: false })]];
+  return [heading(title, description), billing ? billingPanel({ billing: state.account.billing, catalog: state.account.catalog, jev: state.account.jev, jevError: state.account.jevError, api: scopedApi, notify, fail, refresh: loadAccount, isCurrent: isPanelCurrent }) : [workspacePanel({ session: state.session, members: state.account.members, invites: state.account.invites, api: scopedApi, notify, fail, isCurrent, saved: (policies, feedback) => { if (isCurrent()) { keepAccountFocus(feedback); state.session.org.policies = policies; loadAccount(); } } }), jevSettingsPanel?.element, signupAdmin?.element, state.account.external && aiConfiguration(state.account.external, { settings: false })]];
 }
 async function loadAccount() {
   if (!["owner", "member"].includes(state.session.role) || (state.view === "billing" && state.session.role !== "owner")) return;
@@ -1275,6 +1387,8 @@ async function pollProvisioning() {
   }
 }
 window.addEventListener("hashchange", () => {
+  navigationOpen = false;
+  accountFocusTarget = null;
   if (captureInviteEntry()) { if (state.session) expired(); openAuth(pendingInviteEntry ? "" : "This invite link could not be read. Ask for a fresh link, or enter a code manually."); return; }
   if (!state.session) { openAuth(); return; }
   clearTimeout(searchTimer); clearTimeout(insightTimer); ++generation; closeDetail(); state.insightBusy = false; state.error = ""; state.more = false; readRoute(); render(); window.scrollTo(0, 0); document.querySelector("#main")?.focus({ preventScroll: true }); loadView();
@@ -1287,7 +1401,8 @@ document.addEventListener("click", event => {
 document.addEventListener("pointerdown", () => { inputMode = "pointer"; document.documentElement.dataset.input = inputMode; }, { passive: true });
 document.addEventListener("keydown", event => {
   inputMode = "keyboard"; document.documentElement.dataset.input = inputMode;
-  if (event.key === "/" && !dialog.open && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) {
+  if (event.key === "Escape" && navigationOpen && !dialog.open) { event.preventDefault(); setNavigationOpen(false, true); }
+  if (event.key === "/" && !event.ctrlKey && !event.metaKey && !event.altKey && !dialog.open && !document.activeElement?.isContentEditable && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) {
     const search = document.querySelector(".search"); if (search) { event.preventDefault(); search.focus(); }
   }
 });
@@ -1323,4 +1438,7 @@ async function boot() {
     state.demo = Boolean(state.session.demo); readRoute(); render(); await loadView();
   } catch (error) { await openAuth(recovery ? [error instanceof AuthError ? "" : errorMessage(error), recovery.message].filter(Boolean).join(" ") : error instanceof AuthError ? "" : errorMessage(error)); }
 }
+let stopLoadingMotion = observeLoadingMotion(document.body);
+window.addEventListener('pagehide', () => stopLoadingMotion());
+window.addEventListener('pageshow', event => { if (event.persisted) stopLoadingMotion = observeLoadingMotion(document.body); });
 boot();

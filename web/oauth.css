@@ -1,12 +1,12 @@
 /* Agent authorization composition. Primitives and motion come from the system. */
 .oauth-surface { min-width: 280px; min-height: 100svh; display: grid; place-items: center; padding: var(--ds-space-10) var(--ds-space-5); background: var(--ds-paper); color: var(--ds-ink); }
 .oauth-page { width: 100%; max-width: 480px; }
-.oauth-card { padding: var(--ds-space-10); box-shadow: var(--ds-shadow-sticker); }
+.oauth-card { padding: var(--ds-space-10); box-shadow: var(--ds-shadow-card); }
 .oauth-brand { display: inline-flex; align-items: center; gap: var(--ds-space-3); color: var(--ds-ink); text-decoration: none; font-size: var(--ds-text-xl); font-weight: 650; letter-spacing: -.05em; }
 .oauth-brand img { display: block; flex-shrink: 0; }
 .oauth-heading { margin-top: var(--ds-space-8); }
 .oauth-context { color: var(--ds-muted); margin-bottom: var(--ds-space-3); }
-.oauth-heading h1 { font-family: var(--ds-font-editorial); font-size: var(--ds-text-2xl); font-weight: 400; letter-spacing: -.05em; }
+.oauth-heading h1 { font-family: var(--ds-font-sans); font-size: var(--ds-text-2xl); font-weight: 550; letter-spacing: -.035em; }
 .oauth-description { margin-top: var(--ds-space-4); color: var(--ds-muted); font-size: var(--ds-text-base); line-height: 1.75; }
 .oauth-form { display: grid; gap: var(--ds-space-5); margin-top: var(--ds-space-6); }
 .oauth-field { display: grid; gap: var(--ds-space-2); min-width: 0; }

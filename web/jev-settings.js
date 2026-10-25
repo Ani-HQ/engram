@@ -47,33 +47,38 @@ export function createJevSettingsPanel({ data, error = "", api, saved, fail, ref
   const selfHosted = data.eligibility === "self-hosted", funded = data.eligibility === "operator-funded", billed = data.eligibility === "subscription";
   const canManage = data.canManage === true;
   const canEnable = data.configured === true && data.eligibility !== "subscription-required" && (!billed || priced(data));
-  const enabled = h("input", { type: "checkbox", name: "jev-processing", checked: data.enabled === true, disabled: !canManage || (!data.enabled && !canEnable), "aria-describedby": "jev-data-note jev-billing-note" });
-  const budget = h("input", { type: "number", name: "jev-monthly-budget", inputmode: "decimal", min: selfHosted ? "0" : "0.01", max: "10000", step: "0.01", value: decimal(data.budget?.monthlyUsd) || "0", disabled: !canManage, "aria-describedby": "jev-budget-note" });
-  const acknowledgement = h("input", { type: "checkbox", name: "jev-rate-acknowledgement" });
+  const enabled = h("input", { type: "checkbox", name: "jev-processing", checked: data.enabled === true, disabled: !canManage || (!data.enabled && !canEnable), "aria-describedby": "jev-data-note jev-billing-note jev-settings-feedback" });
+  const budget = h("input", { type: "number", name: "jev-monthly-budget", inputmode: "decimal", autocomplete: "off", min: selfHosted ? "0" : "0.01", max: "10000", step: "0.01", value: decimal(data.budget?.monthlyUsd) || "0", disabled: !canManage, "aria-describedby": "jev-budget-note jev-settings-feedback" });
+  const acknowledgement = h("input", { type: "checkbox", name: "jev-rate-acknowledgement", "aria-describedby": "jev-settings-feedback" });
   const ack = h("label", { class: "ds-option" }, acknowledgement, h("span", {}, h("strong", {}, "Accept the displayed Jev usage rates"), h("small", {}, priced(data) ? `${rateText(data)}. These are the customer rates, including Engram’s markup, and enabled usage is added to this workspace’s Cloud bill.` : "An approved customer rate is required before billable Jev can be enabled.")));
-  const feedback = h("p", { class: "form-feedback", role: "status", "aria-live": "polite" });
-  const save = h("button", { type: "submit", class: "primary", disabled: !canManage }, "Save Jev settings");
+  const feedback = h("p", { class: "form-feedback", id: "jev-settings-feedback", tabindex: -1, role: "status", "aria-live": "polite" });
+  const save = h("button", { type: "submit", class: "primary", disabled: !canManage, "data-account-focus": "jev-save" }, "Save Jev settings");
+  const validationError = (control, message) => { feedback.setAttribute("role", "alert"); feedback.textContent = message; control.setAttribute("aria-invalid", "true"); control.focus?.(); };
+  for (const control of [enabled, budget, acknowledgement]) control.addEventListener("input", () => control.setAttribute("aria-invalid", "false"));
   const update = () => {
     ack.hidden = !billed || !enabled.checked;
     acknowledgement.required = billed && enabled.checked;
     acknowledgement.disabled = pending || !canManage || !enabled.checked;
     budget.min = selfHosted || !enabled.checked ? "0" : "0.01";
     save.disabled = pending || !canManage || (enabled.checked && !canEnable);
-    save.textContent = pending ? "Saving…" : !enabled.checked ? data.enabled ? "Turn Jev off" : "Save Jev settings" : billed ? "Save Jev · accept usage charges" : funded ? "Save operator-funded Jev" : "Save Jev settings";
+    save.textContent = pending ? "" : !enabled.checked ? data.enabled ? "Turn Jev off" : "Save Jev settings" : billed ? "Save Jev · accept usage charges" : funded ? "Save operator-funded Jev" : "Save Jev settings";
+    save.setAttribute("aria-busy", String(pending));
+    if (pending) save.append(h("span", { class: "ds-spinner", "aria-hidden": "true" }), h("span", {}, "Saving…"));
   };
   enabled.addEventListener("change", update);
   const form = h("form", { class: "ds-stack", onsubmit: async event => {
     event.preventDefault(); if (!active || pending || !canManage || !isCurrent()) return;
     const amount = selfHosted ? "0" : String(budget.value).trim();
-    if (!/^(?:0|[1-9]\d{0,4})(?:\.\d{1,2})?$/.test(amount) || Number(amount) > 10000 || (enabled.checked && !selfHosted && Number(amount) < .01)) { feedback.setAttribute("role", "alert"); feedback.textContent = selfHosted ? "Use a monthly budget from 0 to 10,000 USD with up to two decimal places." : "Use a positive monthly budget from 0.01 to 10,000 USD when Jev is enabled."; return; }
-    if (enabled.checked && (!canEnable || (billed && !acknowledgement.checked))) { feedback.setAttribute("role", "alert"); feedback.textContent = billed ? "Review and accept the displayed usage rates before enabling or saving billable Jev." : "Jev is not ready to enable. Check the configuration and access shown above."; return; }
-    pending = true; form.setAttribute("aria-busy", "true"); feedback.textContent = ""; enabled.disabled = true; budget.disabled = true; update();
+    if (!/^(?:0|[1-9]\d{0,4})(?:\.\d{1,2})?$/.test(amount) || Number(amount) > 10000 || (enabled.checked && !selfHosted && Number(amount) < .01)) { validationError(budget, selfHosted ? "Use a monthly budget from 0 to 10,000 USD with up to two decimal places." : "Use a monthly budget from 0 to 10,000 USD, or at least 0.01 USD when Jev is enabled."); return; }
+    if (enabled.checked && (!canEnable || (billed && !acknowledgement.checked))) { validationError(billed && canEnable ? acknowledgement : enabled, billed && canEnable ? "Review and accept the displayed usage rates before enabling or saving billable Jev." : "Jev is not ready to enable. Check the configuration and access shown above."); return; }
+    for (const control of [enabled, budget, acknowledgement]) control.setAttribute("aria-invalid", "false");
+    pending = true; form.setAttribute("aria-busy", "true"); feedback.setAttribute("role", "status"); feedback.textContent = ""; enabled.disabled = true; budget.disabled = true; update();
     try {
       const payload = { enabled: enabled.checked, monthlyBudgetUsd: amount, ...(enabled.checked && billed ? { acceptedRateVersion: data.pricing.rateVersion } : {}) };
       const result = await api.saveJev(payload);
       if (!active || !isCurrent()) return;
-      saved(result);
-    } catch (error) { if (active && isCurrent()) { fail?.(error); feedback.setAttribute("role", "alert"); feedback.textContent = error.message || "Jev settings could not be saved. Your changes are still here."; } }
+      saved(result, { restoreFocus: [save, document.body].includes(document.activeElement), focusKey: "jev-save" });
+    } catch (error) { if (active && isCurrent()) { fail?.(error); feedback.setAttribute("role", "alert"); feedback.textContent = error.message || "Jev settings could not be saved. Your changes are still here."; if ([save, document.body].includes(document.activeElement)) feedback.focus?.(); } }
     finally { pending = false; if (active && isCurrent()) { form.setAttribute("aria-busy", "false"); enabled.disabled = !canManage || (!data.enabled && !canEnable); budget.disabled = !canManage; update(); } }
   } },
     h("label", { class: "ds-option" }, enabled, h("span", {}, h("strong", {}, "Allow Jev processing for this workspace"), h("small", {}, "Jev uses TypeSafe for optional routing, ranking, and review suggestions. It has its own permission; this does not enable Voyage embeddings or OpenAI briefs."))),

@@ -12,11 +12,15 @@ const toast = h("div", { class: "sr-only", role: "status", "aria-live": "polite"
 document.body.append(toast);
 
 async function copyValue(button, value, label, confirmation) {
+  if (button.getAttribute("aria-busy") === "true") return;
+  button.setAttribute("aria-busy", "true"); button.setAttribute("aria-disabled", "true");
+  button.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), "Copying…");
   try {
-    await navigator.clipboard.writeText(value); button.replaceChildren(icon("check", { size: 15 }), "Copied"); toast.textContent = confirmation;
+    await navigator.clipboard.writeText(value); if (!button.isConnected) return; button.replaceChildren(icon("check", { size: 15 }), "Copied"); toast.textContent = confirmation;
     clearTimeout(copyTimers.get(button));
     copyTimers.set(button, setTimeout(() => { if (button.isConnected) button.replaceChildren(icon("link", { size: 15 }), label); }, 2200));
-  } catch { toast.textContent = "Could not copy. Select and copy the URL instead."; }
+  } catch { if (button.isConnected) { button.replaceChildren(icon("link", { size: 15 }), label); toast.textContent = "Could not copy. Select and copy the URL instead."; } }
+  finally { button.removeAttribute("aria-busy"); button.removeAttribute("aria-disabled"); }
 }
 
 function unavailable(reason) {
@@ -30,11 +34,11 @@ function unavailable(reason) {
 }
 
 function render(data) {
-  document.title = `${data.profile.displayName} · Live agent activity · engram`;
+  document.title = `${data.profile.displayName || data.profile.slug} · engram`;
   const share = h("button", { type: "button", class: "small", onclick: () => copyValue(share, `${location.origin}/u/${encodeURIComponent(slug)}`, "Copy link", "Profile link copied") }, icon("link", { size: 15 }), "Copy link");
   const streamCopy = h("button", { type: "button", class: "text small", onclick: () => copyValue(streamCopy, `${location.origin}${streamUrl}`, "Copy live API", "Live stream URL copied") }, icon("code", { size: 14 }), "Copy live API");
   const label = h("span", { role: "status", "aria-live": "polite" }, "Connecting…");
-  const connectionNote = h("span", {}, "Checks for updates every 5 seconds");
+  const connectionNote = h("span", {}, "Updates automatically");
   const refresh = h("button", { type: "button", class: "text small", hidden: true, onclick: load }, "Refresh activity");
   const connection = h("div", { class: "live-connection", "data-state": "connecting" }, h("span", { class: "live-connection-status" }, h("span", { class: "live-dot", "aria-hidden": "true" }), label), connectionNote, refresh);
   const card = profileCard(data);
@@ -43,7 +47,7 @@ function render(data) {
     h("header", { class: "public-header" }, h("a", { class: "wordmark", href: "/", "aria-label": "Engram home" }, h("img", { class: "brand-mark", src: "/brand/engram-mark.svg", width: 32, height: 32, alt: "" }), "engram"), share),
     h("main", { class: "public-page", id: "main", tabindex: "-1" }, connection, card,
       h("div", { class: "public-links" }, h("span", {}, "One history. Every agent."), streamCopy, h("a", { href: jsonUrl }, icon("code", { size: 14 }), "JSON"), h("a", { href: `${jsonUrl}/card.svg`, target: "_blank", rel: "noopener" }, icon("external-link", { size: 14 }), "Share card"))),
-    h("footer", { class: "public-bottom" }, "A public view of activity categories, not original task content. Working now requires a running action received in the last 15 minutes. External work is agent reported; Engram operations are observed. Exact times use UTC.")].filter(Boolean);
+    h("footer", { class: "public-bottom" }, "Highlights are chosen by the profile owner. Activity uses broad labels with observed or agent-reported sources. Fresh running reports are from the last 15 minutes; times use UTC.")].filter(Boolean);
   root.replaceChildren(...view);
   clearInterval(timeRefresh);
   timeRefresh = setInterval(() => { if (!document.hidden && card.isConnected) updateProfileTimes(card); }, 30_000);
@@ -52,12 +56,12 @@ function render(data) {
       if (snapshot.profile.slug !== slug) return;
       if (!card.isConnected) root.replaceChildren(...view);
       updateProfileCard(card, snapshot);
-      document.title = `${snapshot.profile.displayName} · Live agent activity · engram`;
+      document.title = `${snapshot.profile.displayName || snapshot.profile.slug} · engram`;
     },
     state: state => {
       connection.dataset.state = state;
       label.textContent = { connecting: "Connecting…", live: "Live updates connected", reconnecting: "Reconnecting…", paused: "Paused while this page is hidden", unsupported: "Live updates aren’t supported in this browser", closed: "Disconnected" }[state] || "Connecting…";
-      connectionNote.textContent = state === "live" ? "Checks for updates every 5 seconds" : "Showing the last confirmed snapshot";
+      connectionNote.textContent = state === "live" ? "Updates automatically" : "Showing the last confirmed snapshot";
       refresh.hidden = !["unsupported", "reconnecting", "closed"].includes(state);
     },
     interrupted: () => {

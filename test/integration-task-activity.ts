@@ -7,14 +7,15 @@ import { audit } from "../gateway/src/audit";
 import { normalizeToken } from "../gateway/src/policies";
 import { getOrg, withOrg } from "../gateway/src/orgs";
 import { getShowcaseSettings, getPublicActivity, updateShowcaseSettings } from "../gateway/src/showcase";
-import { SHOWCASE_SCHEMA_VERSION } from "../gateway/src/showcase-schema";
+import { PROFILE_PRESENTATION_SCHEMA_VERSION, SHOWCASE_SCHEMA_VERSION } from "../gateway/src/showcase-schema";
 
 // Called only after the parent's disposable-database guard and migrations.
 export async function checkTaskActivity(db: postgres.Sql): Promise<number> {
   let checks = 0;
   function equal(actual: unknown, expected: unknown, message: string) { assert.deepEqual(actual, expected, message); checks++; }
-  const versions = (await db`SELECT version, activity_version, showcase_version FROM engram_schema_state WHERE id=true`)[0];
-  equal([versions.version, versions.activity_version, versions.showcase_version], [2026102202, 2026102301, SHOWCASE_SCHEMA_VERSION], "Additive activity and showcase migrations preserve the old runtime base contract and mark the features ready");
+  const versions = (await db`SELECT version, activity_version, showcase_version, profile_presentation_version FROM engram_schema_state WHERE id=true`)[0];
+  equal([versions.version, versions.activity_version, versions.showcase_version, versions.profile_presentation_version], [2026102202, 2026102301, 2026102501, PROFILE_PRESENTATION_SCHEMA_VERSION], "Additive presentation readiness preserves every predecessor activity and showcase marker");
+  equal(SHOWCASE_SCHEMA_VERSION, 2026102501, "Existing runtime revisions retain their exact showcase schema contract");
   const org = (await getOrg(2))!;
   const raw = await issueToken(2, "task-source-codex", true, null, db, { harness: "codex", label: "Development laptop" });
   const agent = (await authenticateStoredSecret(raw, db))!;

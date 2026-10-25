@@ -2,7 +2,7 @@ import { h } from "./profile.js";
 import { icon } from "./icons.js";
 import { onboardingAgents, onboardingProgress, onboardingWriteGuidance, agentConnectionGuide, connectionCheckPrompt, firstMemoryPrompt, recallMemoryPrompt } from "./onboarding-model.js";
 import { workspaceNameForm } from "./workspace-name.js";
-import { sticker } from "./design-system.js";
+import { statusBadge, progressBar } from "./design-system.js";
 
 const button = (label, action, attrs = {}) => h("button", { type: "button", onclick: action, ...attrs }, label);
 
@@ -16,9 +16,13 @@ export function onboardingGuide({ data, agentId = "", mcp, checking, error, poli
   const prompt = progress.step === "connect" ? connectionCheckPrompt : progress.step === "remember" ? firstMemoryPrompt : recallMemoryPrompt;
   const promptLabel = progress.step === "connect" ? "Copy connection check" : progress.step === "remember" ? "Copy save prompt" : "Copy recall prompt";
   const steps = [["agentConnected", "Connect an agent"], ["memorySaved", "Save something useful"], ["memoryRecalled", "Read memory from your agent"]];
+  const checkCount = progress.available ? `${progress.completed} of ${steps.length} checks observed` : "Not checked yet";
+  const measuredProgress = progress.available
+    ? progressBar({ label: "Workspace setup checks", value: progress.completed, max: steps.length, valueText: checkCount })
+    : checking ? progressBar({ label: "Checking workspace setup", valueText: "Waiting for the first check results." }) : null;
   const stage = h("div", { class: "setup-stage" });
   if (progress.done) stage.append(...[
-    h("h3", {}, "One good memory. Many possibilities."),
+    h("h3", {}, "Your setup is ready."),
     h("p", {}, "An agent connected, saved memory, and read memory in this workspace. Open your memory to see what was saved, and check what your agent returned."),
     h("div", { class: "setup-actions" }, h("a", { href: "#memory", class: "button primary" }, "Open Memory"), h("a", { href: "#activity", class: "button" }, "View Activity")),
     h("div", { class: "setup-next" }, h("strong", {}, "Next, see the work behind the results."), h("p", {}, progress.checks.taskReported ? "This workspace has also received an agent task report." : "Task progress appears when an agent reports real work. Set this up when you're ready."), button("Set up task reporting", onReporting, { class: "text small", "data-setup-focus": "reporting" })),
@@ -44,11 +48,12 @@ export function onboardingGuide({ data, agentId = "", mcp, checking, error, poli
     h("div", { class: "setup-prompt" }, h("p", {}, prompt), copyControl(promptLabel, prompt, { class: "primary small", "data-setup-focus": "prompt" })),
   ].filter(Boolean));
   return h("section", { class: "setup-guide ds-card", "aria-labelledby": "setup-title", "aria-busy": String(Boolean(checking)) },
-    h("div", { class: "setup-heading" }, h("div", { class: "ds-heading-group" }, h("span", { class: "eyebrow ds-eyebrow" }, demo ? "LOCAL PREVIEW · SIMULATED PROGRESS" : "A LITTLE SETUP. A LOT MORE CONTEXT."), h("h2", { id: "setup-title", tabindex: "-1", "data-setup-focus": "title" }, progress.done ? "You’ve connected the dots." : "Make your first connection."), h("div", { class: "ds-row" }, sticker(progress.done ? "Context, carried forward." : "Start small. Remember something.", { tone: "lime" }))), button("Do this later", onDismiss, { class: "text small", "data-setup-focus": "dismiss" })),
+    h("div", { class: "setup-heading" }, h("div", { class: "ds-heading-group" }, h("span", { class: "eyebrow ds-eyebrow" }, demo ? "LOCAL PREVIEW · SIMULATED PROGRESS" : "GET CONNECTED"), h("h2", { id: "setup-title", tabindex: "-1", "data-setup-focus": "title" }, progress.done ? "Your workspace is connected." : "Connect your first agent."), h("div", { class: "ds-row" }, statusBadge(progress.done ? "Three checks confirmed" : "Guided setup", { tone: progress.done ? "success" : "neutral" }))), button("Do this later", onDismiss, { class: "text small", "data-setup-focus": "dismiss" })),
     workspaceNameForm({ session, editor: nameEditor }),
+    h("div", { class: "setup-progress" }, h("div", { class: "ds-toolbar" }, h("span", { class: "setup-progress-label" }, "Workspace setup"), h("span", { class: "setup-progress-count ds-tabular" }, checkCount)), measuredProgress),
     h("ol", { class: "setup-steps", "aria-label": "Getting started progress" }, steps.map(([key, label], index) => h("li", { class: progress.checks[key] ? "complete" : progress.step === ["connect", "remember", "recall"][index] ? "current" : "", "aria-current": progress.step === ["connect", "remember", "recall"][index] ? "step" : null }, h("span", { class: "setup-step-symbol", "aria-hidden": "true" }, progress.checks[key] ? icon("check", { size: 13 }) : String(index + 1)), h("span", {}, label), h("span", { class: "sr-only" }, progress.checks[key] ? ": complete" : ": pending")))),
-    !progress.available && h("p", { class: "notice", role: "status" }, "Progress hasn't been checked yet. You can follow the steps below, then check again."),
+    !progress.available && h("p", { class: "notice", role: "status" }, checking ? "Checking successful agent calls received by this workspace." : "No checks yet. Follow the steps below, then check progress."),
     stage,
-    h("div", { class: "setup-check" }, button([checking ? h("span", { class: "ds-spinner", "aria-hidden": "true" }) : icon("refresh-cw", { size: 14 }), checking ? "Checking…" : "Check progress"], () => { if (!checking) onCheck(); }, { class: "small", "aria-busy": String(Boolean(checking)), "aria-disabled": String(Boolean(checking)), "data-setup-focus": "check" }), h("p", { role: error ? "alert" : "status", "aria-live": "polite" }, error || (checking ? "Checking activity received by this workspace…" : progress.done ? "All three steps have successful agent calls." : "Steps update after Engram receives successful agent calls. Copying a prompt does not complete a step."))),
+    h("div", { class: "setup-check" }, button([checking ? h("span", { class: "ds-spinner", "aria-hidden": "true" }) : icon("refresh-cw", { size: 14 }), checking ? "Checking…" : "Check progress"], () => { if (!checking) onCheck(); }, { class: "small", "aria-busy": String(Boolean(checking)), "aria-disabled": String(Boolean(checking)), "aria-describedby": "setup-check-feedback", "data-setup-focus": "check" }), h("p", { id: "setup-check-feedback", role: error ? "alert" : "status", "aria-live": "polite" }, error || (checking ? "Checking activity received by this workspace…" : progress.done ? "All three steps have successful agent calls." : "Steps update after Engram receives successful agent calls. Copying a prompt does not complete a step."))),
   );
 }

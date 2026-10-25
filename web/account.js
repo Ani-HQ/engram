@@ -42,18 +42,18 @@ export function planCards(catalog, cloudHref = "/app#start", cloudLabel = "Start
   )));
 }
 
-export function billingPanel({ billing, catalog, jev, jevError, api, notify, fail, refresh }) {
-  const feedback = h("p", { class: "form-feedback", role: "status", "aria-live": "polite" });
+export function billingPanel({ billing, catalog, jev, jevError, api, notify, fail, refresh, isCurrent = () => true }) {
+  const feedback = h("p", { class: "form-feedback", tabindex: -1, role: "status", "aria-live": "polite" });
   const plan = billingPresentation(billing);
   const { hosted, complimentary } = plan;
   const needsAttention = hosted && (billing.canWrite !== true || (!complimentary && ["past_due", "unpaid", "incomplete", "incomplete_expired", "trial_expired", "canceled", "paused"].includes(billing.status)) || plan.label === "Subscription needs attention");
   const trial = hosted && !complimentary && !needsAttention && ["trial", "trialing"].includes(billing.status);
   const redirect = async (button, operation) => {
-    if (button.disabled) return;
+    if (button.disabled || !isCurrent()) return;
     const original = [...button.childNodes];
-    button.disabled = true; button.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), "Opening…"); feedback.setAttribute("role", "status"); feedback.textContent = "Opening billing…";
-    try { const result = await operation(); window.location.assign(result.url); }
-    catch (error) { fail(error); feedback.setAttribute("role", "alert"); feedback.textContent = error.message || "Billing could not open. Please try again."; button.disabled = false; button.replaceChildren(...original); }
+    button.disabled = true; button.setAttribute("aria-busy", "true"); button.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), "Opening…"); feedback.setAttribute("role", "status"); feedback.textContent = "Opening billing…";
+    try { const result = await operation(); if (isCurrent()) window.location.assign(result.url); }
+    catch (error) { if (isCurrent()) { fail(error); feedback.setAttribute("role", "alert"); feedback.textContent = error.message || "Billing could not open. Please try again."; button.disabled = false; button.removeAttribute("aria-busy"); button.replaceChildren(...original); if ([button, document.body].includes(document.activeElement)) feedback.focus?.(); } }
   };
   const subscribe = action("Subscribe to Cloud · $19 / month", event => redirect(event.currentTarget, () => api.checkout("cloud")), { class: "primary", disabled: !billing.checkoutAvailable });
   const manage = action([icon("external-link", { size: 14 }), "Manage subscription"], event => redirect(event.currentTarget, api.billingPortal), { disabled: !billing.portalAvailable });
@@ -78,69 +78,82 @@ export function billingPanel({ billing, catalog, jev, jevError, api, notify, fai
   );
 }
 
-export function workspacePanel({ session, members, invites, api, saved, notify, fail }) {
+export function workspacePanel({ session, members, invites, api, saved, notify, fail, isCurrent = () => true }) {
   const owner = session.role === "owner";
-  const feedback = h("p", { role: "status", "aria-live": "polite", class: "form-feedback" });
+  const feedback = h("p", { tabindex: -1, role: "status", "aria-live": "polite", class: "form-feedback" });
   const policies = session.org.policies;
   const ai = h("input", { type: "checkbox", name: "external-ai", checked: policies.externalAiProcessing === true });
   const writes = h("input", { type: "checkbox", name: "agent-writes", checked: policies.agentsMayWrite !== false });
-  const save = h("button", { type: "submit", class: "primary small" }, "Save privacy settings");
+  const save = h("button", { type: "submit", class: "primary small", "data-account-focus": "privacy-save" }, "Save privacy settings");
   const settings = h("form", { class: "stack", onsubmit: async event => {
-    event.preventDefault(); if (!owner || save.disabled) return;
+    event.preventDefault(); if (!owner || save.disabled || !isCurrent()) return;
     save.disabled = true; ai.disabled = true; writes.disabled = true; settings.setAttribute("aria-busy", "true"); save.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), "Saving…"); feedback.setAttribute("role", "status"); feedback.textContent = "Saving privacy settings…";
-    try { const result = await api.savePolicies({ externalAiProcessing: ai.checked, agentsMayWrite: writes.checked }); feedback.textContent = "Privacy settings saved."; saved(result.policies); notify("Workspace settings saved"); }
-    catch (error) { fail(error); feedback.setAttribute("role", "alert"); feedback.textContent = error.message || "Privacy settings could not be saved. Please try again."; }
-    finally { save.disabled = false; ai.disabled = !owner; writes.disabled = !owner; settings.setAttribute("aria-busy", "false"); save.textContent = "Save privacy settings"; }
+    try { const result = await api.savePolicies({ externalAiProcessing: ai.checked, agentsMayWrite: writes.checked }); if (!isCurrent()) return; feedback.textContent = "Privacy settings saved."; saved(result.policies, { restoreFocus: [save, document.body].includes(document.activeElement), focusKey: "privacy-save" }); notify("Workspace settings saved"); }
+    catch (error) { if (isCurrent()) { fail(error); feedback.setAttribute("role", "alert"); feedback.textContent = error.message || "Privacy settings could not be saved. Please try again."; if ([save, document.body].includes(document.activeElement)) feedback.focus?.(); } }
+    finally { if (isCurrent()) { save.disabled = false; ai.disabled = !owner; writes.disabled = !owner; settings.setAttribute("aria-busy", "false"); save.textContent = "Save privacy settings"; } }
   } }, h("label", { class: "ds-option" }, writes, h("span", {}, h("strong", {}, "Allow agents to write"), h("small", {}, "Individual connection permissions also apply."))),
     h("label", { class: "ds-option" }, ai, h("span", {}, h("strong", {}, "Allow embeddings & generated briefs"), h("small", {}, "Allows configured Voyage embeddings to process relevant memory text and queries, and OpenAI to process bounded activity context for optional generated briefs. This permission does not enable Jev. Provider keys stay on the server; provider terms and retention apply."))), feedback, owner && save);
   ai.disabled = !owner; writes.disabled = !owner;
-  const email = h("input", { type: "email", name: "teammate-email", required: true, autocomplete: "email", spellcheck: "false", placeholder: "teammate@example.com", "aria-describedby": "workspace-invite-feedback" });
+  const email = h("input", { type: "email", inputmode: "email", name: "teammate-email", required: true, maxlength: 254, autocomplete: "email", spellcheck: "false", autocapitalize: "none", placeholder: "teammate@example.com", "aria-describedby": "workspace-invite-feedback" });
   const send = h("button", { type: "submit", class: "small" }, "Invite member");
-  const inviteFeedback = h("p", { id: "workspace-invite-feedback", role: "status", "aria-live": "polite", class: "form-feedback detail-note" });
+  const inviteFeedback = h("p", { id: "workspace-invite-feedback", tabindex: -1, role: "status", "aria-live": "polite", class: "form-feedback detail-note" });
   const invite = h("form", { class: "stack workspace-invite-form", onsubmit: async event => {
-    event.preventDefault(); if (!owner || send.disabled) return;
+    event.preventDefault(); if (!owner || send.disabled || !isCurrent()) return;
     send.disabled = true; email.readOnly = true; invite.setAttribute("aria-busy", "true"); send.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), "Inviting…"); inviteFeedback.setAttribute("role", "status"); inviteFeedback.textContent = "Creating invitation…";
-    try { const result = await api.invite(email.value.trim()); email.value = ""; inviteFeedback.replaceChildren(result.url ? h("span", {}, "Invite created. ", link("Open invitation", result.url)) : "Invitation emailed. The link expires in seven days."); }
-    catch (error) { fail(error); inviteFeedback.setAttribute("role", "alert"); inviteFeedback.textContent = error.message || "The invitation could not be created. Please try again."; }
-    finally { send.disabled = false; email.readOnly = false; invite.setAttribute("aria-busy", "false"); send.textContent = "Invite member"; }
+    try { const result = await api.invite(email.value.trim()); if (!isCurrent()) return; email.value = ""; inviteFeedback.replaceChildren(result.url ? h("span", {}, "Invite created. ", link("Open invitation", result.url)) : "Invitation emailed. The link expires in seven days."); }
+    catch (error) { if (isCurrent()) { fail(error); inviteFeedback.setAttribute("role", "alert"); inviteFeedback.textContent = error.message || "The invitation could not be created. Please try again."; if ([send, document.body].includes(document.activeElement)) inviteFeedback.focus?.(); } }
+    finally { if (isCurrent()) { send.disabled = false; email.readOnly = false; invite.setAttribute("aria-busy", "false"); send.textContent = "Invite member"; } }
   } }, h("div", { class: "inline-form" }, h("label", { class: "field" }, "Teammate email", email), send), inviteFeedback);
   return h("div", { class: "account-content" },
     section("Privacy & access", "These settings apply to this workspace. Only an owner can change them.", settings),
-    section("People", session.org.kind === "personal" ? "A personal workspace has one owner. Shared work belongs in a team workspace." : "Everyone in this workspace can read its shared memory and activity.", h("div", {}, members.map(member => h("div", { class: "token-row" }, h("div", {}, h("span", {}, member.email), h("small", {}, member.role)), owner && member.role !== "owner" && action("Remove", async event => {
-      const button = event.currentTarget;
-      if (button.dataset.confirm !== "yes") { button.dataset.confirm = "yes"; button.textContent = "Confirm removal"; return; }
-      button.disabled = true;
-      try { await api.removeMember(member.email); button.closest(".token-row").remove(); notify("Member access removed"); }
-      catch (error) { fail(error); notify(error.message); button.disabled = false; }
-    }, { class: "text small" }))), owner && session.org.kind !== "personal" && invite, invites?.length > 0 && h("p", { class: "field-hint" }, `${invites.length} pending invitation${invites.length === 1 ? "" : "s"}.`))),
-    section("Take a copy", "Download the memory pages and activity you can read in this workspace. The file may contain sensitive data.", action([icon("file-text", { size: 14 }), "Export memory & activity"], event => exportWorkspace(event.currentTarget, session, api, fail, notify))),
+    section("People", session.org.kind === "personal" ? "A personal workspace has one owner. Shared work belongs in a team workspace." : "Everyone in this workspace can read its shared memory and activity.", h("div", { class: "workspace-people", role: "group", "aria-label": "Workspace members", tabindex: -1 }, members.map(member => h("div", { class: "token-row" }, h("div", {}, h("span", {}, member.email), h("small", {}, member.role)), owner && member.role !== "owner" && action("Remove", async event => {
+      const button = event.currentTarget; if (button.disabled || !isCurrent()) return;
+      if (button.dataset.confirm !== "yes") { button.dataset.confirm = "yes"; button.textContent = "Confirm removal"; button.setAttribute("aria-label", `Confirm removal of ${member.email}`); return; }
+      button.disabled = true; button.setAttribute("aria-busy", "true"); button.setAttribute("aria-label", `Removing ${member.email}…`); button.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), "Removing…");
+      try { await api.removeMember(member.email); if (!isCurrent()) return; const row = button.closest(".token-row"), people = row.parentElement; row.remove(); if ([button, document.body].includes(document.activeElement)) (people.querySelector("button, input") || people).focus(); notify("Member access removed"); }
+      catch (error) { if (isCurrent()) { fail(error); notify(error.message || "Member access could not be removed. Please try again."); button.disabled = false; button.removeAttribute("aria-busy"); button.setAttribute("aria-label", `Confirm removal of ${member.email}`); button.textContent = "Confirm removal"; if (document.activeElement === document.body) button.focus(); } }
+    }, { class: "text small", "aria-label": `Remove ${member.email}` }))), owner && session.org.kind !== "personal" && invite, invites?.length > 0 && h("p", { class: "field-hint" }, `${invites.length} pending invitation${invites.length === 1 ? "" : "s"}.`))),
+    section("Take a copy", "Download the memory pages and activity you can read in this workspace. The file may contain sensitive data.", exportControl(session, api, fail, notify, isCurrent)),
     h("p", { class: "detail-note" }, "Public sharing is managed separately in Public profile. ", link("Privacy details", "/privacy")),
   );
 }
 
-async function exportWorkspace(button, session, api, fail, notify) {
-  if (button.disabled) return;
-  const original = [...button.childNodes]; button.disabled = true;
-  const memories = [], actions = [];
+function exportControl(session, api, fail, notify, isCurrent) {
+  const feedback = h("p", { class: "form-feedback", tabindex: -1, role: "status", "aria-live": "polite" });
+  return h("div", { class: "stack" }, action([icon("file-text", { size: 14 }), "Export memory & activity"], event => exportWorkspace(event.currentTarget, feedback, session, api, fail, notify, isCurrent)), feedback);
+}
+
+async function exportWorkspace(button, feedback, session, api, fail, notify, isCurrent) {
+  if (button.disabled || !isCurrent()) return;
+  const original = [...button.childNodes]; button.disabled = true; button.setAttribute("aria-busy", "true");
+  const memories = [], actions = [], number = new Intl.NumberFormat();
+  const pending = message => { button.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), message); feedback.textContent = message; };
+  feedback.setAttribute("role", "status");
   try {
     let more = true, offset = 0;
     while (more) {
-      button.textContent = `Reading memory… ${memories.length}`;
+      if (!isCurrent()) return;
+      pending(`Reading memory… ${number.format(memories.length)} pages collected`);
       const page = await api.pages({ limit: 100, offset }, session.org.id);
-      for (const item of page.pages || []) memories.push(await api.page(item.slug, session.org.id));
+      for (const item of page.pages || []) {
+        if (!isCurrent()) return;
+        memories.push(await api.page(item.slug, session.org.id));
+      }
       more = page.more === true; offset += (page.pages || []).length;
       if (more && !page.pages?.length) throw new Error("The export could not finish. Please retry.");
     }
     more = true; offset = 0;
     while (more) {
-      button.textContent = `Reading activity… ${actions.length}`;
+      if (!isCurrent()) return;
+      pending(`Reading activity… ${number.format(actions.length)} actions collected`);
       const page = await api.actions({ limit: 100, offset }, session.org.id); actions.push(...page.actions);
       more = page.more === true; offset += page.actions.length;
       if (more && !page.actions.length) throw new Error("The export could not finish. Please retry.");
     }
+    if (!isCurrent()) return;
     const blob = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), workspace: { id: session.org.id, name: session.org.name }, memories, actions }, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob), download = h("a", { href: url, download: `engram-${session.org.slug}.json` });
-    download.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); notify("Export downloaded");
-  } catch (error) { fail(error); notify(error.message || "Export failed. Please retry."); }
-  finally { button.disabled = false; button.replaceChildren(...original); }
+    download.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); feedback.textContent = "Export downloaded."; notify("Export downloaded");
+  } catch (error) { if (isCurrent()) { fail(error); feedback.setAttribute("role", "alert"); feedback.textContent = error.message || "Export failed. Please retry."; notify(feedback.textContent); if ([button, document.body].includes(document.activeElement)) feedback.focus?.(); } }
+  finally { if (isCurrent()) { button.disabled = false; button.removeAttribute("aria-busy"); button.replaceChildren(...original); } }
 }
