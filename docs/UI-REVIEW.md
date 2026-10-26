@@ -293,7 +293,7 @@ cover local changes only; no production profile or deployment was changed.
 New and existing users share a guided runtime setup command in onboarding,
 connection details, and the new-key dialog. Supported installers manage their
 own Engram files. Custom-client configuration remains an advanced disclosure.
-Grok Bot uses its provider's private-skill creation and enablement controls,
+Grok Bot uses its provider's private-skill creation, review, and selection controls,
 with no claimed cloud hook installation. Existing agent-managed Codex sign-in
 is preserved; its managed-skill fallback is model-chosen and does not provide a
 hard cumulative task budget. Access, local setup, received calls, and automatic
@@ -310,6 +310,17 @@ Captures are in the task's `managed-onboarding` visual artifacts:
 `desktop-new-user.png`, `mobile-new-codex.png`, and `mobile-error.png`.
 
 Focused onboarding, memory-use, connection, workspace-name, and runtime-contract
-checks passed: **33 tests, 279 assertions, zero failures**. The browser entry
+checks passed: **33 tests, 284 assertions, zero failures**. The browser entry
 bundle and `git diff --check` passed. Browser checks used local fixture data;
 they do not certify installation or automatic use in every external runtime.
+
+The root also created and reviewed the private Engram skill in the current
+macOS Grok Bot app. Its account-library path is Connect apps → Your plugins →
+Private skills, with name, description, and instructions fields; no Bot-specific
+enable control was present. The current client did not expose a private-skill
+picker with `/`; `@Engram` offered the existing connected plugin rather than the
+private skill. Private-skill picker selection remains unverified. The guide
+therefore asks the user to request the skill by name, with an optional picker
+only where available. The Bot reported successful identity and focused-recall
+calls; no dummy memory writes were used. Skill availability and those calls do
+not verify automatic use across sessions.

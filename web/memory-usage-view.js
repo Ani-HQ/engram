@@ -21,7 +21,7 @@ After work: Check for one useful memory delta to remember, or make no memory wri
 
 Privacy: Never copy credentials, private transcripts, raw prompts, or hidden reasoning into memory or reports. Respect read-only connections and workspace permissions.
 
-Validation: Tell me where this skill was saved and how to review and enable it for this Bot. Do not claim it is enabled, automatically used, or tested until that has actually happened.`;
+Validation: Tell me where this skill was saved and how to review and ask for it by name in the intended Bot. Select it through a skill picker only if this client offers that option. Do not claim it is automatically used on every task or tested until that has actually happened.`;
 
 export function integrationUsePresentation(connection = {}) {
   const memory = connection.memoryUse;
@@ -89,8 +89,8 @@ export function memorySetupGuide(connection = {}, { copyControl, endpoint, open 
       : grokBot ? h('div', { class: 'ds-stack' },
         h('p', { class: 'ds-hint' }, 'Let Grok Bot save the memory workflow as a private skill. Paste this setup prompt into the Bot that already has your Engram connector.'),
         copyControl?.(grokBotMemorySkillPrompt, 'Copy skill setup prompt'),
-        h('ol', {}, h('li', {}, 'Ask the Bot to create the skill, then review what it saved.'), h('li', {}, 'Open Connect apps, select the connected count beside the title, and enable it for this Bot under Private skills.'), h('li', {}, 'Type / in the composer to choose the skill for your next task, then check Engram for actual memory receipts.')),
-        h('p', { class: 'ds-hint' }, 'Creating a skill does not enable it automatically. Its use is model-chosen; a local installer cannot enable hooks in a cloud agent. Ordinary MCP reads have a per-response limit.'),
+        h('ol', {}, h('li', {}, 'Ask the Bot to create the skill, then review what it saved.'), h('li', {}, 'Open Connect apps, then Your plugins and Private skills, to review the skill’s name, description, and instructions.'), h('li', {}, 'In the intended Bot, ask: “Use Engram shared memory for this task.” Start real work, then check Engram for actual memory receipts. If the client offers a skill picker, you can select it there.')),
+        h('p', { class: 'ds-hint' }, 'Availability in the shared skill library does not guarantee use in every session. Its use is model-chosen; a local installer cannot enable hooks in a cloud agent. Ordinary MCP reads have a per-response limit.'),
         h('details', {}, h('summary', {}, 'Review skill instructions'), h('pre', { tabindex: '0', 'aria-label': 'Grok Bot memory skill instructions' }, grokBotMemorySkillPrompt)),
         h('a', { href: 'https://docs.x.ai/grok-bot/skills-routines-and-automations', target: '_blank', rel: 'noopener noreferrer' }, 'Grok Bot skill setup guide'))
       : h('div', { class: 'ds-stack' },

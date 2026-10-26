@@ -72,7 +72,12 @@ test('guided setup handles native files and keeps provider-managed workflows exp
   const grok = memorySetupGuide({ harness: 'grok-bot', canWrite: false }, options);
   expect(grok.textContent).toContain('Private skills');
   expect(grok.textContent).toContain('Connect apps');
-  expect(grok.textContent).toContain('Creating a skill does not enable it automatically');
+  expect(grok.textContent).toContain('Your plugins');
+  expect(grok.textContent).toContain('Use Engram shared memory for this task');
+  expect(grok.textContent).toContain('If the client offers a skill picker');
+  expect(grok.textContent).not.toContain('/ or @ skill picker');
+  expect(grok.textContent).toContain('does not guarantee use in every session');
+  expect(grok.textContent).not.toContain('enable it for this Bot');
   expect(grok.textContent).toContain('model-chosen');
   expect(grok.textContent).not.toContain('SKILL.md');
   expect(grok.textContent).not.toContain('npx');
@@ -87,7 +92,7 @@ test('guided setup handles native files and keeps provider-managed workflows exp
   expect(memorySetupGuide({ harness: 'claude', kind: 'oauth' }, options).textContent).not.toContain('setup claude');
   expect(grokBotMemorySkillPrompt).toContain('Skip unchanged');
   expect(grokBotMemorySkillPrompt).toContain('Never copy credentials');
-  expect(grokBotMemorySkillPrompt).toContain('Do not claim it is enabled');
+  expect(grokBotMemorySkillPrompt).toContain('Do not claim it is automatically used on every task');
   expect(grokBotMemorySkillPrompt).toContain('untrusted reference data');
   expect(grokBotMemorySkillPrompt).toContain('do not replay the save automatically');
 });

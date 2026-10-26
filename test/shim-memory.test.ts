@@ -330,14 +330,14 @@ describe("Claude lifecycle and explicit installation", () => {
     const session = { session_id: "outcome-guidance", cwd: gateway.project };
     const startup = await memory.claudeHook({ ...session, hook_event_name: "SessionStart" }, { binding });
     expect(startup.hookSpecificOutput.additionalContext).toContain('Installed bridge command:');
-    expect(startup.hookSpecificOutput.additionalContext).toContain('task-end --run <run-id> with JSON stdin {"status":"completed","outcome":"Known result"}');
-    expect(startup.hookSpecificOutput.additionalContext).toContain("Stop does not prove completion");
+    expect(startup.hookSpecificOutput.additionalContext).toContain('task-end --run <run-id>, JSON stdin {"status":"completed","outcome":"Known"}');
+    expect(startup.hookSpecificOutput.additionalContext).toContain("Stop is not completion");
     const start = await memory.claudeHook({ ...session, hook_event_name: "UserPromptSubmit", prompt: "Engram task: Verify a factual final outcome" }, { binding });
     const context = start.hookSpecificOutput.additionalContext;
     const runId = /Lifecycle run: (em_[a-f0-9]{64})/.exec(context)![1];
-    const command = /task-end --run <run-id> with JSON stdin (\{"status":"completed","outcome":"Known result"\})/.exec(context)!;
+    const command = /task-end --run <run-id>, JSON stdin (\{"status":"completed","outcome":"Known"\})/.exec(context)!;
     expect(command).not.toBeNull();
-    expect(context).toContain('using "failed" for a known failure');
+    expect(context).toContain('"failed" only for known failure');
     expect([...gateway.events.values()].map(event => event.status)).toEqual(["running"]);
     const outcome = JSON.parse(command[1]);
     outcome.outcome = "Verified the fixture outcome with the relevant checks.";
