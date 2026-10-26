@@ -6,10 +6,18 @@ transcripts, auto-detect task success, or enable themselves in third-party apps.
 The gateway remains the authority for workspace access, versioned writes,
 idempotent action events and cumulative response budgets.
 
-## Local packages
+## Install
 
-These are repository source packages; this change does not publish them to npm
-or PyPI or install them into users' runtimes.
+Install the JavaScript/TypeScript package from npm, or the Python distribution
+from PyPI. Python's distribution name is `ani-hq-engram-memory`; its import
+remains `engram_memory`.
+
+```sh
+npm install @ani-hq/engram-memory
+python -m pip install ani-hq-engram-memory
+```
+
+For development from this repository:
 
 ```sh
 npm install ./sdks/javascript

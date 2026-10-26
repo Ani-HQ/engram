@@ -24,7 +24,7 @@ const plural = (value, one, many = `${one}s`) => `${count(value)} ${value === 1 
 const text = value => typeof value === "string" ? value.trim() : "";
 
 /** Workspace inventory evidence only; callbacks remain with the owning app. */
-export function taskReportingSetup(data, { onInspect, onManage, copyControl } = {}) {
+export function taskReportingSetup(data, { onInspect, onManage, onSetup, copyControl } = {}) {
   const summary = taskReportingSummary(data);
   const connections = Array.isArray(data?.connections) ? data.connections.filter(connection => !connection?.archivedAt && !connection?.deletedAt) : [];
   const reconnectDetail = !summary.available
@@ -38,8 +38,8 @@ export function taskReportingSetup(data, { onInspect, onManage, copyControl } = 
     ? "Task reports need an authorized connection with write access. Workspace policy and plan restrictions may still limit reporting."
     : `${plural(summary.eligible, "connection has", "connections have")} write access${summary.readOnly ? `; ${count(summary.readOnly)} ${summary.readOnly === 1 ? "is" : "are"} read-only` : ""}. Workspace policy and plan restrictions may still limit reporting.`;
   const reportDetail = !summary.available
-    ? "Ask your agent to report task starts, meaningful updates, and actual outcomes. Instructions are best effort, not automatic capture."
-    : `${summary.withReports ? `${plural(summary.withReports, "connection has", "connections have")} sent task reports.` : "No task reports from write-authorized connections in this list."} Ask your agent to report actual work; instructions do not install hooks or enable automatic capture.`;
+    ? "Use guided setup to install the workflow for a supported runtime. Reporting remains subject to the agent’s supported lifecycle events."
+    : `${summary.withReports ? `${plural(summary.withReports, "connection has", "connections have")} sent task reports.` : "No task reports from write-authorized connections in this list."} Guided setup installs the supported workflow. A received report does not prove every task is captured.`;
 
   const step = (number, title, detail, action) => h("li", { class: "task-reporting-step" },
     h("span", { class: "task-reporting-step-number", "aria-hidden": "true" }, number),
@@ -65,15 +65,16 @@ export function taskReportingSetup(data, { onInspect, onManage, copyControl } = 
   return h("section", { class: "task-reporting-setup", "aria-labelledby": "detail-title" },
     h("span", { class: "task-reporting-symbol", "aria-hidden": "true" }, icon("workflow", { size: 22 })),
     h("h2", { id: "detail-title" }, "See what your agents do"),
-    h("p", { class: "task-reporting-intro" }, "Tasks appear when an agent sends a work report to Engram. Connecting an agent gives it access; reporting is a separate step."),
+    h("p", { class: "task-reporting-intro" }, "Tasks appear when an agent sends a work report to Engram. Guided setup connects the agent and installs its supported memory and reporting workflow."),
+    onSetup && button("Set up or repair an agent", onSetup, { class: "primary small" }),
     h("ol", { class: "task-reporting-steps" },
       step(1, "Reconnect and refresh tools", reconnectDetail, onManage && button(summary.reconnect ? "Review connections" : "Open Connections", () => onManage(), { class: "text task-reporting-link" })),
       step(2, "Use write access", writeDetail),
-      step(3, "Report actual work", reportDetail)),
+      step(3, "Install the supported workflow", reportDetail)),
     h("details", { class: "task-reporting-instructions" },
-      h("summary", {}, h("span", {}, icon("code", { size: 15 }), "Agent instructions"), icon("chevron-down", { size: 14 })),
+      h("summary", {}, h("span", {}, icon("code", { size: 15 }), "Advanced: reporting contract"), icon("chevron-down", { size: 14 })),
       h("div", { class: "task-reporting-instruction-body" },
-        h("div", { class: "task-reporting-instruction-toolbar" }, h("p", {}, "Copy into your agent's instructions or ask it to follow this for a task."), copyControl),
+        h("div", { class: "task-reporting-instruction-toolbar" }, h("p", {}, "For custom integrations or a deliberate one-task instruction. Guided setup handles supported agent files automatically."), copyControl),
         h("pre", { tabindex: "0", "aria-label": "Task reporting instructions" }, h("code", {}, taskReportingInstructions)))),
     h("section", { class: "task-reporting-connections", "aria-label": "Task reports by connection" },
       h("div", { class: "task-reporting-connections-heading" }, h("h3", {}, "Your connections"), summary.available && h("span", {}, plural(summary.total, "connection"))),

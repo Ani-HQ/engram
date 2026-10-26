@@ -18,7 +18,7 @@ const TIMEOUT = 2000;
 const KINDS = new Set(['decision', 'correction', 'constraint', 'handoff']);
 const hash = value => createHash('sha256').update(value).digest('hex');
 const bytes = value => Buffer.byteLength(value, 'utf8');
-const home = () => process.env.HOME || os.homedir();
+const home = () => fs.realpathSync(process.env.HOME || os.homedir());
 const configFile = () => path.join(process.env.XDG_CONFIG_HOME || path.join(home(), '.config'), 'engram', 'memory.json');
 const stateRoot = () => path.join(process.env.XDG_STATE_HOME || path.join(home(), '.local', 'state'), 'engram-mcp', 'memory');
 
@@ -468,12 +468,12 @@ async function lifecycle(event, input, dependencies = {}) {
 
 function shellQuote(value) { return `'${String(value).replace(/'/g, `'\\''`)}'`; }
 
-async function install(runtime, options, dependencies = {}) {
+async function prepareInstall(runtime, options, dependencies = {}) {
   const registry = require('./runtime-contracts');
   runtime = registry.runtimeId(runtime);
   const contract = registry.runtimeCapabilities(runtime);
   if (!contract?.installable) throw new Error('This runtime uses portable MCP instructions or an owned generic bridge. Export its skill instead of claiming a native install.');
-  if (contract.kind !== 'guidance' && !contract.platforms.includes(process.platform)) throw new Error('Native installers currently support macOS and Linux; use portable guidance on this platform.');
+  if (!options.portable && contract.kind !== 'guidance' && !contract.platforms.includes(process.platform)) throw new Error('Native installers currently support macOS and Linux; choose --portable on this platform.');
   if (!options.project || !options.topic) throw new Error('Installation requires --project <directory> and --topic <project or recurring topic>.');
   const project = projectPath(options.project);
   const target = endpointForHost(options.host || process.env.ENGRAM_HOST || 'https://engram.ani.computer');
@@ -482,20 +482,22 @@ async function install(runtime, options, dependencies = {}) {
   const topic = clean(options.topic, 160, 'topic');
   const configuredBudget = budget(options.budget);
   // Verify before changing files. Identity/catalog only, never a fake task.
-  const checks = await inspectConnection({ ...target, token }, dependencies.fetchImpl);
+  const checks = dependencies.checks || await inspectConnection({ ...target, token }, dependencies.fetchImpl);
+  const files = require('./setup-files');
+  const payload = contract.kind !== 'guidance' && !options.portable ? files.runtimePayload({ home: home(), dataHome: process.env.XDG_DATA_HOME }, { noLinks }) : null;
   const file = configFile();
   const config = readPrivate(file, { version: 1, bindings: [] });
   if (config.version !== 1 || !Array.isArray(config.bindings)) throw new Error('Unrecognized memory lifecycle configuration.');
   let settingsFile;
   let settings;
   let nativePlan;
-  if (runtime === 'claude') {
+  if (runtime === 'claude' && !options.portable) {
     settingsFile = path.join(home(), '.claude', 'settings.json');
     settings = readPrivate(settingsFile, {});
     if (!settings || Array.isArray(settings) || typeof settings !== 'object' || (settings.hooks && (Array.isArray(settings.hooks) || typeof settings.hooks !== 'object'))) throw new Error('Claude settings must contain a JSON object with an object hooks map.');
     if (settings.disableAllHooks === true) throw new Error('Claude hooks are explicitly disabled. Review that policy before opting in.');
     settings.hooks ||= {};
-    const command = `${shellQuote(process.execPath)} ${shellQuote(path.join(__dirname, 'index.js'))} memory hook claude`;
+    const command = `${shellQuote(process.execPath)} ${shellQuote(payload.entrypoint)} memory hook claude`;
     for (const event of ['SessionStart', 'UserPromptSubmit', 'Stop']) {
       const existing = settings.hooks[event] || [];
       if (!Array.isArray(existing)) throw new Error(`Claude ${event} hooks must be an array.`);
@@ -503,15 +505,22 @@ async function install(runtime, options, dependencies = {}) {
       settings.hooks[event] = [...retained, { ...(event === 'SessionStart' ? { matcher: 'startup|resume|compact|clear' } : {}), hooks: [{ type: 'command', command, timeout: 6 }] }];
     }
   }
-  if (!['claude', 'generic', 'grokbot'].includes(runtime)) nativePlan = require('./runtime-install').planInstall(runtime, { project, home: home(), configHome: process.env.XDG_CONFIG_HOME }, { readPrivate, readTextPrivate, noLinks, shellQuote });
+  const nativeOptions = { project, home: home(), skillScope: options.skillScope, configHome: process.env.XDG_CONFIG_HOME, entrypoint: payload?.entrypoint, pluginModule: payload?.pluginModule };
+  if (options.portable) nativePlan = require('./runtime-install').planSkill(runtime, nativeOptions, { readTextPrivate, noLinks });
+  else if (!['claude', 'generic', 'grokbot'].includes(runtime)) nativePlan = require('./runtime-install').planInstall(runtime, nativeOptions, { readPrivate, readTextPrivate, noLinks, shellQuote });
   config.bindings = config.bindings.filter(item => item.project !== project || registry.runtimeId(item.runtime) !== runtime);
   config.bindings.push({ project, runtime, host: target.host, token, topic, budget: configuredBudget, reportAvailable: checks.tools.some(tool => tool.name === 'record_action'), memoryWriteAvailable: checks.tools.some(tool => tool.name === 'remember') });
-  writePrivate(file, config, true);
-  if (settingsFile) writePrivate(settingsFile, settings, true);
-  if (nativePlan) for (const write of nativePlan.writes) {
-    if (write.kind === 'json') writePrivate(write.file, write.value, true); else writeTextPrivate(write.file, write.value, true);
-  }
-  return { config: file, settings: settingsFile || nativePlan?.settings || null, project, runtime, budget: configuredBudget, capabilities: contract };
+  const skillPlan = runtime === 'windsurf' && !options.portable ? require('./runtime-install').planSkill(runtime, nativeOptions, { readTextPrivate, noLinks }) : null;
+  const writes = [...(payload?.writes || []), { file, kind: 'json', value: config }, ...(settingsFile ? [{ file: settingsFile, kind: 'json', value: settings }] : []), ...(nativePlan?.writes || []), ...(skillPlan?.writes || [])];
+  return { writes, result: { config: file, settings: settingsFile || nativePlan?.settings || null, project, runtime, budget: configuredBudget, capabilities: contract, mode: options.portable ? 'portable' : contract.kind === 'guidance' ? 'binding' : 'native', runtimeRoot: payload?.root || null } };
+}
+
+async function install(runtime, options, dependencies = {}) {
+  const prepared = await prepareInstall(runtime, options, dependencies);
+  const files = require('./setup-files');
+  const plan = files.planWrites(prepared.writes, { noLinks });
+  files.commitWrites(plan, { noLinks }, dependencies);
+  return prepared.result;
 }
 
 function sessionFile(binding, session, runtime = 'claude-code') { return path.join(stateRoot(), binding.scope, `session-${hash(`${runtime}\n${session}`)}.json`); }
@@ -681,4 +690,4 @@ async function inputJsonToken() {
   } finally { clearTimeout(timer); }
 }
 
-module.exports = { DEFAULT_BUDGET, MAX_BUDGET, lifecycle, verify, claudeHook, install, bindingFor, configFile, stateRoot, runMemoryCli, inputJson, truncate, internals: { hash, noLinks, readPrivate, writePrivate, readTextPrivate, writeTextPrivate, privateDirectory, sessionFile, projectPath, runContext, rpc, budget, shellQuote, bindingCandidates } };
+module.exports = { DEFAULT_BUDGET, MAX_BUDGET, lifecycle, verify, claudeHook, install, prepareInstall, bindingFor, configFile, stateRoot, runMemoryCli, inputJson, truncate, internals: { hash, noLinks, readPrivate, writePrivate, readTextPrivate, writeTextPrivate, privateDirectory, sessionFile, projectPath, runContext, rpc, budget, shellQuote, bindingCandidates } };

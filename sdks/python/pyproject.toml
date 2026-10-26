@@ -1,14 +1,37 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "engram-memory"
+name = "ani-hq-engram-memory"
 version = "0.1.0"
 description = "Bounded shared-memory lifecycle for owned Python agent runtimes"
+readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "Ani HQ"}]
+keywords = ["engram", "mcp", "agent-memory", "bounded-context"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Framework :: AsyncIO",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+]
 dependencies = []
+
+[project.urls]
+Homepage = "https://engram.ani.computer"
+Documentation = "https://github.com/Ani-HQ/engram/blob/main/docs/MEMORY-SDK.md"
+Repository = "https://github.com/Ani-HQ/engram"
+Issues = "https://github.com/Ani-HQ/engram/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]

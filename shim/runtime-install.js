@@ -18,7 +18,7 @@ function planInstall(runtime, options, helpers) {
   if (!contract.platforms.includes(options.platform || process.platform)) throw new Error('Native installers currently support macOS and Linux. Export the portable skill on this platform.');
   const { readPrivate, readTextPrivate, noLinks, shellQuote } = helpers;
   const home = options.home;
-  const command = event => `${shellQuote(process.execPath)} ${shellQuote(path.join(__dirname, 'index.js'))} memory hook ${runtime}${event ? ` ${event}` : ''}`;
+  const command = event => `${shellQuote(process.execPath)} ${shellQuote(options.entrypoint || path.join(__dirname, 'index.js'))} memory hook ${runtime}${event ? ` ${event}` : ''}`;
   const writes = [];
   let settings;
   const hookFile = (file, style, events, extra = {}) => {
@@ -53,12 +53,12 @@ function planInstall(runtime, options, helpers) {
   if (runtime === 'windsurf') hookFile(path.join(home, '.codeium', 'windsurf', 'hooks.json'), 'flat', contract.events);
   if (runtime === 'opencode') {
     const file = path.join(options.configHome || path.join(home, '.config'), 'opencode', 'plugins', 'engram-memory.js');
-    textFile(file, `// Engram managed native adapter. No credentials or transcript capture.\nimport { createRequire } from 'node:module';\nconst { openCodePlugin } = createRequire(import.meta.url)(${JSON.stringify(path.join(__dirname, 'runtime-plugins.js'))});\nexport const EngramMemory = openCodePlugin;\n`);
+    textFile(file, `// Engram managed native adapter. No credentials or transcript capture.\nimport { createRequire } from 'node:module';\nconst { openCodePlugin } = createRequire(import.meta.url)(${JSON.stringify(options.pluginModule || path.join(__dirname, 'runtime-plugins.js'))});\nexport const EngramMemory = openCodePlugin;\n`);
     settings = file;
   }
   if (runtime === 'openclaw') {
     const dir = path.join(options.configHome || path.join(home, '.config'), 'engram', 'runtime-plugins', 'openclaw');
-    textFile(path.join(dir, 'index.js'), `// Engram managed native adapter. Reads only the explicit current request.\nimport { createRequire } from 'node:module';\nconst { openClawPlugin } = createRequire(import.meta.url)(${JSON.stringify(path.join(__dirname, 'runtime-plugins.js'))});\nexport default openClawPlugin;\n`);
+    textFile(path.join(dir, 'index.js'), `// Engram managed native adapter. Reads only the explicit current request.\nimport { createRequire } from 'node:module';\nconst { openClawPlugin } = createRequire(import.meta.url)(${JSON.stringify(options.pluginModule || path.join(__dirname, 'runtime-plugins.js'))});\nexport default openClawPlugin;\n`);
     writes.push({ file: path.join(dir, 'package.json'), kind: 'json', value: { name: 'engram-memory-local', version: require('./package.json').version, private: true, type: 'module', openclaw: { extensions: ['./index.js'] } } });
     writes.push({ file: path.join(dir, 'openclaw.plugin.json'), kind: 'json', value: { id: 'engram-memory', name: 'Engram shared memory', description: 'Bounded project memory with explicit durable deltas.', activation: { onCapabilities: ['hook'] }, configSchema: { type: 'object', additionalProperties: false, properties: {} } } });
     const file = path.join(home, '.openclaw', 'openclaw.json');
@@ -85,4 +85,20 @@ function planInstall(runtime, options, helpers) {
   return { writes, settings, contract };
 }
 
-module.exports = { planInstall };
+function planSkill(runtime, options, helpers) {
+  const folders = { claude: '.claude', codex: '.agents', cursor: '.cursor', gemini: '.gemini', copilot: '.github', opencode: '.opencode', windsurf: '.devin' };
+  if (!folders[runtime]) throw new Error('This runtime has no documented automatic skill-directory installation. Use its supported app skill controls.');
+  const scope = options.skillScope || 'project';
+  if (!['user', 'project'].includes(scope)) throw new Error('Skill scope must be user or project.');
+  if (scope === 'user' && runtime !== 'codex') throw new Error('User-scoped automatic skill installation is currently supported only for Codex.');
+  if (scope === 'user' && !options.home) throw new Error('User skill installation requires a known home directory.');
+  const file = path.join(scope === 'user' ? options.home : options.project, folders[runtime], 'skills', 'engram-memory', 'SKILL.md');
+  helpers.noLinks(file);
+  const marker = '<!-- Engram managed portable workflow -->';
+  const prior = helpers.readTextPrivate(file, null);
+  if (prior !== null && !prior.includes(marker)) throw new Error('An existing user skill has the Engram name. It was preserved; choose another scope or move that skill using your runtime controls.');
+  const content = fs.readFileSync(path.join(__dirname, 'skills', 'engram-portable', 'SKILL.md'), 'utf8').replace('{{RUNTIME_LABEL}}', runtimeCapabilities(runtime)?.label || runtime);
+  return { settings: file, writes: [{ file, kind: 'text', value: content + '\n' + marker + '\n' }] };
+}
+
+module.exports = { planInstall, planSkill };

@@ -44,4 +44,13 @@ describe("connection lifecycle presentation", () => {
     expect(reporting.textContent).toContain("Current laptop"); expect(reporting.textContent).not.toContain("Old agent");
     expect(reporting.textContent).toContain("1 connection has write access");
   });
+  test("reporting routes ordinary setup through the managed flow and leaves the raw contract advanced", () => {
+    let starts = 0;
+    const view = render(() => taskReportingSetup(data, { onSetup: () => { starts++; } }) as Element);
+    nodes(view).find(node => node.tag === "button" && node.textContent === "Set up or repair an agent")!.events.click();
+    expect(starts).toBe(1);
+    expect(view.textContent).toContain("Guided setup handles supported agent files automatically");
+    expect(nodes(view).find(node => node.tag === "summary")?.textContent).toContain("Advanced: reporting contract");
+    expect(view.textContent).not.toContain("Copy into your agent's instructions");
+  });
 });

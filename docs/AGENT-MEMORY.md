@@ -5,6 +5,75 @@ memory. Engram separates connection checks, actual retrieval/save receipts, and
 runtime-reported work. The optional lifecycle bridge in `shim/memory.js` provides
 bounded retrieval and factual reporting without a second model call.
 
+## Guided setup and repair
+
+New and existing users run the same guided command on the actual runtime host:
+
+```sh
+npx -y @ani-hq/engram-mcp setup claude
+```
+
+Choose the agent in the command or prompt, select an existing project folder,
+accept or change its short memory topic, and paste a key at the hidden prompt
+when needed. The connection and managed workflow are installed together. No
+Markdown or configuration editing is required. `upgrade <agent>` is an
+idempotent repair alias; an unchanged successful installation creates no extra
+backups. Automation uses `--project .` (or an explicit folder), optional `--topic`
+and `--budget`, and a secure environment token or `--token-stdin`.
+
+The installer checks the key again, reuses saved credentials only for the exact
+same endpoint, and preflights all configuration before writing. It preserves
+unrelated settings, explicit disabled policies and runtime trust controls. A
+failed multi-file commit restores files it changed; concurrent user edits and
+private backups are preserved. Managed hooks/plugins reference a private
+versioned copy of the package under `~/.local/share/engram-mcp/runtimes` (or
+`$XDG_DATA_HOME/engram-mcp/runtimes`), so `npx` cache eviction cannot remove them.
+
+Existing runtime-managed/OAuth connections without a saved bearer are preserved
+byte-for-byte. On documented native skill surfaces, guided setup installs a
+project memory skill instead of extracting authentication tokens or claiming a
+native hook install. Access is then verified through the agent, not the raw HTTP
+CLI. `--portable` explicitly selects this model-chosen skill workflow for other
+supported local targets. Its ordinary MCP reads keep a per-response limit, with
+no claimed hard cumulative task budget. Windsurf receives the portable skill
+alongside its factual reporting hooks.
+
+Portable skills default to project scope. Codex also supports the documented
+personal skill directory with `--skill-scope user`:
+
+```sh
+engram-mcp upgrade codex --project . --skill-scope user
+```
+
+That selects portable guidance and installs one managed
+`~/.agents/skills/engram-memory/SKILL.md`, leaving the project untouched. Existing
+unmanaged skills are preserved. OAuth authentication remains owned by Codex;
+the installer neither reads token caches nor replaces the connection. Other
+runtime user-scope destinations are rejected until supported explicitly.
+
+Local setup targets include Claude Code, Codex, Cursor, Gemini CLI, VS Code,
+Copilot CLI, OpenCode, OpenClaw Gateway and Windsurf. VS Code uses `setup vscode`;
+Copilot CLI uses `setup copilot`, preserving their distinct MCP configuration
+files. Grok Bot is a separate cloud product with app-controlled skills; no
+filesystem installation API is assumed. Use its Connect apps and Private skills
+controls. Setup does not create a dummy memory, task report, or workflow proof.
+
+Legacy noninteractive `setup <agent>` without `--project` remains connection-only
+for compatibility and says so in its output. Interactive setup installs the
+project workflow by default. Explicit `--memory` and `upgrade` require a project
+outside a terminal. `--connection-only` explicitly opts out of workflow setup.
+
+Automatic project skill locations follow the runtime documentation:
+[Claude Code](https://code.claude.com/docs/en/skills),
+[Codex](https://learn.chatgpt.com/docs/build-skills),
+[Cursor](https://cursor.com/docs/skills),
+[Gemini CLI](https://geminicli.com/docs/cli/skills/),
+[Copilot/VS Code](https://code.visualstudio.com/docs/agent-customization/agent-skills),
+[OpenCode](https://opencode.ai/docs/skills/), and
+[Windsurf/Cascade](https://docs.devin.ai/desktop/cascade/skills).
+Grok Bot's documented [Private skills controls](https://docs.x.ai/grok-bot/skills-routines-and-automations)
+are distinct from Grok Build's filesystem skill format.
+
 ## Claude Code: explicit installation
 
 Build or install the local `@ani-hq/engram-mcp` 0.5 package first. No user settings
@@ -270,6 +339,27 @@ observation of tool execution. A bridge must only call its hooks for real events
 - Read-only connections can retrieve bounded memory. A denied write disables
   further writes for that run without blocking reads; authentication revocation
   blocks the credential-bound run and drops queued writes.
+
+The retrieval ceiling is not an overall token or spending limit. Server guidance,
+loaded skills, tool definitions, input arguments and model output add overhead.
+Claude's one-time Stop delta check can also request an extra agent continuation
+when the task has neither saved a delta nor acknowledged no-change. Saving or
+acknowledging no-change before Stop avoids that check; the bridge does not run a
+separate summarization model.
+
+Optional Jev passage selection has its own consent, access and metering boundary.
+It considers at most 20 local recall hits, removes duplicate content, and sends
+at most 16 candidates with up to three existing 180-character passages each.
+Both the raw request and the final redacted JSON body, including the model and
+questions, fit within 12,288 UTF-8 bytes. A recall uses a 400 ms selection deadline
+before retaining the local order. Validated numeric selection plans
+can be reused for 30 seconds in the same authorized scope; cached plans do not
+store retrieved text. Jev usage is separate from the calling agent's token bill.
+
+The offline duplicate-heavy fixture in `test/reflex-passages.test.ts` reduces
+serialized selection input from 18,608 to 6,797 bytes while retaining each known
+late decision among candidate passages. That measures synthetic payload shape,
+not live Jev relevance, latency, provider tokens or production cost savings.
 
 Use `memory status --run <run-id>` for a run’s receipt state, or
 `memory doctor --project /absolute/project` to compare live identity/catalog

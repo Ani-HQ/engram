@@ -154,7 +154,7 @@ describe("real CLI setup and read-only verification", () => {
       for (const content of [`{"mcpServers": []}`, `{"mcpServers": "${token}"}`, `{bad JSON ${token}`]) {
         const root = home(), dir = path.join(root, ".cursor"); mkdirSync(dir); const file = path.join(dir, "mcp.json"); writeFileSync(file, content);
         const result = await run(["setup", "cursor", "--host", upstream.host], root, { ENGRAM_TOKEN: token });
-        expect(result.code).toBe(1); expect(result.stdout).toContain("Authenticated as"); expect(result.stdout).not.toContain("is configured"); expect(readFileSync(file, "utf8")).toBe(content); expect(readdirSync(dir)).toEqual(["mcp.json"]);
+        expect(result.code).toBe(1); expect(result.stdout).not.toContain("is configured"); expect(readFileSync(file, "utf8")).toBe(content); expect(readdirSync(dir)).toEqual(["mcp.json"]);
       }
       const root = home(), dir = path.join(root, ".cursor"); mkdirSync(dir); const linked = path.join(root, "dotfiles.json"); writeFileSync(linked, "{}"); symlinkSync(linked, path.join(dir, "mcp.json"));
       const result = await run(["setup", "cursor", "--host", upstream.host], root, { ENGRAM_TOKEN: token });
@@ -207,6 +207,10 @@ def until(marker):
 try:
     until(b"Which agent?")
     os.write(fd, b"2\r")
+    until(b"Project folder")
+    os.write(fd, os.environ["HOME"].encode() + b"\r")
+    until(b"Memory topic")
+    os.write(fd, b"Fixture project\r")
     until(b"Where is your memory?")
     os.write(fd, b"2\r")
     until(b"Your Engram base URL:")

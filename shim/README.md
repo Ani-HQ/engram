@@ -16,7 +16,9 @@ Run this in your terminal:
 engram-mcp setup
 ```
 
-Choose your agent and Engram hosted or your self-hosted server. Hosted setup uses
+Choose your agent, an existing project folder, a short memory topic, and Engram
+hosted or your self-hosted server. The current folder and its name are offered as
+defaults. Hosted setup uses
 `https://engram.ani.computer`. Create an access token in the workspace’s
 **Connections** screen, then paste it at the hidden prompt. The token is not echoed
 or included in your command history. You can choose the agent directly:
@@ -27,21 +29,49 @@ engram-mcp setup codex
 engram-mcp setup cursor --host https://engram.ani.computer
 ```
 
-Setup first checks live token identity and tool discovery. If either fails, it
-leaves the agent config unchanged and explains the next action. The endpoint must
+Setup checks live token identity and tool discovery before installing the MCP
+connection and the project memory workflow together. You do not edit Markdown or
+configuration files. If a check or configuration preflight fails, setup leaves
+the agent config unchanged and explains the next action. The endpoint must
 use HTTPS; HTTP is accepted only for a loopback self-hosted server.
 
-On success, setup shows the exact config path, backs up any existing file, and
-updates its Engram entry. Other agent servers and settings are preserved. Config
+On success, setup shows the exact paths, backs up changed existing files, and
+updates the Engram entry and managed memory hooks/plugin. Other agent servers and settings are preserved. Config
 and backup files are private to your user; existing owner-only permissions are
 preserved, and group/world access is removed when a token is saved. Existing
 backups are retained. Symbolic-link config files are rejected so a token is not
 written into a linked dotfiles repository.
 
-Restart your agent or refresh its MCP connections. Setup prints a unique prompt
-you can paste into the agent to save and recall one connection-check memory.
-This is a separate, explicit test: setup itself never reads or writes memories,
-enables capture hooks, or reports a task on your behalf.
+Hook code is copied into a private versioned runtime under
+`$XDG_DATA_HOME/engram-mcp/runtimes` (default `~/.local/share/engram-mcp/runtimes`).
+It keeps working if `npx` clears its cache. No transcript capture is enabled.
+Setup preflights every destination, commits files atomically, and restores files
+it changed if a later write fails. A concurrent user edit is preserved and
+reported instead of being overwritten during recovery.
+
+Restart your agent or refresh its MCP connections. Codex still requires native
+hook review and trust through `/hooks`; managed or disabled policy is preserved.
+Setup itself never reads or writes memories or reports a task on your behalf.
+Run a real task, then review retrieval/save receipts in Connections → Memory use.
+Access checks and installed files do not prove automatic model use.
+
+Existing users run the same command, or `engram-mcp upgrade <agent>`. An existing
+key is reused only for the same endpoint and is checked again before any write.
+An existing runtime-managed/OAuth connection without a saved bearer is preserved;
+setup installs the packaged project skill instead of copying authentication
+tokens or replacing that connection. CLI access remains unchecked in that mode.
+The skill is model-chosen guidance, with no hard cumulative task-budget claim.
+Use `--portable` to choose that skill workflow explicitly on a supported runtime.
+Skills default to project scope. Codex users can choose
+`engram-mcp upgrade codex --project . --skill-scope user` to install one managed
+personal skill at `~/.agents/skills/engram-memory/SKILL.md` instead. This selects
+portable guidance, leaves project files unchanged, and preserves any existing
+unmanaged skill. Automatic user scope currently supports Codex only.
+
+Supported local targets are `claude`, `codex`, `cursor`, `gemini`, `vscode`,
+`copilot` (Copilot CLI), `opencode`, `openclaw`, and `windsurf`. Run setup on the
+actual runtime host; a Mac install cannot configure a cloud Bot. Grok Bot uses
+its own Connect apps and Private skills controls, not a local filesystem path.
 
 ## Check a connection
 
@@ -148,13 +178,19 @@ For noninteractive setup, specify an agent and supply `ENGRAM_TOKEN` securely
 through your process environment, or pipe the token with `--token-stdin`:
 
 ```bash
-your-secret-reader | engram-mcp setup codex --host https://engram.ani.computer --token-stdin
+your-secret-reader | engram-mcp setup codex --project . --host https://engram.ani.computer --token-stdin
 ```
 
 `your-secret-reader` stands for your own password/secret manager command. Setup
 and doctor reject `--token` arguments to keep credentials out of history. Missing
 input outside a terminal exits with an actionable error and does not wait for a
 prompt.
+
+Outside a terminal, `--project` selects full setup and `--topic` defaults to the
+project folder name. `--memory` and `upgrade` require an explicit `--project`
+there. Legacy noninteractive `setup <agent>` without a project remains
+connection-only; its output states that no memory workflow was installed.
+`--connection-only` chooses that behavior explicitly.
 
 ## Existing connect command
 

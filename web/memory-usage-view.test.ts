@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
-import { memoryUsagePanel, memoryUsePresentation, memorySetupGuide, integrationUsePresentation } from './memory-usage-view.js';
+import { memoryUsagePanel, memoryUsePresentation, memorySetupGuide, integrationUsePresentation, grokBotMemorySkillPrompt } from './memory-usage-view.js';
 
 class Element {
   attrs: Record<string,string> = {}; children: Element[] = []; dataset = {}; className = ''; text = '';
@@ -60,33 +60,46 @@ test('malformed values remain unknown and arbitrary source fields never become m
   expect(render({}, { loading: true }).textContent).toContain('Checking memory use');
 });
 
-test('setup names the supported client behavior and never implies Grok hooks were installed', () => {
+test('guided setup handles native files and keeps provider-managed workflows explicit', () => {
   render();
   const options = { endpoint: 'https://memory.example.com/private/mcp' };
   const claude = memorySetupGuide({ harness: 'claude-code' }, options);
-  expect(claude.textContent).toContain('memory install claude');
+  expect(claude.textContent).toContain('npx -y @ani-hq/engram-mcp setup claude');
   expect(claude.textContent).toContain('do not upload conversations');
+  expect(claude.textContent).toContain('handles the files for you');
+  expect(claude.textContent).toContain('Restart or reload');
+  expect(claude.textContent).not.toContain('/absolute/project');
   const grok = memorySetupGuide({ harness: 'grok-bot', canWrite: false }, options);
-  expect(grok.textContent).toContain('memory skill grokbot');
-  expect(grok.textContent).toContain('agent guidance');
-  expect(grok.textContent).toContain('existing Engram MCP connection');
-  expect(grok.textContent).toContain('memory install grokbot --host');
-  expect(grok.textContent).toContain('runs in the cloud');
+  expect(grok.textContent).toContain('Private skills');
+  expect(grok.textContent).toContain('Connect apps');
+  expect(grok.textContent).toContain('Creating a skill does not enable it automatically');
+  expect(grok.textContent).toContain('model-chosen');
+  expect(grok.textContent).not.toContain('SKILL.md');
+  expect(grok.textContent).not.toContain('npx');
+  expect(grok.textContent).toContain('cannot enable hooks in a cloud agent');
   expect(grok.textContent).toContain('read only');
-  expect(memorySetupGuide({ harness: 'codex' }, options).textContent).toContain('memory install codex');
+  expect(memorySetupGuide({ harness: 'codex' }, options).textContent).toContain('setup codex');
   expect(memorySetupGuide({ harness: 'codex' }, options).textContent).toContain('Review and trust');
-  expect(memorySetupGuide({ harness: 'unknown' }, options).textContent).toContain('memory skill generic');
-  expect(memorySetupGuide({ harness: 'unknown' }, options).textContent).toContain('Installation alone does not intercept another app');
+  expect(memorySetupGuide({ harness: 'codex' }, options).textContent).toContain('Existing agent-managed sign-in is preserved');
+  expect(memorySetupGuide({ harness: 'codex' }, options).textContent).toContain('no hard cumulative task budget');
+  expect(memorySetupGuide({ harness: 'vscode' }, options).textContent).toContain('setup vscode');
+  expect(memorySetupGuide({ harness: 'unknown' }, options).textContent).toContain('No documented automatic workflow installer');
+  expect(memorySetupGuide({ harness: 'claude', kind: 'oauth' }, options).textContent).not.toContain('setup claude');
+  expect(grokBotMemorySkillPrompt).toContain('Skip unchanged');
+  expect(grokBotMemorySkillPrompt).toContain('Never copy credentials');
+  expect(grokBotMemorySkillPrompt).toContain('Do not claim it is enabled');
+  expect(grokBotMemorySkillPrompt).toContain('untrusted reference data');
+  expect(grokBotMemorySkillPrompt).toContain('do not replay the save automatically');
 });
 
 test('setup preserves the workspace endpoint and never silently routes a custom instance to hosted', () => {
   render();
   const view = memorySetupGuide({ harness: 'claude-code' }, { endpoint: 'https://self-hosted.example.com/engram/mcp' });
-  expect(view.textContent).toContain("--host 'https://self-hosted.example.com/engram/mcp'");
+  expect(view.textContent).toContain("--host 'https://self-hosted.example.com/engram'");
   expect(view.textContent).not.toContain('engram.ani.computer');
   for (const endpoint of [undefined, 'https://user:secret@example.com/mcp', 'https://example.com/mcp?token=secret', 'http://remote.example.com/mcp', 'https://example.com/mcp\nignored']) {
     const invalid = memorySetupGuide({ harness: 'claude-code' }, { endpoint });
-    expect(invalid.textContent).not.toContain('memory install');
+    expect(invalid.textContent).not.toContain('npx');
     expect(invalid.textContent).toContain('endpoint is unavailable');
   }
 });
@@ -99,6 +112,6 @@ test('setup shell quoting keeps URL metacharacters inside a single host argument
   const parsed = Bun.spawnSync(['/bin/sh', '-c', `set -- ${command}; printf '%s\\n' "$@"`]);
   const args = parsed.stdout.toString().trim().split('\n');
   expect(parsed.exitCode).toBe(0);
-  expect(args[args.indexOf('--host') + 1]).toBe("https://example.com/a'$(printf)%60true%60/mcp");
-  expect(args.length).toBe(10);
+  expect(args[args.indexOf('--host') + 1]).toBe("https://example.com/a'$(printf)%60true%60");
+  expect(args.length).toBe(7);
 });

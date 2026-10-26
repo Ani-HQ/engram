@@ -412,7 +412,7 @@ describe("Claude lifecycle and explicit installation", () => {
     expect(JSON.stringify(result)).not.toContain("capture --hook");
     expect(statSync(settings).mode & 0o777).toBe(0o600);
     expect(statSync(installed.config).mode & 0o777).toBe(0o600);
-    expect(readdirSync(path.dirname(settings)).filter(name => name.includes("engram-backup"))).toHaveLength(2);
+    expect(readdirSync(path.dirname(settings)).filter(name => name.includes("engram-backup"))).toHaveLength(1);
     expect(gateway.calls.every(call => call.params?.name === "whoami" || call.method === "tools/list")).toBe(true);
     const binding = memory.bindingFor(gateway.project);
     expect(binding.topic).toBe("retry policy");

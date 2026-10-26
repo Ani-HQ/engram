@@ -17,7 +17,7 @@ import { memoryUsagePanel, memorySetupGuide } from "./memory-usage-view.js";
 import { aiConfiguration, attentionResults } from "./insights-view.js";
 import { confidenceLabel, reviewAllowed, reviewPlan } from "./insight-model.js";
 import { onboardingGuide } from "./onboarding-view.js";
-import { agentConnectionGuide, accessKeyConfiguration, onboardingProgress, shouldOfferOnboarding, createOnboardingReader } from "./onboarding-model.js";
+import { accessKeyConfiguration, onboardingProgress, shouldOfferOnboarding, createOnboardingReader } from "./onboarding-model.js";
 import { parseInviteEntry, parseSignupPolicy, signupAuthMode, signupEntryMode, emailLinkRecovery } from "./signup-model.js";
 import { signupView } from "./signup-view.js";
 import { signupAdminPanel } from "./signup-admin.js";
@@ -254,7 +254,7 @@ function openSetup() {
   const setup = setupState(); if (!setup) return;
   setup.visible = true;
   try { sessionStorage.removeItem(`engram-setup-dismissed:${state.session.org.id}`); } catch {}
-  renderSetup(true); refreshSetup();
+  renderSetup(true); document.querySelector("#setup-title")?.scrollIntoView({ block: "start", behavior: "instant" }); refreshSetup();
 }
 function dismissSetup() {
   const setup = setupState(); if (!setup) return;
@@ -884,6 +884,7 @@ function connectView() {
     heading("Connections", "Manage agent access, permissions, and recorded contact with Engram.", iconButton("refresh-cw", "Refresh connections", loadConnections, { disabled: state.loading })),
     state.error && notice(state.error, loadConnections),
     state.connectionError && notice("Connection status could not load. Refresh to try again.", loadConnections),
+    canConnect && el("div", { class: "section" }, el("h2", {}, "Memory workflow"), el("p", {}, "Connect a new agent or update an existing setup. The guided installer handles its Engram files; no manual editing needed."), button("Set up or repair an agent", openSetup, { class: "primary small" })),
     canConnect && state.connections && el("div", { class: "connection-list-filter" }, field("Connection list", select("Connection list", state.connectionList, [
       ["current", `Current (${state.connections.connections.filter(connection => !connection.archivedAt).length})`],
       ["archived", `Archived (${state.connections.connections.filter(connection => connection.archivedAt).length})`],
@@ -912,7 +913,7 @@ function connectView() {
           if (isCurrent() && state.view === "connect" && !form.isConnected) render();
         }
       } }, field("Agent name", name), field("Source", source), field("Permission", permission), mint, keyFeedback)),
-    el("div", { class: "section" }, el("h2", {}, "Task reporting"), el("p", {}, "Memory access and task reporting are separate. An agent needs write access and a reporting workflow to send task progress and results."), button("Set up reporting", taskReportingHelp, { class: "small" })),
+    el("div", { class: "section" }, el("h2", {}, "Task reporting"), el("p", {}, "The guided memory workflow includes reporting for supported runtimes. Reports appear only when the agent sends real work."), button("Review reporting", taskReportingHelp, { class: "small" })),
     el("div", { class: "section" }, el("h2", {}, "One history, two ways to use it"),
       el("p", {}, "Ask a connected agent to show activity by agent, tool, resource, or result. The Activity view reads the same records."),
       el("details", {}, el("summary", {}, "For agents and integrations"),
@@ -926,6 +927,7 @@ function taskReportingHelp() {
     copyControl: copyButton("Copy agent instructions", taskReportingInstructions),
     onInspect: connection => { if (workspaceId === state.session?.org.id) connectionHelp(connection); },
     onManage: () => { if (workspaceId !== state.session?.org.id) return; closeDetail(); location.hash = "connect"; },
+    onSetup: () => { if (workspaceId !== state.session?.org.id) return; closeDetail(); openSetup(); },
   }), { reporting: true });
   dialog.scrollTop = 0;
 }
@@ -955,13 +957,13 @@ function connectionHelp(connection) {
     el("p", { class: "detail-note" }, reporting.detail),
     memoryUsagePanel(connection),
     !archived && memorySetupGuide(connection, { endpoint, copyControl: (command, label) => copyButton("Copy", command, { "aria-label": label }) }),
-    !archived && button("Set up task reporting", taskReportingHelp, { class: "small" }),
+    !archived && button("Review task reporting", taskReportingHelp, { class: "small" }),
     !archived && el("details", { class: "connection-guide" }, el("summary", {}, "Reconnect from your agent"), el("ol", {},
       el("li", {}, "Open the agent’s MCP or connector settings and choose Engram."),
       el("li", {}, "Use this endpoint, then sign in when prompted."),
       el("li", {}, "Ask the agent to search or save a memory. Check Activity for its first recorded call.")),
       el("div", { class: "endpoint" }, el("code", {}, endpoint), copyButton("Copy", endpoint)),
-      el("p", { class: "detail-note" }, "If the agent uses an access key, replace the old key in its configuration. Each agent and machine needs its own connection. Engram can only list authorizations issued by this workspace."),
+      el("p", { class: "detail-note" }, "For access keys, run guided setup again and paste the fresh key at its hidden prompt. Each agent and machine needs its own connection. Engram can only list authorizations issued by this workspace."),
     owner && button("Create a fresh key", () => {
       if (workspaceId !== state.session?.org.id) return;
       connectionDraft = { name: connection.kind === "token" ? `${connection.name.slice(0, 96)}-new` : "", harness: agentSources.some(([key]) => key === connection.harness) ? connection.harness : "", canWrite: connection.canWrite };
@@ -1090,15 +1092,13 @@ async function loadConnections() {
   }
 }
 function tokenDetail(data) {
-  const connection = agentConnectionGuide(data.harness, data.mcp);
   const secret = el("input", { type: "password", class: "connection-secret", value: data.token, readonly: true, autocomplete: "off", spellcheck: "false", "aria-label": "New access key" });
   const reveal = button("Show key", () => { const shown = secret.type === "text"; secret.type = shown ? "password" : "text"; reveal.textContent = shown ? "Show key" : "Hide key"; reveal.setAttribute("aria-pressed", String(!shown)); }, { class: "small", "aria-pressed": "false" });
-  const installer = connection?.command;
   showDetail("New connection", [el("h2", { id: "detail-title" }, data.name), el("p", { class: "detail-note" }, `Copy this key now. It is only shown once. Its permission is ${data.canWrite === false ? "read only" : "read and write"}; workspace policy and hosted plan access also apply. Creating it does not verify your agent's connection.`),
     el("div", { class: "connection-secret-row" }, secret, reveal), copyButton("Copy access key", data.token, { class: "primary small" }),
-    installer && el("div", { class: "section connection-install" }, el("h3", {}, `Set up ${connection.label}`), el("p", { class: "detail-note" }, "Run this command in your terminal and paste the key at its hidden prompt. The key is not part of the command or your shell history."), el("pre", {}, installer), copyButton("Copy setup command", installer)),
-    el("details", { class: "section connection-install" }, el("summary", {}, "Manual MCP configuration"), el("p", { class: "detail-note" }, "Replace the placeholder with this key in your agent's configuration. The copy button includes the key; store that configuration securely."), el("pre", {}, accessKeyConfiguration(data.harness, data.mcp)), copyButton("Copy configuration with key", () => accessKeyConfiguration(data.harness, data.mcp, data.token))),
-    el("p", { class: "detail-note" }, "Reload your agent's MCP connection, ask it to call Engram’s whoami tool, then check your getting started progress."),
+    memorySetupGuide({ ...data, kind: 'token' }, { endpoint: data.mcp, open: true, copyControl: (command, label) => copyButton("Copy", command, { "aria-label": label }) }),
+    el("details", { class: "section connection-install" }, el("summary", {}, "Advanced: manual MCP configuration"), el("p", { class: "detail-note" }, "For custom clients only. This configures access without installing a memory workflow. The copy button includes the key; store that configuration securely."), el("pre", {}, accessKeyConfiguration(data.harness, data.mcp)), copyButton("Copy configuration with key", () => accessKeyConfiguration(data.harness, data.mcp, data.token))),
+    el("p", { class: "detail-note" }, "After guided setup, restart or reload the agent, review any trust prompt, and check the memory receipts in Connections."),
   ], { returnTo: '#connection-key-form button[type="submit"]' });
   // Keep credentials only in this open dialog, never in browser storage.
   state.token = null;
