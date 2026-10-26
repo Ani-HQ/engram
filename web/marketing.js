@@ -1,4 +1,4 @@
-import { memoryStream, observeContextFlow, contextFlowArt } from './design-system.js';
+import { memoryStream, observeContextFlow, contextFlowArt, observeLogoTicker } from './design-system.js';
 import { publicAgentCatalog } from './public-agent-catalog.js';
 
 for (const slot of document.querySelectorAll('[data-marketing-stream]')) {
@@ -23,11 +23,15 @@ for (const slot of document.querySelectorAll('[data-agent-slot]')) {
   const sheen = document.createElement('span'); sheen.className = 'ds-context-sheen'; sheen.setAttribute('aria-hidden', 'true');
   slot.setAttribute('role', 'img'); slot.setAttribute('aria-label', `Agent examples: ${agents.map(key => heroAgents.get(key).label).join(', ')}. ${description}.`); slot.replaceChildren(stack, sheen);
 }
-for (const slot of document.querySelectorAll('[data-context-flow-art]')) slot.replaceWith(contextFlowArt());
+for (const slot of document.querySelectorAll('[data-context-flow-art]')) slot.replaceWith(contextFlowArt({ variant: slot.getAttribute('data-context-flow-art') }));
 for (const flow of document.querySelectorAll('[data-context-flow]')) {
   const replayButton = flow.querySelector('[data-context-flow-replay]');
   const pauseButton = flow.querySelector('[data-context-flow-pause]');
-  observeContextFlow(flow, { replayButton, pauseButton, mode: flow.getAttribute('data-context-flow-mode') === 'loop' ? 'loop' : 'finite' });
+  observeContextFlow(flow, { replayButton, pauseButton, pauseOnInteraction: flow.hasAttribute('data-context-flow-pause-on-interaction'), mode: flow.getAttribute('data-context-flow-mode') === 'loop' ? 'loop' : 'finite' });
   if (replayButton) replayButton.hidden = false;
   if (pauseButton) pauseButton.hidden = false;
+}
+for (const root of document.querySelectorAll('[data-logo-ticker]')) {
+  observeLogoTicker(root, { persistenceKey: 'engram:agent-logos-paused' });
+  root.querySelector('[data-ticker-pause]').hidden = false;
 }

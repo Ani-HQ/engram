@@ -1,6 +1,7 @@
 // Shared components. Fixed SVG nodes, text and local product marks:
 // no markup parsing, arbitrary asset URLs or external hosts. Motion is opt-in.
 export { enhanceSelect, observeSelects } from './select-control.js';
+export { observeLogoTicker } from './logo-ticker.js';
 const namespace = 'http://www.w3.org/2000/svg';
 const tones = new Set(['neutral', 'accent', 'lime', 'lilac', 'apricot', 'success', 'warning', 'danger', 'info']);
 function node(tag, attrs = {}, text) {
@@ -202,8 +203,8 @@ export function observeLoadingMotion(root = document) {
 }
 
 /** One finite illustration, never a request, connection, or activity state. */
-export function observeContextFlow(root, { replayButton, pauseButton, mode = 'finite', autoplay = true, reduced = false } = {}) {
-  if (mode === 'loop') return observeLoopingContextFlow(root, { pauseButton, autoplay, reduced });
+export function observeContextFlow(root, { replayButton, pauseButton, pauseOnInteraction = false, mode = 'finite', autoplay = true, reduced = false } = {}) {
+  if (mode === 'loop') return observeLoopingContextFlow(root, { pauseButton, pauseOnInteraction, autoplay, reduced });
   if (!root?.setAttribute) return { play: () => false, dispose() {} };
   const doc = root.ownerDocument;
   const view = doc?.defaultView;
@@ -291,13 +292,17 @@ export function observeContextFlow(root, { replayButton, pauseButton, mode = 'fi
 }
 
 /** Explicitly opted-in decorative loop; CSS owns time, JS owns permission. */
-function observeLoopingContextFlow(root, { pauseButton, autoplay, reduced }) {
+function observeLoopingContextFlow(root, { pauseButton, pauseOnInteraction, autoplay, reduced }) {
   if (!root?.setAttribute) return { play: () => false, pause() {}, dispose() {} };
   const doc = root.ownerDocument, view = doc?.defaultView;
   const preference = view?.matchMedia?.('(prefers-reduced-motion: reduce)');
-  const supported = Boolean(view?.IntersectionObserver && pauseButton);
+  const supported = Boolean(view?.IntersectionObserver && (pauseButton || pauseOnInteraction));
+  // Tall mobile compositions may never fit half their area in the viewport.
+  const entryThreshold = .01;
   let disposed = false, entered = false, intersecting = false, userPaused = !autoplay, keyboardPaused = false;
+  let hovered = false, focused = false;
   let measuredAt = 0;
+  const measureInteraction = () => { if (pauseOnInteraction) { hovered = Boolean(view?.matchMedia?.('(hover: hover)')?.matches && root.matches?.(':hover')); focused = Boolean(doc?.activeElement && root.contains?.(doc.activeElement)); } };
   const isReduced = () => reduced || preference?.matches || Boolean(root.closest?.('[data-motion="reduced"]')) || !supported;
   const measure = () => {
     if (!root.getBoundingClientRect) return;
@@ -306,16 +311,16 @@ function observeLoopingContextFlow(root, { pauseButton, autoplay, reduced }) {
     const height = Math.max(0, Math.min(bounds.bottom, view.innerHeight) - Math.max(0, bounds.top));
     intersecting = bounds.width > 0 && bounds.height > 0 && width > 0 && height > 0;
     measuredAt = view.performance?.now?.() ?? 0;
-    if (autoplay && width * height / (bounds.width * bounds.height) >= .5) entered = true;
+    if (autoplay && intersecting && width * height / (bounds.width * bounds.height) >= entryThreshold) entered = true;
   };
   const sync = () => {
     if (disposed) return;
     const staticMode = isReduced() || keyboardPaused;
-    const paused = staticMode || userPaused || !entered || !intersecting || doc.hidden;
+    const paused = staticMode || userPaused || hovered || focused || !entered || !intersecting || doc.hidden;
     root.setAttribute('data-flow-state', staticMode ? 'static' : 'playing');
     root.setAttribute('data-flow-paused', String(Boolean(paused)));
     if (pauseButton) {
-      pauseButton.textContent = isReduced() ? 'Reduced motion' : userPaused || keyboardPaused ? 'Resume animation' : 'Pause animation';
+      pauseButton.textContent = isReduced() ? 'Reduced motion' : !entered ? 'Play animation' : userPaused || keyboardPaused ? 'Resume animation' : 'Pause animation';
       pauseButton.disabled = Boolean(isReduced());
       if (root.id) pauseButton.setAttribute('aria-controls', root.id);
     }
@@ -327,23 +332,28 @@ function observeLoopingContextFlow(root, { pauseButton, autoplay, reduced }) {
     entered = true; userPaused = keyboardPaused = false; sync(); return true;
   };
   const pause = () => { if (!disposed) { userPaused = true; sync(); } };
-  const toggle = () => { if (userPaused || keyboardPaused) play(); else pause(); };
+  const toggle = () => { if (!entered || userPaused || keyboardPaused) play(); else pause(); };
   const keyboard = event => {
-    if (event.target === pauseButton || ['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) return;
+    if ((pauseButton && event.target === pauseButton) || ['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) return;
     keyboardPaused = true; sync();
   };
-  const visibility = () => sync();
+  const visibility = () => { measureInteraction(); sync(); };
+  const pointerenter = event => { if (event.pointerType !== 'touch') { hovered = true; sync(); } };
+  const pointerleave = () => { hovered = false; sync(); };
+  const focusin = () => { focused = true; sync(); };
+  const focusout = event => { focused = Boolean(event.relatedTarget && root.contains?.(event.relatedTarget)); sync(); };
+  const interactions = pauseOnInteraction ? [['pointerenter', pointerenter], ['pointerleave', pointerleave], ['focusin', focusin], ['focusout', focusout]] : [];
   const pagehide = event => { if (event.persisted) { intersecting = false; sync(); } else dispose(); };
-  const pageshow = event => { if (event.persisted && !disposed && root.isConnected) { measure(); sync(); } };
+  const pageshow = event => { if (event.persisted && !disposed && root.isConnected) { measure(); measureInteraction(); sync(); } };
   const observer = supported ? new view.IntersectionObserver(entries => {
     if (disposed) return;
     for (const entry of entries) if (entry.target === root) {
       if (typeof entry.time === 'number' && entry.time < measuredAt) continue;
       intersecting = entry.isIntersecting && entry.intersectionRatio > 0;
-      if (autoplay && entry.intersectionRatio >= .5) entered = true;
+      if (autoplay && intersecting && entry.intersectionRatio >= entryThreshold) entered = true;
       sync();
     }
-  }, { threshold: [0, .5] }) : null;
+  }, { threshold: [0, entryThreshold] }) : null;
   const removal = view?.MutationObserver ? new view.MutationObserver(() => { if (!root.isConnected) dispose(); }) : null;
   function dispose() {
     if (disposed) return;
@@ -351,22 +361,26 @@ function observeLoopingContextFlow(root, { pauseButton, autoplay, reduced }) {
     doc?.removeEventListener('visibilitychange', visibility); doc?.removeEventListener('keydown', keyboard);
     view?.removeEventListener('pagehide', pagehide); view?.removeEventListener('pageshow', pageshow); pauseButton?.removeEventListener('click', toggle);
     preference?.removeEventListener?.('change', visibility);
+    for (const [name, handler] of interactions) root.removeEventListener(name, handler);
     root.removeAttribute('data-flow-mode'); root.removeAttribute('data-flow-paused'); root.removeAttribute('data-flow-state');
   }
-  root.setAttribute('data-flow-mode', 'loop'); sync();
+  root.setAttribute('data-flow-mode', 'loop'); measureInteraction(); sync();
   observer?.observe(root); if (doc?.documentElement) removal?.observe(doc.documentElement, { childList: true, subtree: true });
   doc?.addEventListener('visibilitychange', visibility); doc?.addEventListener('keydown', keyboard);
   view?.addEventListener('pagehide', pagehide); view?.addEventListener('pageshow', pageshow); pauseButton?.addEventListener('click', toggle);
   preference?.addEventListener?.('change', visibility);
+  for (const [name, handler] of interactions) root.addEventListener(name, handler);
   return { play, pause, dispose };
 }
 
-/** Decorative shared circuit layers; no logos, text, status or event handlers. */
-export function contextFlowArt() {
+/** Decorative shared core layers; the glow variant omits circuit geometry. */
+export function contextFlowArt({ variant = 'circuit' } = {}) {
   const art = document.createElement('span'); art.className = 'ds-context-core-art'; art.setAttribute('aria-hidden', 'true');
-  for (const className of ['ds-context-glow', 'ds-context-ring ds-context-ring--outer', 'ds-context-ring ds-context-ring--inner', 'ds-context-sheen']) {
+  const layers = variant === 'glow' ? ['ds-context-glow', 'ds-context-sheen'] : ['ds-context-glow', 'ds-context-ring ds-context-ring--outer', 'ds-context-ring ds-context-ring--inner', 'ds-context-sheen'];
+  for (const className of layers) {
     const layer = document.createElement('span'); layer.className = className; art.append(layer);
   }
+  if (variant === 'glow') return art;
   for (let index = 0; index < 3; index++) {
     const orbit = document.createElement('span'); orbit.className = 'ds-context-orbit'; orbit.setAttribute('data-orbit', String(index));
     const particle = document.createElement('span'); particle.className = 'ds-context-particle'; orbit.append(particle); art.append(orbit);

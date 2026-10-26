@@ -1,4 +1,4 @@
-import { memoryOrbit, memoryStream, resourceChip, loadingState, progressBar, setProgress, observeLoadingMotion, observeContextFlow, contextFlowArt, observeSelects, statusBadge, highlightArt, profileLayoutPreview } from './design-system.js';
+import { memoryOrbit, memoryStream, resourceChip, loadingState, progressBar, setProgress, observeLoadingMotion, observeContextFlow, contextFlowArt, observeLogoTicker, observeSelects, statusBadge, highlightArt, profileLayoutPreview } from './design-system.js';
 import { publicAgentCatalog } from './public-agent-catalog.js';
 import { icon } from './icons.js';
 import { agentVisual, toolVisual, visualIcon } from './tooling.js';
@@ -20,6 +20,15 @@ productLogos.replaceChildren(...publicAgentCatalog.map(product => {
   const logo = document.createElement('img'); logo.className = 'ds-product-logo'; logo.setAttribute('data-size', '28'); logo.src = product.logo; logo.width = logo.height = 28; logo.alt = '';
   const name = document.createElement('span'); name.textContent = product.label; frame.append(logo); sample.append(frame, name); return sample;
 }));
+for (const id of ['gallery-logo-ticker', 'gallery-logo-ticker-static']) {
+  const root = document.getElementById(id), list = root.querySelector('[data-ticker-list]');
+  for (const product of publicAgentCatalog) {
+    const item = document.createElement('li'), frame = document.createElement('span'), logo = document.createElement('img'), name = document.createElement('span');
+    frame.className = 'ds-product-logo-frame'; frame.setAttribute('data-tone', 'inverse'); logo.className = 'ds-product-logo'; logo.src = product.logo; logo.width = logo.height = 28; logo.alt = ''; name.textContent = product.label;
+    frame.append(logo); item.append(frame, name); list.append(item);
+  }
+  observeLogoTicker(root, { reduced: id.endsWith('-static') }); root.querySelector('[data-ticker-pause]').hidden = false;
+}
 document.querySelector('#agent-orbit-example').append(memoryOrbit({ agents: true, label: 'Illustrative agent ecosystem: Claude, OpenClaw, Grok Bot, Muse and Instinct around shared memory. Not live connections.' }));
 document.querySelector('#ink-orbit-example').append(memoryOrbit({ compact: true, className: 'ds-orbit--on-ink' }));
 document.querySelector('#stream-example').append(memoryStream({ label: 'A decision is saved to shared memory and recalled for the next task. This is an illustration.' }));
@@ -158,11 +167,13 @@ navigationPanel.addEventListener('click', event => { if (event.target.closest('a
 const stopLoadingMotion = observeLoadingMotion(document.body);
 window.addEventListener('pagehide', event => { if (!event.persisted) stopLoadingMotion(); });
 observeContextFlow(document.getElementById('context-flow-example'), { replayButton: document.getElementById('context-flow-example-replay') });
+document.getElementById('context-flow-glow-art').replaceWith(contextFlowArt({ variant: 'glow' }));
+observeContextFlow(document.getElementById('context-flow-glow-example'), { pauseButton: document.getElementById('context-flow-glow-pause'), mode: 'loop' });
 document.getElementById('context-flow-loop-art').replaceWith(contextFlowArt());
 observeContextFlow(document.getElementById('context-flow-loop-example'), { pauseButton: document.getElementById('context-flow-loop-pause'), mode: 'loop' });
 observeContextFlow(document.getElementById('context-flow-reduced-example'), { pauseButton: document.getElementById('context-flow-reduced-replay'), mode: 'loop', reduced: true });
-observeContextFlow(document.getElementById('context-flow-line-example'), { replayButton: document.getElementById('context-flow-line-replay') });
-observeContextFlow(document.getElementById('context-flow-line-reduced-example'), { replayButton: document.getElementById('context-flow-line-reduced-replay'), reduced: true });
+observeContextFlow(document.getElementById('context-flow-line-example'), { mode: 'loop', pauseOnInteraction: true });
+observeContextFlow(document.getElementById('context-flow-line-reduced-example'), { mode: 'loop', pauseOnInteraction: true, reduced: true });
 
 
 for (const [name, publicSafe] of [['Research helper', false], ['Build helper', false], ['Review helper', false], ['Public fallback', true]]) {
