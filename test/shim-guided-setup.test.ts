@@ -28,7 +28,11 @@ function server(status = 200) {
     const body: any = await request.json(); calls.push(body);
     expect(request.headers.get('Authorization')).toBe(`Bearer ${secret}`);
     if (status !== 200) return new Response('private diagnostics', { status });
-    return Response.json({ jsonrpc: '2.0', id: body.id, result: body.method === 'tools/list' ? { tools: ['whoami', 'recall', 'remember', 'record_action'].map(name => ({ name, inputSchema: { type: 'object' } })) } : { content: [{ type: 'text', text: JSON.stringify({ token: 'synthetic-agent' }) }] } });
+    const value = body.params?.name === 'recall' ? { results: [{ text: 'Use stable request IDs when retrying background jobs.' }] }
+      : body.params?.name === 'remember' ? { ok: true, slug: 'fixture/retry-decision' }
+      : body.params?.name === 'record_action' ? { ok: true, id: 'fixture-' + calls.length }
+      : { token: 'synthetic-agent' };
+    return Response.json({ jsonrpc: '2.0', id: body.id, result: body.method === 'tools/list' ? { tools: ['whoami', 'recall', 'remember', 'record_action'].map(name => ({ name, inputSchema: { type: 'object' } })) } : { content: [{ type: 'text', text: JSON.stringify(value) }] } });
   } });
   return { service, calls, host: service.url.origin };
 }
@@ -180,6 +184,62 @@ describe('one-command project onboarding', () => {
 });
 
 describe('setup transaction recovery', () => {
+  test('npx-only hook guidance executes decisions, no-change and known task outcomes after cache eviction without a global connector binary', async () => {
+    const f = fixture(), upstream = server(), node = Bun.which('node')!;
+    const source = path.join(f.home, "npm's temporary source"); mkdirSync(source);
+    f.env.XDG_DATA_HOME = path.join(f.home, "private data's runtime home");
+    const packageRoot = path.resolve(import.meta.dir, '../shim');
+    const metadata = JSON.parse(readFileSync(path.join(packageRoot, 'package.json'), 'utf8'));
+    for (const file of ['package.json', ...metadata.files.filter((file: string) => file.endsWith('.js') || file.endsWith('/SKILL.md'))]) {
+      mkdirSync(path.dirname(path.join(source, file)), { recursive: true });
+      writeFileSync(path.join(source, file), readFileSync(path.join(packageRoot, file)));
+    }
+    const env = { ...f.env, PATH: '' };
+    const execute = async (argv: string[], input: object | undefined = undefined, extra = {}) => {
+      const child = Bun.spawn(argv, { cwd: f.project, env: { ...env, ...extra }, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' });
+      if (input) child.stdin.write(JSON.stringify(input)); child.stdin.end();
+      const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
+      expect(stdout + stderr).not.toContain(secret); expect(code, stderr).toBe(0);
+      return stdout;
+    };
+    try {
+      const setup = [node, path.join(source, 'index.js'), 'setup', 'claude', '--project', '.', '--host', upstream.host];
+      await execute(setup, undefined, { ENGRAM_TOKEN: secret });
+      expect(await execute(setup, undefined, { ENGRAM_TOKEN: secret })).toContain('0 files updated');
+      const settings = JSON.parse(readFileSync(path.join(f.home, '.claude/settings.json'), 'utf8'));
+      const hook = (event: string) => settings.hooks[event][0].hooks[0].command;
+      rmSync(source, { recursive: true });
+      const session = { session_id: 'evicted-npx-fixture', cwd: f.project };
+      const invoke = async (event: string, extra = {}) => JSON.parse(await execute(['/bin/sh', '-c', hook(event)], { ...session, hook_event_name: event, ...extra }));
+      const startup = (await invoke('SessionStart')).hookSpecificOutput.additionalContext;
+      const bridge = /Installed bridge command:\n([^\n]+)/.exec(startup)![1];
+      expect(bridge).toContain('private data'); expect(bridge).toContain('runtime home');
+      expect(bridge).not.toContain(source);
+      expect(startup).not.toContain('engram-mcp memory ');
+      for (const action of ['decision', 'no-change', 'task-end']) expect(startup).toContain(action + ' --run <run-id>');
+      const prompt = { prompt: 'Engram task: Validate the installed bridge after npm cache eviction' };
+      const context = (await invoke('UserPromptSubmit', prompt)).hookSpecificOutput.additionalContext;
+      expect(context).toContain('Use stable request IDs'); expect(context).toContain(bridge);
+      expect(await invoke('UserPromptSubmit', prompt)).toEqual({});
+      const runId = /Lifecycle run: (em_[a-f0-9]{64})/.exec(context)![1];
+      const stop = await invoke('Stop'); expect(stop.decision).toBe('block'); expect(stop.reason).toContain(bridge); expect(stop.reason).not.toContain('engram-mcp memory ');
+      const decision = JSON.parse(await execute(['/bin/sh', '-c', bridge + ' decision --run ' + runId], { kind: 'decision', deltaId: 'evicted-bridge-fixture', text: 'Use stable request IDs for repeated background job deliveries.' }));
+      expect(decision.status).toBe('saved');
+      const ended = JSON.parse(await execute(['/bin/sh', '-c', bridge + ' task-end --run ' + runId], { status: 'completed', outcome: 'Verified the emitted bridge command after its npm source was deleted.' }));
+      expect(ended.status).toBe('recorded');
+      expect(await invoke('Stop')).toEqual({});
+      const followup = (await invoke('UserPromptSubmit', { prompt: 'Engram task: Validate an explicit no change outcome after cache eviction' })).hookSpecificOutput.additionalContext;
+      const nextId = /Lifecycle run: (em_[a-f0-9]{64})/.exec(followup)![1];
+      expect(nextId).not.toBe(runId);
+      const noChange = JSON.parse(await execute(['/bin/sh', '-c', bridge + ' no-change --run ' + nextId]));
+      expect(noChange.status).toBe('no-change');
+      expect(await invoke('Stop')).toEqual({});
+      expect(upstream.calls.filter(call => call.params?.name === 'remember')).toHaveLength(1);
+      expect(upstream.calls.filter(call => call.params?.name === 'recall')).toHaveLength(2);
+      expect(upstream.calls.filter(call => call.params?.arguments?.status === 'completed')).toHaveLength(1);
+      expect(existsSync(path.join(f.home, '.claude/settings.json'))).toBe(true);
+    } finally { upstream.service.stop(true); }
+  });
   test('installed hooks remain executable after the temporary npm package source is removed', async () => {
     const f = fixture(), source = path.join(f.home, 'temporary-npx-source'); mkdirSync(source);
     const packageRoot = path.resolve(import.meta.dir, '../shim');

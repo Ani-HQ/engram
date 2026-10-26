@@ -28,6 +28,9 @@ failed multi-file commit restores files it changed; concurrent user edits and
 private backups are preserved. Managed hooks/plugins reference a private
 versioned copy of the package under `~/.local/share/engram-mcp/runtimes` (or
 `$XDG_DATA_HOME/engram-mcp/runtimes`), so `npx` cache eviction cannot remove them.
+Session guidance, bounded context and the Stop delta check all name that copy
+through a quoted absolute runtime command. Their decision/no-change/task-end
+actions do not depend on a globally installed connector command.
 
 Existing runtime-managed/OAuth connections without a saved bearer are preserved
 byte-for-byte. On documented native skill surfaces, guided setup installs a

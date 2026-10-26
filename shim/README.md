@@ -45,6 +45,9 @@ written into a linked dotfiles repository.
 Hook code is copied into a private versioned runtime under
 `$XDG_DATA_HOME/engram-mcp/runtimes` (default `~/.local/share/engram-mcp/runtimes`).
 It keeps working if `npx` clears its cache. No transcript capture is enabled.
+Native guidance points to that exact executable with a quoted absolute command;
+decision, no-change and known-outcome reporting do not require a global
+`engram-mcp` binary in `PATH`.
 Setup preflights every destination, commits files atomically, and restores files
 it changed if a later write fails. A concurrent user edit is preserved and
 reported instead of being overwritten during recovery.
