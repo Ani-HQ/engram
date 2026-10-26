@@ -28,7 +28,7 @@ function server(status = 200) {
     const body: any = await request.json(); calls.push(body);
     expect(request.headers.get('Authorization')).toBe(`Bearer ${secret}`);
     if (status !== 200) return new Response('private diagnostics', { status });
-    const value = body.params?.name === 'recall' ? { results: [{ text: 'Use stable request IDs when retrying background jobs.' }] }
+    const value = body.params?.name === 'recall' ? { results: [{ text: 'Use stable request IDs when retrying background jobs. '.repeat(16) }] }
       : body.params?.name === 'remember' ? { ok: true, slug: 'fixture/retry-decision' }
       : body.params?.name === 'record_action' ? { ok: true, id: 'fixture-' + calls.length }
       : { token: 'synthetic-agent' };
@@ -186,6 +186,16 @@ describe('one-command project onboarding', () => {
 describe('setup transaction recovery', () => {
   test('npx-only hook guidance executes decisions, no-change and known task outcomes after cache eviction without a global connector binary', async () => {
     const f = fixture(), upstream = server(), node = Bun.which('node')!;
+    let longHome = f.home;
+    while (longHome.length < 300) {
+      const length = Math.min(48, 300 - longHome.length - 1);
+      if (length < 1) throw new Error('Fixture home needs another path component');
+      const part = (longHome === f.home ? "memory home's long path " : 'memory home long path ').padEnd(48, 'x').slice(0, length);
+      longHome = path.join(longHome, part); mkdirSync(longHome);
+    }
+    f.home = longHome;
+    f.project = path.join(longHome, 'project'); mkdirSync(f.project);
+    Object.assign(f.env, { HOME: longHome, XDG_CONFIG_HOME: path.join(longHome, '.config'), XDG_STATE_HOME: path.join(longHome, '.local/state'), XDG_CACHE_HOME: path.join(longHome, '.cache') });
     const source = path.join(f.home, "npm's temporary source"); mkdirSync(source);
     f.env.XDG_DATA_HOME = path.join(f.home, "private data's runtime home");
     const packageRoot = path.resolve(import.meta.dir, '../shim');
@@ -203,7 +213,7 @@ describe('setup transaction recovery', () => {
       return stdout;
     };
     try {
-      const setup = [node, path.join(source, 'index.js'), 'setup', 'claude', '--project', '.', '--host', upstream.host];
+      const setup = [node, path.join(source, 'index.js'), 'setup', 'claude', '--project', '.', '--budget', '1024', '--host', upstream.host];
       await execute(setup, undefined, { ENGRAM_TOKEN: secret });
       expect(await execute(setup, undefined, { ENGRAM_TOKEN: secret })).toContain('0 files updated');
       const settings = JSON.parse(readFileSync(path.join(f.home, '.claude/settings.json'), 'utf8'));
@@ -220,12 +230,19 @@ describe('setup transaction recovery', () => {
       const prompt = { prompt: 'Engram task: Validate the installed bridge after npm cache eviction' };
       const context = (await invoke('UserPromptSubmit', prompt)).hookSpecificOutput.additionalContext;
       expect(context).toContain('Use stable request IDs'); expect(context).toContain(bridge);
+      expect(Buffer.byteLength(context)).toBeLessThanOrEqual(1024);
+      const memoryStart = context.indexOf('\n') + 1;
+      const memoryEnd = context.indexOf('\nEnd. Lifecycle run:');
+      expect(memoryEnd).toBeGreaterThan(memoryStart);
+      expect(Buffer.byteLength(context.slice(memoryStart, memoryEnd))).toBeGreaterThanOrEqual(128);
       expect(await invoke('UserPromptSubmit', prompt)).toEqual({});
       const runId = /Lifecycle run: (em_[a-f0-9]{64})/.exec(context)![1];
       const stop = await invoke('Stop'); expect(stop.decision).toBe('block'); expect(stop.reason).toContain(bridge); expect(stop.reason).not.toContain('engram-mcp memory ');
-      const decision = JSON.parse(await execute(['/bin/sh', '-c', bridge + ' decision --run ' + runId], { kind: 'decision', deltaId: 'evicted-bridge-fixture', text: 'Use stable request IDs for repeated background job deliveries.' }));
+      const decisionExample = /decision --run <run-id>, JSON stdin (\{[^\n;]+\})/.exec(context)![1];
+      const decision = JSON.parse(await execute(['/bin/sh', '-c', bridge + ' decision --run ' + runId], JSON.parse(decisionExample)));
       expect(decision.status).toBe('saved');
-      const ended = JSON.parse(await execute(['/bin/sh', '-c', bridge + ' task-end --run ' + runId], { status: 'completed', outcome: 'Verified the emitted bridge command after its npm source was deleted.' }));
+      const outcomeExample = /task-end --run <run-id>, JSON stdin (\{[^\n]+?\})/.exec(context)![1];
+      const ended = JSON.parse(await execute(['/bin/sh', '-c', bridge + ' task-end --run ' + runId], JSON.parse(outcomeExample)));
       expect(ended.status).toBe('recorded');
       expect(await invoke('Stop')).toEqual({});
       const followup = (await invoke('UserPromptSubmit', { prompt: 'Engram task: Validate an explicit no change outcome after cache eviction' })).hookSpecificOutput.additionalContext;

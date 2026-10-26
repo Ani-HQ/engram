@@ -89,6 +89,9 @@ engram-mcp memory install claude --project /absolute/project --topic "Project ar
 Supply an access token through `ENGRAM_TOKEN`, a hidden terminal prompt, or pipe a
 token using `--token-stdin`. Do not put credentials in arguments. `--host` supports
 HTTPS or loopback HTTP only. `--budget` accepts 1024–16384 bytes; default 4096.
+The budget includes the safety and installed-command wrappers. Retrieval needs
+at least 128 bytes left for source context; an exceptionally long runtime path
+that cannot fit is skipped instead of exceeding the selected budget.
 
 Installation first verifies identity and tool discovery. It then stores a private
 binding in `$XDG_CONFIG_HOME/engram/memory.json` (default
@@ -194,7 +197,7 @@ Clients without a certified native adapter can export portable MCP guidance with
 `memory instructions <client>` or `memory skill <client> --output <SKILL.md>`.
 Guidance remains model-chosen; only explicit host integration can enforce events.
 
-## Grok Bot: packaged workflow, honest limits
+## Grok Bot: provider-managed skill, honest limits
 
 Grok Bot runs work on a persistent cloud computer and supports skills and
 persistent instructions. Its documented integration does not expose Claude-style
@@ -202,21 +205,24 @@ task lifecycle command hooks. Its
 enterprise inference hooks forward complete conversations and are not used here.
 Engram does not edit `~/.grokbot/settings.json` or claim automatic Grok Bot usage.
 
-Review the included skill before enabling it:
+Use the Grok Bot setup guide in Engram's onboarding or Connections. Copy its
+prompt into the Bot that already has the Engram connector and ask it to save the
+workflow as a private skill. In the current macOS app, open **Connect apps → Your
+plugins → Private skills** to review its name, description, and instructions.
+The account library does not show a Bot-specific enable control. In the intended
+Bot, ask **“Use Engram shared memory for this task”**, start real work, and check
+Engram for actual call receipts. Select it through a skill picker only if that
+client offers one; no specific shortcut or private-skill picker is guaranteed.
+No Markdown or config editing is needed.
 
-```sh
-engram-mcp memory instructions grokbot
-engram-mcp memory skill grokbot --output /absolute/review/engram-memory/SKILL.md
-```
-
-Enable the exported `engram-memory` skill using Grok Bot’s normal skill controls.
+Availability in the shared skill library does not guarantee use in every session.
 Its **default path uses the existing connected MCP tools directly**, without a
 CLI or local binding: targeted recall once when context is missing, explicit
 durable `remember` deltas, and factual start/progress/end `record_action` reports.
 It remains a model-chosen workflow. Plain MCP has the server’s default 4096-byte
 per-response cap. Cumulative task enforcement requires stable context metadata
 from the client or the bridge; prompting alone is best-effort, not a hard cap.
-A loaded skill or healthy connection does not prove use; actual call receipts do.
+A selected skill or healthy connection does not prove use; actual call receipts do.
 
 The optional CLI path requires `engram-mcp` and a project binding **on the actual
 agent/cloud runtime**. Installing or binding it on a Mac does not reach Grok Bot’s
