@@ -8,8 +8,8 @@ class Events {
   emit(name: string, event = {}) { for (const callback of [...this.listeners.get(name) || []]) callback({ type: name, ...event }); }
   get count() { return [...this.listeners.values()].reduce((total, callbacks) => total + callbacks.size, 0); }
 }
-function fixture({ reduced = false, supported = true } = {}) {
-  const doc = Object.assign(new Events(), { hidden: false, documentElement: { getAttribute: () => null } });
+function fixture({ reduced = false, supported = true, hover = true } = {}) {
+  const doc = Object.assign(new Events(), { hidden: false, activeElement: null as any, documentElement: { getAttribute: () => null } });
   const preference = Object.assign(new Events(), { matches: reduced });
   const frames = new Map<number, Function>(), timers = new Map<number, { callback: Function; delay: number }>();
   const observers: any[] = [], removals: any[] = [];
@@ -17,7 +17,7 @@ function fixture({ reduced = false, supported = true } = {}) {
   const bounds = { top: 900, bottom: 1100, left: 0, right: 400, width: 400, height: 200 };
   const view = Object.assign(new Events(), {
     innerHeight: 800, innerWidth: 1200, performance: { now: () => 100 },
-    matchMedia: () => preference,
+    matchMedia: (query: string) => query.includes('prefers-reduced-motion') ? preference : { matches: hover },
     requestAnimationFrame: (callback: Function) => { frames.set(++sequence, callback); return sequence; },
     cancelAnimationFrame: (id: number) => frames.delete(id),
     setTimeout: (callback: Function, delay: number) => { timers.set(++sequence, { callback, delay }); return sequence; },
@@ -36,10 +36,12 @@ function fixture({ reduced = false, supported = true } = {}) {
     },
   });
   Object.assign(doc, { defaultView: view });
-  const root = { ownerDocument: doc, isConnected: true, attrs: {} as Record<string, string>,
+  const root = Object.assign(new Events(), { ownerDocument: doc, isConnected: true, hovered: false, attrs: {} as Record<string, string>,
     setAttribute(name: string, value: string) { this.attrs[name] = value; },
     removeAttribute(name: string) { delete this.attrs[name]; }, closest: () => null,
-    getBoundingClientRect: () => { boundsReads++; return bounds; } };
+    matches(selector: string) { return selector === ':hover' && this.hovered; },
+    contains(target: any) { return target === this || target === button; },
+    getBoundingClientRect: () => { boundsReads++; return bounds; } });
   const button = Object.assign(new Events(), { disabled: false, textContent: '', getAttribute: () => null });
   const enter = (visible = true, ratio = .5) => {
     bounds.top = visible ? 800 - 200 * ratio : 900; bounds.bottom = bounds.top + bounds.height;
@@ -162,15 +164,37 @@ describe('finite illustrative context flow', () => {
 });
 
 describe('explicit illustrative circuit loop', () => {
-  test('starts at half visibility with no JavaScript loop and preserves a deliberate pause', () => {
+  test('starts on entry with no JavaScript loop and preserves a deliberate pause', () => {
     const f = fixture(), controller = observeContextFlow(f.root, { mode: 'loop', pauseButton: f.button });
     expect(f.root.attrs['data-flow-mode']).toBe('loop'); expect(f.root.attrs['data-flow-paused']).toBe('true');
-    f.enter(true, .49); expect(f.root.attrs['data-flow-paused']).toBe('true');
-    f.enter(); expect(f.root.attrs['data-flow-paused']).toBe('false'); expect(f.frames.size + f.timers.size).toBe(0);
+    expect(f.button.textContent).toBe('Play animation'); expect(f.observers[0].options.threshold).toEqual([0, .01]);
+    f.enter(true, .005); expect(f.root.attrs['data-flow-paused']).toBe('true');
+    f.enter(true, .01); expect(f.root.attrs['data-flow-paused']).toBe('false'); expect(f.frames.size + f.timers.size).toBe(0);
     f.button.emit('click', { detail: 1 }); expect(f.root.attrs['data-flow-paused']).toBe('true'); expect(f.button.textContent).toBe('Resume animation');
     f.enter(false); f.enter(); expect(f.root.attrs['data-flow-paused']).toBe('true');
     f.button.emit('click', { detail: 1 }); expect(f.root.attrs['data-flow-paused']).toBe('false'); expect(f.button.textContent).toBe('Pause animation');
     controller.dispose();
+  });
+
+  test('a tall mobile composition starts even when half its area cannot fit on screen', () => {
+    const f = fixture(), controller = observeContextFlow(f.root, { mode: 'loop', pauseButton: f.button });
+    f.view.innerHeight = 280;
+    Object.assign(f.bounds, { top: 0, bottom: 654, height: 654 });
+    f.observers[0].callback([{ target: f.root, isIntersecting: true, intersectionRatio: 280 / 654, time: 200 }]);
+    expect(f.root.attrs['data-flow-paused']).toBe('false'); expect(f.button.textContent).toBe('Pause animation');
+    f.observers[0].callback([{ target: f.root, isIntersecting: false, intersectionRatio: 0, time: 210 }]);
+    expect(f.root.attrs['data-flow-paused']).toBe('true');
+    f.observers[0].callback([{ target: f.root, isIntersecting: true, intersectionRatio: .1, time: 220 }]);
+    expect(f.root.attrs['data-flow-paused']).toBe('false'); controller.dispose();
+  });
+
+  test('Play starts the first visible frame before an observer sample arrives', () => {
+    const f = fixture(), controller = observeContextFlow(f.root, { mode: 'loop', pauseButton: f.button });
+    Object.assign(f.bounds, { top: 790, bottom: 990 });
+    expect(f.button.textContent).toBe('Play animation');
+    f.button.emit('click', { detail: 1 });
+    expect(f.root.attrs['data-flow-paused']).toBe('false'); expect(f.button.textContent).toBe('Pause animation');
+    expect(f.frames.size + f.timers.size).toBe(0); controller.dispose();
   });
 
   test('viewport and background suspend the same animation timeline and resume only while visible', () => {
@@ -215,5 +239,45 @@ describe('explicit illustrative circuit loop', () => {
     expect(f.root.attrs['data-flow-mode']).toBeUndefined(); expect(controller.play()).toBe(false);
     const fallback = fixture(), staticController = observeContextFlow(fallback.root, { mode: 'loop' });
     expect(fallback.root.attrs['data-flow-state']).toBe('static'); expect(fallback.frames.size + fallback.timers.size).toBe(0); staticController.dispose();
+  });
+
+  test('explicit interaction-only loops balance hover and focus without sticky touch pause', () => {
+    const f = fixture(), controller = observeContextFlow(f.root, { mode: 'loop', pauseOnInteraction: true });
+    f.enter(true, .01); expect(f.root.attrs['data-flow-paused']).toBe('false');
+    f.root.emit('pointerenter', { pointerType: 'mouse' }); expect(f.root.attrs['data-flow-paused']).toBe('true');
+    f.root.emit('focusin'); f.root.emit('pointerleave'); expect(f.root.attrs['data-flow-paused']).toBe('true');
+    f.root.emit('focusout', { relatedTarget: f.button }); expect(f.root.attrs['data-flow-paused']).toBe('true');
+    f.root.emit('focusout', { relatedTarget: null }); expect(f.root.attrs['data-flow-paused']).toBe('false');
+    f.root.emit('pointerenter', { pointerType: 'touch' }); expect(f.root.attrs['data-flow-paused']).toBe('false');
+    f.enter(false); expect(f.root.attrs['data-flow-paused']).toBe('true');
+    f.enter(); f.doc.hidden = true; f.doc.emit('visibilitychange'); expect(f.root.attrs['data-flow-paused']).toBe('true');
+    f.doc.hidden = false; f.doc.emit('visibilitychange'); expect(f.root.attrs['data-flow-paused']).toBe('false');
+    f.doc.emit('keydown', { key: 'Tab', target: f.doc }); expect(f.root.attrs['data-flow-state']).toBe('static');
+    f.root.emit('pointerleave'); expect(f.root.attrs['data-flow-paused']).toBe('true');
+    expect(f.frames.size + f.timers.size).toBe(0);
+    f.root.isConnected = false; f.removals[0].callback(); controller.dispose();
+    expect(f.root.count + f.doc.count + f.view.count + f.preference.count).toBe(0);
+    expect(f.observers[0].disconnected && f.removals[0].disconnected).toBe(true);
+  });
+
+  test('interaction-only loops reconcile existing focus and BFCache hover while reduced motion remains static', () => {
+    const f = fixture(); f.doc.activeElement = f.button;
+    const controller = observeContextFlow(f.root, { mode: 'loop', pauseOnInteraction: true });
+    f.enter(); expect(f.root.attrs['data-flow-paused']).toBe('true');
+    f.doc.activeElement = null; f.root.emit('focusout', { relatedTarget: null });
+    f.root.hovered = true; f.root.emit('pointerenter', { pointerType: 'mouse' });
+    f.view.emit('pagehide', { persisted: true }); f.root.hovered = false;
+    f.view.emit('pageshow', { persisted: true }); expect(f.root.attrs['data-flow-paused']).toBe('false');
+    f.root.hovered = true; f.doc.hidden = true; f.doc.emit('visibilitychange');
+    f.root.hovered = false; f.doc.hidden = false; f.doc.emit('visibilitychange'); expect(f.root.attrs['data-flow-paused']).toBe('false');
+    f.preference.matches = true; f.preference.emit('change'); expect(f.root.attrs['data-flow-state']).toBe('static');
+    f.root.emit('pointerleave'); expect(controller.play()).toBe(false); controller.dispose();
+    const explicit = fixture(), staticController = observeContextFlow(explicit.root, { mode: 'loop', pauseOnInteraction: true, reduced: true });
+    explicit.enter(); expect(explicit.root.attrs['data-flow-state']).toBe('static'); expect(explicit.root.attrs['data-flow-paused']).toBe('true');
+    expect(explicit.frames.size + explicit.timers.size).toBe(0); staticController.dispose();
+    expect(explicit.root.count + explicit.doc.count + explicit.view.count + explicit.preference.count).toBe(0);
+    const touch = fixture({ hover: false }); touch.root.hovered = true;
+    const touchController = observeContextFlow(touch.root, { mode: 'loop', pauseOnInteraction: true });
+    touch.enter(); expect(touch.root.attrs['data-flow-paused']).toBe('false'); touchController.dispose();
   });
 });

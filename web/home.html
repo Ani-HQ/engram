@@ -22,22 +22,26 @@
 </div></header>
 <main id="main" tabindex="-1"><div class="m-wrap"><section class="m-hero" aria-labelledby="home-title">
   <div class="m-hero-copy ds-heading-group">
-    <span class="ds-badge" data-tone="lime">Shared memory for AI agents <span aria-hidden="true">↗</span></span>
+    <span class="ds-badge" data-tone="lime">Shared memory for AI agents</span>
     <h1 id="home-title">Different agents.<br><span class="m-editorial">One shared memory.</span></h1>
     <p>A shared home for decisions and project context. Pick up with another connected agent, or share selected excerpts with your team.</p>
     <div class="m-actions"><a class="ds-button m-button" data-variant="primary" href="https://x.com/anirudh_twt">Ask for an invite</a><a class="ds-button m-button" href="/how-it-works">Explore how it works</a></div>
     <span class="m-quiet-note">Cloud is invite-only. <a href="/self-host">Self-host anytime.</a> <a href="/app#invite">Have an invite?</a></span>
   </div>
   <figure class="m-hero-art">
-    <div class="ds-panel ds-context-flow" id="context-flow" data-context-flow data-context-flow-mode="loop" role="group" aria-label="Illustration of agents sharing context through one Engram workspace">
+    <div class="ds-panel ds-context-flow" id="context-flow" data-context-flow data-context-flow-mode="loop" role="group" aria-label="Illustration of agents sharing context through Engram">
       <div class="ds-panel-header"><span class="m-example-label">CONTEXT THAT CARRIES FORWARD</span><div class="ds-row m-flow-controls"><button class="ds-button text small" type="button" data-context-flow-pause hidden>Pause animation</button></div></div>
       <div class="m-architecture">
-        <div class="m-architecture-side"><p class="ds-eyebrow m-eyebrow">01 / Save context</p>
+        <div class="m-architecture-side" data-connection-side="save">
+          <span class="ds-context-connector m-agent-connector" data-flow-stage="save" aria-hidden="true"></span><span class="ds-context-connector m-agent-connector" data-flow-stage="save" data-flow-order="1" aria-hidden="true"></span>
+          <p class="ds-eyebrow m-eyebrow">01 / Save context</p>
           <div class="ds-panel m-agent-node ds-context-flow-node" data-flow-stage="save" data-agent-slot="source-one"><span class="ds-product-logo-frame" data-tone="inverse"><img class="ds-product-logo" src="/vendor/simple-icons/claude.svg" width="24" height="24" alt=""></span><div><strong>Claude Code</strong><small>Your coding session</small></div></div>
           <div class="ds-panel m-agent-node ds-context-flow-node" data-flow-stage="save" data-flow-order="1" data-agent-slot="source-two"><span class="ds-product-logo-frame" data-tone="inverse"><img class="ds-product-logo" src="/vendor/simple-icons/cursor.svg" width="24" height="24" alt=""></span><div><strong>Cursor</strong><small>Your next decision</small></div></div>
         </div>
-        <div class="ds-panel m-architecture-core ds-context-flow-node" data-flow-stage="memory"><span data-context-flow-art></span><span class="ds-context-flow-track m-flow-track--save" data-flow-stage="save" aria-hidden="true"><span class="ds-context-flow-traveler"></span><span class="ds-context-flow-traveler" data-packet="1"></span><span class="ds-context-flow-traveler" data-packet="2"></span></span><span class="m-core-mark"><img src="/brand/engram-mark.svg" width="42" height="42" alt=""></span><strong>One Engram workspace</strong><p>Memory pages. Decisions.<br>Useful project context.</p><span class="ds-badge" data-tone="lime">remember / recall</span><span class="ds-context-flow-track m-flow-track--recall" data-flow-stage="recall" aria-hidden="true"><span class="ds-context-flow-traveler"></span><span class="ds-context-flow-traveler" data-packet="1"></span><span class="ds-context-flow-traveler" data-packet="2"></span></span></div>
-        <div class="m-architecture-side"><p class="ds-eyebrow m-eyebrow">02 / Pick it up</p>
+        <div class="ds-panel m-architecture-core ds-context-flow-node" data-flow-stage="memory"><span data-context-flow-art="glow"></span><span class="m-core-mark"><img src="/brand/engram-mark.svg" width="42" height="42" alt=""></span><strong>Engram</strong><p>Shared Memory</p></div>
+        <div class="m-architecture-side" data-connection-side="recall">
+          <span class="ds-context-connector m-agent-connector" data-flow-stage="recall" aria-hidden="true"></span><span class="ds-context-connector m-agent-connector" data-flow-stage="recall" data-flow-order="1" aria-hidden="true"></span>
+          <p class="ds-eyebrow m-eyebrow">02 / Pick it up</p>
           <div class="ds-panel m-agent-node ds-context-flow-node" data-flow-stage="recall" data-agent-slot="recipient-one"><span class="ds-product-logo-frame" data-tone="inverse"><img class="ds-product-logo" src="/vendor/brands/codex.svg" width="24" height="24" alt=""></span><div><strong>Codex</strong><small>Your next implementation</small></div></div>
           <div class="ds-panel m-agent-node ds-context-flow-node" data-flow-stage="recall" data-flow-order="1" data-agent-slot="recipient-two"><span class="ds-product-logo-frame" data-tone="inverse"><img class="ds-product-logo" src="/vendor/brands/openai.svg" width="24" height="24" alt=""></span><div><strong>ChatGPT</strong><small>Your next conversation</small></div></div>
         </div>
@@ -46,7 +50,7 @@
     <figcaption class="m-art-caption">Shared context in motion. Agent examples, not live connections.</figcaption>
   </figure>
 </section>
-<section class="m-compat" aria-labelledby="agent-ecosystem-title"><div class="m-compat-head"><div class="ds-heading-group"><span class="ds-eyebrow m-eyebrow">THE AGENT ECOSYSTEM</span><h2 id="agent-ecosystem-title">Bring your whole toolkit.</h2></div><a class="m-text-link" href="/how-it-works#connections">Explore setup</a></div><ul class="m-compat-list" aria-label="Agent product examples">
+<section class="m-compat ds-logo-ticker" id="agent-logo-ticker" data-logo-ticker aria-labelledby="agent-ecosystem-title"><div class="m-compat-head"><div class="ds-heading-group"><span class="ds-eyebrow m-eyebrow">THE AGENT ECOSYSTEM</span><h2 id="agent-ecosystem-title">Bring your whole toolkit.</h2></div><div class="m-compat-actions"><button class="ds-button text small" type="button" data-ticker-pause hidden>Pause logos</button><a class="m-text-link" href="/how-it-works#connections">Explore setup</a></div></div><div class="ds-logo-ticker-viewport"><div class="ds-logo-ticker-track"><ul class="m-compat-list ds-logo-ticker-list" data-ticker-list role="list" aria-label="Agent product examples">
 <li class="m-compat-item" data-agent-product="claude-code"><span class="ds-product-logo-frame" data-tone="inverse"><img class="ds-product-logo" data-size="28" src="/vendor/simple-icons/claude.svg" width="28" height="28" alt="" loading="lazy"></span><span>Claude Code</span></li>
 <li class="m-compat-item" data-agent-product="codex"><span class="ds-product-logo-frame" data-tone="inverse"><img class="ds-product-logo" data-size="28" src="/vendor/brands/codex.svg" width="28" height="28" alt="" loading="lazy"></span><span>Codex</span></li>
 <li class="m-compat-item" data-agent-product="cursor"><span class="ds-product-logo-frame" data-tone="inverse"><img class="ds-product-logo" data-size="28" src="/vendor/simple-icons/cursor.svg" width="28" height="28" alt="" loading="lazy"></span><span>Cursor</span></li>
@@ -68,17 +72,17 @@
 <li class="m-compat-item" data-agent-product="aider"><span class="ds-product-logo-frame" data-tone="inverse"><img class="ds-product-logo" data-size="28" src="/vendor/brands/aider.png" width="28" height="28" alt="" loading="lazy"></span><span>Aider</span></li>
 <li class="m-compat-item" data-agent-product="grok"><span class="ds-product-logo-frame" data-tone="inverse"><img class="ds-product-logo" data-size="28" src="/vendor/brands/grok.svg" width="28" height="28" alt="" loading="lazy"></span><span>Grok</span></li>
 <li class="m-compat-item" data-agent-product="claude"><span class="ds-product-logo-frame" data-tone="inverse"><img class="ds-product-logo" data-size="28" src="/vendor/simple-icons/claude.svg" width="28" height="28" alt="" loading="lazy"></span><span>Claude</span></li>
-</ul><p class="m-compat-note">MCP support and setup vary by client.</p></section>
+</ul></div></div><p class="m-compat-note">MCP support and setup vary by client.</p></section>
 <section class="m-section" aria-labelledby="handoff-title"><div class="m-section-head"><div class="ds-heading-group"><span class="ds-eyebrow m-eyebrow">01 / CONTEXT THAT TRAVELS</span><h2 id="handoff-title">Keep the decision.<br>Skip the catch-up.</h2></div><p>You have agents for writing code, exploring an idea, and finishing the next task. Give them a shared place for the decisions and context worth carrying forward.</p></div>
 <div class="ds-card m-example" id="memory-story" role="group" aria-label="Illustrative memory and activity workspace">
-  <div class="m-example-memory ds-context-flow" id="memory-story-memory" data-context-flow role="group" aria-label="Illustrative memory and recall">
-    <div class="m-example-top"><span class="m-example-label">Illustrative workspace · sample content</span><div class="ds-row m-flow-controls"><span class="ds-badge" data-tone="lilac">Memory</span><button class="ds-button text small" type="button" data-context-flow-replay aria-label="Replay memory illustration" hidden>Replay</button></div></div>
+  <div class="m-example-memory ds-context-flow" id="memory-story-memory" data-context-flow data-context-flow-mode="loop" data-context-flow-pause-on-interaction role="group" aria-label="Illustrative memory and recall">
+    <div class="m-example-top"><span class="m-example-label">Illustrative workspace · sample content</span><span class="ds-badge" data-tone="lilac">Memory</span></div>
     <div class="m-file-path"><span aria-hidden="true">≡</span>project / decisions</div>
     <div class="ds-card m-note ds-context-flow-node" data-flow-step="0"><span class="ds-context-flow-packet" aria-hidden="true"></span><span class="ds-eyebrow m-eyebrow">SAVED VIA CLAUDE CODE</span><h3>Keep background jobs idempotent.</h3><p>Retries should use a stable request ID. A repeated delivery must not create a second job.</p><div class="m-note-tags"><span class="ds-badge m-tag">architecture</span><span class="ds-badge m-tag">decisions</span></div></div>
     <div class="m-recall ds-context-flow-node" data-flow-step="1" data-flow-emphasis="line"><span aria-hidden="true">↗</span><div><strong>Later, in Codex</strong><p>“What did we decide about background-job retries?”<br>Recall brings the saved context back into the conversation.</p></div></div>
   </div>
-  <div class="m-example-activity ds-context-flow" id="memory-story-activity" data-context-flow role="group" aria-label="Illustrative activity trail">
-    <div class="m-example-top"><span class="m-example-label">Illustrative activity · not a live feed</span><div class="ds-row m-flow-controls"><span class="ds-badge" data-tone="lime">Activity</span><button class="ds-button text small" type="button" data-context-flow-replay aria-label="Replay activity illustration" hidden>Replay</button></div></div>
+  <div class="m-example-activity ds-context-flow" id="memory-story-activity" data-context-flow data-context-flow-mode="loop" data-context-flow-pause-on-interaction role="group" aria-label="Illustrative activity trail">
+    <div class="m-example-top"><span class="m-example-label">Illustrative activity · not a live feed</span><span class="ds-badge" data-tone="lime">Activity</span></div>
     <h3>And a trail of the work.</h3>
     <div class="m-stream-row ds-context-flow-node" data-flow-step="0" data-flow-emphasis="line"><span class="m-stream-dot" aria-hidden="true"></span><div><strong>Saved the retry decision</strong><p>Claude Code → remember</p><small>Observed Engram call</small></div></div>
     <div class="m-stream-row ds-context-flow-node" data-flow-step="1" data-flow-emphasis="line"><span class="m-stream-dot" aria-hidden="true"></span><div><strong>Read the project context</strong><p>Codex → recall</p><small>Observed Engram call</small></div></div>
@@ -89,7 +93,7 @@
 <div class="m-wrap"><section class="m-section m-section-rule" id="scoped-shares" aria-labelledby="sharing-title">
   <div class="m-section-head"><div class="ds-heading-group"><span class="ds-eyebrow m-eyebrow">SCOPED SHARES</span><h2 id="sharing-title">Share a little.<br>Keep the rest yours.</h2></div><p>Give your team selected decisions, or give an agent a separate read-only connection to approved context. You review the exact excerpts before sharing.</p></div>
   <div class="m-scope-preview" role="group" aria-label="Illustrative scoped share review">
-    <article class="ds-panel"><div class="ds-panel-header"><h3>The slice you choose.</h3><span class="ds-badge">Sample review</span></div><div class="ds-panel-body ds-stack">
+    <article class="ds-panel"><div class="ds-panel-header"><h3>The slice you choose.</h3></div><div class="ds-panel-body ds-stack">
       <div class="ds-heading-group"><span class="ds-eyebrow">YOUR SCOPE</span><p class="ds-focus-title">“Share the API retry policy.”</p></div>
       <div class="ds-focus-row"><span class="ds-focus-mark" aria-hidden="true">01</span><div class="ds-focus-content"><span class="ds-focus-label">Selected by the owner</span><strong class="ds-focus-title">API retry policy</strong><p class="ds-focus-description">“Use a stable request ID so retries cannot create a second job.”</p><div class="ds-focus-meta"><span class="ds-badge" data-tone="accent">Included excerpt</span></div></div></div>
       <div class="ds-focus-row"><span class="ds-focus-mark" aria-hidden="true">02</span><div class="ds-focus-content"><span class="ds-focus-label">Not selected</span><strong class="ds-focus-title">Personal planning notes</strong><p class="ds-focus-description">Left out of this example share.</p></div></div>
