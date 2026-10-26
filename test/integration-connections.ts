@@ -6,6 +6,7 @@ import { agentOnboardingChecks, listConnections } from "../gateway/src/connectio
 import { oauthActorName } from "../gateway/src/oauth";
 import { DEFAULT_POLICIES, normalizeToken } from "../gateway/src/policies";
 import { onboardingStep } from "../gateway/src/orgs";
+import { recordMcpUsage } from "../gateway/src/memory-usage";
 
 // Invoked only by integration-postgres.ts after its disposable-database guard.
 export async function checkConnections(db: postgres.Sql): Promise<number> {
@@ -89,8 +90,11 @@ export async function checkConnections(db: postgres.Sql): Promise<number> {
     VALUES(${id},'Onboarding fixture',${`onboarding-${id}`},'team',${`brain_org_${id}`},${`brain_org_${id}`},${`org-${id}`},${db.json(DEFAULT_POLICIES)},'ready')`;
   const empty={agentConnected:false,memorySaved:false,memoryRecalled:false,taskReported:false};
   const proof=(id:number)=>agentOnboardingChecks(id,db);
-  const receipt=async(id:number,name:string,tool:string,outcome='ok')=>{
+  const receipt=async(id:number,name:string,tool:string,outcome='ok',kind:'token'|'oauth'|'session'='token')=>{
     await db`INSERT INTO audit_log(org_id,token_name,tool,arg_summary,outcome) VALUES(${id},${name},${tool},'test fixture',${outcome})`;
+    if(outcome==='ok'&&['remember','put_page','recall','search','get_page'].includes(tool)) {
+      await recordMcpUsage(normalizeToken({name,orgId:id,kind}),tool,{content:[{type:'text',text:'{"ok":true}'}]},{db});
+    }
   };
   const freshRaw=await issueToken(40,'onboarding-agent',true,null,db);
   await issueToken(41,'onboarding-agent',true,null,db);
@@ -119,7 +123,7 @@ export async function checkConnections(db: postgres.Sql): Promise<number> {
     VALUES('onboarding-oauth-fixture-hash',${clientId},${oauthEmail},42,${oauthMember.id},'memory:read memory:write',now()+interval '1day')`;
   const oauthName=oauthActorName({sub:oauthEmail,client_id:clientId});
   equal(await proof(42),empty,"Unused OAuth authorization alone does not count as a connected agent");
-  for(const tool of ['whoami','put_page','recall'])await receipt(42,oauthName,tool);
+  for(const tool of ['whoami','put_page','recall'])await receipt(42,oauthName,tool,'ok','oauth');
   equal(await proof(42),{...empty,agentConnected:true,memorySaved:true,memoryRecalled:true},"An OAuth-only current member can prove all core steps without an API key");
   await db`DELETE FROM org_members WHERE id=${oauthMember.id}`;
   equal(await proof(42),empty,"Removing an OAuth member removes that agent from current progress proof");
@@ -130,7 +134,7 @@ export async function checkConnections(db: postgres.Sql): Promise<number> {
   await db`UPDATE oauth_refresh_tokens SET revoked_at=now() WHERE client_id=${clientId} AND org_id=42`;
   await issueToken(42,'same-as-browser',true,null,db);
   await db`INSERT INTO sessions(org_id,name,role,email,sha256_hash,expires_at) VALUES(42,'same-as-browser','member',${oauthEmail},'onboarding-session-fixture-hash',now()+interval '1hour')`;
-  for(const tool of ['whoami','remember','recall'])await receipt(42,'same-as-browser',tool);
+  for(const tool of ['whoami','remember','recall'])await receipt(42,'same-as-browser',tool,'ok','session');
   equal(await proof(42),empty,"Ambiguous browser-session actor names never count manual console work as agent success");
   return checks;
 }

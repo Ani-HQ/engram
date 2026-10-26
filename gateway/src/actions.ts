@@ -129,6 +129,7 @@ export function actionInputFingerprint(input: ReturnType<typeof parseActionInput
 }
 
 export interface ActionsQuery {
+  id: string | null;
   q: string | null;
   agent: string | null;
   tool: string | null;
@@ -149,9 +150,12 @@ function boundedInt(value: unknown, fallback: number, min: number, max: number):
 
 export function parseActionsQuery(raw: unknown): ActionsQuery {
   const input = raw instanceof URLSearchParams ? Object.fromEntries(raw) : object(raw);
+  const id = text(input.id, "id", 80);
+  if (id && !/^(?:[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}|audit:[0-9]{1,20})$/i.test(id)) throw new ActionError("id must be an action UUID or observed audit identifier");
   const status = text(input.status, "status", 20);
   if (status && !STATUSES.has(status)) throw new ActionError("status must be completed, failed, or running");
   return {
+    id,
     q: text(input.q, "q", 500),
     agent: text(input.agent, "agent", 500),
     tool: text(input.tool, "tool", 160),
@@ -318,7 +322,8 @@ export async function listActions(token: TokenRecord, raw: unknown = {}, db: pos
   const [rows, facets] = await Promise.all([
     db`
       WITH ledger AS (${ledger}) SELECT * FROM ledger
-      WHERE (${query.agent}::text IS NULL OR agent = ${query.agent})
+      WHERE (${query.id}::text IS NULL OR id = ${query.id})
+        AND (${query.agent}::text IS NULL OR agent = ${query.agent})
         AND (${query.tool}::text IS NULL OR tool = ${query.tool})
         AND (${query.status}::text IS NULL OR status = ${query.status})
         AND (${query.runId}::text IS NULL OR run_id = ${query.runId})

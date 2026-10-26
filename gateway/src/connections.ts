@@ -6,6 +6,7 @@ import { sql } from "./db";
 import { oauthActorName, parseScopes } from "./oauth";
 import { hasOauthScope, isHuman, normalizeToken, type TokenRecord } from "./policies";
 import { redactSecrets } from "./redact";
+import { mapMemoryUse, type MemoryUse } from "./memory-usage";
 
 export type ConnectionStatus = "authorized" | "expired" | "revoked" | "membership_removed";
 export interface Connection {
@@ -29,6 +30,7 @@ export interface Connection {
   memoryCalls: number;
   successfulMemoryCalls: number;
   taskReports: number;
+  memoryUse: MemoryUse;
 }
 export const CONNECTION_LIMIT = 200;
 const HEADERS = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
@@ -82,6 +84,7 @@ function mapConnection(row: any, orgId: number): Connection {
     lastContactAt: date(row.last_contact_at), lastMemoryAt: date(row.last_memory_at), lastTaskReportAt: date(row.last_task_report_at),
     lastSuccessfulContactAt: date(row.last_successful_contact_at), lastSuccessfulMemoryAt: date(row.last_successful_memory_at),
     memoryCalls: count(row.memory_calls), successfulMemoryCalls: count(row.successful_memory_calls), taskReports: count(row.task_reports),
+    memoryUse: mapMemoryUse(row.memory_use),
   };
 }
 
@@ -129,7 +132,7 @@ export async function listConnections(token: TokenRecord, db: postgres.Sql = sql
     // case. A fixed pair of batched receipt queries avoids N per-row queries.
     const agents = page.map(row => row.kind === "oauth" ? oauthActorName({ sub: String(row.email), client_id: String(row.client_id) }) : String(row.name));
     if (!agents.length) return inventory;
-    const [observed, reported] = await Promise.all([
+    const [observed, reported, measured] = await Promise.all([
       tx`SELECT token_name AS agent, max(ts) AS contact_at,
           max(ts) FILTER (WHERE outcome = 'ok') AS successful_contact_at,
           max(ts) FILTER (WHERE tool NOT IN ('whoami', 'list_actions', 'record_action')) AS last_memory_at,
@@ -139,9 +142,22 @@ export async function listConnections(token: TokenRecord, db: postgres.Sql = sql
         FROM audit_log WHERE org_id = ${actor.orgId} AND token_name = ANY(${agents}) GROUP BY token_name`,
       tx`SELECT agent, max(recorded_at) AS last_task_report_at, count(*) AS task_reports
         FROM action_events WHERE org_id = ${actor.orgId} AND agent = ANY(${agents}) GROUP BY agent`,
+      tx`SELECT actor_kind, actor_name, min(tracking_since) AS tracking_since,
+          max(last_recall_at) AS last_recall_at, max(last_remember_at) AS last_remember_at,
+          sum(recalls) AS recalls, sum(remembers) AS remembers,
+          sum(response_bytes) AS response_bytes, sum(estimated_tokens) AS estimated_tokens,
+          sum(duplicate_recalls) AS duplicate_recalls, sum(budget_stops) AS budget_stops,
+          sum(truncated_responses) AS truncated_responses,
+          sum(run_scoped_responses) AS run_scoped_responses, sum(response_scoped_responses) AS response_scoped_responses,
+          max(updated_at) AS last_seen_at,
+          (array_agg(jsonb_build_object('declaration', integration_declaration, 'declaredAt', integration_declared_at,
+            'check', integration_check) ORDER BY updated_at DESC))[1] AS integration_data
+        FROM memory_connection_usage WHERE org_id = ${actor.orgId} AND actor_name = ANY(${agents})
+          AND actor_kind IN ('token', 'oauth') GROUP BY actor_kind, actor_name`,
     ]);
     const memory = new Map(observed.map(row => [row.agent, row]));
     const reports = new Map(reported.map(row => [row.agent, row]));
+    const usage = new Map(measured.map(row => [`${row.actor_kind}:${row.actor_name}`, row]));
     return inventory.map((row, index) => {
       const contact = memory.get(agents[index]), report = reports.get(agents[index]);
       const latest = [date(contact?.contact_at), date(report?.last_task_report_at)].filter((value): value is string => value !== null).sort().at(-1) ?? null;
@@ -149,7 +165,8 @@ export async function listConnections(token: TokenRecord, db: postgres.Sql = sql
       return { ...row, last_contact_at: latest, last_memory_at: contact?.last_memory_at,
         last_successful_contact_at: successful, last_successful_memory_at: contact?.last_successful_memory_at,
         memory_calls: contact?.memory_calls ?? 0, successful_memory_calls: contact?.successful_memory_calls ?? 0,
-        last_task_report_at: report?.last_task_report_at, task_reports: report?.task_reports ?? 0 };
+        last_task_report_at: report?.last_task_report_at, task_reports: report?.task_reports ?? 0,
+        memory_use: usage.get(`${row.kind}:${agents[index]}`) };
     });
   });
   return { connections: rows.slice(0, CONNECTION_LIMIT).map(row => mapConnection(row, actor.orgId)), more: rows.length > CONNECTION_LIMIT, limit: CONNECTION_LIMIT, checkedAt: now.toISOString(), recentWindowSeconds: 900 };
@@ -239,19 +256,32 @@ export async function agentOnboardingChecks(orgId: number, db: postgres.Sql = sq
     const empty = { agentConnected: false, memorySaved: false, memoryRecalled: false, taskReported: false };
     if (!credentials.length) return empty;
     const agents = credentials.map(row => row.kind === "oauth" ? oauthActorName({ sub: String(row.email), client_id: String(row.client_id) }) : String(row.name));
+    const kinds = credentials.map(row => String(row.kind));
     const since = credentials.map(row => new Date(row.since).toISOString());
     // Historical receipts identify actors by name. If a browser session used
     // that same name during the receipt's lifetime, attribution is ambiguous:
     // conservatively exclude it rather than count console work as an agent.
     const [observed] = await tx`
       SELECT coalesce(bool_or(a.outcome = 'ok'), false) AS connected,
-        coalesce(bool_or(a.outcome = 'ok' AND a.tool IN ('remember', 'put_page')), false) AS saved,
-        coalesce(bool_or(a.outcome = 'ok' AND a.tool IN ('recall', 'search', 'get_page')), false) AS recalled
+        coalesce(bool_or(a.outcome = 'ok' AND a.tool IN ('remember', 'put_page')
+          AND a.ts < (SELECT memory_usage_started_at FROM engram_schema_state WHERE id = true)), false) AS saved,
+        coalesce(bool_or(a.outcome = 'ok' AND a.tool IN ('recall', 'search', 'get_page')
+          AND a.ts < (SELECT memory_usage_started_at FROM engram_schema_state WHERE id = true)), false) AS recalled
       FROM audit_log a JOIN unnest(${agents}::text[], ${since}::timestamptz[]) AS eligible(agent, since)
         ON a.token_name = eligible.agent AND a.ts >= eligible.since
       WHERE a.org_id = ${orgId} AND NOT EXISTS (
         SELECT 1 FROM sessions s WHERE s.org_id = a.org_id AND s.name = a.token_name
           AND a.ts >= s.created_at AND a.ts <= least(s.expires_at, coalesce(s.revoked_at, s.expires_at)))`;
+    // New receipts are emitted after the final context boundary. A successful
+    // upstream call followed by a duplicate/budget/error skip cannot advance
+    // onboarding. Credential kind prevents console work with a reused display
+    // name from being mistaken for a token or OAuth agent.
+    const [delivered] = await tx`
+      SELECT coalesce(bool_or(u.last_recall_at >= eligible.since), false) AS recalled,
+        coalesce(bool_or(u.last_remember_at >= eligible.since), false) AS saved
+      FROM memory_connection_usage u JOIN unnest(${agents}::text[], ${kinds}::text[], ${since}::timestamptz[]) AS eligible(agent, kind, since)
+        ON u.actor_name = eligible.agent AND u.actor_kind = eligible.kind
+      WHERE u.org_id = ${orgId}`;
     const [reported] = await tx`
       SELECT EXISTS (
         SELECT 1 FROM action_events a JOIN unnest(${agents}::text[], ${since}::timestamptz[]) AS eligible(agent, since)
@@ -260,7 +290,9 @@ export async function agentOnboardingChecks(orgId: number, db: postgres.Sql = sq
           SELECT 1 FROM sessions s WHERE s.org_id = a.org_id AND s.name = a.agent
             AND a.recorded_at >= s.created_at AND a.recorded_at <= least(s.expires_at, coalesce(s.revoked_at, s.expires_at)))) AS reported`;
     const taskReported = reported?.reported === true;
-    return { agentConnected: observed?.connected === true || taskReported, memorySaved: observed?.saved === true, memoryRecalled: observed?.recalled === true, taskReported };
+    const memorySaved = observed?.saved === true || delivered?.saved === true;
+    const memoryRecalled = observed?.recalled === true || delivered?.recalled === true;
+    return { agentConnected: observed?.connected === true || memorySaved || memoryRecalled || taskReported, memorySaved, memoryRecalled, taskReported };
   });
 }
 

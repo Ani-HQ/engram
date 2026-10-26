@@ -9,6 +9,7 @@ import { ensureMailSeriesSchema } from "./mail-series-schema";
 import { ensureJevSchema } from "./jev-schema";
 import { ensureContextSharingSchema } from "./context-sharing-schema";
 import { ensureConnectionsSchema } from "./connections-schema";
+import { ensureMemoryUsageSchema } from "./memory-usage-schema";
 import { assertRuntimeSchema, ensureProvisioningSchema, markSchemaReady } from "./provisioning-schema";
 
 export const sql = postgres(dbUrl("engram_gateway"), {
@@ -537,6 +538,7 @@ export async function migrate() {
   await sql`ALTER TABLE oauth_codes ADD COLUMN IF NOT EXISTS membership_id bigint`;
   await sql`ALTER TABLE oauth_refresh_tokens ADD COLUMN IF NOT EXISTS membership_id bigint`;
   await ensureConnectionsSchema(sql);
+  await ensureMemoryUsageSchema(sql);
   await ensureInsightSchema(sql);
   await ensureComplimentaryAccessSchema(sql);
   await ensureHostedSignupInvitesSchema(sql);

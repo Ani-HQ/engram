@@ -5,6 +5,9 @@ process.env.ENGRAM_DB_URL_TEMPLATE ??= "postgresql://postgres:postgres@localhost
 const forwardedCalls: any[] = [];
 const auditCalls: any[] = [];
 let forwardedIsError = false;
+let forwardedResponse: unknown = null;
+let actionFixture: any = null;
+let actionQueries: any[] = [];
 
 const brain = {
   async listTools() {
@@ -31,7 +34,7 @@ const brain = {
       ...(forwardedIsError ? { isError: true } : {}),
       content: [{
         type: "text",
-        text: JSON.stringify({ forwarded: request }),
+        text: JSON.stringify(forwardedResponse ?? { forwarded: request }),
       }],
     };
   },
@@ -61,6 +64,17 @@ mock.module("../../gateway/src/audit", () => ({
 
 const realContextAccess = await import("../../gateway/src/context-sharing-access");
 mock.module("../../gateway/src/context-sharing-access", () => ({ ...realContextAccess, listApprovedTeamItems: async () => [] }));
+const realTrails = await import("../../gateway/src/trails");
+mock.module("../../gateway/src/trails", () => ({ ...realTrails, attributionForSlugs: async () => new Map() }));
+const realActions = await import("../../gateway/src/actions");
+const originalListActions = realActions.listActions, originalRecordAction = realActions.recordAction;
+mock.module("../../gateway/src/actions", () => ({ ...realActions,
+  listActions: async (actor: any, args: any) => { if (!actionFixture) return originalListActions(actor, args); actionQueries.push(args); return { actions: [actionFixture], more: false, agents: [actor.name], tools: [actionFixture.tool] }; },
+  recordAction: async (actor: any, args: any) => { if (!actionFixture) return originalRecordAction(actor, args); return { action: actionFixture }; },
+}));
+// Durable ledgers have their own database suite. This fixture has no SQL server.
+const realUsage = await import("../../gateway/src/memory-usage");
+mock.module("../../gateway/src/memory-usage", () => ({ ...realUsage, applyContextBudget: async (_token: any, _name: any, _args: any, result: any) => result }));
 const proxy = await import("../../gateway/src/proxy");
 const { runWithContext } = await import("../../gateway/src/context");
 const { parsePolicies, normalizeToken } = await import("../../gateway/src/policies");
@@ -79,6 +93,17 @@ describe("proxy tool surface", () => {
     forwardedCalls.length = 0;
     auditCalls.length = 0;
     forwardedIsError = false;
+    forwardedResponse = null;
+    actionFixture = null;
+    actionQueries = [];
+  });
+
+  test("verification controls cannot execute a memory mutation", async () => {
+    const response = await inOrg(token, actor => proxy.callTool(actor, "put_page", { slug: "notes/should-not-write", expected_hash: null }, { verification: "begin" }));
+    expect(response.isError).toBe(true);
+    expect(response.content[0].text).toContain("whoami");
+    expect(forwardedCalls).toHaveLength(0);
+    expect(auditCalls).toHaveLength(0);
   });
 
   test("lists only the shared tool surface", async () => {
@@ -267,6 +292,54 @@ describe("proxy tool surface", () => {
       "{\"limit\":25}",
       "{\"query\":\"x\",\"limit\":3}",
     ]);
+  });
+
+  test("MCP-only page arguments stay out of the engine call and full hashes survive pagination", async () => {
+    forwardedResponse = { slug: "notes/page", title: "A", content_hash: "a".repeat(64), compiled_truth: "🧠decision\n".repeat(1000) };
+    const response = await callTool(token, "get_page", { slug: "notes/page", offset: 0, length: 100, detail: true });
+    expect(forwardedCalls).toEqual([{ name: "get_page", arguments: { slug: "notes/page" } }]);
+    expect(Buffer.byteLength(JSON.stringify(response))).toBeLessThanOrEqual(4096);
+    const page = JSON.parse(response.content[0].text);
+    expect(page.content_hash).toBe("a".repeat(64));
+    expect(page._page).toMatchObject({ offset: 0, length: 99, partial: true });
+    expect(page._page.next_cursor).toStartWith("v1.");
+  });
+
+  test("oversized remember text and topic fail before engine calls", async () => {
+    const text = await callTool(token, "remember", { text: "💚".repeat(3000) });
+    expect(text.isError).toBe(true);
+    expect(text.content[0].text).toContain("8192 UTF-8 bytes");
+    const topic = await callTool(token, "remember", { text: "Useful decision", topic: "x".repeat(513) });
+    expect(topic.isError).toBe(true);
+    expect(topic.content[0].text).toContain("512 UTF-8 bytes");
+    expect(forwardedCalls).toEqual([]);
+  });
+
+  test("MCP action lists default to five summaries and explicit detail is paged", async () => {
+    actionFixture = { id: "28c680a9-2338-452b-b275-2084c4b69457", agent: "agent", tool: "files.edit", summary: "Updated files", status: "completed", evidence: "reported", detail: "💚detail\n".repeat(3000) };
+    const summary = await callTool(token, "list_actions", {});
+    expect(actionQueries[0].limit).toBe(5);
+    expect(JSON.parse(summary.content[0].text).actions[0].detail).toBeUndefined();
+    const detail = await callTool(token, "list_actions", { detail: true, id: actionFixture.id });
+    expect(actionQueries[1].limit).toBe(1);
+    expect(JSON.parse(detail.content[0].text).actions[0]._detail.partial).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(detail))).toBeLessThanOrEqual(4096);
+    await callTool(token, "list_actions", { limit: 100 });
+    expect(actionQueries[2].limit).toBe(10);
+    const receipt = await callTool(token, "record_action", { tool: "files.edit", summary: "Updated" });
+    expect(JSON.parse(receipt.content[0].text)).toEqual({ ok: true, id: actionFixture.id, status: "completed", evidence: "reported" });
+    expect(Buffer.byteLength(JSON.stringify(receipt))).toBeLessThan(300);
+  });
+
+  test("recall exposes exact bounded passage citations and omits invalid metadata", async () => {
+    const chunk_text = "Keep retry request IDs stable.", citation = { offset: 3300, length: chunk_text.length, total: 5000, source_hash: "b".repeat(64) };
+    forwardedResponse = [{ slug: "projects/retry", title: "Retry policy", chunk_text, recall_passage: { ...citation, extra: "must be omitted" } }];
+    const cited = JSON.parse((await callTool(token, "recall", { query: "retry" })).content[0].text).results[0];
+    expect(cited.snippet).toBe(chunk_text);
+    expect(cited.recall_passage).toEqual(citation);
+    forwardedResponse = [{ slug: "projects/retry", title: "Retry policy", chunk_text, recall_passage: { ...citation, length: 1 } }];
+    const invalid = JSON.parse((await callTool(token, "recall", { query: "retry" })).content[0].text).results[0];
+    expect(invalid.recall_passage).toBeUndefined();
   });
 
   test("denies removed tools", async () => {

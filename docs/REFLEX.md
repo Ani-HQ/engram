@@ -51,14 +51,66 @@ it does not store provider prompts, memory text, answers or API keys.
    loading the entry. Classification and comparisons with a few neighbors can
    create typed decisions and review proposals. Nothing is deleted automatically.
 3. `recall` retrieves up to 20 candidates and returns up to five. Optional Jev
-   ranking has a 400ms overall caller deadline; unavailable, low-confidence or
-   late results preserve the local search order.
+   ranking and passage selection have a 400ms caller deadline; unavailable,
+   low-confidence or late results preserve the local search order and source text.
 4. Activity checks always have deterministic rules, lexical search and an
    extractive handoff. With separate permission and funding, Jev can judge bounded
    report relationships/relevance. Optional generated briefs retain their own
    provider configuration and the older external-AI consent.
 5. Trail digest selection can ask Jev to choose among local heuristic variants.
    The local digest remains available when the provider cannot be used.
+
+### Extractive recall selection
+
+Recall deduplicates the first 20 locally authorized candidates by full source-text
+hash before optional provider work. A bounded local scan considers the first and
+last 32,768 characters of a long chunk, query-centred windows, and distinct head
+and tail context. Each candidate supplies at most three exact existing passages
+of at most 180 UTF-16 code units. This lets a later decision compete with setup
+boilerplate; it does not require sending whole pages or generating an answer.
+Approved shared-context snapshots remain outside this path.
+
+One typed Jev call handles both relevance scores and passage-index choices for at
+most 16 deduplicated candidates: at most 32 questions. Source passages appear
+once in `state`; questions reference candidate indices rather than copying source
+text. Candidates are reduced further when needed to keep the unsanitized
+state/questions/model JSON within 12,288 UTF-8 bytes. Existing provider redaction,
+response validation, consent, funding reservation, model checks and one-attempt
+accounting still apply. There is no free-form generation or source-page write.
+
+Validated output selects only existing source spans. Returned hit metadata is
+retained, and `recall_passage` gives `offset`, `length`, `total` and a SHA-256
+`source_hash` of the full original chunk. Offsets use UTF-16 code units and do not
+split Unicode characters. Local search order fills remaining slots up to five.
+Invalid indices, missing confidence, unavailability and timeout abstain instead
+of inventing a source or an answer.
+
+A process-local cache keeps **numeric ranking/selection plans only**, with a
+30-second TTL and 128-entry LRU limit. Cache keys hash the workspace, actor,
+query, full candidate content hashes/identifiers, configured model, effective
+policy and client instance. Fresh authorized candidates are supplied on every
+request. The current effective workspace consent/access policy and client
+availability are checked before both cached and new plans and again after a
+provider wait. A changed body, actor, workspace, model or policy cannot reuse the
+old plan. At most 16 distinct in-flight plans are admitted; identical concurrent
+requests within one scope share one evaluation. Late or invalid plans are not
+cached. Cached plans require no new provider transmission or reservation.
+
+This helps the calling agent receive a relevant short source passage. It does
+not establish lower total spend: Jev work is separately metered, and more useful
+input can sometimes be larger than the old prefix-only ranking input.
+
+An offline duplicate-heavy fixture (`test/reflex-passages.test.ts`) has 20
+candidate rows representing ten repeated sources, each with its retry decision
+after about 3,100 characters. The previous prefix-only state/questions JSON is
+18,608 UTF-8 bytes; the new deduplicated passage state/questions JSON is 6,797
+bytes with ten candidates and 20 typed questions. Five 180-character excerpts
+have a 900-character text ceiling, compared with five old 280-character snippets'
+1,400-character ceiling. The late decision is present in the new selectable
+spans and absent from the old 320-character prefixes. These are fixture output
+and input sizes, **not token/cost measurements or an overall savings claim**.
+No live provider calls were made for this evaluation. Fake transport tests also
+cover redaction, malformed choices, timeout, cache isolation and capacity.
 
 `Memory → Review proposals` and the authenticated `/api/review` endpoints expose
 the queue. Approving may add a link/tag, write a derived meta page or mark a

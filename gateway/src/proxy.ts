@@ -11,6 +11,8 @@ import { afterRemember, rerankRecallHits, suggestTopic } from "./reflex";
 import { redactSecrets } from "./redact";
 import { BillingError, requireHostedWriteAccess } from "./billing";
 import { SERVER_INSTRUCTIONS } from "../../shim/instructions.js";
+import { boundMcpResult, contextMaxBytes, contextReadArguments, MAX_REMEMBER_BYTES, MAX_TOPIC_BYTES, PAGE_READ_PROPERTIES, projectRecallPassage, type McpCallContext } from "./mcp-context";
+import { applyContextBudget } from "./memory-usage";
 import { approvedTeamContextPages, contextReadLimit, contextReadOffset, isSharedContextSlug, readRows, searchContextSnapshots, sharedPageSummary, sortContextPages } from "./shared-context-read";
 import {
   ARCHIVE_POINTER,
@@ -126,7 +128,7 @@ export function toolsListCacheHints(
 // rewrites it: the tool NAMES do the teaching, descriptions only disambiguate.
 const TOOL_DESCRIPTIONS: Record<string, string> = {
   search: "Raw keyword search over saved pages. Prefer recall, which returns compact results.",
-  get_page: "Fetch one page's full body and content_hash by slug. Use that hash for a versioned put_page update.",
+  get_page: "Read a bounded page body and full content_hash. Partial responses include a next_cursor; never replace a page with a fragment.",
   list_pages: "List stored pages. Use search or recall when you know what you are looking for.",
   put_page: "Atomically create or update a page. expected_hash: null is create-only; use get_page's content_hash to update. Prefer remember for notes.",
   add_tag: "Tag an existing page.",
@@ -136,7 +138,7 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   remember: "Save a decision, correction, or handoff to shared memory. Groups under a topic when given.",
   recall: "Search shared memory. Returns up to 5 short snippets.",
   record_action: "Report a tool action, result, and resource. Engram assigns your identity and labels this as reported evidence.",
-  list_actions: "Search cross-agent action history, including reported external actions and directly observed Engram calls. Same results as the web app.",
+  list_actions: "Read compact cross-agent action summaries. Use id and detail:true to page one action's detail; reported and observed evidence stay distinct.",
 };
 
 const SERVED_TOOL_NAMES = new Set<string>([...FORWARDED_TOOLS, ...SYNTHETIC_TOOLS]);
@@ -176,7 +178,7 @@ function sanitizeSchema(name: string, schema: any): any {
     const required = Array.isArray(schema.required) ? schema.required : [];
     return { ...schema, properties: cleaned, required: required.includes("expected_hash") ? [...required] : [...required, "expected_hash"] };
   }
-  return { ...schema, properties: cleaned };
+  return { ...schema, properties: name === "get_page" ? { ...cleaned, ...PAGE_READ_PROPERTIES } : cleaned };
 }
 
 // A forwarded tool keeps gbrain's schema and loses gbrain's prose.
@@ -201,8 +203,8 @@ function syntheticToolDefs(): any[] {
       inputSchema: {
         type: "object",
         properties: {
-          text: { type: "string", description: "What to record, in one or two sentences." },
-          topic: { type: "string", description: "Project or recurring topic. Entries accumulate under it." },
+          text: { type: "string", maxLength: MAX_REMEMBER_BYTES, description: "A concise decision, correction or handoff. At most 8192 UTF-8 bytes; split larger notes." },
+          topic: { type: "string", maxLength: MAX_TOPIC_BYTES, description: "Project or recurring topic, at most 512 UTF-8 bytes. Entries accumulate under it." },
         },
         required: ["text"],
       },
@@ -252,13 +254,17 @@ function syntheticToolDefs(): any[] {
         type: "object",
         properties: {
           q: { type: "string", maxLength: 500 },
+          id: { type: "string", maxLength: 80, description: "Exact action UUID or audit: identifier, useful for reading one action's detail." },
           agent: { type: "string", description: "Exact authenticated agent name." },
           tool: { type: "string" },
           status: { type: "string", enum: ["completed", "failed", "running"] },
           resource: { type: "string", description: "Literal substring of a resource identifier." },
           runId: { type: "string" },
-          limit: { type: "integer", minimum: 1, maximum: 100, default: 40 },
+          limit: { type: "integer", minimum: 1, maximum: 10, default: 5 },
           offset: { type: "integer", minimum: 0, default: 0 },
+          detail: { type: "boolean", default: false, description: "Include bounded action detail. Defaults to one row when enabled; prefer an exact id." },
+          detail_offset: { type: "integer", minimum: 0, description: "Detail UTF-16 offset; use _detail.next_offset to continue." },
+          detail_length: { type: "integer", minimum: 1, maximum: 16_384, description: "Requested detail length, subject to the total response byte cap." },
         },
       },
     },
@@ -390,15 +396,9 @@ function yamlHeader(title: string, frontmatter: unknown): string {
 // exhaust these is a page being rewritten continuously underneath us.
 const MAX_APPEND_ATTEMPTS = 3;
 
-// A topic page is append-only, so left alone it grows without bound. `get_page` has no
-// cap at all, so every agent that opens one pays the whole history in context, and
-// recall's full body can only ever hand back a slice of it. Rolling the oldest entries
-// into an archive page keeps the live page small enough to return whole, and loses
-// nothing: an archive is just another page, so search and recall still reach it.
-//
-// Capping `get_page` instead would be the wrong lever. The console reads pages through
-// the same path, and truncating a page for the human reading it is worse than the
-// problem. Bounding the page fixes it for every reader at once.
+// Rolling old append entries keeps the current topic useful while archives stay
+// searchable. The MCP boundary additionally pages large reads, retaining the full
+// content hash; REST/web readers continue to receive complete page bodies.
 function pageContent(title: string, frontmatter: unknown, body: string): string {
   return `---\n${yamlHeader(title, frontmatter)}\n---\n\n${body}\n`;
 }
@@ -469,6 +469,8 @@ export function truncateEnds(text: string, max: number): string {
 
 async function remember(token: TokenRecord, args: Record<string, unknown>): Promise<any> {
   const text = typeof args.text === "string" ? args.text.trim() : "";
+  if (Buffer.byteLength(text, "utf8") > MAX_REMEMBER_BYTES) return toolError("remember text exceeds 8192 UTF-8 bytes. Save a concise decision, correction, or handoff; split larger notes into separate entries.");
+  if (typeof args.topic === "string" && Buffer.byteLength(args.topic, "utf8") > MAX_TOPIC_BYTES) return toolError("remember topic exceeds 512 UTF-8 bytes. Use a short project name or slug.");
   const explicit = typeof args.topic === "string" && args.topic.trim() ? args.topic : undefined;
   const routed = explicit ?? (text ? await suggestTopic(text) : null);
   const topic = explicit ?? routed ?? undefined;
@@ -577,11 +579,11 @@ async function recall(args: Record<string, unknown>): Promise<any> {
     ? [...localTop, ...sharedHits].sort((a: any, b: any) => (Number(b?.score) || 0) - (Number(a?.score) || 0)).slice(0, RECALL_LIMIT)
     : localTop;
 
-  const results = top.map((hit: any) => ({
-    slug: hit?.slug,
-    title: hit?.title,
-    snippet: truncate(typeof hit?.chunk_text === "string" ? hit.chunk_text : "", MAX_SNIPPET),
-  }));
+  const results = top.map((hit: any) => {
+    const snippet = truncate(typeof hit?.chunk_text === "string" ? hit.chunk_text : "", MAX_SNIPPET);
+    const passage = projectRecallPassage(hit?.recall_passage, snippet);
+    return { slug: hit?.slug, title: hit?.title, snippet, ...(passage ? { recall_passage: passage } : {}) };
+  });
   try {
     const { attributionForSlugs } = await import("./trails");
     const attributed = await attributionForSlugs(results.map(hit => String(hit.slug ?? "")).filter(Boolean));
@@ -638,7 +640,7 @@ function capSearchResult(result: any): any {
   return result;
 }
 
-export async function callTool(
+async function callToolUnbounded(
   token: TokenRecord,
   name: string,
   args: Record<string, unknown>,
@@ -690,9 +692,13 @@ export async function callTool(
 
   if (name === "record_action" || name === "list_actions") {
     try {
-      return jsonResult(name === "record_action"
-        ? await recordAction(actor, args)
-        : await listActions(actor, args));
+      if (name === "record_action") return jsonResult(await recordAction(actor, args));
+      const detail = args.detail === true;
+      if ((args.detail_offset !== undefined && (!Number.isSafeInteger(args.detail_offset) || Number(args.detail_offset) < 0)) ||
+          (args.detail_length !== undefined && (!Number.isSafeInteger(args.detail_length) || Number(args.detail_length) < 1 || Number(args.detail_length) > 16_384))) return toolError("Action detail pagination requires non-negative detail_offset and detail_length between 1 and 16384.");
+      const requested = Number(args.limit);
+      const limit = Number.isSafeInteger(requested) && requested > 0 ? Math.min(detail ? 5 : 10, requested) : detail ? 1 : 5;
+      return jsonResult(await listActions(actor, { ...args, limit }));
     } catch (error) {
       if (error instanceof ActionError) return toolError(error.message);
       throw error;
@@ -749,13 +755,22 @@ export async function callTool(
           }
         }
       }
-    } else result = await brainClient().callTool({ name, arguments: forwardedArgs });
+    } else result = await brainClient().callTool({ name, arguments: name === "get_page" ? contextReadArguments(forwardedArgs) : forwardedArgs });
     await audit(token.name, name, summarizeArgs(forwardedArgs), result?.isError ? "error" : "ok", argSlug);
     return name === "search" ? capSearchResult(result) : result;
   } catch (e) {
     await audit(token.name, name, summarizeArgs(forwardedArgs), "error", argSlug);
     throw e;
   }
+}
+
+/** Keep response projection outside every execution return path. Access checks,
+ * billing and versioned write authorization remain inside the execution path. */
+export async function callTool(token: TokenRecord, name: string, args: Record<string, unknown>, context: McpCallContext = {}): Promise<any> {
+  if (context.verification !== undefined && name !== "whoami") return toolError("Verification control is available only through whoami.");
+  const result = await callToolUnbounded(token, name, args);
+  const projected = boundMcpResult(name, args ?? {}, result, contextMaxBytes(context.maxBytes));
+  return applyContextBudget(normalizeToken(token), name, args ?? {}, projected, context);
 }
 
 function optionalArg(value: unknown): string | null {

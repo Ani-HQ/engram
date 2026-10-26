@@ -36,6 +36,8 @@ import { handleWeb } from "./web";
 import { processingOrg } from "./privacy";
 import { handleSharedContextMcp } from "./shared-context-mcp";
 import { isSharedContextSlug } from "./shared-context-read";
+import { parseMcpMemoryContext } from "./mcp-request-context";
+import { sha256 } from "./hash";
 
 if (config.deploymentMode === "hosted" && databaseSecurity.authority !== "runtime") {
   throw new Error("Hosted HTTP requires the restricted runtime database identity");
@@ -75,6 +77,14 @@ async function handleMcp(req: Request): Promise<Response> {
   // Routing headers that contradict the body are malformed, not a routing hint.
   if (conflict) return rpcError(msg.id, -32600, conflict, 400);
 
+  let memoryContext: import("./mcp-context").McpCallContext = {};
+  try { if (method === "tools/call") memoryContext = parseMcpMemoryContext(msg.params?._meta); }
+  catch (error) { return rpcError(msg.id, -32602, error instanceof Error ? error.message : "Invalid Engram context metadata.", 400); }
+  if (memoryContext.verification && name !== "whoami") return rpcError(msg.id, -32602, "Verification control is available only through whoami.", 400);
+  // The bearer is authenticated above. Its digest scopes checks to this exact
+  // credential without putting a secret or client-chosen authority in storage.
+  memoryContext.credentialKey = sha256(req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() ?? "");
+
   const actor = normalizeToken(token);
   if (actor.kind === "oauth" && !hasOauthScope(actor, "memory:read")) {
     return insufficientScope(req);
@@ -109,7 +119,7 @@ async function handleMcp(req: Request): Promise<Response> {
         case "tools/call": {
           const args = msg.params?.arguments ?? {};
           if (typeof name !== "string") return rpcError(msg.id, -32602, "missing tool name");
-          return rpcResult(msg.id, await callTool(actor, name, args ?? {}));
+          return rpcResult(msg.id, await callTool(actor, name, args ?? {}, memoryContext));
         }
         default:
           return rpcError(msg.id, -32601, `Method not found: ${method}`);

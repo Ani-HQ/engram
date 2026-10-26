@@ -1,6 +1,6 @@
 {
   "name": "@ani-hq/engram-mcp",
-  "version": "0.3.0",
+  "version": "0.5.0",
   "description": "One-command MCP harness connector and stdio proxy for engram",
   "license": "MIT",
   "bin": {
@@ -12,6 +12,13 @@
     "instructions.js",
     "branding.js",
     "capture.js",
+    "memory.js",
+    "runtime-contracts.js",
+    "runtime-adapters.js",
+    "runtime-install.js",
+    "runtime-plugins.js",
+    "skills/engram-memory/SKILL.md",
+    "skills/engram-portable/SKILL.md",
     "LICENSE",
     "README.md"
   ],

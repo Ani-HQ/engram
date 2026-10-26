@@ -1,4 +1,4 @@
-import { memoryOrbit, memoryStream, resourceChip, loadingState, progressBar, setProgress, observeLoadingMotion, observeContextFlow, contextFlowArt, observeLogoTicker, observeSelects, statusBadge, statusText, profileAvatar, highlightArt, profileLayoutPreview } from './design-system.js';
+import { memoryOrbit, memoryStream, resourceChip, loadingState, progressBar, setProgress, observeLoadingMotion, observeContextFlow, contextFlowArt, observeLogoTicker, observeSelects, statusBadge, statusText, profileAvatar, highlightArt, profileLayoutPreview, evidenceList } from './design-system.js';
 import { publicAgentCatalog } from './public-agent-catalog.js';
 import { icon } from './icons.js';
 import { agentVisual, toolVisual, visualIcon } from './tooling.js';
@@ -13,6 +13,10 @@ if (document.querySelector('meta[name="engram-demo"]')) {
 }
 
 document.querySelector('#orbit-example').append(memoryOrbit());
+document.getElementById('memory-evidence-ready').append(evidenceList([{ label: 'Recall', value: 'Received', note: 'Illustrative successful call' }, { label: 'Context returned', value: '3.2 KB', note: 'About 800 tokens · estimate' }, { label: 'Task budget', value: '4 KB', note: 'Requires a task-aware adapter' }]));
+document.getElementById('memory-evidence-empty').append(evidenceList([{ label: 'Recall', value: 'No receipt yet' }, { label: 'Context returned', value: 'Not measured' }]));
+document.getElementById('memory-evidence-error').append(evidenceList([{ label: 'Memory use', value: 'Unavailable', note: 'Refresh the connection to try again.' }, { label: 'Token usage', value: 'Unknown' }]));
+document.getElementById('memory-evidence-workflow').append(evidenceList([{ label: 'Workflow check', value: 'Passed', note: 'Illustrative read and save receipts from one explicit check' }, { label: 'Automatic use', value: 'Not independently verified', note: 'A check does not prove memory is used on every task' }, { label: 'Runtime', value: 'Example adapter · 0.4', note: 'Client-declared, not an identity guarantee' }]));
 document.getElementById('status-text-active').append(statusText('File activity', { active: true }));
 document.getElementById('status-text-completed').append(statusText('File activity'));
 document.getElementById('status-text-reduced').append(statusText('File activity', { active: true }));

@@ -106,9 +106,9 @@ kbd { font-family: inherit; font-size: var(--ds-text-xs); color: var(--ds-muted)
 .detail-body { padding: 28px 28px 45px; }
 .detail-tool-icon { width: 50px; height: 50px; border: 1px solid var(--line); border-radius: var(--radius-card); display: grid; place-items: center; margin-bottom: 20px; color: var(--ds-muted); }
 .detail-body h2 { font-size: 22px; line-height: 1.4; margin-bottom: 25px; overflow-wrap: anywhere; letter-spacing: -.6px; }
-.detail-body dl { margin: 0 0 25px; border-top: 1px solid var(--line); padding-top: 15px; }
-.detail-body dt { float: left; clear: left; width: 95px; color: var(--muted); font-size: var(--ds-text-xs); padding: 8px 0; }
-.detail-body dd { margin-left: 95px; min-height: 34px; padding: 8px 0; font-size: var(--ds-text-xs); overflow-wrap: anywhere; }
+.detail-body dl:not(.ds-evidence-list) { margin: 0 0 25px; border-top: 1px solid var(--line); padding-top: 15px; }
+.detail-body dl:not(.ds-evidence-list) dt { float: left; clear: left; width: 95px; color: var(--muted); font-size: var(--ds-text-xs); padding: 8px 0; }
+.detail-body dl:not(.ds-evidence-list) dd { margin-left: 95px; min-height: 34px; padding: 8px 0; font-size: var(--ds-text-xs); overflow-wrap: anywhere; }
 .detail-note { font-size: var(--ds-text-xs); color: var(--muted); margin: 17px 0; line-height: 1.8; }
 .detail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 25px; }
 .detail-text { white-space: pre-wrap; font-size: var(--ds-text-xs); overflow-wrap: anywhere; line-height: 1.9; }

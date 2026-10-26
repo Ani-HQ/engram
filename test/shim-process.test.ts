@@ -71,6 +71,28 @@ function childClient(host: string, token: string, cache: string) {
 }
 
 describe("actual stdio discovery and reporting", () => {
+  test("preserves context budget metadata and usage receipts across the actual stdio proxy", async () => {
+    const cache = mkdtempSync(path.join(tmpdir(), "engram-shim-context-meta-"));
+    const calls: any[] = [];
+    const context = { runId: "fixture-context-run", maxBytes: 2048 };
+    const usage = { returnedBytes: 200, maxBytes: 2048, truncated: false };
+    const upstream = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
+      if (new URL(request.url).pathname === "/health") return Response.json({ ok: true });
+      const message = await request.json() as any;
+      if (message.method === "tools/list") return Response.json({ jsonrpc: "2.0", id: message.id, result: { tools: fullTools } });
+      calls.push(message.params);
+      return Response.json({ jsonrpc: "2.0", id: message.id, result: { content: [{ type: "text", text: JSON.stringify({ matches: [] }) }], structuredContent: { matches: [] }, _meta: { engramContext: usage } } });
+    } });
+    const client = childClient(upstream.url.origin, TOKEN_A, cache);
+    try {
+      await client.initialize();
+      const response = await client.request("tools/call", { name: "recall", arguments: { query: "project retries" }, _meta: { "com.engram/context": context } });
+      expect(calls).toEqual([{ name: "recall", arguments: { query: "project retries" }, _meta: { "com.engram/context": context } }]);
+      expect(response.result._meta.engramContext).toEqual(usage);
+      expect(response.result.structuredContent).toEqual({ matches: [] });
+    } finally { await client.close(); upstream.stop(true); rmSync(cache, { recursive: true, force: true }); }
+  }, 12000);
+
   test("initializes locally with canonical guidance, exposes reports and forwards only the requested real lifecycle", async () => {
     const cache = mkdtempSync(path.join(tmpdir(), "engram-shim-process-"));
     let catalogCalls = 0;

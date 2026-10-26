@@ -43,6 +43,7 @@
 .connection-empty { font-size:12px; color:var(--ds-muted); padding:20px 0; }
 .connection-explainer { font-size:var(--ds-text-xs); color:var(--ds-muted); line-height:1.8; margin-top:17px; max-width:650px; }
 .connection-guide { font-size:12px; line-height:1.8; color:var(--ds-muted); }
+.connection-guide .endpoint { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--ds-space-3); }
 .connection-guide ol { padding-left:19px; }
 .connection-guide li { margin:9px 0; }
 .connection-key-form { scroll-margin-top:24px; }
@@ -58,3 +59,9 @@
   .agent-overview { padding-bottom:15px; margin-bottom:18px; }
   .agent-overview-note { font-size:var(--ds-text-xs); margin-top:7px; gap:4px; }
 }
+.connection-memory-use { padding-block: var(--ds-space-5); margin-block: var(--ds-space-4); border-block: 1px solid var(--ds-line); min-width: 0; }
+.connection-memory-use h3 { margin: 0; }
+.connection-memory-use .ds-toolbar { justify-content: space-between; align-items: flex-start; }
+.connection-memory-use summary { cursor: pointer; font-size: var(--ds-text-sm); color: var(--ds-muted); }
+.connection-memory-use details > p { margin-top: var(--ds-space-3); }
+.connection-workflow-checks > .ds-evidence-list { margin-top: var(--ds-space-3); }

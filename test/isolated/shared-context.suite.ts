@@ -45,6 +45,8 @@ const realAuth = await import("../../gateway/src/auth");
 mock.module("../../gateway/src/auth", () => ({ ...realAuth, authenticateSecret: async (raw: string) => raw === "ens_fixture" ? actor : null }));
 const realOrgs = await import("../../gateway/src/orgs");
 mock.module("../../gateway/src/orgs", () => ({ ...realOrgs, resolveOrg: async () => org, withOrg: async (_org: unknown, _actor: unknown, work: () => any) => inOrg(work) }));
+const realUsage = await import("../../gateway/src/memory-usage");
+mock.module("../../gateway/src/memory-usage", () => ({ ...realUsage, applyContextBudget: async (_token: any, _name: any, _args: any, result: any) => result }));
 const { callTool } = await import("../../gateway/src/proxy");
 const { handleWeb } = await import("../../gateway/src/web");
 const call = (name: string, args: any = {}) => inOrg(() => callTool(actor, name, args));

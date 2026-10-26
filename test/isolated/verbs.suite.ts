@@ -135,6 +135,8 @@ mock.module("../../gateway/src/write-coordination", () => ({
 
 const realContextAccess = await import("../../gateway/src/context-sharing-access");
 mock.module("../../gateway/src/context-sharing-access", () => ({ ...realContextAccess, listApprovedTeamItems: async () => [] }));
+const realUsage = await import("../../gateway/src/memory-usage");
+mock.module("../../gateway/src/memory-usage", () => ({ ...realUsage, applyContextBudget: async (_token: any, _name: any, _args: any, result: any) => result }));
 const { callTool: scopedCallTool, slugForRemember, shrinkToolDef, SERVER_INSTRUCTIONS } =
   await import("../../gateway/src/proxy");
 

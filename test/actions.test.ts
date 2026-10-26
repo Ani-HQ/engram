@@ -106,6 +106,8 @@ describe("shared action queries", () => {
     expect(parseActionsQuery({ limit: 1000, offset: -1 })).toMatchObject({ limit: 100, offset: 0 });
     expect(() => parseActionsQuery({ status: "unknown" })).toThrow(ActionError);
     expect(() => parseActionsQuery({ offset: "NaN" })).toThrow(ActionError);
+    for (const id of ["28c680a9-2338-452b-b275-2084c4b69457", "audit:42"]) expect(parseActionsQuery({ id }).id).toBe(id);
+    for (const id of ["../other-org", "not-a-uuid", "audit:1 OR true", "a".repeat(81)]) expect(() => parseActionsQuery({ id })).toThrow(ActionError);
   });
 
   test("queries both evidence sources within one org, returns facets, and detects an extra page", async () => {
