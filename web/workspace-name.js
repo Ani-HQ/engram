@@ -52,9 +52,9 @@ export function workspaceNameForm({ session, editor }) {
     editor.setDraft(event.target.value); input.setAttribute("aria-invalid", "false"); feedback.textContent = ""; feedback.setAttribute("role", "status"); save.disabled = state.busy || state.draft.trim() === state.name;
   } });
   input.value = state.draft;
-  const save = h("button", { type: "submit", class: "small", disabled: state.busy || state.draft.trim() === state.name, "data-setup-focus": "save-workspace-name" }, state.busy ? "Saving…" : "Save name");
+  const save = h("button", { type: "submit", disabled: state.busy || state.draft.trim() === state.name, "data-setup-focus": "save-workspace-name" }, state.busy ? "Saving…" : "Save name");
   return h("section", { class: "setup-workspace-name", "aria-labelledby": "setup-name-title" }, h("h3", { id: "setup-name-title" }, "Name your workspace (optional)"),
-    h("p", { id: "setup-name-note", class: "detail-note" }, "You can change this later here."),
+    h("p", { id: "setup-name-note", class: "ds-hint" }, "You can also change this in Workspace settings."),
     h("form", { class: "stack", onsubmit: event => { event.preventDefault(); return editor.submit(); } }, h("div", { class: "setup-name-fields" }, h("label", { class: "field" }, "Workspace name", input), save), feedback));
 }
 
@@ -67,6 +67,9 @@ export function restoreSetupFocus(slot, snapshot) {
   if (!slot || !snapshot) return;
   let target = [...slot.querySelectorAll("[data-setup-focus]")].find(node => node.dataset.setupFocus === snapshot.key);
   if (target?.disabled) target = [...slot.querySelectorAll("[data-setup-focus]")].find(node => node.dataset.setupFocus === "workspace-name");
+  if (!target) target = [...slot.querySelectorAll("[data-setup-focus]")].find(node => node.dataset.setupFocus === "title");
+  // A progress change can move the previous control into collapsed help.
+  for (let closed = target?.closest?.("details:not([open])"); closed; closed = closed.parentElement?.closest("details:not([open])")) target = closed.querySelector("summary");
   target?.focus({ preventScroll: true });
   if (typeof snapshot.start === "number" && typeof snapshot.end === "number" && target?.setSelectionRange) target.setSelectionRange(snapshot.start, snapshot.end, snapshot.direction || "none");
 }

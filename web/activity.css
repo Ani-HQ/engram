@@ -282,3 +282,18 @@
   :root[data-input="pointer"] :is(.activity-mark-button,.activity-row .activity-open):active:not(:disabled) { transform:none; }
   .activity-card,.activity-open-arrow,.activity-filter-tab::after,.work-log-details summary svg,.activity-steps-expander>summary>svg,.detail.motion-open,.working-spinner { animation:none!important; transition:none!important; }
 }
+
+/* Activity owns both its history and the checks drawn from that history. */
+.activity-section-tabs { margin-bottom: var(--ds-space-6); }
+.activity-checks { min-width: 0; max-width: 960px; }
+.activity-check-toolbar { align-items: flex-end; gap: var(--ds-space-3); margin-bottom: var(--ds-space-3); }
+.activity-check-query { flex: 1; min-width: 0; }
+.activity-check-query .search-field { display: flex; width: 100%; min-width: 0; }
+.activity-check-toolbar .search { min-height: 44px; width: 100%; }
+.activity-check-toolbar > button { flex-shrink: 0; min-height: 44px; }
+.activity-check-hint { margin-bottom: var(--ds-space-5); max-width: 75ch; }
+.activity-checks > .ds-notice { margin-bottom: var(--ds-space-5); }
+@media (max-width: 600px) {
+  .activity-check-toolbar .activity-check-query { flex-basis: 100%; }
+  .activity-check-toolbar > button { width: 100%; }
+}

@@ -14,7 +14,7 @@ export function aiConfiguration(external = {}, { settings = true } = {}) {
     h("div", {}, icon("shield-check", { size: 16 }), h("strong", {}, "Separate choices for external processing")),
     h("p", {}, "Local rules and extractive summaries remain available. Each optional provider needs its own applicable permission and server configuration; Jev also needs available access and budget."),
     h("dl", { class: "insight-config" }, h("div", {}, h("dt", {}, "Jev · TypeSafe"), h("dd", {}, `${jev ? "Permission on" : "Permission off"} · ${external.jevConfigured === true ? "server configured" : "not configured"}`)), h("div", {}, h("dt", {}, "Voyage embeddings"), h("dd", {}, `${other ? "Permission on" : "Permission off"} · ${external.embeddingConfigured === true ? "server configured" : "not configured"}`)), h("div", {}, h("dt", {}, "OpenAI briefs"), h("dd", {}, `${other ? "Permission on" : "Permission off"} · ${external.generativeConfigured === true ? "server configured" : "not configured"}`))),
-    settings && h("a", { href: "#workspace", class: "insight-settings-link" }, "Privacy settings"));
+    settings && h("a", { href: "#workspace", class: "insight-settings-link ds-touch-target" }, "Privacy settings"));
 }
 
 function sources(result, ids, onSource) {
@@ -28,10 +28,10 @@ function sources(result, ids, onSource) {
 
 export function attentionResults(data, { onSource, onActivity, onCopy }) {
   const result = data?.result;
-  if (!result) return h("div", { class: "insight-empty" }, icon("layers", { size: 24 }), h("h2", {}, "A second look at the work"), h("p", {}, "Run checks to find possible duplicate actions, conflicts, repeated failures, and work awaiting an update. Checks suggest what to inspect; they do not change your agents or memory."));
+  if (!result) return h("div", { class: "insight-empty" }, icon("layers", { size: 24 }), h("h2", {}, "Review recorded work"), h("p", {}, "Run checks to find repeated failures, possible overlapping work, and activity awaiting an update. Add a description to find related work and prepare a handoff brief. Each finding links to its source activity."));
   const findings = result.insights || [];
   return h("div", { class: "attention-content" },
-    h("div", { class: "insight-result-meta" }, h("span", {}, `${findings.length} finding${findings.length === 1 ? "" : "s"}`), h("span", {}, "Checked ", relativeTime(result.generatedAt))),
+    h("div", { class: "insight-result-meta" }, h("span", {}, `${findings.length} finding${findings.length === 1 ? "" : "s"}`), h("span", {}, "Latest check · ", relativeTime(result.generatedAt))),
     result.coverage && h("p", { class: "insight-coverage" }, `${result.coverage.actionsChecked} recorded actions checked`, result.coverage.truncated ? ` · Limited to the latest ${result.coverage.maxActions}; older activity was not included.` : " · Activity outside Engram’s coverage is not included."),
     result.search && h("section", { class: "insight-search-results" },
       h("div", { class: "insight-section-heading" }, h("h2", {}, "Related work"), method(result.search.method)),
@@ -53,5 +53,5 @@ export function attentionResults(data, { onSource, onActivity, onCopy }) {
       button([icon("copy", { size: 13 }), "Copy brief"], () => onCopy(result.brief.text), { class: "small" })),
     result.provenance?.length > 0 && h("details", { class: "insight-provenance" }, h("summary", {}, "Model provenance"), result.provenance.map(record => h("dl", { class: "insight-config" },
       h("div", {}, h("dt", {}, "Requested model"), h("dd", {}, record.requestedModel)), h("div", {}, h("dt", {}, "Response model"), h("dd", {}, record.modelReported ? record.reportedModel : "Provider did not report a model")), h("div", {}, h("dt", {}, "Question version"), h("dd", {}, record.questionVersion))))),
-    h("p", { class: "insight-private-note" }, icon("eye-off", { size: 13 }), "Findings, queries, source actions, and briefs stay private to this workspace. Public profiles show aggregate counts only."));
+    h("p", { class: "insight-private-note" }, icon("eye-off", { size: 13 }), "Results and source links are scoped to this workspace."));
 }

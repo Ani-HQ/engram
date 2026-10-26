@@ -40,3 +40,18 @@ new table does not make an older runtime enforce it.
 This also applies to directly reachable tagged revision URLs: remove or disable
 tags for pre-feature revisions before exposing lifecycle controls, rather than
 leaving an older authentication path reachable beside the new production URL.
+
+## Console connection flow
+
+The Connections page owns the current/archived inventory and connection access.
+Its primary **Connect an agent** action opens an agent picker followed by the
+selected client's sign-in instructions or a named access-key form. Endpoint,
+permission and one-time configuration controls belong to that dialog. Existing
+rows open their own management actions and reconnect details.
+
+Getting started, save/recall checks and memory-workflow installation are separate
+from this flow. The workspace onboarding panel is not shown on Connections.
+Key requests stay pinned to the current workspace and dialog. Closing or
+replacing a dialog does not reopen it when a key request finishes; secret fields
+are cleared when the result closes, and a later connection refresh shows any
+successfully issued authorization without recovering its one-time key.

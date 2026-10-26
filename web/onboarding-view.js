@@ -2,60 +2,109 @@ import { h } from "./profile.js";
 import { icon } from "./icons.js";
 import { onboardingAgents, onboardingProgress, onboardingWriteGuidance, agentConnectionGuide, connectionCheckPrompt, firstMemoryPrompt, recallMemoryPrompt } from "./onboarding-model.js";
 import { workspaceNameForm } from "./workspace-name.js";
-import { statusBadge, progressBar } from "./design-system.js";
+import { progressBar } from "./design-system.js";
 import { memorySetupGuide } from "./memory-usage-view.js";
 
 const button = (label, action, attrs = {}) => h("button", { type: "button", onclick: action, ...attrs }, label);
 
-export function onboardingGuide({ data, agentId = "", mcp, checking, error, policies, inventory, session, nameEditor, demo = false, onChoose, onCheck, onDismiss, onCreateKey, onReporting, copyControl }) {
+export function onboardingGuide({ data, agentId = "", mcp, checking, error, policies, inventory, session, nameEditor, demo = false, disclosures = {}, onDisclosureChange = () => {}, onChoose, onCheck, onDismiss, onCreateKey, copyControl }) {
   const progress = onboardingProgress(data);
-  const writeGuidance = onboardingWriteGuidance({ policies, agentId, inventory });
   const connection = agentConnectionGuide(agentId, mcp);
-  const choice = h("select", { id: "setup-agent", "data-setup-focus": "agent", onchange: event => onChoose(event.target.value) },
-    h("option", { value: "" }, "Choose your agent"), onboardingAgents.map(agent => h("option", { value: agent.id }, agent.label)));
-  choice.value = agentId;
-  const prompt = progress.step === "connect" ? connectionCheckPrompt : progress.step === "remember" ? firstMemoryPrompt : recallMemoryPrompt;
-  const promptLabel = progress.step === "connect" ? "Copy connection check" : progress.step === "remember" ? "Copy save prompt" : "Copy recall prompt";
-  const steps = [["agentConnected", "Connect an agent"], ["memorySaved", "Save something useful"], ["memoryRecalled", "Read memory from your agent"]];
-  const checkCount = progress.available ? `${progress.completed} of ${steps.length} checks observed` : "Not checked yet";
-  const measuredProgress = progress.available
-    ? progressBar({ label: "Workspace setup checks", value: progress.completed, max: steps.length, valueText: checkCount })
-    : checking ? progressBar({ label: "Checking workspace setup", valueText: "Waiting for the first check results." }) : null;
-  const stage = h("div", { class: "setup-stage" });
-  stage.append(h("h3", {}, "Which agent are you using?"),
-    h("p", {}, "Set up a new agent or update an existing one. The guided installer handles its Engram files."),
-    h("label", { class: "field", for: "setup-agent" }, "Agent", choice));
-  if (connection) {
-    if (connection.oauth) stage.append(h("div", { class: "setup-connection" }, h("p", {}, `In ${connection.label}, add a custom MCP connector with this endpoint, then sign in to your Engram workspace.`), h("pre", { tabindex: "0", "aria-label": "MCP endpoint" }, connection.endpoint), copyControl("Copy endpoint", connection.endpoint, { "data-setup-focus": "endpoint" }), h("p", { class: "setup-note" }, "Connector sign-in needs OAuth enabled on this installation. The provider controls persistent instructions and hooks; a local installer cannot enable them in a cloud session.")));
-    else if (!connection.command) stage.append(h("div", { class: "setup-connection" }, h("p", {}, "Use this endpoint in the provider’s MCP connection screen. Create a dedicated key if it asks for a bearer token."), h("pre", { tabindex: "0", "aria-label": "MCP endpoint" }, connection.endpoint), copyControl("Copy endpoint", connection.endpoint, { "data-setup-focus": "endpoint" }), button("Create an access key", () => onCreateKey(agentId), { class: "small", "data-setup-focus": "create-key" })));
-    stage.append(memorySetupGuide({ harness: connection.harness || connection.id, kind: connection.oauth ? 'oauth' : 'token' }, {
-      endpoint: connection.endpoint, open: true,
+  const steps = [["agentConnected", "Connect an agent"], ["memorySaved", "Save a memory"], ["memoryRecalled", "Recall it"]];
+  const checkCount = progress.available ? `${progress.completed} of ${steps.length} checks received` : "Not checked yet";
+  const titles = { connect: "Connect your first agent.", remember: "Save your first memory.", recall: "Recall your first memory.", done: "Your workspace has memory." };
+  const descriptions = {
+    connect: "Give your agents a shared place to save decisions and pick them up in another session.",
+    remember: "Ask a connected agent to save one useful decision or preference from your current work.",
+    recall: "Ask your agent to bring back the decision or preference you saved. You can also try another connected agent.",
+    done: "Engram has received successful connection, save and recall calls in this workspace.",
+  };
+  const disclosure = (key, label, content, open = false) => h("details", {
+    class: "setup-secondary", open: disclosures[key] ?? open,
+    ontoggle: event => onDisclosureChange(key, event.currentTarget.open),
+  }, h("summary", { "data-setup-focus": key }, label), content);
+
+  function agentSetup() {
+    const choice = h("select", { id: "setup-agent", "data-setup-focus": "agent", onchange: event => onChoose(event.target.value) },
+      h("option", { value: "" }, "Choose your agent"), onboardingAgents.map(agent => h("option", { value: agent.id }, agent.label)));
+    choice.value = agentId;
+    const content = h("div", { class: "setup-agent-content ds-stack" },
+      h("p", { class: "ds-hint" }, "Choose the agent you want to connect. Each agent has its own setup instructions."),
+      h("label", { class: "field", for: "setup-agent" }, "Agent", choice));
+    if (!connection) {
+      if (agentId) content.append(h("p", { class: "ds-notice", "data-tone": "warning", role: "status" }, "The setup instructions are unavailable. Refresh this page or review Connections for the workspace endpoint."));
+      return content;
+    }
+    if (!connection.command) content.append(h("div", { class: "setup-connection ds-stack" },
+      h("p", { class: "ds-hint" }, connection.oauth
+        ? `In ${connection.label}, add a custom MCP connector with this endpoint, then sign in to your Engram workspace.`
+        : `In ${connection.label}, add this endpoint in its MCP connection settings. Create an access key if it asks for a bearer token.`),
+      h("code", { class: "ds-code-scroll", tabindex: "0", role: "region", "aria-label": "MCP endpoint. Scroll horizontally to read." }, connection.endpoint),
+      h("div", { class: "ds-row setup-actions" }, copyControl("Copy endpoint", connection.endpoint, { "data-setup-focus": "endpoint" }),
+        !connection.oauth && button("Create an access key", () => onCreateKey(agentId), { "data-setup-focus": "create-key" })),
+      connection.oauth && h("p", { class: "ds-hint" }, "Connector sign-in requires OAuth to be enabled on this Engram installation.")));
+    const workflow = memorySetupGuide({ harness: connection.harness || connection.id, kind: connection.oauth ? "oauth" : "token" }, {
+      endpoint: connection.endpoint, open: Boolean(connection.command),
       copyControl: (value, label) => copyControl(label, value, { "data-setup-focus": "command" }),
       onCreateKey: connection.command ? () => onCreateKey(agentId) : undefined,
-    }));
+    });
+    const retainDisclosures = (node, key) => {
+      if (node.tagName === "DETAILS") {
+        if (typeof disclosures[key] === "boolean") node.toggleAttribute("open", disclosures[key]);
+        node.children[0]?.setAttribute("data-setup-focus", key);
+        node.addEventListener("toggle", event => { if (event.target === node) onDisclosureChange(key, node.open); });
+      }
+      Array.from(node.children).forEach((child, index) => retainDisclosures(child, `${key}-${index}`));
+    };
+    retainDisclosures(workflow, `workflow-${agentId}`);
+    // A local guided command establishes the connection as well as its workflow.
+    if (connection.command) content.append(workflow);
+    content.append(h("div", { class: "setup-prompt ds-stack" },
+      h("h3", {}, "Check the connection from your agent"),
+      h("p", { class: "ds-hint" }, "After connecting, send this prompt to your agent. Engram checks for a successful tool call; a saved key or sign-in alone does not confirm contact."),
+      copyControl("Copy connection check", connectionCheckPrompt, { class: progress.step === "connect" ? "primary" : "", "data-setup-focus": "connection-prompt" })));
+    if (!connection.command) content.append(workflow);
+    return content;
   }
-  if (progress.done) stage.append(...[
-    h("div", { class: "setup-next" }, h("strong", {}, "Memory calls confirmed."),
-    h("p", {}, "An agent connected, saved memory, and read memory in this workspace. These receipts do not confirm that every agent has a workflow installed.")),
-    h("div", { class: "setup-actions" }, h("a", { href: "#memory", class: "button primary" }, "Open Memory"), h("a", { href: "#activity", class: "button" }, "View Activity")),
-    h("div", { class: "setup-next" }, h("strong", {}, "Check each connection."), h("p", {}, "Connections separates access, memory receipts, and explicit workflow checks. Automatic use on every task is not independently verified."), h("a", { href: "#connect", class: "button small" }, "Review connections")),
-  ].filter(Boolean));
-  else if (progress.step === "connect") stage.append(...[
-    connection && h("div", { class: "setup-prompt" }, h("strong", {}, "Then check from the agent"), h("p", {}, "Ask it to call Engram’s whoami tool. A saved key or sign-in alone does not complete this step."), copyControl(promptLabel, prompt, { "data-setup-focus": "prompt" })),
-  ].filter(Boolean));
-  else stage.append(...[
-    h("div", { class: "setup-next" }, h("strong", {}, progress.step === "remember" ? "Give your next task some context." : "Bring that context back.")),
-    h("p", {}, progress.step === "remember" ? "Ask your connected agent to save one real decision or preference from work you're doing together." : "Ask the agent to recall the decision or preference you saved. You can also try this from a second connected agent."),
-    progress.step === "remember" && h("p", { class: writeGuidance.state === "check-permissions" ? "detail-note" : "notice", role: "status" }, writeGuidance.message, " ", h("a", { href: writeGuidance.href }, writeGuidance.link)),
-    h("div", { class: "setup-prompt" }, h("p", {}, prompt), copyControl(promptLabel, prompt, { class: "primary small", "data-setup-focus": "prompt" })),
-  ].filter(Boolean));
+
+  const stage = h("div", { class: "setup-stage ds-stack" });
+  if (progress.done) stage.append(
+    h("div", { class: "ds-row setup-actions" }, h("a", { href: "#memory", class: "button primary" }, "Open Memory"), h("a", { href: "#activity", class: "button" }, "View Activity")),
+    h("p", { class: "ds-hint" }, "These workspace checks may come from different agents. They do not confirm that every agent has a workflow installed. ", h("a", { href: "#connect", class: "ds-touch-target" }, "Review connections")),
+  );
+  else if (progress.step === "connect") stage.append(agentSetup());
+  else {
+    const saving = progress.step === "remember";
+    const guidance = onboardingWriteGuidance({ policies, agentId, inventory });
+    stage.append(...[
+      h("p", { class: "setup-prompt ds-notice" }, saving ? firstMemoryPrompt : recallMemoryPrompt),
+      saving && h("p", { class: guidance.state === "check-permissions" ? "ds-hint" : "ds-notice", "data-tone": guidance.state === "check-permissions" ? null : "warning", role: "status" }, guidance.message, " ", h("a", { href: guidance.href }, guidance.link)),
+      h("div", { class: "ds-row setup-actions" }, copyControl(saving ? "Copy save prompt" : "Copy recall prompt", saving ? firstMemoryPrompt : recallMemoryPrompt, { class: "primary", "data-setup-focus": "prompt" })),
+    ].filter(Boolean));
+  }
+  const nameForm = workspaceNameForm({ session, editor: nameEditor });
+  const nameState = nameEditor?.state;
   return h("section", { class: "setup-guide ds-card", "aria-labelledby": "setup-title", "aria-busy": String(Boolean(checking)) },
-    h("div", { class: "setup-heading" }, h("div", { class: "ds-heading-group" }, h("span", { class: "eyebrow ds-eyebrow" }, demo ? "LOCAL PREVIEW · SIMULATED PROGRESS" : "GUIDED AGENT SETUP"), h("h2", { id: "setup-title", tabindex: "-1", "data-setup-focus": "title" }, "Set up your agent."), h("div", { class: "ds-row" }, statusBadge(progress.done ? "Memory calls confirmed" : "Guided setup", { tone: progress.done ? "success" : "neutral" }))), button("Do this later", onDismiss, { class: "text small", "data-setup-focus": "dismiss" })),
-    workspaceNameForm({ session, editor: nameEditor }),
-    h("div", { class: "setup-progress" }, h("div", { class: "ds-toolbar" }, h("span", { class: "setup-progress-label" }, "Workspace setup"), h("span", { class: "setup-progress-count ds-tabular" }, checkCount)), measuredProgress),
-    h("ol", { class: "setup-steps", "aria-label": "Getting started progress" }, steps.map(([key, label], index) => h("li", { class: progress.checks[key] ? "complete" : progress.step === ["connect", "remember", "recall"][index] ? "current" : "", "aria-current": progress.step === ["connect", "remember", "recall"][index] ? "step" : null }, h("span", { class: "setup-step-symbol", "aria-hidden": "true" }, progress.checks[key] ? icon("check", { size: 13 }) : String(index + 1)), h("span", {}, label), h("span", { class: "sr-only" }, progress.checks[key] ? ": complete" : ": pending")))),
-    !progress.available && h("p", { class: "notice", role: "status" }, checking ? "Checking successful agent calls received by this workspace." : "No checks yet. Follow the steps below, then check progress."),
+    h("div", { class: "setup-heading" }, h("div", { class: "ds-heading-group" },
+      h("span", { class: "ds-eyebrow" }, demo ? "LOCAL PREVIEW · SIMULATED PROGRESS" : "GET STARTED WITH ENGRAM"),
+      h("h2", { id: "setup-title", tabindex: "-1", "data-setup-focus": "title" }, titles[progress.step]),
+      h("p", { class: "ds-hint" }, descriptions[progress.step])),
+      button(progress.done ? "Close setup" : "Do this later", onDismiss, { class: "text", "data-setup-focus": "dismiss" })),
+    !progress.done && h("div", { class: "setup-progress ds-stack" },
+      h("div", { class: "ds-toolbar" }, h("span", { class: "ds-hint" }, "Workspace checks"), h("span", { class: "ds-hint ds-tabular" }, checkCount)),
+      progress.available ? progressBar({ label: "Workspace setup checks", value: progress.completed, max: steps.length, valueText: checkCount })
+        : checking ? progressBar({ label: "Checking workspace setup", valueText: "Waiting for the first check results." }) : null,
+      h("ol", { class: "setup-steps", "aria-label": "Getting started progress" }, steps.map(([key, label], index) => h("li", {
+        class: "ds-row", "aria-current": progress.step === ["connect", "remember", "recall"][index] ? "step" : null,
+      }, h("span", { class: "ds-badge", "data-tone": progress.checks[key] ? "success" : "neutral", "aria-hidden": "true" }, progress.checks[key] ? icon("check", { size: 14 }) : String(index + 1)),
+      h("span", {}, label), h("span", { class: "sr-only" }, progress.checks[key] ? ": complete" : ": pending"))))),
+    !progress.available && h("p", { class: "ds-notice", role: "status" }, checking ? "Checking successful agent calls received by this workspace." : "Workspace checks are unavailable. You can follow the setup instructions, then check again."),
     stage,
-    h("div", { class: "setup-check" }, button([checking ? h("span", { class: "ds-spinner", "aria-hidden": "true" }) : icon("refresh-cw", { size: 14 }), checking ? "Checking…" : "Check progress"], () => { if (!checking) onCheck(); }, { class: "small", "aria-busy": String(Boolean(checking)), "aria-disabled": String(Boolean(checking)), "aria-describedby": "setup-check-feedback", "data-setup-focus": "check" }), h("p", { id: "setup-check-feedback", role: error ? "alert" : "status", "aria-live": "polite" }, error || (checking ? "Checking activity received by this workspace…" : progress.done ? "All three steps have successful agent calls." : "Steps update after Engram receives successful agent calls. Copying a prompt does not complete a step."))),
+    h("div", { class: "setup-check" },
+      button([checking ? h("span", { class: "ds-spinner", "aria-hidden": "true" }) : icon("refresh-cw", { size: 14 }), checking ? "Checking…" : "Check progress"], () => { if (!checking) onCheck(); }, { "aria-busy": String(Boolean(checking)), "aria-disabled": String(Boolean(checking)), "aria-describedby": "setup-check-feedback", "data-setup-focus": "check" }),
+      h("p", { id: "setup-check-feedback", class: "ds-hint", role: error ? "alert" : "status", "aria-live": "polite" }, error || (checking ? "Checking activity received by this workspace…" : progress.done ? "All three workspace checks have successful agent calls." : progress.step === "connect" && !connection ? "Choose an agent to see connection instructions." : "After your agent runs the prompt, check progress here. Only successful agent calls complete a step."))),
+    (progress.step !== "connect" || nameForm) && h("div", { class: "setup-options ds-stack" },
+      progress.step !== "connect" && disclosure(progress.done ? "completedAgent" : "agentHelp", progress.done ? "Add or repair an agent" : "Agent connection help", agentSetup()),
+      nameForm && disclosure("workspaceName", "Workspace name (optional)", nameForm, Boolean(nameState?.busy || nameState?.error || nameState?.feedback || nameState?.draft !== nameState?.name))),
   );
 }

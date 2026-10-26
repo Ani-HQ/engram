@@ -1,5 +1,33 @@
 # Responsive and interaction review
 
+## Connections and Activity Checks — 26 October 2026
+
+Connections now focuses on connecting an agent and managing existing access.
+The dedicated connection dialog starts with agent selection and presents the
+matching OAuth or access-key steps. One-time credentials stay masked and are
+cleared on dismissal; late responses cannot reopen a dismissed dialog. Workflow
+installation guidance stays outside this page. Optional onboarding workspace
+naming and repair controls use shared fields and aligned action rows.
+
+Activity now contains History and Checks. The sidebar no longer has a separate
+Attention destination; legacy Attention links resolve to Activity Checks.
+History filters and the related-work query remain independent. Findings retain
+source activity links, source filters return to History, and Create handoff
+opens a check scoped to the selected activity. History polling is inactive while
+Checks is selected.
+
+Local sample-data review covered 1280px, 390px and 320px layouts, legacy links,
+related-work results, source inspection, scoped handoffs, scope clearing and
+keyboard focus, delayed checks, read-only access and load errors. The narrow
+Checks view has no horizontal overflow and uses the shared touch targets.
+Connection browser review also covered agent choices, OAuth and key setup,
+reconnect defaults, delayed issuance and dismissal, one-time-secret cleanup,
+keyboard focus, read-only access and mutation errors at desktop and mobile widths.
+Validation from the clean release checkout: **872 tests passed, 1 Cloud Run-only
+skip, 0 failures, and 9495 assertions**. All **68** offline Python automation
+checks, the browser bundle, 71-file runtime asset gate, six retrieval fixtures
+and shim discovery passed. Git diff checking passed.
+
 ## Portable agent memory — 26 October 2026
 
 Connections now distinguish access, successful recall/save receipts, an explicit
