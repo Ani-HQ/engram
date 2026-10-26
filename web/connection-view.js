@@ -50,7 +50,7 @@ export function connectionInventory(data, { actions, onInspect, list = "current"
     list === "archived" ? all.length > 0 && h("section", {}, h("div", { class: "connection-section-title" }, h("h3", {}, "Archived"), h("span", {}, count(all.length))), all.map(row)) : [
       authorized.length > 0 && h("section", {}, h("div", { class: "connection-section-title" }, h("h3", {}, "Authorized"), h("span", {}, count(authorized.length))), authorized.map(row)),
       attention.length > 0 && h("section", {}, h("div", { class: "connection-section-title" }, h("h3", {}, "Needs attention"), h("span", {}, count(attention.length))), attention.map(row))],
-    !all.length && h("p", { class: "connection-empty" }, list === "archived" ? "No archived connections. Archived connections stay here until you restore or delete them." : "No current connections. Sign in from an agent, create an access key below, or restore an archived connection."),
+    !all.length && h("p", { class: "connection-empty" }, list === "archived" ? "No archived connections. Archived connections stay here until you restore or delete them." : "No current connections. Choose Connect an agent to add one, or restore an archived connection."),
     data.more && h("p", { class: "detail-note" }, `Showing the first ${count(data.limit || all.length)} connections. Older connections are omitted from this view.`),
     h("p", { class: "connection-explainer" }, "Authorization confirms access. Last contact records a request received by Engram; it does not mean an agent is currently working. Work outside Engram appears when the agent reports it."));
 }

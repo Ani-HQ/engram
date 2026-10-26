@@ -68,3 +68,19 @@
 .connection-memory-use summary { cursor: pointer; font-size: var(--ds-text-sm); color: var(--ds-muted); }
 .connection-memory-use details > p { margin-top: var(--ds-space-3); }
 .connection-workflow-checks > .ds-evidence-list { margin-top: var(--ds-space-3); }
+
+/* Connection creation is a focused dialog; the page owns the inventory. */
+.connection-page-actions { flex-shrink: 0; }
+.connection-setup, .connection-result { min-width: 0; gap: var(--ds-space-5); }
+.connection-setup :is(h2,h3,p), .connection-result :is(h2,h3,p) { margin: 0; }
+.connection-setup .field, .connection-result .field { min-width: 0; }
+.connection-setup-endpoint { min-width: 0; gap: var(--ds-space-3); }
+.connection-create-form { gap: var(--ds-space-3); padding-top: var(--ds-space-5); border-top: 1px solid var(--ds-line); }
+.connection-result .connection-secret-row { margin: 0; align-items: stretch; }
+.connection-result details { margin: 0; }
+.connection-result details > :not(summary) { margin-top: var(--ds-space-3); }
+@media (max-width: 600px) {
+  .connect-layout > .page-heading { flex-wrap: wrap; align-items: flex-start; }
+  .connection-page-actions { width: 100%; }
+  .connection-page-actions > .primary { flex: 1; }
+}

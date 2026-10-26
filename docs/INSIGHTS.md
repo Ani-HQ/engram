@@ -1,9 +1,17 @@
 # Private insights
 
-Attention runs read-only checks over up to 200 latest logical actions in the
+Activity’s **Checks** view runs read-only checks over up to 200 latest logical actions in the
 authenticated workspace, or one explicitly selected activity. Coverage is
 returned with every result. It never changes lifecycle state, moves a memory,
 blocks a tool, or performs an external action.
+
+The Activity page has **History** and **Checks** sections. History owns the live
+feed and its literal filters. Checks owns on-demand findings, related-work search
+and handoff briefs. Its query and optional activity scope stay separate from
+History filters. Opening a finding returns to the cited activity; filtering from
+that activity switches to History. History refresh pauses while Checks is open,
+so it cannot replace an in-flight check. Legacy `#attention` links resolve to
+`#activity?tab=checks`.
 
 ## Evidence and interpretation
 
@@ -58,7 +66,7 @@ consent. Immediately before every actual Jev or brief call, Engram rereads saved
 workspace consent and policy, checks hosted entitlement, and atomically reserves
 one call from a shared daily PostgreSQL budget. Failed calls also count. Default
 budget: 24 calls/workspace/UTC database day. Recall, memory review, dream jobs,
-Attention and briefs share it. Normal policy changes cannot retract data already
+Activity checks and briefs share it. Normal policy changes cannot retract data already
 transmitted; they stop subsequent preflight-approved calls.
 
 Inputs are bounded and credentials, email addresses and URLs are redacted before
