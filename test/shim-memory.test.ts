@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync, readdirSync } from "node:fs";
 import path from "node:path";
+import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import { applyContextBudget } from "../gateway/src/memory-usage";
 import { normalizeToken } from "../gateway/src/policies";
@@ -12,7 +13,7 @@ let previous: Record<string, string | undefined>;
 const servers: any[] = [];
 
 beforeEach(() => {
-  root = mkdtempSync("/private/tmp/engram-memory-test-");
+  root = realpathSync(mkdtempSync(path.join(tmpdir(), "engram-memory-test-")));
   previous = Object.fromEntries(["HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME"].map(key => [key, process.env[key]]));
   process.env.HOME = root;
   process.env.XDG_CONFIG_HOME = path.join(root, "config");

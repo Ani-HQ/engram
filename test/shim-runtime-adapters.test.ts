@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 const memory = require("../shim/memory.js");
 const registry = require("../shim/runtime-contracts.js");
@@ -9,7 +10,7 @@ const plugins = require("../shim/runtime-plugins.js");
 let root: string, previous: Record<string, string | undefined>;
 const servers: any[] = [];
 beforeEach(() => {
-  root = mkdtempSync("/private/tmp/engram-native-adapters-");
+  root = realpathSync(mkdtempSync(path.join(tmpdir(), "engram-native-adapters-")));
   previous = Object.fromEntries(["HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME"].map(key => [key, process.env[key]]));
   process.env.HOME = root; process.env.XDG_CONFIG_HOME = path.join(root, "config"); process.env.XDG_STATE_HOME = path.join(root, "state");
 });

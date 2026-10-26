@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import path from 'node:path';
+import { tmpdir } from 'node:os';
 import { EngramMemory } from '../sdks/javascript/index.mjs';
 import contract from './fixtures/memory-conformance.json';
 
@@ -12,7 +13,7 @@ afterEach(() => {
 });
 
 function fixture() {
-  const root = mkdtempSync('/private/tmp/engram-sdk-interop-'); roots.push(root);
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'engram-sdk-interop-'))); roots.push(root);
   const requests: any[] = [], memories = new Map<string, string[]>(), reports = new Map<string, string>();
   // Synthetic tenant identities, not an alternate production authentication path.
   const tenants = new Map([['fixture-js', 'shared'], ['fixture-python', 'shared'], ['fixture-other', 'other']]);

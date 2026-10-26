@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { tmpdir } from 'node:os';
 import { EngramMemory, READ_TOOLS } from '../sdks/javascript/index.mjs';
 import { LangGraphMemoryAdapter, createAdkMemoryPlugin, runWithMemory } from '../sdks/javascript/frameworks.mjs';
 import fixture from './fixtures/memory-conformance.json';
@@ -8,7 +9,7 @@ import fixture from './fixtures/memory-conformance.json';
 const roots: string[] = [], servers: ReturnType<typeof Bun.serve>[] = [];
 afterEach(async () => { for (const server of servers.splice(0)) server.stop(true); for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
 async function gateway() {
-  const root = await mkdtemp('/private/tmp/engram-sdk-'); roots.push(root);
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'engram-sdk-'))); roots.push(root);
   const calls: any[] = [], stored = new Map<string, string[]>(), reports = new Map<string, any>();
   const modes = { loseSave: false, loseReport: false, deny: false, denyWrites: false, denyMcpWrites: false, denyReads: false, huge: false, invalid: false, delay: 0 };
   const probe = 'emp_' + 'a'.repeat(32);
