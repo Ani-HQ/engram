@@ -4,6 +4,7 @@ import { config } from "./config";
 import { connectorBranding } from "../../shim/branding.js";
 import { sql } from "./db";
 import { localJwks, oauthSigningEnabled } from "./oauth-keys";
+import { oauthConnectionId } from "./connection-identity";
 import { getOrg, memberInOrg, type OrgMember } from "./orgs";
 import { normalizeToken, type TokenRecord } from "./policies";
 
@@ -20,6 +21,7 @@ export interface JwtClaims {
   azp?: string;
   org_id?: number;
   membership_id?: number;
+  connection_generation?: number;
 }
 
 interface Jwk {
@@ -209,7 +211,7 @@ export async function authenticateJwt(raw: string, audience: string): Promise<To
   });
   if (!claims?.sub) return null;
   const member = await oauthMemberForClaims(claims);
-  if (!member) return null;
+  if (!member || !await oauthConnectionForClaims(claims)) return null;
   return normalizeToken({
     name: oauthActorName(claims),
     orgId: member.orgId,
@@ -238,6 +240,18 @@ export async function oauthMemberForClaims(claims: JwtClaims, db: postgres.Sql =
   const member = await memberInOrg(orgId, email, db);
   if (!member || member.id !== membershipId || !await getOrg(orgId, db)) return null;
   return member;
+}
+
+export async function oauthConnectionForClaims(claims: JwtClaims, db: postgres.Sql = sql): Promise<boolean> {
+  const orgId = claims.org_id;
+  if (typeof orgId !== "number" || !Number.isSafeInteger(orgId) || orgId < 1) return false;
+  const email = typeof claims.email === "string" ? claims.email : typeof claims.preferred_username === "string" ? claims.preferred_username : "";
+  if (!email) return false;
+  const clientId = typeof claims.client_id === "string" ? claims.client_id : typeof claims.azp === "string" ? claims.azp : null;
+  if (!clientId) return false;
+  const rows = await db`SELECT generation, archived_at, deleted_at FROM connection_lifecycle WHERE org_id = ${orgId} AND connection_id = ${oauthConnectionId(orgId, email, clientId)}`;
+  const generation = claims.connection_generation === undefined ? 0 : claims.connection_generation;
+  return Number.isSafeInteger(generation) && generation >= 0 && generation === Number(rows[0]?.generation ?? 0) && !rows[0]?.archived_at && !rows[0]?.deleted_at;
 }
 
 export function oauthActorName(claims: JwtClaims): string {

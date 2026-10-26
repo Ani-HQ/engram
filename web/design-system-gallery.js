@@ -1,4 +1,4 @@
-import { memoryOrbit, memoryStream, resourceChip, loadingState, progressBar, setProgress, observeLoadingMotion, observeContextFlow, contextFlowArt, observeLogoTicker, observeSelects, statusBadge, highlightArt, profileLayoutPreview } from './design-system.js';
+import { memoryOrbit, memoryStream, resourceChip, loadingState, progressBar, setProgress, observeLoadingMotion, observeContextFlow, contextFlowArt, observeLogoTicker, observeSelects, statusBadge, statusText, profileAvatar, highlightArt, profileLayoutPreview } from './design-system.js';
 import { publicAgentCatalog } from './public-agent-catalog.js';
 import { icon } from './icons.js';
 import { agentVisual, toolVisual, visualIcon } from './tooling.js';
@@ -13,6 +13,17 @@ if (document.querySelector('meta[name="engram-demo"]')) {
 }
 
 document.querySelector('#orbit-example').append(memoryOrbit());
+document.getElementById('status-text-active').append(statusText('File activity', { active: true }));
+document.getElementById('status-text-completed').append(statusText('File activity'));
+document.getElementById('status-text-reduced').append(statusText('File activity', { active: true }));
+for (const size of ['sm', 'md', 'lg']) document.getElementById('profile-avatar-sizes').append(profileAvatar({ size, label: `Default profile image, ${size} example` }));
+// Locally generated geometric PNG fixture, not a photograph or a remote image.
+const profileAvatarSample = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAiUlEQVR42u3Ouw2AMBAD0BuFjo6KNRiECZiKgZgGlAIJRRflvgIkFy5tPxqm8XwzBICltB07m3RA69gDoehzLYIyzjUIyjqXIr4N8J5LEABQ9nkPAQAAALCAeV3CAWWzRAyIRNx7AKgBEYjn1j8BHkS9YwZYENyGC6BBtPpuQA/S64UBPAGg/roAwAOSfPbIJ90AAAAASUVORK5CYII=';
+document.getElementById('profile-avatar-uploaded').append(profileAvatar({ src: profileAvatarSample, size: 'lg', label: 'Uploaded profile image component example' }));
+const loadingAvatar = profileAvatar({ label: 'Profile image while loading' }); loadingAvatar.setAttribute('data-state', 'loading');
+document.getElementById('profile-avatar-loading').append(loadingAvatar);
+document.getElementById('profile-avatar-unavailable').append(profileAvatar({ src: 'data:image/png;base64,invalid', label: 'Unavailable profile image fallback' }));
+document.getElementById('profile-avatar-narrow').append(profileAvatar({ size: 'sm', label: 'Default profile image in a narrow layout' }));
 const productLogos = document.getElementById('product-logo-examples');
 productLogos.replaceChildren(...publicAgentCatalog.map(product => {
   const sample = document.createElement('div'); sample.className = 'ds-gallery-product';

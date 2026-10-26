@@ -149,6 +149,27 @@ observed calls and accepted task-report events. Task-report event counts include
 lifecycle heartbeats rather than counting each as a new task.
 No connection inventory is included in public profiles or public streams.
 
+### Archive or delete a connection
+
+Workspace owners can open **Manage** on any access-key or sign-in connection,
+including expired and revoked entries. **Archive connection** disconnects its
+access and moves it to the **Archived** list. **Restore connection** returns the
+listing to **Current** without reactivating an old key or sign-in; reconnect
+separately when access is needed again.
+
+**Delete connection** disconnects access and permanently removes that entry from
+the inventory. Saved memories, audit activity and task reports remain. This does
+not uninstall the client configuration on another machine. A fresh OAuth sign-in
+can create a current connection again; the prior credentials stay invalid.
+Members can inspect connections, while lifecycle changes require a current owner
+session and an explicitly pinned workspace.
+
+The private console sends `POST /api/connections` with `{ id, action }`, where
+`action` is `archive`, `restore` or `delete`. It uses the same console and workspace
+headers as the inventory. Archived entries include `archivedAt`; deleted entries
+are omitted. Read [Connection lifecycle](CONNECTION-LIFECYCLE.md) for OAuth
+revocation and deployment/rollback requirements.
+
 ## Stdio-Only Harnesses
 
 Use the `@ani-hq/engram-mcp` shim as the MCP server command:

@@ -1,12 +1,16 @@
 import { describe, expect, test, setSystemTime } from "bun:test";
 import postgres from "postgres";
+import { renderAsync } from "@resvg/resvg-js";
+import { createHash } from "node:crypto";
+import { deflateSync } from "node:zlib";
+import { normalizeProfilePhoto } from "../gateway/src/showcase-photo";
 import { getPublicActivity, getShowcaseSettings, handlePublicShowcase, handleShowcaseApi, parseShowcaseInput, publicActivitySnapshot, renderShowcaseCard, renderShowcasePage, renderShowcasePng, showcaseCategory, updateShowcaseSettings, SHOWCASE_PAYLOAD_LIMIT, type ShowcaseProfile } from "../gateway/src/showcase";
 import { runWithContext } from "../gateway/src/context";
 import { DEFAULT_POLICIES, normalizeToken } from "../gateway/src/policies";
 
 const owner = normalizeToken({ name: "private-owner@example.com", role: "owner", orgId: 7 });
 const now = new Date("2026-10-22T00:03:00Z");
-const profile: ShowcaseProfile = { slug: "my-agents", displayName: "Ada", bio: "Building with agents", published: true, showActivity: false, layout: "studio", highlights: [] };
+const profile: ShowcaseProfile = { slug: "my-agents", displayName: "Ada", bio: "Building with agents", published: true, showActivity: false, layout: "studio", highlights: [], photo: null };
 // Use the driver's real typed JSON helper without executing a connection.
 const jsonParameter = postgres().json;
 const aggregate = {
@@ -22,6 +26,8 @@ function database(initial: ShowcaseProfile | null = profile) {
   const profiles = new Map<number, ShowcaseProfile>();
   if (initial) profiles.set(7, { ...initial });
   const calls: { query: string; values: any[] }[] = [];
+  const photos = new Map<number, { bytes: Buffer; digest: string }>();
+  let photoHook: (() => void) | undefined;
   let unavailable = false;
   let aggregateHook: (() => void) | undefined;
   let eventRows: any[] = [];
@@ -35,9 +41,13 @@ function database(initial: ShowcaseProfile | null = profile) {
       // jsonb. Require the typed array binding that the real constraint accepts.
       if (highlights?.type !== 3802 || !Array.isArray(highlights.value)) throw Object.assign(new Error("highlights must be a JSON array"), { code: "23514" });
       const existing = profiles.get(values[0]);
-      const saved = { slug: values[1], displayName: values[2], bio: values[3], published: values[4], showActivity: values[5] === true, layout: existing && !values[8] ? existing.layout : values[6], highlights: existing && !values[9] ? existing.highlights : structuredClone(highlights.value) };
+      const saved = { slug: values[1], displayName: values[2], bio: values[3], published: values[4], showActivity: values[5] === true, layout: existing && !values[10] ? existing.layout : values[6], highlights: existing && !values[11] ? existing.highlights : structuredClone(highlights.value), photo: existing && !values[12] ? existing.photo ?? null : values[8] ? "data:image/png;base64," + Buffer.from(values[8]).toString("base64") : null };
+      if (!existing || values[12]) {
+        if (values[8]) photos.set(values[0], { bytes: values[8], digest: values[9] });
+        else photos.delete(values[0]);
+      }
       profiles.set(values[0], saved);
-      return [{ slug: saved.slug, display_name: saved.displayName, bio: saved.bio, published: saved.published, show_activity: saved.showActivity, layout: saved.layout, highlights: saved.highlights }];
+      return [{ slug: saved.slug, display_name: saved.displayName, bio: saved.bio, published: saved.published, show_activity: saved.showActivity, layout: saved.layout, highlights: saved.highlights, photo_png: photos.get(values[0])?.bytes ?? null }];
     }
     if (query.includes("FROM action_profiles")) {
       const entry = query.includes("published = true")
@@ -45,7 +55,13 @@ function database(initial: ShowcaseProfile | null = profile) {
         : [...profiles].find(([id]) => id === values[0]);
       if (!entry) return [];
       const [orgId, value] = entry;
-      return [{ org_id: orgId, slug: value.slug, display_name: value.displayName, bio: value.bio, published: value.published, show_activity: value.showActivity === true, layout: value.layout, highlights: value.highlights, email: "private@example.com" }];
+      if (query.includes("SELECT photo_png")) {
+        const photo = photos.get(orgId);
+        if (!photo || photo.digest !== values[1] || orgId !== values[2]) return [];
+        photoHook?.();
+        return [{ photo_png: photo.bytes }];
+      }
+      return [{ org_id: orgId, slug: value.slug, display_name: value.displayName, bio: value.bio, published: value.published, show_activity: value.showActivity === true, layout: value.layout, highlights: value.highlights, photo_digest: photos.get(orgId)?.digest ?? null, ...(query.includes("photo_png") ? { photo_png: photos.get(orgId)?.bytes ?? null } : {}), email: "private@example.com" }];
     }
     if (query.includes("WITH latest_reports")) return eventRows;
     if (query.includes("WITH ledger")) { aggregateHook?.(); return [aggregate]; }
@@ -63,14 +79,14 @@ function database(initial: ShowcaseProfile | null = profile) {
     return { fragment: true, query, values, then(resolve: any, reject: any) { return Promise.resolve().then(() => execute(query, values)).then(resolve, reject); } };
   }) as unknown as postgres.Sql;
   db.json = jsonParameter;
-  return { db, calls, profiles, events: (rows: any[]) => { eventRows = rows; }, fail: () => { unavailable = true; }, onAggregate: (callback: () => void) => { aggregateHook = callback; } };
+  return { db, calls, profiles, photos, onPhoto: (callback: () => void) => { photoHook = callback; }, events: (rows: any[]) => { eventRows = rows; }, fail: () => { unavailable = true; }, onAggregate: (callback: () => void) => { aggregateHook = callback; } };
 }
 
 describe("showcase control", () => {
   test("starts private with no implicit identity, but gives the owner an aggregate preview", async () => {
     const { db, calls } = database(null);
     const settings = await getShowcaseSettings(owner, "https://engram.example", db);
-    expect(settings.profile).toEqual({ slug: "", displayName: "", bio: "", published: false, showActivity: false, layout: "studio", highlights: [] });
+    expect(settings.profile).toEqual({ slug: "", displayName: "", bio: "", published: false, showActivity: false, layout: "studio", highlights: [], photo: null });
     expect(settings.urls).toEqual({ page: null, json: null, card: null, stream: null });
     expect(settings.preview.stats.totalActions).toBe(17);
     expect(calls[0].values).toEqual([7]);
@@ -109,7 +125,7 @@ describe("showcase control", () => {
     expect(result.profile).toEqual(profile);
     expect(result.urls).toEqual({ page: "https://engram.example/u/my-agents", json: "https://engram.example/api/public/activity/my-agents", card: "https://engram.example/api/public/activity/my-agents/card.png", stream: "https://engram.example/api/public/activity/my-agents/stream" });
     expect(calls[0].query).toContain("ON CONFLICT (org_id)");
-    expect(calls[0].values).toEqual([7, profile.slug, profile.displayName, profile.bio, true, false, "studio", expect.objectContaining({ type: 3802, value: [] }), true, true]);
+    expect(calls[0].values).toEqual([7, profile.slug, profile.displayName, profile.bio, true, false, "studio", expect.objectContaining({ type: 3802, value: [] }), null, null, true, true, true, true]);
     expect(result.preview.stats.totalActions).toBe(17);
     await expect(updateShowcaseSettings(normalizeToken({ ...owner, orgId: 8 }), profile, "https://engram.example", db)).rejects.toMatchObject({ status: 409 });
   });
@@ -152,13 +168,13 @@ describe("owner-written profile presentation", () => {
   test("defaults old rows and preserves presentation on legacy updates while permitting explicit clearing", async () => {
     const legacy = { slug: profile.slug, displayName: profile.displayName, bio: profile.bio, published: true, showActivity: false };
     const old = database(legacy);
-    expect((await getShowcaseSettings(owner, "https://engram.example", old.db)).profile).toEqual({ ...legacy, layout: "studio", highlights: [] });
+    expect((await getShowcaseSettings(owner, "https://engram.example", old.db)).profile).toEqual({ ...legacy, layout: "studio", highlights: [], photo: null });
     const store = database({ ...profile, layout: "field-notes", highlights });
     const saved = await updateShowcaseSettings(owner, { ...legacy, bio: "Updated by an old client" }, "https://engram.example", store.db);
     expect(saved.profile).toMatchObject({ layout: "field-notes", highlights });
     expect(saved.preview.profile).toMatchObject({ layout: "field-notes", highlights });
     expect(store.calls[0].query).toContain("ELSE action_profiles.highlights END");
-    expect(store.calls[0].values.slice(-2)).toEqual([false, false]);
+    expect(store.calls[0].values.slice(-4)).toEqual([false, false, false, false]);
     const cleared = await updateShowcaseSettings(owner, { ...legacy, layout: "studio", highlights: [] }, "https://engram.example", store.db);
     expect(cleared.profile).toMatchObject({ layout: "studio", highlights: [] });
   });
@@ -166,7 +182,7 @@ describe("owner-written profile presentation", () => {
   test("projects only the owner's presentation into JSON and SSE and retires it on unpublish", async () => {
     const store = database({ ...profile, layout: "field-notes", highlights });
     const publicValue = await getPublicActivity(profile.slug, store.db, now);
-    expect(publicValue?.profile).toEqual({ slug: profile.slug, displayName: profile.displayName, bio: profile.bio, layout: "field-notes", highlights });
+    expect(publicValue?.profile).toEqual({ slug: profile.slug, displayName: profile.displayName, bio: profile.bio, layout: "field-notes", highlights, photoUrl: null });
     expect(JSON.stringify(publicValue)).not.toMatch(/private task text|private-agent-name|secret-run-id|private@example/);
     const response = await handlePublicShowcase(new Request(`https://engram.example/api/public/activity/${profile.slug}/stream`), store.db);
     const reader = response!.body!.getReader();
@@ -202,6 +218,139 @@ describe("owner-written profile presentation", () => {
     expect(bytes).toBeGreaterThan(10_000); expect(bytes).toBeLessThan(SHOWCASE_PAYLOAD_LIMIT);
     const response = await handleShowcaseApi(new Request("https://engram.example/api/showcase", { method: "PUT", headers: { "content-length": String(bytes) }, body }), owner, database().db);
     expect(response.status).toBe(200);
+  });
+});
+
+async function squarePhoto(color = "#75d8b0") {
+  return "data:image/png;base64," + (await renderAsync(`<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="${color}"/></svg>`, { font: { loadSystemFonts: false } })).asPng().toString("base64");
+}
+function pngChunk(kind: string | Buffer, content: Buffer) {
+  const body = Buffer.concat([Buffer.from(kind), content]), chunk = Buffer.alloc(body.length + 8);
+  chunk.writeUInt32BE(content.length, 0); body.copy(chunk, 4);
+  let crc = 0xffffffff;
+  for (const byte of body) { crc ^= byte; for (let bit = 0; bit < 8; bit++) crc = crc & 1 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1; }
+  chunk.writeUInt32BE((crc ^ 0xffffffff) >>> 0, chunk.length - 4);
+  return chunk;
+}
+
+describe("owner-uploaded profile photos", () => {
+  test("normalizes pixels, strips metadata, and never sends photo bytes in public JSON or SSE", async () => {
+    const original = Buffer.from((await squarePhoto()).split(",")[1], "base64");
+    const withMetadata = Buffer.concat([original.subarray(0, 33), pngChunk("tEXt", Buffer.from("Owner\0private-location-and-camera-details")), original.subarray(33)]);
+    const photo = "data:image/png;base64," + withMetadata.toString("base64");
+    const normalized = await normalizeProfilePhoto(photo);
+    expect(normalized.bytes.includes(Buffer.from("private-location"))).toBe(false);
+    expect(normalized.bytes.readUInt32BE(16)).toBe(256);
+    expect(normalized.bytes.readUInt32BE(20)).toBe(256);
+    const pixels = (await renderAsync(`<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><image href="${normalized.dataUrl}" width="256" height="256"/></svg>`, { font: { loadSystemFonts: false } })).pixels;
+    expect([...pixels.subarray((128 * 256 + 128) * 4, (128 * 256 + 128) * 4 + 4)]).toEqual([117, 216, 176, 255]);
+    expect(normalized.digest).toBe(createHash("sha256").update(normalized.bytes).digest("hex"));
+    const store = database();
+    const result = await updateShowcaseSettings(owner, { ...profile, photo }, "https://engram.example", store.db);
+    expect(result.profile.photo).toBe(normalized.dataUrl);
+    expect(result.preview.profile.photoUrl).toBe(normalized.dataUrl);
+    expect((await getShowcaseSettings(owner, "https://engram.example", store.db)).profile.photo).toBe(normalized.dataUrl);
+    const publicValue = await getPublicActivity(profile.slug, store.db, now);
+    expect(publicValue?.profile.photoUrl).toBe(`/api/public/activity/${profile.slug}/photo.png?v=${normalized.digest}`);
+    expect(JSON.stringify(publicValue)).not.toContain("base64");
+    const response = await handlePublicShowcase(new Request(`https://engram.example/api/public/activity/${profile.slug}/stream`), store.db);
+    const reader = response!.body!.getReader();
+    try { expect(new TextDecoder().decode((await reader.read()).value)).not.toContain("base64"); }
+    finally { await reader.cancel(); }
+    const publicationQueries = store.calls.filter(call => /SELECT org_id, slug/.test(call.query));
+    expect(publicationQueries.every(call => !call.query.includes("photo_png"))).toBe(true);
+  });
+
+  test("preserves images when old clients omit the field, and explicit removal is atomic", async () => {
+    const store = database();
+    const saved = await updateShowcaseSettings(owner, { ...profile, photo: await squarePhoto() }, "https://engram.example", store.db);
+    const { photo: omitted, ...legacy } = profile;
+    const unchanged = await updateShowcaseSettings(owner, { ...legacy, bio: "New bio" }, "https://engram.example", store.db);
+    expect(unchanged.profile.photo).toBe(saved.profile.photo);
+    expect(unchanged.profile.bio).toBe("New bio");
+    const previousUrl = (await getPublicActivity(profile.slug, store.db))!.profile.photoUrl!;
+    const removed = await updateShowcaseSettings(owner, { ...profile, photo: null }, "https://engram.example", store.db);
+    expect(removed.profile.photo).toBeNull(); expect(removed.preview.profile.photoUrl).toBeNull();
+    expect((await handlePublicShowcase(new Request("https://engram.example" + previousUrl), store.db))?.status).toBe(404);
+  });
+
+  test("rejects remote URLs, SVGs, corrupt PNGs, oversized and non-square images before writes", async () => {
+    const valid = await squarePhoto();
+    const png = Buffer.from(valid.split(",")[1], "base64");
+    const badCrc = Buffer.from(png); badCrc[badCrc.length - 1] ^= 1;
+    const huge = Buffer.from(png); huge.writeUInt32BE(65_535, 16);
+    const wrongSize = "data:image/png;base64," + (await renderAsync('<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="128" height="128" fill="red"/></svg>', { font: { loadSystemFonts: false } })).asPng().toString("base64");
+    const values = ["https://private.example/photo.png", "data:image/svg+xml;base64,PHN2Zz4=", "data:image/jpeg;base64,AAAA", "data:image/png;base64,invalid!", valid + "junk", "data:image/png;base64," + badCrc.toString("base64"), "data:image/png;base64," + huge.toString("base64"), wrongSize, "data:image/png;base64," + Buffer.alloc(512 * 1024 + 1).toString("base64"), {}, 4];
+    for (const photo of values) {
+      const store = database();
+      await expect(updateShowcaseSettings(owner, { ...profile, photo }, "https://engram.example", store.db)).rejects.toMatchObject({ status: 400 });
+      expect(store.calls).toHaveLength(0);
+    }
+    const store = database();
+    const response = await handleShowcaseApi(new Request("https://engram.example/api/showcase", { method: "PUT", body: JSON.stringify({ ...profile, photo: valid }) }), normalizeToken({ ...owner, role: "member" }), store.db);
+    expect(response.status).toBe(403); expect(store.calls).toHaveLength(0);
+  });
+
+  test("rejects high-bit chunk names and duplicate transparency instead of silently storing a blank image", async () => {
+    const rgba = Buffer.from((await squarePhoto()).split(",")[1], "base64");
+    const highBitHeader = Buffer.concat([rgba.subarray(0, 8), pngChunk(Buffer.from([0xc9, 0x48, 0x44, 0x52]), rgba.subarray(16, 29)), rgba.subarray(33)]);
+    await expect(normalizeProfilePhoto("data:image/png;base64," + highBitHeader.toString("base64"))).rejects.toMatchObject({ status: 400 });
+    const header = Buffer.from(rgba.subarray(16, 29)); header[9] = 2;
+    const pixels = Buffer.alloc(256 * (256 * 3 + 1));
+    for (let row = 0; row < 256; row++) for (let column = 0; column < 256; column++) pixels[row * (256 * 3 + 1) + column * 3 + 1] = 255;
+    const transparency = pngChunk("tRNS", Buffer.from([0, 0, 0, 0, 0, 255]));
+    const rgb = (copies: number) => "data:image/png;base64," + Buffer.concat([rgba.subarray(0, 8), pngChunk("IHDR", header), ...Array.from({ length: copies }, () => transparency), pngChunk("IDAT", deflateSync(pixels)), pngChunk("IEND", Buffer.alloc(0))]).toString("base64");
+    const valid = await normalizeProfilePhoto(rgb(1));
+    const decoded = (await renderAsync(`<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><image href="${valid.dataUrl}" width="256" height="256"/></svg>`, { font: { loadSystemFonts: false } })).pixels;
+    expect([...decoded.subarray(0, 4)]).toEqual([255, 0, 0, 255]);
+    await expect(normalizeProfilePhoto(rgb(2))).rejects.toMatchObject({ status: 400 });
+  });
+
+  test("serves only the current published revision with no-store and safe image headers", async () => {
+    const store = database();
+    await updateShowcaseSettings(owner, { ...profile, photo: await squarePhoto() }, "https://engram.example", store.db);
+    const path = (await getPublicActivity(profile.slug, store.db))!.profile.photoUrl!;
+    for (const method of ["GET", "HEAD"]) {
+      const response = (await handlePublicShowcase(new Request("https://engram.example" + path, { method }), store.db))!;
+      expect(response.status).toBe(200); expect(response.headers.get("Content-Type")).toBe("image/png");
+      expect(response.headers.get("Cache-Control")).toBe("no-store"); expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+      if (method === "HEAD") expect(await response.text()).toBe("");
+      else expect(Buffer.from(await response.arrayBuffer())).toEqual(store.photos.get(7)!.bytes);
+    }
+    for (const suffix of ["", "?v=bad", "?v=" + "a".repeat(64)]) expect((await handlePublicShowcase(new Request(`https://engram.example/api/public/activity/${profile.slug}/photo.png${suffix}`), store.db))?.status).toBe(404);
+    expect((await handlePublicShowcase(new Request("https://engram.example" + path, { method: "POST" }), store.db))?.status).toBe(405);
+    await updateShowcaseSettings(owner, { ...profile, photo: await squarePhoto("#ffffff") }, "https://engram.example", store.db);
+    expect((await handlePublicShowcase(new Request("https://engram.example" + path), store.db))?.status).toBe(404);
+    const newPath = (await getPublicActivity(profile.slug, store.db))!.profile.photoUrl!;
+    store.profiles.set(7, { ...store.profiles.get(7)!, published: false });
+    expect((await handlePublicShowcase(new Request("https://engram.example" + newPath), store.db))?.status).toBe(404);
+    store.profiles.set(7, { ...store.profiles.get(7)!, published: true, slug: "new-address" });
+    expect((await handlePublicShowcase(new Request("https://engram.example" + newPath), store.db))?.status).toBe(404);
+  });
+
+  test("retires snapshots and photo responses when publication changes during reads", async () => {
+    for (const change of ["unpublish", "rename", "replace"]) {
+      const store = database();
+      await updateShowcaseSettings(owner, { ...profile, photo: await squarePhoto() }, "https://engram.example", store.db);
+      const path = (await getPublicActivity(profile.slug, store.db))!.profile.photoUrl!;
+      const revoke = () => {
+        if (change === "replace") store.photos.set(7, { ...store.photos.get(7)!, digest: "0".repeat(64) });
+        else store.profiles.set(7, { ...store.profiles.get(7)!, ...(change === "rename" ? { slug: "changed-address" } : { published: false }) });
+      };
+      store.onPhoto(revoke);
+      expect((await handlePublicShowcase(new Request("https://engram.example" + path), store.db))?.status).toBe(404);
+    }
+    const store = database();
+    await updateShowcaseSettings(owner, { ...profile, photo: await squarePhoto() }, "https://engram.example", store.db);
+    store.onAggregate(() => store.photos.set(7, { ...store.photos.get(7)!, digest: "f".repeat(64) }));
+    expect(await getPublicActivity(profile.slug, store.db, now)).toBeNull();
+  });
+
+  test("bounds chunked uploads while consuming the stream and cancels oversized input", async () => {
+    let cancelled = false;
+    const body = new ReadableStream({ pull(controller) { controller.enqueue(new Uint8Array(100_000)); }, cancel() { cancelled = true; } });
+    const response = await handleShowcaseApi(new Request("https://engram.example/api/showcase", { method: "PUT", body, duplex: "half" } as any), owner, database().db);
+    expect(response.status).toBe(413); expect(cancelled).toBe(true);
   });
 });
 

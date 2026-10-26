@@ -18,6 +18,9 @@
 .agent-overview-note { display:flex; align-items:center; flex-wrap:wrap; gap:6px; color:var(--ds-muted); font-size:var(--ds-text-xs); line-height:1.65; margin-top:12px; }
 .agent-overview-note button { padding:1px 5px; min-height:24px; font-size:var(--ds-text-xs); color:var(--ds-ink); text-decoration:underline; text-underline-offset:3px; }
 .connection-inventory { margin:24px 0 30px; }
+.connection-list-filter { width:100%; max-width:280px; margin-top:var(--ds-space-5); }
+.connection-management { margin:var(--ds-space-5) 0; gap:var(--ds-space-3); }
+.connection-management > :is(h3,.detail-note) { margin:0; }
 .connection-inventory>section+section { margin-top:24px; }
 .connection-section-title { display:flex; align-items:center; gap:7px; margin-bottom:7px; }
 .connection-section-title h3 { font-size:11px; font-weight:550; }

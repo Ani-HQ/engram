@@ -8,6 +8,7 @@ import { sha256 } from "./hash";
 import { devLoginLinksAllowed, sendMail } from "./mail";
 import { renderEmail } from "./mail-templates";
 import { localJwks, oauthSigningEnabled, signJwt } from "./oauth-keys";
+import { lockConnection, oauthConnectionId } from "./connection-identity";
 import { canonicalResource, corsHeaders, oauthIssuer, resourceHost } from "./oauth";
 import { renderOAuthAuthorizePage } from "./oauth-view";
 import { acceptInvite, findMemberByEmail, getOrg, memberInOrg, normalizeEmail } from "./orgs";
@@ -212,8 +213,12 @@ async function completeAuthorize(
   const member = await memberInOrg(orgId, email);
   if (!member || !await getOrg(orgId)) return oauthError("invalid_grant", "workspace access is no longer available", 400);
   const code = `oac_${randomBytes(24).toString("base64url")}`;
-  await sql`
-    INSERT INTO oauth_codes (sha256_hash, client_id, email, org_id, membership_id, redirect_uri, code_challenge, resource, scope, expires_at)
+  await sql.begin(async tx => {
+    const connectionId = oauthConnectionId(orgId, email, parsed.clientId);
+    await lockConnection(tx as unknown as postgres.Sql, orgId, connectionId);
+    const [state] = await tx`SELECT generation FROM connection_lifecycle WHERE org_id = ${orgId} AND connection_id = ${connectionId}`;
+    await tx`
+    INSERT INTO oauth_codes (sha256_hash, client_id, email, org_id, membership_id, redirect_uri, code_challenge, resource, scope, expires_at, connection_generation)
     VALUES (
       ${sha256(code)},
       ${parsed.clientId},
@@ -224,8 +229,10 @@ async function completeAuthorize(
       ${parsed.challenge},
       ${parsed.resource},
       ${parsed.scope},
-      ${new Date(Date.now() + CODE_TTL_MS)}
+      ${new Date(Date.now() + CODE_TTL_MS)},
+      ${Number(state?.generation ?? 0)}
     )`;
+  });
   const target = new URL(parsed.redirectUri);
   target.searchParams.set("code", code);
   if (parsed.state) target.searchParams.set("state", parsed.state);
@@ -268,6 +275,7 @@ async function issueToken(req: Request): Promise<Response> {
     membershipId: Number(row.membership_id),
     resource: String(row.resource),
     scope: String(row.scope ?? ""),
+    generation: Number(row.connection_generation ?? 0),
   });
 }
 
@@ -290,12 +298,13 @@ async function refreshAccess(req: Request, body: Record<string, unknown>): Promi
     membershipId: Number(row.membership_id),
     resource: String(row.resource),
     scope: String(row.scope ?? ""),
+    refreshHash: sha256(raw),
   }, false);
 }
 
 async function mintedTokens(
   req: Request,
-  input: { clientId: string; email: string; orgId: number; membershipId: number; resource: string; scope: string },
+  input: { clientId: string; email: string; orgId: number; membershipId: number; resource: string; scope: string; generation?: number; refreshHash?: string },
   issueRefresh = true,
 ): Promise<Response> {
   // Keep codes, refresh credentials and access JWTs bound to the exact live
@@ -304,9 +313,24 @@ async function mintedTokens(
   if (!Number.isSafeInteger(input.membershipId) || input.membershipId < 1) {
     return oauthError("invalid_grant", "workspace access is no longer available", 400);
   }
-  const member = await memberInOrg(input.orgId, input.email);
-  if (!member || member.id !== input.membershipId || !await getOrg(input.orgId)) {
+  return sql.begin(async tx => {
+  const member = await memberInOrg(input.orgId, input.email, tx as unknown as postgres.Sql);
+  if (!member || member.id !== input.membershipId || !await getOrg(input.orgId, tx as unknown as postgres.Sql)) {
     return oauthError("invalid_grant", "workspace access is no longer available", 400);
+  }
+  const connectionId = oauthConnectionId(input.orgId, input.email, input.clientId);
+  await lockConnection(tx as unknown as postgres.Sql, input.orgId, connectionId);
+  const [state] = await tx`SELECT generation, archived_at, deleted_at FROM connection_lifecycle WHERE org_id = ${input.orgId} AND connection_id = ${connectionId}`;
+  const generation = Number(state?.generation ?? 0);
+  if (issueRefresh) {
+    if (input.generation !== generation) return oauthError("invalid_grant", "connection authorization changed; connect again", 400);
+    // A fresh authorization, completed after the last revocation, creates a
+    // visible connection again. Restoring an archived row never does this.
+    await tx`UPDATE connection_lifecycle SET archived_at = NULL, deleted_at = NULL WHERE org_id = ${input.orgId} AND connection_id = ${connectionId}`;
+  } else {
+    const rows = await tx`SELECT id FROM oauth_refresh_tokens WHERE org_id = ${input.orgId} AND email = ${input.email} AND client_id = ${input.clientId}
+      AND sha256_hash = ${input.refreshHash!} AND membership_id = ${member.id} AND revoked_at IS NULL AND expires_at > now()`;
+    if (!rows.length || state?.archived_at || state?.deleted_at) return oauthError("invalid_grant", "refresh token is invalid", 400);
   }
   const host = resourceHost(req);
   const issuer = oauthIssuer(host);
@@ -317,6 +341,7 @@ async function mintedTokens(
     org_id: input.orgId,
     membership_id: member.id,
     client_id: input.clientId,
+    connection_generation: generation,
     scope: input.scope || "openid email offline_access memory:read memory:write",
   }, { issuer, audience });
   const payload: Record<string, unknown> = {
@@ -327,7 +352,7 @@ async function mintedTokens(
   };
   if (issueRefresh) {
     const refresh = `orf_${randomBytes(24).toString("base64url")}`;
-    await sql`
+    await tx`
       INSERT INTO oauth_refresh_tokens (sha256_hash, client_id, email, org_id, membership_id, resource, scope, expires_at)
       VALUES (
         ${sha256(refresh)},
@@ -342,6 +367,7 @@ async function mintedTokens(
     payload.refresh_token = refresh;
   }
   return Response.json(payload);
+  });
 }
 
 interface AuthorizeParams {

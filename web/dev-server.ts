@@ -15,6 +15,7 @@ import { analyzeActions, logicalActivityId } from "../gateway/src/insights-engin
 import { reviewPlan } from "./insight-model.js";
 import { createShowcaseStreamManager } from "../gateway/src/showcase-stream";
 import { ShowcaseError, SHOWCASE_PAYLOAD_LIMIT, parseShowcaseInput, publicActivitySnapshot, renderShowcaseCard, renderShowcasePage, renderShowcasePng, renderUnavailableShowcasePage, showcaseCategory, showcaseUrls, validShowcaseSlug, type ShowcaseProfile } from "../gateway/src/showcase-view";
+import { normalizeProfilePhoto, showcasePhotoUrl } from "../gateway/src/showcase-photo";
 
 // The standalone demo uses parser code only. Its in-memory handlers never call
 // database/provider operations, and a local preview cannot inherit hosted DB
@@ -52,6 +53,7 @@ const actionWorkspaces = new Map<string, number>(actions.map((action: any) => [a
 const details = new Map([[detailFixture.page.slug, detailFixture]]);
 const forgotten = new Map<string, any>();
 const showcaseProfiles = new Map<number, ShowcaseProfile>();
+const showcasePhotos = new Map<number, Awaited<ReturnType<typeof normalizeProfilePhoto>>>();
 const showcaseRevisions = new Map<number, number>();
 const demoEvents = new Map<string, { fingerprint: string; action: any }>();
 const insightJobs = new Map<string, { workspaceId: number; job: { id: string; status: string; createdAt: string; updatedAt: string }; request: ReturnType<typeof parseInsightRequest>; result: ReturnType<typeof analyzeActions> | null; readyAt: number }>();
@@ -97,6 +99,8 @@ const tokens: any[] = [
 // These are sign-in metadata fixtures, never usable OAuth grants or secrets.
 const oauthConnections = [{ orgId: 1, email: session.email, clientId: "demo-chatgpt", name: "ChatGPT", harness: "chatgpt", sourceLabel: "ChatGPT", status: "authorized", canWrite: true, createdAt: "2026-10-20T12:00:00.000Z" }];
 const demoHarnessLabels: Record<string, string> = { codex: "Codex", claude: "Claude", "claude-code": "Claude Code", chatgpt: "ChatGPT", cursor: "Cursor", grok: "Grok", "grok-bot": "GrokBot", openclaw: "OpenClaw", hermes: "Hermes" };
+const connectionLifecycle = new Map<string, { archivedAt: string | null; deletedAt: string | null }>();
+const demoOauthConnectionId = (connection: typeof oauthConnections[number]) => `oauth:${createHash("sha256").update(JSON.stringify([connection.orgId, connection.email, connection.clientId])).digest("hex")}`;
 
 if (import.meta.main) {
   Bun.serve({ port: PORT, hostname: "127.0.0.1", idleTimeout: 120, fetch: devFetch });
@@ -249,6 +253,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   if (url.pathname === "/api/insights") return handleDemoInsights(req, url);
   if (url.pathname === "/api/review" || url.pathname.startsWith("/api/review/")) return handleDemoReview(req, url);
   if (url.pathname === "/api/showcase") {
+    const workspaceId = session.org.id;
     if (session.role !== "owner") return json({ error: "Only a workspace owner can manage showcase settings" }, 403);
     try {
       if (req.method !== "GET" && req.method !== "PUT") return json({ error: "method not allowed" }, 405, { Allow: "GET, PUT" });
@@ -258,18 +263,22 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
         if (new TextEncoder().encode(raw).byteLength > SHOWCASE_PAYLOAD_LIMIT) throw new ShowcaseError("Profile payload is too large", 413);
         let input: unknown;
         try { input = JSON.parse(raw); } catch { throw new ShowcaseError("Expected a profile object"); }
-        const profile = parseShowcaseInput(input), previous = showcaseProfiles.get(session.org.id);
+        const profile = parseShowcaseInput(input), previous = showcaseProfiles.get(workspaceId);
         if (!Object.hasOwn(input as object, "layout")) profile.layout = previous?.layout ?? "studio";
         if (!Object.hasOwn(input as object, "highlights")) profile.highlights = previous?.highlights ?? [];
-        if ([...showcaseProfiles].some(([orgId, value]) => orgId !== session.org.id && value.slug === profile.slug)) {
+        if (!Object.hasOwn(input as object, "photo")) profile.photo = previous?.photo ?? null;
+        const photo = typeof profile.photo === "string" ? await normalizeProfilePhoto(profile.photo) : null;
+        profile.photo = photo?.dataUrl ?? null;
+        if ([...showcaseProfiles].some(([orgId, value]) => orgId !== workspaceId && value.slug === profile.slug)) {
           return json({ error: "That showcase address is already taken" }, 409);
         }
-        showcaseProfiles.set(session.org.id, profile);
-        showcaseRevisions.set(session.org.id, (showcaseRevisions.get(session.org.id) || 0) + 1);
+        showcaseProfiles.set(workspaceId, profile);
+        if (photo) showcasePhotos.set(workspaceId, photo); else showcasePhotos.delete(workspaceId);
+        showcaseRevisions.set(workspaceId, (showcaseRevisions.get(workspaceId) || 0) + 1);
         await demoStreams.refresh();
       }
-      const profile = showcaseProfiles.get(session.org.id) ?? { slug: "", displayName: "", bio: "", published: false, showActivity: false, layout: "studio", highlights: [] };
-      return json({ profile, urls: showcaseUrls(profile, url.origin), preview: showcaseActivity(profile, session.org.id, true) }, 200, { "Cache-Control": "no-store" });
+      const profile = showcaseProfiles.get(workspaceId) ?? { slug: "", displayName: "", bio: "", published: false, showActivity: false, layout: "studio", highlights: [], photo: null };
+      return json({ profile, urls: showcaseUrls(profile, url.origin), preview: showcaseActivity(profile, workspaceId, true) }, 200, { "Cache-Control": "no-store" });
     } catch (error) {
       if (error instanceof ShowcaseError) return json({ error: error.message }, error.status);
       return json({ error: "Profile could not be saved" }, 400);
@@ -320,8 +329,27 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   if (url.pathname === "/api/connections") {
     const headers = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
     if (!["owner", "member"].includes(session.role)) return json({ error: "forbidden" }, 403, headers);
-    if (req.method !== "GET") return json({ error: "method not allowed" }, 405, { ...headers, Allow: "GET" });
-    return json(demoConnections(workspaceId), 200, headers);
+    if (req.method === "GET") return json(demoConnections(workspaceId), 200, headers);
+    if (req.method !== "POST") return json({ error: "method not allowed" }, 405, { ...headers, Allow: "GET, POST" });
+    if (session.role !== "owner" || req.headers.get("x-engram-console") !== "1" || (req.headers.get("origin") && req.headers.get("origin") !== url.origin)) return json({ error: "Only workspace owners can manage connections." }, 403, headers);
+    if (!expectedWorkspace) return json({ error: "Select a workspace before managing connections." }, 400, headers);
+    const body = await bodyObject(req);
+    if (!body || Object.keys(body).some(key => !["id", "action"].includes(key)) || typeof body.id !== "string" || !["archive", "restore", "delete"].includes(body.action)) return json({ error: "Choose a connection and a valid action." }, 400, headers);
+    const accessKey = workspaceTokens(workspaceId).find(token => `token:${token.id}` === body.id && !token.name.startsWith("operator-candidate-smoke-"));
+    const signIn = oauthConnections.find(connection => connection.orgId === workspaceId && demoOauthConnectionId(connection) === body.id);
+    if (!accessKey && !signIn) return json({ error: "Connection not found." }, 404, headers);
+    const key = `${workspaceId}:${body.id}`, previous = connectionLifecycle.get(key) || { archivedAt: null, deletedAt: null };
+    if (previous.deletedAt && body.action !== "delete") return json({ error: "Connection not found." }, 404, headers);
+    const now = new Date().toISOString();
+    if (body.action !== "restore") {
+      if (accessKey) accessKey.revokedAt ||= now;
+      if (signIn) signIn.status = "revoked";
+    }
+    const lifecycle = body.action === "archive" ? { ...previous, archivedAt: previous.archivedAt || now }
+      : body.action === "delete" ? { ...previous, deletedAt: previous.deletedAt || now }
+      : { ...previous, archivedAt: null };
+    connectionLifecycle.set(key, lifecycle);
+    return json({ ok: true, id: body.id, action: body.action, ...lifecycle }, 200, headers);
   }
   if (route === "GET /api/tokens") return json({ tokens: workspaceTokens(workspaceId).map(({ id: _, orgId: __, ...token }) => token), mcp: `${url.origin}/mcp` });
   if (route === "POST /api/tokens") {
@@ -518,10 +546,19 @@ function showcaseActivity(profile: ShowcaseProfile, workspaceId = session.org.id
     last_activity_at: rows.map((row: any) => row.recordedAt).sort().at(-1) || null,
     daily: [...days].map(([date, count]) => ({ date, count })),
     tools: [...categories].map(([category, count]) => ({ category, count })),
-  }, now, { rows: rows.map((row: any) => ({ id: row.id, agent: row.agent, action_key: row.actionKey, tool: row.tool, resource: row.resource, status: row.status, evidence: row.evidence, recorded_at: row.recordedAt, harness: row.harness })), scope: `demo:${workspaceId}:${profile.slug}`, key: "local-preview-public-activity-key", preview });
+  }, now, { rows: rows.map((row: any) => ({ id: row.id, agent: row.agent, action_key: row.actionKey, tool: row.tool, resource: row.resource, status: row.status, evidence: row.evidence, recorded_at: row.recordedAt, harness: row.harness })), scope: `demo:${workspaceId}:${profile.slug}`, key: "local-preview-public-activity-key", preview, photoUrl: preview ? profile.photo ?? null : showcasePhotoUrl(profile.slug, showcasePhotos.get(workspaceId)?.digest) });
 }
 
 async function publicShowcase(req: Request, url: URL): Promise<Response | null> {
+  const photo = /^\/api\/public\/activity\/([^/]+)\/photo\.png$/.exec(url.pathname);
+  if (photo) {
+    const headers = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
+    if (!["GET", "HEAD"].includes(req.method)) return new Response(null, { status: 405, headers: { ...headers, Allow: "GET, HEAD" } });
+    const entry = validShowcaseSlug(photo[1]) ? publicDemoProfile(photo[1]) : null;
+    const stored = entry ? showcasePhotos.get(entry[0]) : null;
+    if (!stored || url.searchParams.get("v") !== stored.digest) return new Response(null, { status: 404, headers });
+    return new Response(req.method === "HEAD" ? null : stored.bytes, { headers: { ...headers, "Content-Type": "image/png", "Content-Length": String(stored.bytes.length), "Cross-Origin-Resource-Policy": "cross-origin" } });
+  }
   const stream = /^\/api\/public\/activity\/([^/]+)\/stream$/.exec(url.pathname);
   if (stream) return demoStreams.handle(req, stream[1]);
   const api = /^\/api\/public\/activity\/([^/]+)(\/card\.(?:svg|png))?$/.exec(url.pathname);
@@ -574,13 +611,15 @@ function demoConnections(workspaceId: number, now = new Date()) {
       createdAt: token.createdAt, lastAuthenticatedAt: token.lastUsedAt,
     })),
     ...oauthConnections.filter(connection => connection.orgId === workspaceId).map(connection => ({
-      id: `oauth:${createHash("sha256").update(JSON.stringify([workspaceId, connection.email, connection.clientId])).digest("hex")}`,
+      id: demoOauthConnectionId(connection),
       kind: "oauth", name: connection.name, displayName: "ChatGPT",
       agent: oauthActorName({ sub: connection.email, client_id: connection.clientId }),
       harness: connection.harness, sourceLabel: connection.sourceLabel, status: connection.status,
       canWrite: connection.canWrite, createdAt: connection.createdAt, lastAuthenticatedAt: null,
     })),
-  ].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.kind.localeCompare(b.kind) || b.id.localeCompare(a.id));
+  ].filter(connection => !connectionLifecycle.get(`${workspaceId}:${connection.id}`)?.deletedAt)
+    .map(connection => ({ ...connection, archivedAt: connectionLifecycle.get(`${workspaceId}:${connection.id}`)?.archivedAt || null }))
+    .sort((a, b) => Number(Boolean(a.archivedAt)) - Number(Boolean(b.archivedAt)) || b.createdAt.localeCompare(a.createdAt) || a.kind.localeCompare(b.kind) || b.id.localeCompare(a.id));
   // Count raw receipts, including lifecycle heartbeats, rather than grouped
   // logical actions. Sign-in metadata never invents contact or running work.
   const receipts = workspaceActions(workspaceId);

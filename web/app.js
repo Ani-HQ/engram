@@ -1,7 +1,8 @@
 import { api, AuthError, workspaceApi } from "./api.js";
 import { icon } from "./icons.js";
-import { profileCard, profileSkeleton, updateProfileCard } from "./profile.js";
+import { profileCard, profileSkeleton, updateProfileCard, updateProfileTimes } from "./profile.js";
 import { createProfilePresentationEditor, profilePresentationChanged, profilePresentationValue } from "./profile-presentation-editor.js";
+import { createProfilePhotoEditor, profilePhotoChanged, profilePhotoUpdate } from "./profile-photo-editor.js";
 import { billingPanel, workspacePanel, workspacePending, provisioningPanel } from "./account.js";
 import { watchPublicActivity } from "./live-activity.js";
 import { activityFeed, activityFilters, activitySkeleton, activityDetail, activityDetailHeader, refreshActivityTimes } from "./activity-view.js";
@@ -28,7 +29,7 @@ import { applyWorkspaceName, createWorkspaceNameEditor, captureSetupFocus, resto
 const root = document.querySelector("#app");
 const state = {
   session: null, view: "activity", activityKind: "all", activities: [], activityStats: {}, checkedAt: null, freshIds: new Set(), agents: [], tools: [], memories: [], tokens: [],
-  connections: null, connectionError: "", connectionFetchedAt: 0,
+  connections: null, connectionError: "", connectionFetchedAt: 0, connectionList: "current",
   filters: { q: "", agent: "", tool: "", status: "", resource: "", runId: "" },
   account: null,
   insights: null, insightsQuery: "", insightsActivityId: "", insightBusy: false, insightError: "",
@@ -41,6 +42,7 @@ let returnFocus, returnActivityFocus, returnFocusSelector = null, pendingActivit
 let detailGeneration = 0;
 let showcaseSaving = false;
 let previewWatcher;
+let profilePhotoEditor;
 let currentActivity, activityRequest = 0, activityRefreshTimer;
 let inputMode = "pointer";
 let navigationOpen = false;
@@ -50,6 +52,7 @@ let insightTimer, pendingInsightRun = false;
 let provisioningTimer, provisioningChecking = false, provisioningError = "", provisioningAttempt = 0;
 let connectionDraft = null, connectionFocusPending = null, skipDetailReturnFocus = false;
 const connectionKeyRequests = new Map();
+const connectionMutations = new Map();
 let signupPolicy = null, signupPolicyRequest = null, authPanel = null, signupAdmin = null, jevSettingsPanel = null, pendingInviteEntry = null;
 let sharingPanel = null;
 let workspaceNameEpoch = 0;
@@ -281,6 +284,7 @@ function render() {
   signupAdmin?.dispose(); signupAdmin = null;
   jevSettingsPanel?.dispose(); jevSettingsPanel = null;
   previewWatcher?.stop(); previewWatcher = null;
+  profilePhotoEditor?.dispose(); profilePhotoEditor = null;
   if (!state.session) return;
   if (workspacePending(state.session)) {
     root.replaceChildren(provisioningPanel({ session: state.session, checking: provisioningChecking, error: provisioningError,
@@ -320,7 +324,7 @@ function render() {
           el("div", { class: "topbar-actions" }, setupState() && button("Setup", openSetup, { class: "text small setup-resume", "aria-label": "Open setup guide", "aria-controls": "setup-slot" }), state.session.role === "owner" && state.view !== "showcase" && button([icon("share-2", { size: 14 }), "Share activity"], () => { location.hash = "showcase"; }, { class: "small" }), iconButton("log-out", "Sign out", signOut, { class: "icon-button mobile-signout" }))),
         el("main", { class: "workspace", id: "main", tabindex: -1 }, el("div", { id: "friend-access-slot" }), el("div", { id: "setup-slot" }, setupPanel()), state.view === "activity" ? activityView() : state.view === "attention" ? attentionView() : state.view === "memory" ? memoryView() : state.view === "sharing" ? selectiveSharingView() : state.view === "showcase" ? showcaseView() : ["workspace", "billing"].includes(state.view) ? accountView() : connectView()))));
   renderFriendAccess();
-  if (state.view === "showcase" && state.showcase?.profile.published) watchPreview();
+  if (state.view === "showcase" && state.showcase?.preview) watchPreview();
   setSessionControlsBusy(sessionMutation);
   restoreSetupFocus(document.querySelector("#setup-slot"), setupFocus);
   if (accountFocusTarget?.workspaceId === state.session.org.id && accountFocusTarget.view === state.view) {
@@ -377,7 +381,7 @@ async function refreshFriendAccess() {
 function watchPreview() {
   const orgId = state.session.org.id, slug = state.showcase.profile.slug;
   const status = document.querySelector(".preview-label > span");
-  previewWatcher = watchPublicActivity(state.showcase.urls.stream || `${state.showcase.urls.json}/stream`, {
+  const stream = state.showcase.profile.published ? watchPublicActivity(state.showcase.urls.stream || `${state.showcase.urls.json}/stream`, {
     snapshot: data => {
       if (state.session?.org.id !== orgId || state.view !== "showcase" || data.profile.slug !== slug) return;
       // The owner endpoint can preview safe events before opting in. An
@@ -386,9 +390,22 @@ function watchPreview() {
       const card = document.querySelector(".profile-preview-content .public-profile");
       if (card) updateProfileCard(card, showcasePreviewData(state.showcase.preview));
     },
-    state: value => { if (status?.isConnected) status.textContent = Boolean(state.showcaseDraft?.showActivity) !== Boolean(state.showcase?.profile.showActivity) ? "Unsaved sharing preview" : profilePresentationChanged(state.showcaseDraft, state.showcase?.profile) || ["slug", "displayName", "bio"].some(key => state.showcaseDraft?.[key] !== state.showcase?.profile[key]) ? "Unsaved preview" : { live: "Live public preview", connecting: "Connecting…", reconnecting: "Reconnecting…", paused: "Preview paused", closed: "Preview disconnected" }[value] || "Public preview"; },
+    state: value => { if (status?.isConnected) status.textContent = Boolean(state.showcaseDraft?.showActivity) !== Boolean(state.showcase?.profile.showActivity) ? "Unsaved sharing preview" : profilePhotoChanged(state.showcaseDraft, state.showcase?.profile) || profilePresentationChanged(state.showcaseDraft, state.showcase?.profile) || ["slug", "displayName", "bio"].some(key => state.showcaseDraft?.[key] !== state.showcase?.profile[key]) ? "Unsaved preview" : { live: "Live public preview", connecting: "Connecting…", reconnecting: "Reconnecting…", paused: "Preview paused", closed: "Preview disconnected" }[value] || "Public preview"; },
     closed: () => { if (status?.isConnected) status.textContent = "Preview changed · reload to reconnect"; },
-  });
+  }) : { stop() {}, pause() {}, resume() {} };
+  let timeRefresh;
+  const updateTimes = () => {
+    if (document.hidden || state.session?.org.id !== orgId || state.view !== "showcase") return;
+    const card = document.querySelector(".profile-preview-content .public-profile");
+    if (card) updateProfileTimes(card);
+  };
+  const resumeTimes = () => { clearInterval(timeRefresh); updateTimes(); timeRefresh = setInterval(updateTimes, 30_000); };
+  previewWatcher = {
+    stop() { clearInterval(timeRefresh); stream.stop(); },
+    pause() { clearInterval(timeRefresh); stream.pause(); },
+    resume() { resumeTimes(); stream.resume(); },
+  };
+  resumeTimes();
   if (document.hidden) previewWatcher.pause();
 }
 function activityView() {
@@ -866,16 +883,17 @@ function connectView() {
     heading("Connections", "Manage agent access, permissions, and recorded contact with Engram.", iconButton("refresh-cw", "Refresh connections", loadConnections, { disabled: state.loading })),
     state.error && notice(state.error, loadConnections),
     state.connectionError && notice("Connection status could not load. Refresh to try again.", loadConnections),
-    canConnect && (state.connections ? connectionInventory(state.connections, { onInspect: connectionHelp, actions: connection => {
-      if (connection.kind !== "token" || connection.status !== "authorized" || state.session.role !== "owner") return null;
-      const token = state.tokens.find(token => token.name === connection.name && !token.revokedAt);
-      if (!token) return null;
-      return el("div", { class: "connection-actions" }, button("Source", () => connectionSource(token), { class: "text small" }), button(token.canWrite === false ? "Allow writes" : "Read only", async event => {
-        const control = event.currentTarget; control.disabled = true;
-        try { await scopedApi.setTokenWrite(token.name, token.canWrite === false); if (workspaceId !== state.session?.org.id) return; await loadConnections(); toast("Connection permission updated"); }
-        catch (error) { if (workspaceId !== state.session?.org.id) return; if (error instanceof AuthError) return expired(); toast(errorMessage(error)); control.disabled = false; }
-      }, { class: "text small", title: token.canWrite === false ? "Allow this key to write" : "Make this key read only" }), button("Disconnect", () => disconnect(token.name), { class: "text small" }));
-    } }) : state.loading && skeletonRows(3)),
+    canConnect && state.connections && el("div", { class: "connection-list-filter" }, field("Connection list", select("Connection list", state.connectionList, [
+      ["current", `Current (${state.connections.connections.filter(connection => !connection.archivedAt).length})`],
+      ["archived", `Archived (${state.connections.connections.filter(connection => connection.archivedAt).length})`],
+    ], value => {
+      if (!isCurrent()) return;
+      state.connectionList = value; render(); selectControls.update();
+      document.querySelector('select[aria-label="Connection list"]')?.focus({ preventScroll: true });
+    }))),
+    canConnect && (state.connections ? connectionInventory(state.connections, { list: state.connectionList, onInspect: connectionHelp,
+      actions: connection => button(state.session.role === "owner" ? "Manage" : "Details", () => connectionHelp(connection), { class: "text small", "aria-label": `${state.session.role === "owner" ? "Manage" : "Details for"} ${connection.displayName || connection.name || "connection"}` }),
+    }) : state.loading && skeletonRows(3)),
     el("h3", {}, "MCP endpoint"), el("p", { class: "detail-note" }, "Add this URL as a custom connector in your agent. Sign in when prompted."),
     el("div", { class: "endpoint" }, el("code", {}, state.mcp || `${location.origin}/mcp`), copyButton("Copy", () => state.mcp || `${location.origin}/mcp`)),
     canConnect && el("div", { class: "section" }, el("h2", {}, "Create an access key"), el("p", {}, "For agents that use a key instead of sign-in. Give each installation a name so its calls stay attributable."),
@@ -911,22 +929,37 @@ function taskReportingHelp() {
   dialog.scrollTop = 0;
 }
 function connectionHelp(connection) {
-  const workspaceId = state.session.org.id, reporting = taskReportingStatus(connection), reconnect = reporting.reconnect;
+  const workspaceId = state.session.org.id, epoch = authEpoch, reporting = taskReportingStatus(connection), reconnect = reporting.reconnect;
+  const owner = state.session.role === "owner", archived = Boolean(connection.archivedAt);
+  const token = connection.kind === "token" && !archived && connection.status === "authorized" ? state.tokens.find(token => token.name === connection.name && !token.revokedAt) : null;
+  const pending = connectionMutations.has(`${epoch}:${workspaceId}:${connection.id}`);
   const endpoint = state.mcp || `${location.origin}/mcp`;
-  showDetail(reconnect ? "Reconnect agent" : "Connection details", [
+  showDetail(owner ? "Manage connection" : archived ? "Archived connection" : reconnect ? "Reconnect agent" : "Connection details", [
     el("div", { class: "detail-tool-icon" }, visualIcon(agentVisual(connection.agent, { ...connection, harness: connection.harness || (connection.kind === "oauth" ? "other" : null) }), { size: 26 })),
     el("h2", { id: "detail-title" }, connection.displayName || connection.name || "Agent connection"),
-    el("p", { class: "detail-note" }, reconnect ? "This authorization no longer grants access. Reconnect in the agent, or replace its access key." : connection.status === "authorized" ? "This authorization can access Engram. Activity appears when the agent makes memory calls or reports its work." : "This connection's access could not be verified. Refresh Connections to check its current status."),
+    el("p", { class: "detail-note" }, archived ? "This connection is archived and disconnected. Its memory and activity stay available. Restore it to the current list, then reconnect separately when you need it." : reconnect ? "This authorization no longer grants access. Reconnect in the agent, or replace its access key." : connection.status === "authorized" ? "This authorization can access Engram. Activity appears when the agent makes memory calls or reports its work." : "This connection's access could not be verified. Refresh Connections to check its current status."),
+    owner && el("section", { class: "connection-management stack", "aria-label": "Manage connection" },
+      el("h3", {}, "Connection actions"),
+      pending && el("p", { class: "detail-note", role: "status" }, el("span", { class: "ds-spinner", "aria-hidden": "true" }), "Updating this connection… Refresh Connections to check the result."),
+      token && el("div", { class: "ds-toolbar" },
+        button("Edit source", () => connectionSource(token), { class: "small", disabled: pending }),
+        button(token.canWrite === false ? "Allow writes" : "Make read only", () => changeConnectionPermission(connection, token), { class: "small", disabled: pending }),
+        button("Disconnect", () => disconnect(token.name), { class: "small", disabled: pending })),
+      el("p", { class: "detail-note" }, archived ? "Restore returns the listing. Access stays disconnected." : "Archive disconnects the agent and keeps its listing in Archived."),
+      el("div", { class: "ds-toolbar" },
+        button(archived ? "Restore connection" : "Archive connection", () => connectionLifecycleConfirm(connection, archived ? "restore" : "archive"), { class: "small", disabled: pending }),
+        button("Delete connection", () => connectionLifecycleConfirm(connection, "delete"), { class: "ds-button small", "data-variant": "danger", disabled: pending })),
+      el("p", { class: "detail-note" }, "Delete removes this connection permanently. Memories and activity stay available.")),
     el("dl", {}, el("dt", {}, "Connection"), el("dd", {}, connection.kind === "oauth" ? "Agent sign-in" : connection.name || "Unavailable"), el("dt", {}, "Access"), el("dd", {}, connection.canWrite === true ? "Read and write" : connection.canWrite === false ? "Read only" : "Unavailable"), el("dt", {}, "Task reports"), el("dd", {}, reporting.label)),
     el("p", { class: "detail-note" }, reporting.detail),
-    button("Set up task reporting", taskReportingHelp, { class: "small" }),
-    el("div", { class: "connection-guide" }, el("h3", {}, "Connect from your agent"), el("ol", {},
+    !archived && button("Set up task reporting", taskReportingHelp, { class: "small" }),
+    !archived && el("details", { class: "connection-guide" }, el("summary", {}, "Reconnect from your agent"), el("ol", {},
       el("li", {}, "Open the agent’s MCP or connector settings and choose Engram."),
       el("li", {}, "Use this endpoint, then sign in when prompted."),
-      el("li", {}, "Ask the agent to search or save a memory. Check Activity for its first recorded call."))),
-    el("div", { class: "endpoint" }, el("code", {}, endpoint), copyButton("Copy", endpoint)),
-    el("p", { class: "detail-note" }, "If the agent uses an access key, replace the old key in its configuration. Each agent and machine needs its own connection. Engram can only list authorizations issued by this workspace."),
-    ["owner", "member"].includes(state.session.role) && button("Create a fresh key", () => {
+      el("li", {}, "Ask the agent to search or save a memory. Check Activity for its first recorded call.")),
+      el("div", { class: "endpoint" }, el("code", {}, endpoint), copyButton("Copy", endpoint)),
+      el("p", { class: "detail-note" }, "If the agent uses an access key, replace the old key in its configuration. Each agent and machine needs its own connection. Engram can only list authorizations issued by this workspace."),
+    owner && button("Create a fresh key", () => {
       if (workspaceId !== state.session?.org.id) return;
       connectionDraft = { name: connection.kind === "token" ? `${connection.name.slice(0, 96)}-new` : "", harness: agentSources.some(([key]) => key === connection.harness) ? connection.harness : "", canWrite: connection.canWrite };
       connectionFocusPending = { workspaceId, afterLoad: state.view !== "connect" };
@@ -934,8 +967,68 @@ function connectionHelp(connection) {
       closeDetail();
       if (state.view !== "connect") location.hash = "connect";
       else requestAnimationFrame(() => focusConnectionKey());
-    }, { class: "small" }),
+    }, { class: "small", disabled: pending })),
+
   ]);
+}
+function connectionLifecycleConfirm(connection, action) {
+  if (state.session?.role !== "owner" || sessionMutation) return;
+  const workspaceId = state.session.org.id, epoch = authEpoch, key = `${epoch}:${workspaceId}:${connection.id}`;
+  const scopedApi = workspaceApi(workspaceId);
+  const name = connection.displayName || connection.name || "this connection";
+  const label = action === "delete" ? "Delete connection" : action === "restore" ? "Restore connection" : "Archive connection";
+  const feedback = el("p", { class: "form-feedback detail-note ds-notice", "data-tone": "danger", role: "alert", tabindex: "-1" });
+  const submit = button(label, async () => {
+    if (connectionMutations.has(key) || sessionMutation || authEpoch !== epoch || state.session?.org.id !== workspaceId || state.session?.role !== "owner") return;
+    const requestId = detailGeneration, request = {};
+    connectionMutations.set(key, request); busy(submit, action === "delete" ? "Deleting…" : action === "restore" ? "Restoring…" : "Archiving…", true); cancel.disabled = true; feedback.textContent = "";
+    const current = () => authEpoch === epoch && state.session?.org.id === workspaceId && !sessionMutation;
+    const currentDialog = () => current() && dialog.open && requestId === detailGeneration;
+    try {
+      const result = await scopedApi.manageConnection(connection.id, action);
+      if (!current()) return;
+      state.connectionFetchedAt = 0;
+      if (!currentDialog()) return;
+      if (result?.ok !== true || result.id !== connection.id || result.action !== action) throw new Error("The connection change could not be confirmed. Refresh Connections before trying again.");
+      if (state.connections) state.connections = { ...state.connections, connections: state.connections.connections.flatMap(row => row.id !== connection.id ? [row] : action === "delete" ? [] : [{ ...row, archivedAt: action === "archive" ? result.archivedAt : null, status: "revoked" }]) };
+      if (action === "restore") state.connectionList = "current";
+      returnFocusSelector = '[aria-label="Refresh connections"]';
+      closeDetail(); render(); toast(action === "delete" ? "Connection deleted. History kept." : action === "restore" ? "Connection restored. Reconnect to grant access." : "Connection archived and disconnected.");
+      if (state.view === "connect") loadConnections();
+    } catch (error) {
+      if (!currentDialog()) return;
+      if (error instanceof AuthError) return expired("Your session expired. Please sign in again.");
+      feedback.textContent = errorMessage(error); feedback.focus();
+    } finally {
+      if (connectionMutations.get(key) === request) connectionMutations.delete(key);
+      if (currentDialog()) { busy(submit, label, false); cancel.disabled = false; }
+    }
+  }, { class: action === "delete" ? "ds-button" : "primary", "data-variant": action === "delete" ? "danger" : undefined, disabled: connectionMutations.has(key) });
+  const cancel = button("Cancel", () => connectionHelp(connection), { disabled: connectionMutations.has(key) });
+  showDetail("Manage connection", [el("h2", { id: "detail-title" }, `${action === "delete" ? "Delete" : action === "restore" ? "Restore" : "Archive"} ${name}?`),
+    el("p", { class: "detail-note" }, action === "delete" ? "This permanently removes the connection from your list and revokes its access. You cannot undo this deletion. Its memories, activity, and task reports stay available." : action === "restore" ? "This returns the connection to your current list. Access stays disconnected. Sign in again from the agent or create a fresh key when you want to reconnect." : "This revokes the connection’s access and moves it to Archived. Its memories, activity, and task reports stay available. Restoring its listing later will not restore access."),
+    feedback, el("div", { class: "ds-toolbar" }, cancel, submit)]);
+}
+function changeConnectionPermission(connection, token) {
+  const workspaceId = state.session.org.id, epoch = authEpoch, canWrite = token.canWrite === false;
+  const feedback = el("p", { class: "form-feedback detail-note ds-notice", "data-tone": "danger", role: "alert", tabindex: "-1" });
+  const save = button(canWrite ? "Allow writes" : "Make read only", async () => {
+    if (sessionMutation || epoch !== authEpoch || workspaceId !== state.session?.org.id || state.session.role !== "owner" || save.disabled) return;
+    const requestId = detailGeneration; busy(save, "Updating…", true); feedback.textContent = "";
+    try {
+      await api.setTokenWrite(token.name, canWrite, workspaceId);
+      if (epoch !== authEpoch || workspaceId !== state.session?.org.id || requestId !== detailGeneration || !dialog.open || sessionMutation) return;
+      token.canWrite = canWrite; connection.canWrite = canWrite; connectionHelp(connection); toast("Connection permission updated");
+      if (state.view === "connect") loadConnections();
+    } catch (error) {
+      if (epoch !== authEpoch || workspaceId !== state.session?.org.id || requestId !== detailGeneration || !dialog.open || sessionMutation) return;
+      if (error instanceof AuthError) return expired();
+      feedback.textContent = errorMessage(error); feedback.focus(); busy(save, canWrite ? "Allow writes" : "Make read only", false);
+    }
+  }, { class: "primary" });
+  showDetail("Connection permission", [el("h2", { id: "detail-title" }, canWrite ? "Allow this connection to write?" : "Make this connection read only?"),
+    el("p", { class: "detail-note" }, canWrite ? "The connection can save memory and send task reports, subject to workspace policy and plan access." : "The connection can still read memory. New memory writes and task reports will be denied."), feedback,
+    el("div", { class: "ds-toolbar" }, button("Cancel", () => connectionHelp(connection)), save)]);
 }
 function focusConnectionKey(afterLoad = false) {
   const intent = connectionFocusPending;
@@ -981,7 +1074,17 @@ async function loadConnections() {
     state.tokens = tokens.value.tokens ?? []; state.mcp = tokens.value.mcp || `${location.origin}/mcp`;
   }
   catch (error) { if (requestId === generation) { if (error instanceof AuthError) return expired("Your session expired. Please sign in again."); state.error = errorMessage(error); } }
-  finally { if (requestId === generation) { state.loading = false; render(); focusConnectionKey(true); } }
+  finally {
+    if (requestId === generation) {
+      const focusLabel = !dialog.open && state.view === "connect" ? document.activeElement?.getAttribute("aria-label") : null;
+      state.loading = false; render();
+      if (["Refresh connections", "Connection list"].includes(focusLabel)) {
+        selectControls.update();
+        document.querySelector(`[aria-label="${focusLabel}"]`)?.focus({ preventScroll: true });
+      }
+      focusConnectionKey(true);
+    }
+  }
 }
 function tokenDetail(data) {
   const connection = agentConnectionGuide(data.harness, data.mcp);
@@ -1012,7 +1115,7 @@ function showcaseView() {
   if (!state.showcase) return [heading("Public profile", "A live window into your agents’ work, with private details left out."), state.error ? notice(state.error, loadShowcase) : profileSkeleton()];
   const draft = state.showcaseDraft;
   const saved = state.showcase.profile;
-  const hasChanges = value => ["slug", "displayName", "bio"].some(key => value[key] !== saved[key]) || Boolean(value.showActivity) !== Boolean(saved.showActivity) || profilePresentationChanged(value, saved);
+  const hasChanges = value => ["slug", "displayName", "bio"].some(key => value[key] !== saved[key]) || Boolean(value.showActivity) !== Boolean(saved.showActivity) || profilePhotoChanged(value, saved) || profilePresentationChanged(value, saved);
   const workspaceId = state.session.org.id, epoch = authEpoch;
   const publicUrl = saved.published ? state.showcase.urls.page : `${location.origin}/u/${draft.slug || "your-name"}`;
   const nameError = el("p", { id: "showcase-name-error", class: "ds-field-error", hidden: true });
@@ -1037,6 +1140,7 @@ function showcaseView() {
     feedback.textContent = message;
   };
   const validate = () => {
+    if (photo.isBusy()) { setFeedback("Wait for your photo to finish preparing.", true); return false; }
     const errors = [
       [slug, slugError, /^(?=.{3,48}$)[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug.value) ? "" : "Use 3–48 lowercase letters or numbers, with single hyphens between them."],
       [name, nameError, name.value.trim().length <= 80 ? "" : "Use a display name of at most 80 characters."],
@@ -1056,9 +1160,10 @@ function showcaseView() {
   }, { class: saved.published ? "small" : "primary small", "data-showcase-focus": "publish", "aria-describedby": "showcase-feedback" });
   const preview = el("div", { class: "profile-preview-content" }, showcasePreview());
   const presentation = createProfilePresentationEditor({ profile: draft, isCurrent, onChange: () => { setFeedback(""); update(); } });
+  const photo = profilePhotoEditor = createProfilePhotoEditor({ photo: draft.photo ?? null, isCurrent, onChange: () => { setFeedback(""); update(); } });
   const update = () => {
     if (!isCurrent() || pending) return;
-    state.showcaseDraft = { ...draft, displayName: name.value, slug: slug.value, bio: bio.value, showActivity: showActivity.checked, ...presentation.read() };
+    state.showcaseDraft = { ...draft, displayName: name.value, slug: slug.value, bio: bio.value, showActivity: showActivity.checked, photo: photo.read(), ...presentation.read() };
     const card = preview.querySelector('.public-profile');
     if (card && state.showcase?.preview) updateProfileCard(card, showcasePreviewData(state.showcase.preview));
     else preview.replaceChildren(showcasePreview());
@@ -1066,18 +1171,19 @@ function showcaseView() {
     const changedAddress = document.querySelector("#slug-change-hint"); if (changedAddress) changedAddress.hidden = !(saved.published && slug.value !== saved.slug);
     const permalink = document.querySelector("#profile-permalink"); if (permalink && !saved.published) permalink.textContent = `${location.origin}/u/${slug.value || "your-name"}`;
     const previewStatus = document.querySelector(".preview-label > span"); if (previewStatus) previewStatus.textContent = Boolean(showActivity.checked) !== Boolean(saved.showActivity) ? "Unsaved sharing preview" : hasChanges(state.showcaseDraft) ? "Unsaved preview" : "What others will see";
-    save.disabled = !hasChanges(state.showcaseDraft);
+    save.disabled = photo.isBusy() || !hasChanges(state.showcaseDraft);
   };
   for (const [control, errorNode] of [[name, nameError], [slug, slugError], [bio, bioError]]) control.addEventListener("input", () => { if (!pending && isCurrent()) { setFieldError(control, errorNode); setFeedback(""); } });
   [name, slug, bio, showActivity].forEach(node => node.addEventListener("input", update));
   save.disabled = !hasChanges(draft);
   const controller = {
     workspaceId, epoch, isCurrent,
-    setPending(value) { if (pending === value) return; pending = value; form.setAttribute("aria-busy", String(value)); for (const control of [name, slug, bio, showActivity, save, publish]) control.disabled = value; presentation.setPending(value); if (!value) update(); },
+    setPending(value) { if (pending === value) return; pending = value; form.setAttribute("aria-busy", String(value)); for (const control of [name, slug, bio, showActivity, save, publish]) control.disabled = value; presentation.setPending(value); photo.setPending(value); if (!value) update(); },
     error(message, focus = true) { setFeedback(message, true); if (message === "That showcase address is already taken") { setFieldError(slug, slugError, "This profile address is already taken. Choose another address."); if (focus) slug.focus(); } else if (focus) feedback.focus(); },
   };
   const form = el("form", { class: "showcase-form stack", novalidate: true, onsubmit: async event => { event.preventDefault(); if (pending || !isCurrent()) return; update(); if (validate()) await persistShowcase(saved.published, save, feedback, state.showcaseDraft, controller); } },
     presentation.layoutElement,
+    photo.element,
     field("Display name", name), nameError,
     field("Profile URL", el("div", { class: "slug-field" }, el("span", {}, "/u/"), slug)),
     el("p", { id: "slug-hint", class: "field-hint" }, "3–48 lowercase letters or numbers, with single hyphens between them."), slugError,
@@ -1096,9 +1202,9 @@ function showcaseView() {
         el("section", { class: "visibility-panel" }, el("div", { class: "visibility-title" }, icon(saved.published ? "globe" : "eye-off", { size: 17 }), el("strong", {}, saved.published ? "Your profile is public" : "Only you can see this"), el("span", { class: "visibility-badge" }, saved.published ? "Published" : "Draft")), el("p", {}, `Shows recorded activity from ${state.session.org.name}. ${saved.showActivity ? "Agent products and broad action labels are included." : "The activity stream is off; counts and broad categories can appear."} ${saved.highlights?.length ? "Your saved highlights are included when published. " : ""}Private task text and resource names are never added automatically.`)),
         form,
         el("section", { class: "share-links section" }, el("h3", {}, "Share anywhere"), el("p", {}, "Share the live profile link, or connect the same updates to your website."),
-          el("div", { class: "share-link-row" }, el("span", { class: "share-link-label" }, icon("link", { size: 14 }), "Profile"), el("code", { id: "profile-permalink" }, publicUrl), copyButton("Copy", () => state.showcase.urls.page, { disabled: !saved.published })),
-          saved.published && el("div", { class: "share-link-row" }, el("span", { class: "share-link-label" }, icon("code", { size: 14 }), "JSON"), el("code", {}, urls.json), copyButton("Copy", urls.json)),
-          saved.published && el("div", { class: "share-link-row" }, el("span", { class: "share-link-label" }, icon("activity", { size: 14 }), "Live API"), el("code", {}, urls.stream || `${urls.json}/stream`), copyButton("Copy", urls.stream || `${urls.json}/stream`)),
+          el("div", { class: "share-link-row" }, el("span", { class: "share-link-label" }, icon("link", { size: 14 }), "Profile"), el("code", { id: "profile-permalink", class: "ds-code-scroll", tabindex: "0", role: "region", "aria-label": "Profile URL. Scroll horizontally to read." }, publicUrl), copyButton("Copy", () => state.showcase.urls.page, { disabled: !saved.published, "aria-label": "Copy profile URL" })),
+          saved.published && el("div", { class: "share-link-row" }, el("span", { class: "share-link-label" }, icon("code", { size: 14 }), "JSON"), el("code", { class: "ds-code-scroll", tabindex: "0", role: "region", "aria-label": "JSON URL. Scroll horizontally to read." }, urls.json), copyButton("Copy", urls.json, { "aria-label": "Copy JSON URL" })),
+          saved.published && el("div", { class: "share-link-row" }, el("span", { class: "share-link-label" }, icon("activity", { size: 14 }), "Live API"), el("code", { class: "ds-code-scroll", tabindex: "0", role: "region", "aria-label": "Live API URL. Scroll horizontally to read." }, urls.stream || `${urls.json}/stream`), copyButton("Copy", urls.stream || `${urls.json}/stream`, { "aria-label": "Copy live API URL" })),
           saved.published && el("div", { class: "profile-link-actions" }, el("a", { href: urls.page, target: "_blank", rel: "noopener", class: "button-link" }, "Open profile"), el("a", { href: urls.card, target: "_blank", rel: "noopener", class: "button-link" }, icon("share-2", { size: 14 }), "Social card")),
           !saved.published && el("p", { class: "field-hint" }, "Publish to activate the profile, JSON endpoint, and live stream. Unpublishing disables all three."),
           saved.published && el("details", {}, el("summary", {}, "Live website embed"), el("p", { class: "detail-note" }, "Paste this into your website for live counts, or use EventSource in your own design. JSON and the stream follow the sharing scope saved above."), el("pre", {}, liveEmbed(urls.stream || `${urls.json}/stream`)), copyButton("Copy live embed", liveEmbed(urls.stream || `${urls.json}/stream`))),
@@ -1152,7 +1258,8 @@ function showcasePreview() {
 }
 function showcasePreviewData(snapshot) {
   const enabled = Boolean(state.showcaseDraft?.showActivity);
-  return { ...snapshot, profile: { ...snapshot.profile, ...state.showcaseDraft }, activity: { enabled, events: enabled ? snapshot.activity?.events || [] : [] } };
+  const draft = state.showcaseDraft;
+  return { ...snapshot, profile: { ...snapshot.profile, ...draft, photoUrl: draft ? draft.photo ?? null : snapshot.profile.photoUrl }, activity: { enabled, events: enabled ? snapshot.activity?.events || [] : [] } };
 }
 async function loadShowcase() {
   if (state.session.role !== "owner") return;
@@ -1173,14 +1280,14 @@ async function persistShowcase(published, submit, feedback, profile, controller)
   const focusKey = submit.dataset.showcaseFocus;
   // Revoking publication never saves an unreviewed draft or discards its edits.
   const revoking = !published && state.showcase.profile.published;
-  const retainedDraft = revoking && (["slug", "displayName", "bio", "showActivity"].some(key => state.showcaseDraft[key] !== state.showcase.profile[key]) || profilePresentationChanged(state.showcaseDraft, state.showcase.profile)) ? { ...state.showcaseDraft, published: false } : null;
+  const retainedDraft = revoking && (["slug", "displayName", "bio", "showActivity"].some(key => state.showcaseDraft[key] !== state.showcase.profile[key]) || profilePhotoChanged(state.showcaseDraft, state.showcase.profile) || profilePresentationChanged(state.showcaseDraft, state.showcase.profile)) ? { ...state.showcaseDraft, published: false } : null;
   controller.setPending(true);
   busy(submit, published ? "Saving…" : "Updating…", true);
   feedback.setAttribute("role", "status"); feedback.setAttribute("aria-live", "polite");
   feedback.textContent = published ? "Saving public profile…" : "Saving private profile…";
   try {
     const presentation = profilePresentationValue(profile);
-    const data = await api.saveShowcase({ slug: profile.slug, displayName: profile.displayName.trim(), bio: profile.bio.trim(), showActivity: profile.showActivity === true, layout: presentation.layout, highlights: presentation.highlights.map(item => ({ title: item.title.trim(), body: item.body.trim(), url: item.url.trim() })), published }, currentOrg);
+    const data = await api.saveShowcase({ slug: profile.slug, displayName: profile.displayName.trim(), bio: profile.bio.trim(), showActivity: profile.showActivity === true, layout: presentation.layout, highlights: presentation.highlights.map(item => ({ title: item.title.trim(), body: item.body.trim(), url: item.url.trim() })), ...profilePhotoUpdate(profile, state.showcase.profile), published }, currentOrg);
     if (!controller.isCurrent() || showcaseSaving !== request) return;
     const restoreFocus = document.activeElement === submit || document.activeElement === document.body;
     state.showcase = data; state.showcaseDraft = retainedDraft || { ...data.profile };
@@ -1238,7 +1345,7 @@ async function switchOrg(orgId) {
   try {
     const session = await api.switchOrg(Number(orgId));
     if (epoch !== authEpoch) return;
-    state.session = session; state.activities = []; state.activityStats = {}; state.freshIds = new Set(); state.memories = []; state.tokens = []; state.connections = null; state.connectionError = ""; state.connectionFetchedAt = 0; connectionDraft = null; connectionFocusPending = null; state.agents = []; state.tools = []; state.showcase = null; state.showcaseDraft = null; state.insights = null; state.insightsQuery = ""; state.insightsActivityId = ""; state.insightBusy = false; state.insightError = ""; state.reviews = []; state.reviewMore = false; pendingInsightRun = false; Object.keys(state.filters).forEach(key => state.filters[key] = ""); writeRoute(); render(); await loadView();
+    state.session = session; state.activities = []; state.activityStats = {}; state.freshIds = new Set(); state.memories = []; state.tokens = []; state.connections = null; state.connectionError = ""; state.connectionFetchedAt = 0; state.connectionList = "current"; connectionDraft = null; connectionFocusPending = null; state.agents = []; state.tools = []; state.showcase = null; state.showcaseDraft = null; state.insights = null; state.insightsQuery = ""; state.insightsActivityId = ""; state.insightBusy = false; state.insightError = ""; state.reviews = []; state.reviewMore = false; pendingInsightRun = false; Object.keys(state.filters).forEach(key => state.filters[key] = ""); writeRoute(); render(); await loadView();
   } catch (error) {
     if (epoch !== authEpoch) return;
     if (error instanceof AuthError) return expired("Your session expired. Please sign in again."); toast(errorMessage(error)); render();
@@ -1321,7 +1428,7 @@ function expired(message = "") {
   previewWatcher?.stop(); previewWatcher = null;
   state.account = null;
   clearTimeout(provisioningTimer); ++provisioningAttempt; provisioningChecking = false; provisioningError = "";
-  clearTimeout(searchTimer); clearTimeout(insightTimer); ++generation; closeDetail(); state.session = null; state.activities = []; state.activityStats = {}; state.freshIds = new Set(); state.memories = []; state.tokens = []; state.connections = null; state.connectionError = ""; state.connectionFetchedAt = 0; connectionDraft = null; connectionFocusPending = null; state.agents = []; state.tools = []; state.showcase = null; state.showcaseDraft = null; state.insights = null; state.insightsQuery = ""; state.insightsActivityId = ""; state.insightBusy = false; state.insightError = ""; state.reviews = []; pendingInsightRun = false; renderAuth("email", message);
+  clearTimeout(searchTimer); clearTimeout(insightTimer); ++generation; closeDetail(); state.session = null; state.activities = []; state.activityStats = {}; state.freshIds = new Set(); state.memories = []; state.tokens = []; state.connections = null; state.connectionError = ""; state.connectionFetchedAt = 0; state.connectionList = "current"; connectionDraft = null; connectionFocusPending = null; state.agents = []; state.tools = []; state.showcase = null; state.showcaseDraft = null; state.insights = null; state.insightsQuery = ""; state.insightsActivityId = ""; state.insightBusy = false; state.insightError = ""; state.reviews = []; pendingInsightRun = false; renderAuth("email", message);
 }
 function renderAuth(mode = "email", message = "") {
   mode = signupAuthMode(mode, signupPolicy);
@@ -1417,7 +1524,7 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) { previewWatcher?.pause(); clearTimeout(activityRefreshTimer); clearTimeout(insightTimer); clearTimeout(provisioningTimer); clearTimeout(accessRefreshTimer); }
   else { if (workspacePending(state.session)) { scheduleProvisioning(0); return; } if (friendAccessPresentation(state.session?.access)) refreshFriendAccess(); previewWatcher?.resume(); if (currentActivity && dialog.open) fetchActivityDetail({ quiet: true }); if (state.view === "attention" && ["queued", "running"].includes(state.insights?.job?.status)) loadInsights({ jobId: state.insights.job.id, quiet: true }); }
 });
-window.addEventListener("pagehide", () => { pendingInviteEntry = null; authPanel?.clearSecrets(); signupAdmin?.clearSecrets(); sharingPanel?.clearSecrets(); previewWatcher?.pause(); clearTimeout(activityRefreshTimer); clearTimeout(insightTimer); clearTimeout(provisioningTimer); clearTimeout(accessRefreshTimer); });
+window.addEventListener("pagehide", () => { pendingInviteEntry = null; authPanel?.clearSecrets(); signupAdmin?.clearSecrets(); sharingPanel?.clearSecrets(); profilePhotoEditor?.dispose(); profilePhotoEditor = null; previewWatcher?.pause(); clearTimeout(activityRefreshTimer); clearTimeout(insightTimer); clearTimeout(provisioningTimer); clearTimeout(accessRefreshTimer); });
 window.addEventListener("pageshow", event => {
   if (!event.persisted) return;
   if (workspacePending(state.session)) { scheduleProvisioning(0); return; }
@@ -1426,6 +1533,7 @@ window.addEventListener("pageshow", event => {
   if (currentActivity && dialog.open) fetchActivityDetail({ quiet: true });
   else if (state.session && state.view === "activity" && !sessionMutation) loadActivity({ quiet: true });
   else if (state.session && state.view === "attention") loadInsights({ jobId: state.insights?.job?.id, quiet: true });
+  else if (state.session && state.view === "showcase" && !sessionMutation) render();
 });
 async function boot() {
   const invited = captureInviteEntry();

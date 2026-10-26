@@ -40,5 +40,5 @@ test("connection inventory requires a human console credential, CSRF boundary an
   const {results,selects}=JSON.parse(child.stdout);
   for(const key of ["owner","member"]){expect(results[key]).toMatchObject({status:200,body:{connections:[],more:false,limit:200,recentWindowSeconds:900},cache:"no-store"});}
   expect(results.anonymous.status).toBe(401);expect(results.csrf.status).toBe(403);expect(results.foreignPin.status).toBe(409);
-  expect(results.agent.status).toBe(403);expect(results.oauth.status).toBe(403);expect(results.write.status).toBe(405);expect(selects).toBe(2);
+  expect(results.agent.status).toBe(403);expect(results.oauth.status).toBe(403);expect(results.write.status).toBe(409);expect(selects).toBe(2);
 });

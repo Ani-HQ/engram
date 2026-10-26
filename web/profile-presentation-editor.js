@@ -46,7 +46,7 @@ export function createProfilePresentationEditor({ profile, onChange = () => {}, 
     const input = h('input', { type: 'radio', name: `${prefix}-layout`, value, checked: layout === value });
     input.addEventListener('change', () => { if (pending || !isCurrent() || !input.checked) return; layout = value; changed(); });
     return { input, label: h('label', { class: 'ds-choice-card' }, input, h('span', { class: 'ds-choice-visual', 'aria-hidden': 'true' }, profileLayoutPreview(value)), h('span', { class: 'ds-choice-copy' },
-      h('strong', { class: 'ds-choice-title' }, title), h('small', { class: 'ds-choice-description' }, value === 'studio' ? 'A live desk, a weekly rhythm, and a little room for highlights.' : 'Your chosen stories first, with activity quietly underneath.'))) };
+      h('strong', { class: 'ds-choice-title' }, title), h('small', { class: 'ds-choice-description' }, value === 'studio' ? 'A live desk, activity history, and room for highlights.' : 'Your chosen stories first, with activity quietly underneath.'))) };
   });
   const choices = h('fieldset', { class: 'ds-choice-group' }, h('legend', {}, 'Profile layout'),
     h('div', { class: 'ds-choice-options' }, choiceInputs.map(item => item.label)),

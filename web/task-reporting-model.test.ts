@@ -2,6 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { taskReportingStatus, taskReportingSummary } from "./task-reporting-model.js";
 
 describe("task reporting evidence", () => {
+  test("archived and deleted listings do not create reporting attention or authorization claims", () => {
+    const archived = { status: "revoked", archivedAt: "2026-10-26T09:00:00Z", canWrite: true, taskReports: 7 };
+    expect(taskReportingStatus(archived)).toMatchObject({ state: "archived", eligible: false, reconnect: false, readOnly: false, withReports: false, reportCount: 7 });
+    expect(taskReportingStatus({ ...archived, status: "authorized" }).eligible).toBe(false);
+    expect(taskReportingSummary({ connections: [archived, { status: "authorized", canWrite: true, taskReports: 3, deletedAt: "2026-10-26T09:00:00Z" }, { status: "authorized", canWrite: true, taskReports: 1 }] })).toEqual({ total: 1, eligible: 1, reconnect: 0, readOnly: 0, withReports: 1, available: true, more: false });
+  });
   test("reconnect and read-only access take priority over historical receipts", () => {
     for (const status of ["revoked", "expired", "membership_removed"]) {
       expect(taskReportingStatus({ status, canWrite: true, taskReports: 12 })).toMatchObject({

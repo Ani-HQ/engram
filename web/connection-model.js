@@ -3,6 +3,10 @@ const timestamp = value => { if (!value) return null; const n = Date.parse(value
 
 export function activityKind(value) { return value === "tasks" || value === "memory" ? value : "all"; }
 
+export function currentConnections(connections = []) {
+  return connections.filter(connection => !connection?.archivedAt && !connection?.deletedAt);
+}
+
 export function lastConnectionContact(connection = {}, now = Date.now()) {
   const values = [connection.lastContactAt, connection.lastMemoryAt, connection.lastTaskReportAt, connection.lastAuthenticatedAt]
     .map(timestamp).filter(value => value !== null && value <= now + 60_000);
@@ -11,6 +15,8 @@ export function lastConnectionContact(connection = {}, now = Date.now()) {
 
 export function connectionState(connection = {}, now = Date.now(), recentWindowSeconds = 900) {
   const lastContactAt = lastConnectionContact(connection, now);
+  if (connection.archivedAt) return { state: "archived", label: "Archived", lastContactAt,
+    explanation: "This connection is archived and its access is disconnected. Restoring it only returns it to the current list; reconnect separately to grant access." };
   if (reconnectStatuses.has(connection.status)) return {
     state: "reconnect", label: "Reconnect needed", lastContactAt,
     explanation: connection.status === "membership_removed" ? "This connection's workspace membership is no longer current."
@@ -24,6 +30,7 @@ export function connectionState(connection = {}, now = Date.now(), recentWindowS
 }
 
 export function connectionSummary(connections = [], now = Date.now(), recentWindowSeconds = 900) {
+  connections = currentConnections(connections);
   const states = connections.map(connection => connectionState(connection, now, recentWindowSeconds));
   return {
     total: connections.length,

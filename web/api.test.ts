@@ -70,6 +70,18 @@ describe("private workspace API requests", () => {
     expect(new Headers(calls[0].options.headers).get("X-Engram-Console")).toBe("1");
     expect(calls[0].options.credentials).toBe("same-origin");
   });
+  test("pins each connection lifecycle mutation and preserves opaque inventory IDs", async () => {
+    const selected = workspaceApi(7), id = "oauth:opaque/connection?private";
+    for (const action of ["archive", "restore", "delete"]) await selected.manageConnection(id, action);
+    expect(calls).toHaveLength(3);
+    calls.forEach((call, index) => {
+      expect(call.url).toBe("/api/connections"); expect(call.options.method).toBe("POST");
+      expect(JSON.parse(String(call.options.body))).toEqual({ id, action: ["archive", "restore", "delete"][index] });
+      expect(new Headers(call.options.headers).get("X-Engram-Workspace")).toBe("7");
+      expect(new Headers(call.options.headers).get("X-Engram-Console")).toBe("1");
+      expect(call.options.credentials).toBe("same-origin");
+    });
+  });
   test("pins asynchronous analysis and review reads and writes to their originating workspace", async () => {
     const selected = workspaceApi(7);
     await selected.runInsights({ q: "deployment intent" });

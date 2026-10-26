@@ -7,7 +7,7 @@ The direction takes inspiration from Supabase’s precise technical interfaces, 
 ## Files and adoption
 
 - `web/design-system.css`: semantic tokens, native primitives, reusable components, motion, accessibility, and the isolated gallery layout.
-- `web/design-system.js`: safe DOM helpers `memoryOrbit`, `memoryStream`, `statusBadge`, `resourceChip`, `progressBar`, `setProgress`, `loadingState`, `observeLoadingMotion`, `observeContextFlow`, `contextFlowArt`, `highlightArt`, and `profileLayoutPreview` (plus the legacy `sticker` alias). They parse no HTML or stylesheet and fetch nothing. Decorative artwork defaults to static; its motion requires an explicit opt-in. Labeled loading helpers move only while their owning operation is pending.
+- `web/design-system.js`: safe DOM helpers `memoryOrbit`, `memoryStream`, `statusBadge`, `statusText`, `profileAvatar`, `resourceChip`, `progressBar`, `setProgress`, `loadingState`, `observeLoadingMotion`, `observeContextFlow`, `contextFlowArt`, `highlightArt`, and `profileLayoutPreview` (plus the legacy `sticker` alias). They parse no HTML or stylesheet and make no API calls. Avatar images use only the local photo endpoint or a bounded PNG draft. Decorative artwork defaults to static; its motion requires an explicit opt-in. Labeled loading helpers move only while their owning operation is pending.
 - `web/select-control.js`: progressive single-select enhancement, re-exported as `enhanceSelect` and `observeSelects` from `design-system.js`. Native values, validation, form submission and existing change handlers remain authoritative.
 - `web/logo-ticker.js`: `observeLogoTicker`, re-exported from `design-system.js`, progressively animates an informational local-logo list while keeping one accessible original and a full static fallback.
 - `web/design-system.html` and `web/design-system-gallery.js`: interactive review examples. `/design-system.html` works as a static path; the local server also maps `/design-system`.
@@ -49,7 +49,9 @@ Legacy aliases `--muted`, `--line`, `--soft`, `--radius-control`, `--radius-card
 | Logo ticker | `--ds-ticker-speed`, `--ds-ticker-item-gap`, `--ds-ticker-group-gap`, `--ds-ticker-edge-fade` | `30px/sec`, `space-8`, `space-10`, `32px`. Measured seamless transform; fade applies only to the moving presentation |
 | Easing | `--ds-ease-out`, `--ds-ease-in-out` | Responsive feedback; occasional on-screen movement |
 | Pending motion | `--ds-shimmer-duration`, `--ds-progress-duration`, `--ds-progress-height` | `1400ms`, `1200ms`, `4px`; only while a real request is pending (or a labeled local preview) |
+| Fresh activity text | `--ds-status-shimmer-duration`, `--ds-status-shine-ink` | `3200ms`; one subtle mint-tinted sweep with rest. Only fresh running activity or an explicitly labeled component example |
 | Fallback avatars | `--ds-avatar-1/2/3/4/5`, `--ds-avatar-face` | Mint `#77d9ad`, sky `#9fc7e8`, sand `#dec39e`, lilac `#c3b4df`, pink `#e3b5c9`; dark features `#10261b`. Local deterministic fallback illustrations; recognized products retain their original marks |
+| Profile image sizes | `--ds-profile-avatar-sm/md/lg` | `56/80/112px`; fixed circular human profile images with a graphite/mint memory-bloom fallback |
 | Visual layout preview | `--ds-choice-preview-min-height` | `132px`; a stable decorative thumbnail region inside a native radio choice |
 | Highlight art | `--ds-highlight-art-ratio` | `24 / 11`; shared decorative art-slot ratio, sized by the owning composition |
 | Week pulse bar | `--ds-week-bar-height` | `72px`; static comparison height, paired with exact supplied counts |
@@ -80,6 +82,7 @@ these same label-first actions without reserving a trailing icon slot.
 | Standalone touch link | `.ds-touch-target` on an anchor | Shared unstyled inline-flex target. At mobile widths/coarse pointers, it is at least 44×44px. Keep inline prose links in normal text flow |
 | Icon action | `.ds-icon-button` | 44×44px; accessible name required |
 | Fallback agent avatar | `.ds-agent-avatar` through `agentVisual` / `visualIcon` | Local deterministic Beam face only for unknown agents; visible name/provenance stay separate. Public callers use the constant public-safe seed. Known products keep their actual logo |
+| Human profile image | `profileAvatar({src,label,size})`; `.ds-profile-avatar` | Sizes `sm/md/lg` are 56/80/112px. One accessible image label; static local memory-bloom fallback while missing, loading or unavailable. Only the versioned local public PNG endpoint or bounded PNG data drafts are accepted |
 | Product logo | `img.ds-product-logo`, optional `data-size="28"` | 24px default or 28px; `object-fit: contain`, local source, no distortion or recoloring |
 | Logo ticker | `observeLogoTicker(root, options)`; `.ds-logo-ticker`, viewport/track/list | One accessible original list; inert hidden visual copies only. Visible Pause/Resume, hover/focus/background/offscreen pause; reduced/no-JS static list wraps in full |
 | Logo backplate | `.ds-product-logo-frame`, optional `data-tone="inverse"`; `.ds-logo-backplate` for an existing local-mark frame | Optional 44px light neutral backplate for unchanged source marks; keep adjacent visible product name |
@@ -90,9 +93,10 @@ these same label-first actions without reserving a trailing icon slot.
 | Visual radio choice | `.ds-choice-group` fieldset, `.ds-choice-options`, `.ds-choice-card` label, native radio, `.ds-choice-visual`, `.ds-choice-copy/title/description` | Native grouping, checked/disabled and arrow-key behavior. Keep a visible legend and text beside the decorative thumbnail. Never publish merely by choosing a layout |
 | Highlight card | `.ds-card.ds-highlight-card`, `.ds-highlight-visual/content/title/description/meta/actions` | Only deliberately public text and approved references. Static art is decorative. Keep optional links separate from native disclosure summaries |
 | Highlight disclosure | Native `details.ds-highlight-disclosure` with `summary` | Keyboard immediate, readable in document flow; optional `.ds-disclosure-indicator` follows open state |
-| Focus row | `.ds-focus-row`, `.ds-focus-mark/content/label/title/description/meta` | Neutral summary row. Source and reported/observed provenance stay visible; the row does not imply running or verified work |
+| Focus row | `.ds-focus-row`, `.ds-focus-mark/content/label/title/description/meta` | Neutral summary row. A logo may replace the repeated product name when its canonical name remains accessible. Preserve observed/reported provenance in accessible text and a title when omitting repeated visible copy; the row does not imply verified work |
 | Seven-day pulse | `.ds-week-pulse` list, `.ds-week-day`, native `.ds-week-button`, `.ds-week-bar` and `.ds-week-bar-fill`, `.ds-week-label/count` | Supply real UTC dates and counts. Static ratio only, no invented activity. `aria-pressed` shows selected day; roving focus and arrow/Home/End handling belong to the owner |
 | Badge | `.ds-badge[data-tone]` or `statusBadge(text,{tone,className})` | Tone: neutral, accent, lime, lilac, apricot, success, warning, danger, info; visible text required |
+| Activity text | `statusText(label,{active=false,className})`; `.ds-status-text[data-active]` | Solid readable copy with a decorative sheen only for fresh running work. Use `observeLoadingMotion(root)`. Offscreen, background, keyboard, reduced-motion and forced-color states stay static; the owner stops active state when freshness expires |
 | Legacy sticker | `.ds-sticker` or `sticker(text,{tone,tilt})` | Compatibility alias with the same restrained badge treatment; tilt is no longer rendered. Use badges in new UI |
 | Eyebrow / editorial accent | `.ds-eyebrow`, `.ds-editorial` | Compact mono eyebrow; mint Inter emphasis for a short phrase. Operational instructions keep neutral text |
 | Heading group | `.ds-heading-group` | Badge/eyebrow → title → description → actions; shared semantic gaps preserve breathing room |
@@ -118,6 +122,14 @@ Buttons, badges, and stickers stay within the available width and wrap long labe
 `.ds-icon-button` and the legacy `.icon-button` alias share a 44×44px target, including inside compact toolbars. At widths ≤600px or with coarse pointers, a marked-root body rule also enforces a 44×44px minimum for native buttons, tabs, summary controls, button links, and `.ds-touch-target` anchors above compact surface styles; no `!important` is needed. Use an accessible name. `.ds-skip-link` on a normal link exposes a keyboard skip action when focused; point it at a main region with `tabindex="-1"`. Hash-routed apps must handle that local focus action without changing the selected view. Focus uses a mint outline with sufficient offset on dark surfaces. Dialogs contain overscroll so reaching a drawer's end does not scroll the page behind it. The gallery's content-fit examples exercise constrained badges, long actions, enabled/disabled icon actions, an unstyled standalone touch link, and the skip link. Shared toasts use `max(space-6, env(safe-area-inset-bottom))` for bottom clearance, including the legacy `.toast` alias.
 
 Search/filter results use the shared `.ds-results` region for every state, with no extra bottom margin on immediately preceding filter controls. An empty filtered search should say there are no matches and offer a clear/reset action; it must not imply the whole workspace has no content. Pending checks show their current busy state without a simultaneous invitation to start the same check.
+
+Use `.ds-code-scroll` for URLs or code values that must remain on one line. It
+keeps the complete selectable text in a horizontal scroll region with a 44px
+minimum height and the shared focus outline. Add `tabindex="0"`, `role="region"`
+and an accessible label naming the value and horizontal scrolling. The owning
+surface keeps adjacent labels and Copy actions outside that scroll region and
+lets the value column shrink with `min-width: 0`. The content-fit gallery includes
+a long sample URL; ordinary prose and form labels still wrap.
 
 Use the exact pulse asset `/brand/engram-mark.svg` and its existing variants. Do not redraw, recolor, or replace the canonical mark. The technical diagram is supporting illustration, not a second logo.
 
@@ -155,6 +167,31 @@ Shared styles own the thin input boundary, mint selected check, distinct active 
 
 Surface styles arrange `.ds-select` wherever they previously arranged a native select, including filter flex sizing and workspace picker width. Set `data-select-variant="embedded"` on the native select when its containing surface already supplies the control boundary; the shared wrapper mirrors that variant without creating a second border. Preserve the shared focus and target rules. The `#select-controls` gallery demonstrates grouped/disabled/long options, required validation, invalid and empty states, native multiple fallback, native reset and programmatic synchronization. The same component and keyboard behavior apply on narrow screens.
 
+### Human profile images
+
+`profileAvatar({ src, label, size })` represents the profile owner, separately from
+agent product marks and unknown-agent faces. Its static SVG memory bloom uses
+thin mint orbits, a graphite field, and one fixed geometry. It does not derive
+personal details from a name or imply that anyone is online. Keep the owner's
+display name in normal text alongside it.
+
+Omit `src` for the default. The only accepted sources are the relative path
+`/api/public/activity/<slug>/photo.png?v=<64-character lowercase SHA-256>` and a
+PNG data URL of at most 700,000 characters for an unsaved local draft. The server
+must validate the image and publication access; this rendering allowlist is not
+an upload validator. Remote URLs, SVG, object URLs and arbitrary paths are never
+assigned to an image. The fallback remains visible during loading and after a
+load failure. A successful image covers it with `object-fit: cover` and one
+120ms opacity transition, skipped for keyboard input and reduced motion.
+
+Use a meaningful `label` such as “Alex's profile photo”. The wrapper carries the
+single accessible image name; its inner SVG and image are decorative. No load
+or error handler changes focus. File controls, explicit remove actions, busy
+feedback, validation errors and saved feedback belong to the owning editor;
+the avatar is not a button or a status indicator. The `#profile-avatars` gallery
+contains all three sizes, an uploaded PNG fixture, loading/error fallbacks, and
+a constrained layout with reduced motion.
+
 ### Visual choices and public-profile patterns
 
 A visual choice is still a native radio group. Use a `fieldset.ds-choice-group` with a visible legend, a `.ds-choice-options` container, and one `label.ds-choice-card` per option. Each label contains its native radio, an `aria-hidden="true"` `.ds-choice-visual`, and `.ds-choice-copy` with a `.ds-choice-title` and `.ds-choice-description`. Checked state adds a mint boundary without changing geometry. Keyboard focus is immediate and outlines the full label; disabling the fieldset or an individual radio retains the visible selection. Use existing hints/errors and `aria-describedby` to explain unavailable choices or save failures. A layout selection changes presentation only; publication permission and save acceptance remain separate.
@@ -163,7 +200,9 @@ A visual choice is still a native radio group. Use a `fieldset.ds-choice-group` 
 
 `highlightArt({ variant: 'orbit' | 'grid' | 'layers', label? })` returns static geometric SVG art using the shared palette. Unknown variants use orbit. It is hidden from accessibility by default; a deliberate label makes it an explanatory image. It has no motion, timestamps, progress, or status. Render it inside `.ds-highlight-visual` on `.ds-card.ds-highlight-card`, then use `.ds-highlight-content` for title, description, visible metadata, native disclosure, and optional public link actions. Neither art nor styling establishes an observed result. Only the owning public projection may provide deliberately approved highlight content or allowlisted resource references. Keep the link separate from the disclosure summary and preserve native expand/collapse behavior.
 
-A `.ds-focus-row` uses a nonshrinking `.ds-focus-mark` and shrinkable `.ds-focus-content`. The label, title, description, and metadata classes share the same type and inset rules as panels. Use actual product marks with the existing inverse backplate where needed. Display evidence and state from the source; a generic summary row cannot establish that an agent is connected, working, or verified.
+A `.ds-focus-row` uses a nonshrinking `.ds-focus-mark` and shrinkable `.ds-focus-content`. The label, title, description, and metadata classes share the same type and inset rules as panels. Use actual product marks with the existing inverse backplate where needed. A compact activity row may show only the logo, action, state and timestamp: give a logo-only identity its fixed public product name through an accessible label and title, and retain observed/reported provenance in accessible descriptive text and a title rather than repeating it visibly. Display state from the source; a generic summary row cannot establish that an agent is connected, working, or verified.
+
+`statusText(label, { active, className })` keeps one actual readable label and adds an `aria-hidden` sheen whose duplicate letters come from a safe `data-text` attribute. The narrow clipped band and its counter-translated text animate only transform and opacity; the words never move and their solid base remains readable. It defaults to static until `observeLoadingMotion` sees an active visible label. Set `data-active` to `false` when work completes, fails or becomes overdue, and update `.ds-status-copy` plus `.ds-status-shine[data-text]` together if its label changes. No observer support, hidden/offscreen content, keyboard interaction, reduced motion and forced colors all retain static text. The `#status-text` gallery shows fresh, completed and reduced-motion component examples.
 
 A `.ds-week-pulse` is a native ordered list with explicit `role="list"` (preserving Safari semantics with hidden markers), containing seven `.ds-week-day` items, each containing a `.ds-week-button`. Its `.ds-week-bar` contains a decorative `.ds-week-bar-fill`; set `--ds-pulse-ratio` through CSSOM to a finite clamped 0–1 ratio derived from the supplied counts. The fill uses a static transform with no animation. Show `.ds-week-label` and `.ds-week-count` text, and give each button its full UTC date and exact count in the accessible label. Use one roving tab stop, `aria-pressed` for the selected day, and immediate arrow/Home/End selection. Scroll the selected button into view at narrow widths; keep the 44px targets rather than squeezing or overlapping seven controls. Zero counts stay visibly zero. Loading, empty, and error states use the existing labeled pending, notice, and recovery patterns instead of invented chart data.
 

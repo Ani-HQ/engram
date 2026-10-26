@@ -7,14 +7,16 @@ an already published profile updates its public page.
 
 | Layout | Reading order |
 | --- | --- |
-| Living studio (`studio`, the default) | Fresh running actions, seven-day pulse, optional owner highlights, broad categories |
-| Field notes (`field-notes`) | Owner highlights, seven-day pulse, fresh running actions, broad categories |
+| Living studio (`studio`, the default) | Fresh running actions, activity totals and twelve-week chart, optional owner highlights, broad categories |
+| Field notes (`field-notes`) | Owner highlights, activity totals and twelve-week chart, fresh running actions, broad categories |
 
-Both keep the full recent activity stream and twelve-week history inside native
-disclosures. Working cards show at most two fresh, safely projected running
-actions. They retain the observed/agent-reported distinction and do not describe
-an external process as online. The seven-day pulse uses supplied UTC daily
-counts, native scrolling, and left/right/Home/End keyboard exploration.
+Both show all-time Actions, Agents and Active days together with the twelve-week
+activity chart without a disclosure. This overview replaces the former seven-day
+pulse. Recent receipts and the full per-tool breakdown retain native disclosures.
+Working cards show at most two fresh, safely projected running actions. They
+retain the observed/agent-reported distinction and do not describe an external
+process as online. The chart uses supplied UTC daily counts, native scrolling,
+and arrow/Home/End keyboard exploration; its weekday labels stay on one line.
 
 ## Owner highlights
 
@@ -34,6 +36,31 @@ correction. Pending saves disable the whole editor and show a labeled spinner.
 Failed saves retain text, layout, and order. Obsolete callbacks cannot update a
 different workspace. Layout changes and live updates retain disclosure nodes,
 chart dates, keyboard focus, and scroll position.
+
+## Profile photo
+
+Owners can upload a JPG, PNG or WebP image up to 5 MB. The editor center-crops
+the selection to a 256 × 256 square PNG and previews it locally. Change photo
+and Remove photo stage edits; **Save changes** persists them with the rest of
+the form. Conversion shows a labeled pending state and blocks saving until it
+finishes. Invalid selections and failed saves retain the existing photo and
+other draft fields. Removal cancels a pending replacement; obsolete conversions
+cannot update another workspace.
+
+The browser creates fresh pixels without source metadata. The server validates
+a bounded square PNG and re-encodes it before storage. Private profiles keep
+the image in the owner editor. A published profile serves its current image
+through a versioned, publication-gated URL; removal, unpublishing, or a changed
+address retires the previous URL.
+
+Without a photo, both layouts use the shared `profileAvatar` memory-bloom
+illustration from `/design-system#profile-avatars`. It uses the local mint and
+graphite design tokens, including while an image loads or fails. It does not
+derive artwork from private agent names or imply activity. Existing profiles
+start with this fallback. Older clients that omit `photo` preserve the saved
+image; explicit `null` removes it.
+The console also omits unchanged photos from saves of other profile fields,
+preserving a newer photo saved in another tab.
 
 ## Shared components and storage
 

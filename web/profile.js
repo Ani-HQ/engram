@@ -1,6 +1,6 @@
 import { icon } from "./icons.js";
 import { agentVisual, providerVisual, visualIcon } from "./tooling.js";
-import { highlightArt, resourceChip, statusBadge } from "./design-system.js";
+import { highlightArt, profileAvatar, resourceChip, statusBadge, statusText } from "./design-system.js";
 
 export function h(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -61,8 +61,33 @@ const eventStates = {
   failed: ["Needs attention", "danger"], stale: ["Update overdue", "warning"],
 };
 const eventSignatures = new WeakMap();
+const profileClocks = new WeakMap();
+const profilePhotoSources = new WeakMap();
+function updateProfilePhoto(card, profile) {
+  const source = Object.hasOwn(profile, "photo") ? profile.photo ?? "" : profile.photoUrl ?? "";
+  const slot = card.querySelector(".profile-identity-photo");
+  const label = profile.displayName ? `${profile.displayName}'s avatar` : "Profile avatar";
+  if (profilePhotoSources.get(card) !== source || !slot.children.length) {
+    slot.replaceChildren(profileAvatar({ src: source, label, size: card.classList.contains("compact") ? "md" : "lg" }));
+    profilePhotoSources.set(card, source);
+  } else slot.children[0].setAttribute("aria-label", label);
+}
+const eventTiming = data => ({ now: Date.parse(data.live?.checkedAt) || Date.now(), freshness: Math.max(0, Number(data.live?.freshnessSeconds) || 900) * 1000 });
+const eventEvidence = event => event.evidence === "observed" ? "Observed by Engram" : "Agent-reported activity; external work is not independently verified.";
+function eventMark(event, className) {
+  const agent = agentVisual("", { harness: event.agent?.product || "other", publicSafe: true });
+  return h("span", { class: className, role: "img", "aria-label": agent.label, title: agent.label }, visualIcon(agent, { size: 24 }));
+}
+function updateEventMotion(row, event, timing) {
+  const text = row.querySelector(".ds-status-text");
+  if (!text) return;
+  const updated = Date.parse(event.updatedAt), expires = updated + timing.freshness;
+  text.setAttribute("data-active", String(event.status === "running" && Number.isFinite(updated) && updated <= timing.now && timing.now < expires));
+  if (event.status === "running" && Number.isFinite(expires)) text.setAttribute("data-active-until", String(expires));
+  else text.removeAttribute("data-active-until");
+}
 const privacyText = (enabled, hasHighlights = false) => enabled
-  ? "Activity uses safe action labels; task text, prompts, resource details and agent aliases are excluded from the stream. Highlights are chosen by the owner."
+  ? "Public activity. Private details left out."
   : hasHighlights ? "Activity streaming is off. Highlights are chosen by the owner; activity is shared as aggregate counts."
     : "Activity streaming is off. This profile shares aggregate activity counts.";
 const exactTime = value => {
@@ -77,17 +102,13 @@ function relativeTime(value, now = Date.now()) {
   return new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(-Math.floor(age / duration), unit);
 }
 function publicEvent(event) {
-  const agent = agentVisual("", { harness: event.agent?.product || "other", publicSafe: true });
-  const agentLabel = event.agent?.label || agent.label;
   const service = providerVisual(event.service);
   const [label, tone] = eventStates[event.status] || eventStates.stale;
-  return h("li", { class: "public-event ds-card", "data-public-event": event.id, "data-event-status": event.status },
-    h("span", { class: "public-event-mark ds-product-logo-frame", "aria-hidden": "true" }, visualIcon(agent, { size: 24 })),
+  return h("li", { class: "public-event ds-card", "data-public-event": event.id, "data-event-status": event.status, title: eventEvidence(event), "aria-description": eventEvidence(event) },
+    eventMark(event, "public-event-mark ds-product-logo-frame"),
     h("div", { class: "public-event-content" },
-      h("div", { class: "public-event-heading" }, h("strong", {}, agentLabel), statusBadge(label, { tone })),
-      h("h3", {}, event.action || "Agent activity"),
+      h("div", { class: "public-event-heading" }, h("h3", {}, statusText(event.action || "Agent activity")), statusBadge(label, { tone })),
       h("div", { class: "public-event-meta" }, resourceChip(service.label, { visual: visualIcon(service, { size: 16 }), title: `Service: ${service.label}` }),
-        h("span", { class: "public-event-evidence" }, event.evidence === "observed" ? "Observed by Engram" : "Agent reported"),
         h("time", { datetime: event.updatedAt, title: exactTime(event.updatedAt), "data-public-time": event.updatedAt }, relativeTime(event.updatedAt)))));
 }
 function streamEvents(activity) {
@@ -105,13 +126,13 @@ function activityStream(activity, { headingTag = "h2" } = {}) {
   updateActivityStream(section, activity);
   return section;
 }
-function updateActivityStream(section, activity) {
+function updateActivityStream(section, activity, timing = { now: Date.now(), freshness: 900_000 }) {
   if (!section) return;
   const enabled = activity?.enabled === true, events = streamEvents(activity);
   section.dataset.enabled = String(enabled);
   const state = section.querySelector(".public-stream-state");
   state.hidden = enabled && events.length > 0;
-  const stateText = !enabled ? "Activity streaming is off for this profile. Aggregate counts remain available in the history." : "A quiet moment. New activity will appear when an agent reports work or uses Engram.";
+  const stateText = !enabled ? "Activity streaming is off for this profile. Aggregate counts remain visible." : "A quiet moment. New activity will appear when an agent reports work or uses Engram.";
   if (state.textContent !== stateText) state.textContent = stateText;
   const rows = new Map([...section.querySelectorAll("[data-public-event]")].map(row => [row.dataset.publicEvent, row]));
   for (const group of ["running", "recent"]) {
@@ -127,6 +148,8 @@ function updateActivityStream(section, activity) {
         row.replaceChildren(...replacement.childNodes);
         row.dataset.eventStatus = event.status;
       }
+      row.setAttribute("title", eventEvidence(event)); row.setAttribute("aria-description", eventEvidence(event));
+      updateEventMotion(row, event, timing);
       eventSignatures.set(row, signature);
       if (list.children[index] !== row) list.insertBefore(row, list.children[index] || null);
       rows.delete(event.id);
@@ -139,93 +162,47 @@ export function updateProfileTimes(card, now = Date.now()) {
     const label = relativeTime(node.dataset.publicTime, now);
     if (node.textContent !== label) node.textContent = label;
   });
+  const clock = profileClocks.get(card);
+  const freshnessNow = clock ? clock.serverNow + Math.max(0, now - clock.receivedAt) : now;
+  card.querySelectorAll("[data-active-until]").forEach(node => {
+    if (freshnessNow >= Number(node.getAttribute("data-active-until"))) node.setAttribute("data-active", "false");
+  });
 }
 
 export function profileCard(data, { compact = false } = {}) {
   const { profile, stats, tools = [], daily = [] } = data;
   const headingTag = compact ? "h3" : "h2";
   const card = h("article", { class: `public-profile${compact ? " compact" : ""}`, "data-tools": JSON.stringify(tools) },
-    h("header", { class: "profile-identity ds-heading-group" }, h("span", { class: "ds-eyebrow profile-layout-label" }),
-      h(compact ? "h2" : "h1", {}, profile.displayName || "Your public profile"), h("p", {}, profile.bio || "A small window into the work across my agents.")),
+    h("header", { class: "profile-identity ds-heading-group" },
+      h("div", { class: "profile-identity-top" }, h("div", { class: "profile-identity-photo" }),
+        h("div", { class: "profile-identity-copy ds-heading-group" }, h("span", { class: "ds-eyebrow profile-layout-label" }),
+          h(compact ? "h2" : "h1", {}, profile.displayName || "Your public profile"))),
+      h("p", {}, profile.bio || "A small window into the work across my agents.")),
     h("div", { class: "profile-main" },
       h("section", { class: "profile-desk", "aria-label": "The public desk" },
         h("div", { class: "profile-section-heading" }, h(headingTag, {}, "On the desk."), h("span", {}, "Fresh signals")),
         liveActivity(data.live, { headingTag }),
         h("div", { class: "profile-desk-state ds-notice" }),
         h("ol", { class: "profile-stage-list", role: "list", "aria-label": "Fresh running actions" })),
-      weekPulse(daily, headingTag),
+      h("section", { class: "profile-overview ds-card", "aria-label": "Activity overview" },
+        h("div", { class: "profile-statistics", "aria-label": "All-time activity totals" }, [["totalActions", stats.totalActions === 1 ? "Action" : "Actions", stats.totalActions], ["activeAgents", stats.activeAgents === 1 ? "Agent" : "Agents", stats.activeAgents], ["activeDays", stats.activeDays === 1 ? "Active day" : "Active days", stats.activeDays]].map(([key, label, value]) => h("div", {}, h("strong", { "data-public-stat": key }, number(value)), h("span", { "data-public-label": key }, label)))),
+        contributionGrid(daily, { headingTag })),
       h("section", { class: "profile-highlights", "aria-label": "Owner-selected highlights" },
         h("div", { class: "profile-section-heading" }, h(headingTag, { tabindex: "-1" }, "Selected work."), h("span", {}, "Chosen by the owner")),
         h("div", { class: "profile-highlight-list" }),
         h("div", { class: "profile-highlight-empty ds-notice" }, h("strong", {}, "Nothing pinned here yet."), h("p", {}, "This space is ready for the notes and links the owner chooses to share."))),
       categorySummary(tools, headingTag)),
     h("details", { class: "profile-receipts" }, h("summary", {}, "Peek at the recent receipts", h("span", { class: "profile-receipt-count" })), activityStream(data.activity, { headingTag })),
-    h("details", { class: "profile-history" }, h("summary", {}, "The bigger picture", h("span", {}, "Activity totals & history")),
-      h("div", { class: "profile-statistics", "aria-label": "All-time activity totals" }, [["totalActions", stats.totalActions === 1 ? "Action" : "Actions", stats.totalActions], ["activeAgents", stats.activeAgents === 1 ? "Agent" : "Agents", stats.activeAgents], ["activeDays", stats.activeDays === 1 ? "Active day" : "Active days", stats.activeDays]].map(([key, label, value]) => h("div", {}, h("strong", { "data-public-stat": key }, number(value)), h("span", { "data-public-label": key }, label)))),
-      contributionGrid(daily, { headingTag }), profileTools(tools, headingTag)),
+    h("details", { class: "profile-history" }, h("summary", {}, "Across the tools", h("span", {}, "All categories")), profileTools(tools, headingTag)),
     h("footer", { class: "profile-footnote" }, icon("shield-check", { size: 16 }), h("p", {}, privacyText(data.activity?.enabled === true, profileHighlights(profile).length > 0))));
+  const checkedAt = Date.parse(data.live?.checkedAt);
+  if (Number.isFinite(checkedAt)) profileClocks.set(card, { serverNow: checkedAt, receivedAt: Date.now() });
+  updateProfilePhoto(card, profile);
+  updateActivityStream(card.querySelector(".public-stream"), data.activity, eventTiming(data));
   updatePresentation(card, data);
   return card;
 }
 
-const dateLabel = day => `${number(day.count)} ${day.count === 1 ? "action" : "actions"} on ${new Intl.DateTimeFormat(undefined, { dateStyle: "long", timeZone: "UTC" }).format(new Date(`${day.date}T12:00:00Z`))}`;
-function weekPulse(daily, headingTag) {
-  const section = h("section", { class: "profile-weekly ds-card", "aria-label": "Seven-day activity pulse" },
-    h("div", { class: "profile-section-heading" }, h(headingTag, {}, "A little momentum."), h("span", {}, "Last 7 days · UTC")),
-    h("p", { class: "profile-week-total" }),
-    h("div", { class: "profile-week-viewport", role: "region", "aria-label": "Daily counts. Use left and right arrow keys to explore dates." }, h("ol", { class: "ds-week-pulse", role: "list", onkeydown: event => {
-      const buttons = [...section.querySelectorAll("[data-week-date]")];
-      const index = buttons.indexOf(document.activeElement);
-      if (index < 0 || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-      event.preventDefault();
-      const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : Math.max(0, Math.min(buttons.length - 1, index + (event.key === "ArrowLeft" ? -1 : 1)));
-      buttons[next].focus();
-    } })),
-    h("p", { class: "profile-week-caption", "aria-live": "polite" }));
-  updateWeekPulse(section, daily);
-  return section;
-}
-function updateWeekPulse(section, daily) {
-  const days = daily.slice(-7), list = section.querySelector(".ds-week-pulse");
-  const selectedDate = section.dataset.selectedDate;
-  const focusedDate = section.contains(document.activeElement) ? document.activeElement?.dataset?.weekDate : null;
-  const rows = new Map([...list.children].map(row => [row.querySelector("[data-week-date]")?.dataset.weekDate, row]));
-  const maximum = Math.max(1, ...days.map(day => day.count));
-  const selected = days.find(day => day.date === selectedDate) || days.at(-1);
-  if (selected) section.dataset.selectedDate = selected.date;
-  days.forEach((day, index) => {
-    let row = rows.get(day.date);
-    if (!row) {
-      const choose = event => {
-        section.dataset.selectedDate = day.date;
-        section.querySelectorAll("[data-week-date]").forEach(button => {
-          const current = button === event.currentTarget;
-          button.tabIndex = current ? 0 : -1;
-          button.setAttribute("aria-pressed", String(current));
-        });
-        section.querySelector(".profile-week-caption").textContent = event.currentTarget.getAttribute("aria-label");
-        event.currentTarget.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-      };
-      row = h("li", { class: "ds-week-day" }, h("button", { type: "button", class: "ds-week-button", "data-week-date": day.date, onclick: choose, onfocus: choose },
-        h("span", { class: "ds-week-bar", "aria-hidden": "true" }, h("span", { class: "ds-week-bar-fill" })), h("span", { class: "ds-week-label" }), h("span", { class: "ds-week-count" })));
-    }
-    const button = row.querySelector("[data-week-date]");
-    button.setAttribute("aria-label", `${dateLabel(day)} UTC`); button.title = `${dateLabel(day)} UTC`;
-    button.tabIndex = selected?.date === day.date ? 0 : -1; button.setAttribute("aria-pressed", String(button.tabIndex === 0));
-    button.style.setProperty("--ds-pulse-ratio", String(day.count / maximum));
-    setText(row.querySelector(".ds-week-count"), number(day.count));
-    setText(row.querySelector(".ds-week-label"), new Intl.DateTimeFormat(undefined, { weekday: "short", timeZone: "UTC" }).format(new Date(`${day.date}T12:00:00Z`)));
-    if (list.children[index] !== row) list.insertBefore(row, list.children[index] || null);
-    rows.delete(day.date);
-  });
-  for (const row of rows.values()) row.remove();
-  const total = days.reduce((sum, day) => sum + day.count, 0);
-  const totalNode = section.querySelector(".profile-week-total");
-  if (!totalNode.children.length) totalNode.append(h("strong"), h("span"));
-  setText(totalNode.querySelector("strong"), number(total)); setText(totalNode.querySelector("span"), `${total === 1 ? "action" : "actions"} recorded`);
-  setText(section.querySelector(".profile-week-caption"), selected ? `${dateLabel(selected)} UTC` : "No daily counts to show yet.");
-  if (focusedDate && !section.contains(document.activeElement)) (section.querySelector(`[data-week-date="${focusedDate}"]`) || section.querySelector(`[data-week-date="${selected?.date}"]`))?.focus({ preventScroll: true });
-}
 function categorySummary(tools, headingTag) {
   const section = h("section", { class: "profile-category-summary" },
     h("div", { class: "profile-section-heading" }, h(headingTag, { tabindex: "-1" }, "A feel for the work."), h("span", {}, "Top categories · all time")),
@@ -305,15 +282,16 @@ function updateDesk(section, data) {
     const signature = JSON.stringify([event.agent?.product, event.agent?.label, event.service, event.action, event.status, event.evidence, event.updatedAt]);
     let row = rows.get(event.id);
     if (!row || eventSignatures.get(row) !== signature) {
-      const agent = agentVisual("", { harness: event.agent?.product || "other", publicSafe: true });
-      const content = h("li", { class: "ds-focus-row profile-stage-event", "data-stage-event": event.id },
-        h("span", { class: "ds-focus-mark ds-product-logo-frame", "aria-hidden": "true" }, visualIcon(agent, { size: 24 })),
-        h("div", { class: "ds-focus-content" }, h("div", { class: "ds-focus-label" }, h("strong", {}, event.agent?.label || agent.label), statusBadge("In progress", { tone: "info" })),
-          h("h3", { class: "ds-focus-title" }, event.action || "Agent activity"),
-          h("div", { class: "ds-focus-meta" }, h("span", {}, event.evidence === "observed" ? "Observed by Engram" : "Agent reported"), h("time", { datetime: event.updatedAt, title: exactTime(event.updatedAt), "data-public-time": event.updatedAt }, relativeTime(event.updatedAt)))));
+      const content = h("li", { class: "ds-focus-row profile-stage-event", "data-stage-event": event.id, title: eventEvidence(event), "aria-description": eventEvidence(event) },
+        eventMark(event, "ds-focus-mark ds-product-logo-frame"),
+        h("div", { class: "ds-focus-content" }, h("div", { class: "profile-event-line" },
+          h("h3", { class: "ds-focus-title" }, statusText(event.action || "Agent activity")), statusBadge("In progress", { tone: "info" })),
+          h("div", { class: "ds-focus-meta" }, h("time", { datetime: event.updatedAt, title: exactTime(event.updatedAt), "data-public-time": event.updatedAt }, relativeTime(event.updatedAt)))));
       if (row) row.replaceChildren(...content.childNodes); else row = content;
       eventSignatures.set(row, signature);
     }
+    row.setAttribute("title", eventEvidence(event)); row.setAttribute("aria-description", eventEvidence(event));
+    updateEventMotion(row, event, { now: checkedAt, freshness });
     if (list.children[index] !== row) list.insertBefore(row, list.children[index] || null);
     rows.delete(event.id);
   });
@@ -329,8 +307,8 @@ function updatePresentation(card, data) {
   setText(card.querySelector(".profile-receipt-count"), data.activity?.enabled === true ? `${number(streamEvents(data.activity).length)} recent events` : "Activity labels are private");
   if (card.dataset.profileLayout !== layout) {
     const focus = card.contains(document.activeElement) ? document.activeElement : null;
-    const desk = card.querySelector(".profile-desk"), weekly = card.querySelector(".profile-weekly"), categories = card.querySelector(".profile-category-summary");
-    main.append(...(layout === "field-notes" ? [highlights, weekly, desk, categories] : [desk, weekly, highlights, categories]));
+    const desk = card.querySelector(".profile-desk"), overview = card.querySelector(".profile-overview"), categories = card.querySelector(".profile-category-summary");
+    main.append(...(layout === "field-notes" ? [highlights, overview, desk, categories] : [desk, overview, highlights, categories]));
     card.dataset.profileLayout = layout;
     if (focus && document.activeElement !== focus) focus.focus({ preventScroll: true });
   }
@@ -359,9 +337,12 @@ const staleText = count => `${number(count)} running ${count === 1 ? "action has
 // the date a visitor is exploring on the contribution chart.
 export function updateProfileCard(card, data) {
   const { stats, profile, daily = [] } = data;
-  updateActivityStream(card.querySelector(".public-stream"), data.activity);
+  const checkedAt = Date.parse(data.live?.checkedAt);
+  if (Number.isFinite(checkedAt)) {
+    if (profileClocks.get(card)?.serverNow !== checkedAt) profileClocks.set(card, { serverNow: checkedAt, receivedAt: Date.now() });
+  } else profileClocks.delete(card);
+  updateActivityStream(card.querySelector(".public-stream"), data.activity, eventTiming(data));
   updatePresentation(card, data);
-  updateWeekPulse(card.querySelector(".profile-weekly"), daily);
   updateProfileTimes(card);
   card.querySelector(".profile-footnote p").textContent = privacyText(data.activity?.enabled === true, profileHighlights(profile).length > 0);
   const text = (node, value) => { if (node.textContent !== value) node.textContent = value; };
@@ -372,6 +353,7 @@ export function updateProfileCard(card, data) {
   const stale = card.querySelector(".live-stale");
   if (stale) { stale.hidden = !data.live?.staleActions; stale.textContent = staleText(data.live?.staleActions || 0); }
   const identity = card.querySelector(".profile-identity");
+  updateProfilePhoto(card, profile);
   text(identity.querySelector("h1, h2"), profile.displayName || "Your public profile");
   text(identity.querySelector("p"), profile.bio || "A small window into the work across my agents.");
   let grid = card.querySelector(".contribution-grid");

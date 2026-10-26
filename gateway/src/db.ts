@@ -8,6 +8,7 @@ import { ensureHostedSignupInvitesSchema } from "./signup-invites-schema";
 import { ensureMailSeriesSchema } from "./mail-series-schema";
 import { ensureJevSchema } from "./jev-schema";
 import { ensureContextSharingSchema } from "./context-sharing-schema";
+import { ensureConnectionsSchema } from "./connections-schema";
 import { assertRuntimeSchema, ensureProvisioningSchema, markSchemaReady } from "./provisioning-schema";
 
 export const sql = postgres(dbUrl("engram_gateway"), {
@@ -367,13 +368,23 @@ export async function migrate() {
       show_activity boolean NOT NULL DEFAULT false,
       layout       text NOT NULL DEFAULT 'studio',
       highlights   jsonb NOT NULL DEFAULT '[]'::jsonb,
+      photo_png    bytea,
+      photo_digest text,
       updated_at   timestamptz NOT NULL DEFAULT now()
     )`;
   await sql`ALTER TABLE action_profiles ADD COLUMN IF NOT EXISTS show_activity boolean NOT NULL DEFAULT false`;
   await sql`ALTER TABLE action_profiles ADD COLUMN IF NOT EXISTS layout text NOT NULL DEFAULT 'studio'`;
   await sql`ALTER TABLE action_profiles ADD COLUMN IF NOT EXISTS highlights jsonb NOT NULL DEFAULT '[]'::jsonb`;
+  await sql`ALTER TABLE action_profiles ADD COLUMN IF NOT EXISTS photo_png bytea`;
+  await sql`ALTER TABLE action_profiles ADD COLUMN IF NOT EXISTS photo_digest text`;
   await sql`
     DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'action_profiles_photo_valid' AND conrelid = 'action_profiles'::regclass) THEN
+        ALTER TABLE action_profiles ADD CONSTRAINT action_profiles_photo_valid CHECK (
+          (photo_png IS NULL AND photo_digest IS NULL) OR
+          (photo_png IS NOT NULL AND octet_length(photo_png) BETWEEN 57 AND 524288 AND photo_digest IS NOT NULL AND photo_digest ~ '^[a-f0-9]{64}$')
+        );
+      END IF;
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'action_profiles_layout_valid' AND conrelid = 'action_profiles'::regclass) THEN
         ALTER TABLE action_profiles ADD CONSTRAINT action_profiles_layout_valid CHECK (layout IN ('studio', 'field-notes'));
       END IF;
@@ -525,6 +536,7 @@ export async function migrate() {
     )`;
   await sql`ALTER TABLE oauth_codes ADD COLUMN IF NOT EXISTS membership_id bigint`;
   await sql`ALTER TABLE oauth_refresh_tokens ADD COLUMN IF NOT EXISTS membership_id bigint`;
+  await ensureConnectionsSchema(sql);
   await ensureInsightSchema(sql);
   await ensureComplimentaryAccessSchema(sql);
   await ensureHostedSignupInvitesSchema(sql);

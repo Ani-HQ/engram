@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type postgres from "postgres";
-import { agentOnboardingChecks, CONNECTION_LIMIT, handleConnectionsApi, listConnections } from "../gateway/src/connections";
+import { agentOnboardingChecks, CONNECTION_LIMIT, handleConnectionsApi, listConnections, updateConnection } from "../gateway/src/connections";
 import { normalizeToken, DEFAULT_POLICIES } from "../gateway/src/policies";
 import { runWithContext } from "../gateway/src/context";
 import { oauthActorName } from "../gateway/src/oauth";
@@ -82,8 +82,8 @@ describe("workspace connection inventory",()=>{
   });
   test("read-only methods and private outage handling never expose storage errors",async()=>{
     const store=database();
-    const method=await handleConnectionsApi(new Request("https://example.test/api/connections",{method:"POST"}),owner,store.db);
-    expect(method.status).toBe(405);expect(method.headers.get("allow")).toBe("GET");expect(store.calls).toHaveLength(0);
+    const method=await handleConnectionsApi(new Request("https://example.test/api/connections",{method:"PATCH"}),owner,store.db);
+    expect(method.status).toBe(405);expect(method.headers.get("allow")).toBe("GET, POST");expect(store.calls).toHaveLength(0);
     store.db.begin=(async()=>{throw new Error("private credential details");}) as any;
     const failure=await handleConnectionsApi(new Request("https://example.test/api/connections"),owner,store.db);
     expect(failure.status).toBe(503);expect(failure.headers.get("cache-control")).toBe("no-store");expect(await failure.text()).not.toContain("private credential");
@@ -94,5 +94,29 @@ describe("workspace connection inventory",()=>{
     expect(store.calls).toHaveLength(0);
     store.db.begin=(async()=>{throw new Error("proof storage unavailable");}) as any;
     await expect(agentOnboardingChecks(7,store.db,now)).rejects.toThrow("proof storage unavailable");
+  });
+  test("lifecycle rejects delegated credentials, non-owner roles and malformed identities before database access",async()=>{
+    const store=database();
+    for(const actor of [normalizeToken({...owner,role:"member"}),normalizeToken({...owner,kind:"token"}),normalizeToken({...owner,kind:"oauth"}),normalizeToken({...owner,email:null}),normalizeToken({name:"agent",orgId:7})]) {
+      await expect(updateConnection(actor,{id:"token:1",action:"archive"},store.db)).rejects.toMatchObject({status:403});
+    }
+    for(const input of [null,[],{}, {id:"token:0",action:"archive"},{id:"token:2147483648",action:"archive"},{id:"token:1",action:["archive"]},{id:"oauth:bad",action:"delete"},{id:"token:1",action:"disconnect"}]) {
+      await expect(updateConnection(owner,input,store.db)).rejects.toMatchObject({status:400});
+    }
+    expect(store.calls).toHaveLength(0);
+  });
+  test("lifecycle HTTP boundary requires console and exact workspace pin, rejects cross-origin and oversized requests",async()=>{
+    const store=database(),body=JSON.stringify({id:"token:1",action:"archive"});
+    const request=(headers:Record<string,string>,value=body)=>new Request("https://example.test/api/connections",{method:"POST",headers,body:value});
+    for(const [headers,status] of [[{},403],[{"X-Engram-Console":"1"},409],[{"X-Engram-Console":"1","X-Engram-Workspace":"8"},409],[{"X-Engram-Console":"1","X-Engram-Workspace":"7","Origin":"https://foreign.test"},403]] as const){
+      expect((await handleConnectionsApi(request(headers),owner,store.db)).status).toBe(status);
+    }
+    const headers={"X-Engram-Console":"1","X-Engram-Workspace":"7"};
+    expect((await handleConnectionsApi(request(headers,"not json"),owner,store.db)).status).toBe(400);
+    expect((await handleConnectionsApi(request(headers,"x".repeat(2049)),owner,store.db)).status).toBe(413);
+    expect(store.calls).toHaveLength(0);
+    store.db.begin=(async()=>{throw new Error("private database details");}) as any;
+    const failure=await handleConnectionsApi(request(headers),owner,store.db);
+    expect(failure.status).toBe(503);expect(await failure.text()).not.toContain("private database details");
   });
 });

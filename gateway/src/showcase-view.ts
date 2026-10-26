@@ -14,10 +14,11 @@ export interface ShowcaseProfile {
   showActivity?: boolean;
   layout?: ShowcaseLayout;
   highlights?: ShowcaseHighlight[];
+  photo?: string | null;
 }
 
 export interface PublicActivity {
-  profile: Pick<ShowcaseProfile, "slug" | "displayName" | "bio"> & { layout: ShowcaseLayout; highlights: ShowcaseHighlight[] };
+  profile: Pick<ShowcaseProfile, "slug" | "displayName" | "bio"> & { layout: ShowcaseLayout; highlights: ShowcaseHighlight[]; photoUrl: string | null };
   stats: {
     totalActions: number;
     completedActions: number;
@@ -47,9 +48,10 @@ export class ShowcaseError extends Error {
   constructor(message: string, public status = 400) { super(message); }
 }
 
-const PROFILE_FIELDS = new Set(["slug", "displayName", "bio", "published", "showActivity", "layout", "highlights"]);
+const PROFILE_FIELDS = new Set(["slug", "displayName", "bio", "published", "showActivity", "layout", "highlights", "photo"]);
 const HIGHLIGHT_FIELDS = new Set(["title", "body", "url"]);
-export const SHOWCASE_PAYLOAD_LIMIT = 32_768;
+// Text/presentation budget plus one bounded 512 KiB PNG encoded as base64.
+export const SHOWCASE_PAYLOAD_LIMIT = 32_768 + Math.ceil(512 * 1024 / 3) * 4 + 64;
 export const SHOWCASE_CATEGORIES = ["code", "files", "email", "calendar", "cloud", "browser", "data", "memory", "other"] as const;
 const CATEGORY_SET = new Set<string>(SHOWCASE_CATEGORIES);
 
@@ -112,7 +114,8 @@ export function parseShowcaseInput(value: unknown): ShowcaseProfile {
   if (input.showActivity !== undefined && typeof input.showActivity !== "boolean") throw new ShowcaseError("showActivity must be true or false");
   if (Object.hasOwn(input, "layout") && !["studio", "field-notes"].includes(input.layout as string)) throw new ShowcaseError("Choose the Studio or Field notes profile layout");
   const highlights = Object.hasOwn(input, "highlights") ? parseHighlights(input.highlights) : [];
-  return { slug: input.slug, displayName: input.displayName.trim(), bio: input.bio.trim(), published: input.published, showActivity: input.showActivity === true, layout: input.layout === "field-notes" ? "field-notes" : "studio", highlights };
+  if (Object.hasOwn(input, "photo") && input.photo !== null && (typeof input.photo !== "string" || !input.photo.startsWith("data:image/png;base64,") || input.photo.length > Math.ceil(512 * 1024 / 3) * 4 + 22)) throw new ShowcaseError("Choose a PNG profile photo, up to 512 KB");
+  return { slug: input.slug, displayName: input.displayName.trim(), bio: input.bio.trim(), published: input.published, showActivity: input.showActivity === true, layout: input.layout === "field-notes" ? "field-notes" : "studio", highlights, ...(Object.hasOwn(input, "photo") ? { photo: input.photo as string | null } : {}) };
 }
 
 export function showcaseUrls(profile: ShowcaseProfile, origin: string) {
@@ -130,7 +133,7 @@ function count(value: unknown): number {
   return Number.isSafeInteger(number) && number >= 0 ? number : 0;
 }
 
-export function publicActivitySnapshot(profile: ShowcaseProfile, row: any = {}, now = new Date(), eventSource: { rows?: unknown; scope?: string; key?: string; preview?: boolean } = {}): PublicActivity {
+export function publicActivitySnapshot(profile: ShowcaseProfile, row: any = {}, now = new Date(), eventSource: { rows?: unknown; scope?: string; key?: string; preview?: boolean; photoUrl?: string | null } = {}): PublicActivity {
   const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const counts = new Map<string, number>();
   for (const day of Array.isArray(row.daily) ? row.daily : []) {
@@ -148,7 +151,7 @@ export function publicActivitySnapshot(profile: ShowcaseProfile, row: any = {}, 
   const last = row.updated_at ? new Date(row.updated_at) : null;
   const received = row.last_activity_at ? new Date(row.last_activity_at) : null;
   return {
-    profile: { slug: profile.slug, displayName: profile.displayName, bio: profile.bio, ...showcasePresentation(profile) },
+    profile: { slug: profile.slug, displayName: profile.displayName, bio: profile.bio, ...showcasePresentation(profile), photoUrl: eventSource.photoUrl ?? null },
     stats: {
       totalActions: count(row.total_actions), completedActions: count(row.completed_actions),
       failedActions: count(row.failed_actions), runningActions: count(row.running_actions),

@@ -9,6 +9,7 @@ Owners publish a workspace's public activity profile from **Public profile** in 
 | `GET /api/public/activity/:slug/stream` | Live snapshots over SSE, with CORS. |
 | `GET /api/public/activity/:slug/card.svg` | Scalable image snapshot for websites. |
 | `GET /api/public/activity/:slug/card.png` | Social preview image snapshot. |
+| `GET /api/public/activity/:slug/photo.png?v=:digest` | Current published profile photo as a normalized PNG. |
 
 The app provides copy buttons for the public link, JSON URL, live API URL, a JavaScript website embed, and an image embed. Images are snapshots; the stream and profile page update automatically. External websites must allow the Engram host in their Content Security Policy `connect-src` to use the live API.
 
@@ -53,6 +54,33 @@ The profile's chosen name/bio is public. Counts refer to authenticated reporting
 The profile projection includes `layout` (`"studio"` or `"field-notes"`) and `highlights`, an array of up to three records. An owner writes and approves these public records in Public profile; they are not generated from private memory or task activity. Each record contains a trimmed `title` (1–80 characters), `body` (0–600 characters), and an optional `url` (empty or up to 2,048 characters, absolute HTTP/HTTPS without credentials or control characters). Unknown nested keys are rejected. Render titles and bodies as text, and use the validated URL only as a link destination.
 
 Older records default to `layout: "studio"` and `highlights: []`. Legacy clients that omit these new fields on update preserve the saved values; an explicit empty array clears highlights. The owner settings response, public JSON and public SSE snapshots use the same normalized fields. Invalid stored highlight records are excluded rather than projected. Changing these fields changes the publication revision; unpublishing still removes all public endpoints.
+
+### Owner-uploaded profile photo
+
+Owner settings accept optional `photo`: a prepared `data:image/png;base64,...`
+string or `null`. Omission preserves the saved image; `null` removes it. The
+console omits unchanged photos when saving other fields so an old form does
+not overwrite a photo changed in another tab. The authenticated settings
+response includes the saved normalized photo for editing. The browser accepts
+JPG, PNG or WebP input up to 5 MB and prepares a 256 × 256 PNG; the server
+validates that square PNG, bounds it to 512 KiB, and re-encodes its pixels
+without source metadata before storage.
+
+Public JSON and SSE instead expose `profile.photoUrl`, either `null` or the
+relative URL `/api/public/activity/:slug/photo.png?v=:digest`, where the digest
+is the normalized image's 64-character SHA-256 hex value. They contain no image
+bytes. The image endpoint supports GET and HEAD, uses `Cache-Control: no-store`
+and `X-Content-Type-Options: nosniff`, and checks the current published profile
+and digest before and after reading bytes. Missing, private, removed, replaced,
+or renamed image URLs return 404. Already downloaded public images cannot be
+recalled.
+
+The additive migration adds nullable `photo_png` and `photo_digest` columns to
+`action_profiles`, constrained to a complete bounded image/digest pair, and an
+exact `profile_photo_version` readiness marker of `2026102602`. Existing rows
+retain no photo and use the shared local avatar. Apply the separate provisioner
+before starting photo-enabled runtime instances; all existing readiness markers
+remain unchanged. Repeated migration preserves saved images and publication.
 
 ### Optional redacted activity
 

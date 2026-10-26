@@ -9,6 +9,8 @@ import { BillingError, requireHostedWriteAccess } from "./billing";
 import { actionLedger } from "./actions";
 import { createShowcaseStreamManager } from "./showcase-stream";
 import { publicActivityLedger } from "./public-activity";
+import { normalizeProfilePhoto, PROFILE_PHOTO_DATA_PREFIX, showcasePhotoUrl } from "./showcase-photo";
+export { normalizeProfilePhoto, PROFILE_PHOTO_MAX_BYTES, PROFILE_PHOTO_SIZE, showcasePhotoUrl } from "./showcase-photo";
 
 const NO_STORE = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
 const PUBLIC_JSON_HEADERS = { ...NO_STORE, "Access-Control-Allow-Origin": "*" };
@@ -24,13 +26,13 @@ function owner(token: TokenRecord, write = false): TokenRecord {
 
 function mapProfile(row: any): ShowcaseProfile {
   // Avoid publishing the workspace name or token identity as implicit defaults.
-  if (!row) return { slug: "", displayName: "", bio: "", published: false, showActivity: false, layout: "studio", highlights: [] };
-  return { slug: String(row.slug), displayName: String(row.display_name), bio: String(row.bio), published: row.published === true, showActivity: row.show_activity === true, ...showcasePresentation({ layout: row.layout, highlights: row.highlights }) };
+  if (!row) return { slug: "", displayName: "", bio: "", published: false, showActivity: false, layout: "studio", highlights: [], photo: null };
+  return { slug: String(row.slug), displayName: String(row.display_name), bio: String(row.bio), photo: row.photo_png ? PROFILE_PHOTO_DATA_PREFIX + Buffer.from(row.photo_png).toString("base64") : null, published: row.published === true, showActivity: row.show_activity === true, ...showcasePresentation({ layout: row.layout, highlights: row.highlights }) };
 }
 
 export async function getShowcaseSettings(token: TokenRecord, origin: string, db: postgres.Sql = sql) {
   const actor = owner(token);
-  const rows = await db`SELECT slug, display_name, bio, published, show_activity, layout, highlights FROM action_profiles WHERE org_id = ${actor.orgId}`;
+  const rows = await db`SELECT slug, display_name, bio, published, show_activity, layout, highlights, photo_png FROM action_profiles WHERE org_id = ${actor.orgId}`;
   const profile = mapProfile(rows[0]);
   return { profile, urls: showcaseUrls(profile, config.publicUrl || origin), preview: await getOrgActivitySnapshot(profile, actor.orgId, db, undefined, true) };
 }
@@ -40,16 +42,19 @@ export async function updateShowcaseSettings(token: TokenRecord, raw: unknown, o
   let profile = parseShowcaseInput(raw);
   const input = raw as Record<string, unknown>;
   if (profile.published) await requireHostedWriteAccess(actor);
+  const photo = typeof profile.photo === "string" ? await normalizeProfilePhoto(profile.photo) : null;
   try {
     const rows = await db`
-      INSERT INTO action_profiles (org_id, slug, display_name, bio, published, show_activity, layout, highlights)
-      VALUES (${actor.orgId}, ${profile.slug}, ${profile.displayName}, ${profile.bio}, ${profile.published}, ${profile.showActivity === true}, ${profile.layout}, ${db.json(profile.highlights as postgres.JSONValue)})
+      INSERT INTO action_profiles (org_id, slug, display_name, bio, published, show_activity, layout, highlights, photo_png, photo_digest)
+      VALUES (${actor.orgId}, ${profile.slug}, ${profile.displayName}, ${profile.bio}, ${profile.published}, ${profile.showActivity === true}, ${profile.layout}, ${db.json(profile.highlights as postgres.JSONValue)}, ${photo?.bytes ?? null}, ${photo?.digest ?? null})
       ON CONFLICT (org_id) DO UPDATE SET slug = EXCLUDED.slug, display_name = EXCLUDED.display_name,
         bio = EXCLUDED.bio, published = EXCLUDED.published, show_activity = EXCLUDED.show_activity,
         layout = CASE WHEN ${Object.hasOwn(input, "layout")} THEN EXCLUDED.layout ELSE action_profiles.layout END,
         highlights = CASE WHEN ${Object.hasOwn(input, "highlights")} THEN EXCLUDED.highlights ELSE action_profiles.highlights END,
+        photo_png = CASE WHEN ${Object.hasOwn(input, "photo")} THEN EXCLUDED.photo_png ELSE action_profiles.photo_png END,
+        photo_digest = CASE WHEN ${Object.hasOwn(input, "photo")} THEN EXCLUDED.photo_digest ELSE action_profiles.photo_digest END,
         updated_at = now()
-      RETURNING slug, display_name, bio, published, show_activity, layout, highlights`;
+      RETURNING slug, display_name, bio, published, show_activity, layout, highlights, photo_png`;
     if (rows[0]) profile = mapProfile(rows[0]);
   } catch (error: any) {
     if (error?.code === "23505") throw new ShowcaseError("That showcase address is already taken", 409);
@@ -68,7 +73,7 @@ async function publishedSnapshot(slug: string, db: postgres.Sql, now?: Date, exp
   if (!published) return null;
   const binding = publicationKey(published);
   if (expectedPublication && binding !== expectedPublication) return null;
-  const activity = await getOrgActivitySnapshot(mapProfile(published), Number(published.org_id), db, now);
+  const activity = await getOrgActivitySnapshot(mapProfile(published), Number(published.org_id), db, now, false, published.photo_digest);
   // Aggregation can outlive a publication change in another request/instance.
   // Do not return counts read after revocation or from a reassigned public slug.
   const current = await publishedProfile(slug, db);
@@ -77,7 +82,7 @@ async function publishedSnapshot(slug: string, db: postgres.Sql, now?: Date, exp
 
 async function publishedProfile(slug: string, db: postgres.Sql) {
   const profiles = await db`
-    SELECT org_id, slug, display_name, bio, published, show_activity, layout, highlights, updated_at::text AS publication_revision FROM action_profiles
+    SELECT org_id, slug, display_name, bio, published, show_activity, layout, highlights, photo_digest, updated_at::text AS publication_revision FROM action_profiles
     WHERE slug = ${slug} AND published = true`;
   return profiles[0] ?? null;
 }
@@ -86,7 +91,7 @@ const streamManagers = new WeakMap<postgres.Sql, ReturnType<typeof createShowcas
 function publicationKey(row: any): string {
   // This internal binding never enters the public projection or SSE frames.
   // Keep PostgreSQL's full timestamp precision instead of truncating to JS ms.
-  return JSON.stringify([row.org_id, row.publication_revision, row.slug, row.display_name, row.bio, row.show_activity === true, showcasePresentation({ layout: row.layout, highlights: row.highlights })]);
+  return JSON.stringify([row.org_id, row.publication_revision, row.slug, row.display_name, row.bio, row.photo_digest ?? null, row.show_activity === true, showcasePresentation({ layout: row.layout, highlights: row.highlights })]);
 }
 function streams(db: postgres.Sql) {
   let manager = streamManagers.get(db);
@@ -103,7 +108,7 @@ function streams(db: postgres.Sql) {
   return manager;
 }
 
-async function getOrgActivitySnapshot(profile: ShowcaseProfile, orgId: number, db: postgres.Sql, now?: Date, preview = false): Promise<PublicActivity> {
+async function getOrgActivitySnapshot(profile: ShowcaseProfile, orgId: number, db: postgres.Sql, now?: Date, preview = false, photoDigest?: string): Promise<PublicActivity> {
   const queryAt = now ?? new Date();
   const start = new Date(Date.UTC(queryAt.getUTCFullYear(), queryAt.getUTCMonth(), queryAt.getUTCDate()) - 83 * 86_400_000).toISOString();
   const end = new Date(Date.UTC(queryAt.getUTCFullYear(), queryAt.getUTCMonth(), queryAt.getUTCDate()) + 86_400_000).toISOString();
@@ -154,7 +159,27 @@ async function getOrgActivitySnapshot(profile: ShowcaseProfile, orgId: number, d
   const observedAt = now ?? new Date();
   // A stable deployment secret keeps public IDs opaque across polls/restarts.
   // Legacy self-hosted installs use their existing server-only database URL.
-  return publicActivitySnapshot(profile, rows[0], observedAt, { rows: events, scope: `${orgId}:${profile.slug}`, key: databaseSecurity.tenantCredentialKey || dbUrl("engram_gateway"), preview });
+  return publicActivitySnapshot(profile, rows[0], observedAt, { rows: events, scope: `${orgId}:${profile.slug}`, key: databaseSecurity.tenantCredentialKey || dbUrl("engram_gateway"), preview, photoUrl: preview ? profile.photo ?? null : showcasePhotoUrl(profile.slug, photoDigest) });
+}
+
+async function readProfileBody(req: Request): Promise<string> {
+  const reader = req.body?.getReader();
+  if (!reader) return "";
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > SHOWCASE_PAYLOAD_LIMIT) {
+        await reader.cancel();
+        throw new ShowcaseError("Profile payload is too large", 413);
+      }
+      chunks.push(value);
+    }
+    return Buffer.concat(chunks).toString("utf8");
+  } finally { reader.releaseLock(); }
 }
 
 export async function handleShowcaseApi(req: Request, token: TokenRecord, db: postgres.Sql = sql): Promise<Response> {
@@ -165,8 +190,7 @@ export async function handleShowcaseApi(req: Request, token: TokenRecord, db: po
     // Check identity before reading untrusted input or revealing validation errors.
     owner(token, true);
     if (Number(req.headers.get("content-length")) > SHOWCASE_PAYLOAD_LIMIT) throw new ShowcaseError("Profile payload is too large", 413);
-    const raw = await req.text();
-    if (new TextEncoder().encode(raw).byteLength > SHOWCASE_PAYLOAD_LIMIT) throw new ShowcaseError("Profile payload is too large", 413);
+    const raw = await readProfileBody(req);
     let input: unknown;
     try { input = JSON.parse(raw); } catch { throw new ShowcaseError("Expected a profile object"); }
     return Response.json(await updateShowcaseSettings(token, input, origin, db), { headers: NO_STORE });
@@ -178,8 +202,31 @@ export async function handleShowcaseApi(req: Request, token: TokenRecord, db: po
   }
 }
 
+async function publicPhoto(req: Request, slug: string, version: string | null, db: postgres.Sql): Promise<Response> {
+  const headers = { ...NO_STORE, "Content-Type": "image/png", "Cross-Origin-Resource-Policy": "cross-origin" };
+  const missing = () => new Response(null, { status: 404, headers: { ...NO_STORE, "X-Robots-Tag": "noindex" } });
+  if (req.method !== "GET" && req.method !== "HEAD") return new Response(null, { status: 405, headers: { ...NO_STORE, Allow: "GET, HEAD" } });
+  if (!validShowcaseSlug(slug) || !version || !/^[a-f0-9]{64}$/.test(version)) return missing();
+  const published = await publishedProfile(slug, db);
+  if (!published || published.photo_digest !== version) return missing();
+  const binding = publicationKey(published);
+  const rows = await db`SELECT photo_png FROM action_profiles WHERE slug = ${slug} AND published = true AND photo_digest = ${version} AND org_id = ${Number(published.org_id)}`;
+  const bytes = rows[0]?.photo_png;
+  if (!bytes) return missing();
+  // An unpublish, rename, replacement, or slug reassignment during this read
+  // must retire the old image just as it retires JSON and SSE projections.
+  const current = await publishedProfile(slug, db);
+  if (!current || publicationKey(current) !== binding) return missing();
+  return new Response(req.method === "HEAD" ? null : bytes, { headers: { ...headers, "Content-Length": String(bytes.byteLength) } });
+}
+
 export async function handlePublicShowcase(req: Request, db: postgres.Sql = sql): Promise<Response | null> {
   const url = new URL(req.url);
+  const photo = /^\/api\/public\/activity\/([^/]+)\/photo\.png$/.exec(url.pathname);
+  if (photo) {
+    try { return await publicPhoto(req, photo[1], url.searchParams.get("v"), db); }
+    catch { return new Response("Photo is temporarily unavailable", { status: 503, headers: NO_STORE }); }
+  }
   const stream = /^\/api\/public\/activity\/([^/]+)\/stream$/.exec(url.pathname);
   if (stream) return streams(db).handle(req, stream[1]);
   const api = /^\/api\/public\/activity\/([^/]+)(\/card\.(?:svg|png))?$/.exec(url.pathname);
