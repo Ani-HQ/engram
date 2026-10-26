@@ -25,9 +25,10 @@ describe("getting started evidence", () => {
   test("client-specific setup never places a key in the shell command", () => {
     expect(agentConnectionGuide("claude-code", "https://engram.example/mcp")?.command).toBe("npx -y @ani-hq/engram-mcp setup claude --host 'https://engram.example'");
     expect(agentConnectionGuide("cursor", "http://localhost:8080/mcp")?.command).toContain("setup cursor");
+    for (const [agent, target] of [["gemini-cli", "gemini"], ["github-copilot", "copilot"], ["vscode", "vscode"], ["opencode", "opencode"], ["openclaw", "openclaw"]]) expect(agentConnectionGuide(agent, "https://engram.example/mcp")?.command).toContain(`setup ${target} --host`);
     expect(agentConnectionGuide("chatgpt", "https://engram.example/mcp")).toMatchObject({ oauth: true, command: null });
     expect(agentConnectionGuide("other", "https://engram.example/mcp")?.command).toBeNull();
-    for (const endpoint of ["javascript:alert(1)", "https://user:secret@engram.example/mcp", "https://engram.example/mcp?token=secret", "https://engram.example/mcp#secret"]) expect(agentConnectionGuide("cursor", endpoint)).toBeNull();
+    for (const endpoint of ["javascript:alert(1)", "https://user:secret@engram.example/mcp", "https://engram.example/mcp?token=secret", "https://engram.example/mcp#secret", "https://engram.example/mcp\nignored", "http://remote.example/mcp"]) expect(agentConnectionGuide("cursor", endpoint)).toBeNull();
   });
   test("manual configurations match the selected harness with explicit secret copying", () => {
     expect(accessKeyConfiguration("codex", "https://example.test/mcp")).toContain("[mcp_servers.engram]");

@@ -1,6 +1,7 @@
 import { config } from "../../config";
 import { choiceOf, scoreOf } from "../answers";
 import { RERANK_CANDIDATE_CAP, type RecallCandidate } from "../passages";
+import { sanitizeProviderInput } from "../sanitize";
 import type { ReflexAnswer, ReflexClient, ReflexQuestion } from "../types";
 
 export interface RankedHit {
@@ -28,7 +29,14 @@ export function buildPassageRerankQuestions(query: string, candidates: RecallCan
     }, questions };
   };
   let input = build();
-  while (selected.length && Buffer.byteLength(JSON.stringify({ ...input, model: config.reflex.model })) > MAX_RERANK_INPUT_BYTES) { selected.pop(); input = build(); }
+  const exceedsBudget = () => {
+    // This is the same redaction boundary used by the transport client. Some
+    // replacements (for example a short URL -> [resource]) expand the JSON, so
+    // admission must bound both source input and the actual sanitized body.
+    const sanitized = sanitizeProviderInput(input) as { state: unknown; questions: unknown };
+    return [input, sanitized].some(value => Buffer.byteLength(JSON.stringify({ ...value, model: config.reflex.model })) > MAX_RERANK_INPUT_BYTES);
+  };
+  while (selected.length && exceedsBudget()) { selected.pop(); input = build(); }
   return { ...input, candidates: selected };
 }
 

@@ -9,6 +9,7 @@
   "files": [
     "index.js",
     "onboarding.js",
+    "setup-files.js",
     "instructions.js",
     "branding.js",
     "capture.js",

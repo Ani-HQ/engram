@@ -31,12 +31,13 @@ function dispatch() {
     return;
   }
 
-  if (subcommand === 'setup' || subcommand === 'doctor' || subcommand === 'verify') {
+  if (subcommand === 'setup' || subcommand === 'upgrade' || subcommand === 'doctor' || subcommand === 'verify') {
     const { runOnboarding } = require('./onboarding');
-    runOnboarding(subcommand === 'setup' ? 'setup' : 'doctor', args, {
+    runOnboarding(['setup', 'upgrade'].includes(subcommand) ? subcommand : 'doctor', args, {
       configure: configureHarness,
       configPath: configPathForList,
       readConnection: readHarnessConnection,
+      planConnection: planHarnessConnection,
       cacheTools: writeToolCache,
     }).then(code => { process.exitCode = code; }).catch(error => {
       console.error(error.message || 'Engram connection check failed.');
@@ -109,7 +110,8 @@ function dispatch() {
 function printRootHelp() {
   console.log(`Usage:
   engram-mcp
-  engram-mcp setup [harness] [--host <url>] [--token-stdin]
+  engram-mcp setup [harness] [--project <directory>] [--skill-scope project|user] [--host <url>] [--token-stdin]
+  engram-mcp upgrade [harness] [--project <directory>] [--skill-scope project|user] [--host <url>]
   engram-mcp doctor [harness] [--host <url>] [--token-stdin]
   engram-mcp memory --help
   engram-mcp connect [harness] [--host <url>] [--token <token>]
@@ -245,26 +247,70 @@ function configPathForList(harness) {
   if (harness === 'cursor') return cursorConfigPath();
   if (harness === 'vscode') return vscodeConfigPath();
   if (harness === 'windsurf') return windsurfConfigPath();
+  if (harness === 'gemini') return path.join(os.homedir(), '.gemini', 'settings.json');
+  if (harness === 'copilot') return path.join(os.homedir(), '.copilot', 'mcp-config.json');
+  if (harness === 'opencode') return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'opencode', 'opencode.json');
+  if (harness === 'openclaw') return path.join(os.homedir(), '.openclaw', 'openclaw.json');
   return '';
 }
 
 // Guided setup writes native HTTP entries directly: a secret never needs to be
 // passed through a child process's argv, including when Claude Code is absent.
 function configureHarness(harness, endpoint, token) {
+  if (['gemini', 'copilot', 'opencode', 'openclaw'].includes(harness)) {
+    const plan = planHarnessConnection(harness, endpoint, token);
+    backupAndWrite(plan.file, plan.kind === 'json' ? JSON.stringify(plan.value, null, 2) + '\n' : plan.value);
+    console.log(`Configured engram for ${harness} at ${plan.file}`);
+    return 0;
+  }
   if (harness === 'codex') return connectCodex(endpoint, token);
   if (harness === 'claude') return connectJsonHarness('claude', configPathForList('claude'), 'mcpServers', vscodeServer(endpoint, token));
   if (harness === 'vscode') return connectJsonHarness('vscode', vscodeConfigPath(), 'servers', vscodeServer(endpoint, token));
   return connectJsonHarness(harness, configPathForList(harness), 'mcpServers', cursorServer(endpoint, token));
 }
 
+function planHarnessConnection(harness, endpoint, token, priorWrites = []) {
+  let file = configPathForList(harness);
+  if (!file) throw new Error('This runtime has no supported local MCP configuration. Use its app connection controls.');
+  assertSafeConfigPath(file);
+  // Resolve only platform aliases above the already checked user config path
+  // (such as macOS /var); links beneath the home boundary were rejected above.
+  let ancestor = path.dirname(file), suffix = [path.basename(file)];
+  while (!fs.existsSync(ancestor)) { suffix.unshift(path.basename(ancestor)); ancestor = path.dirname(ancestor); }
+  file = path.join(fs.realpathSync(ancestor), ...suffix);
+  const prior = priorWrites.find(write => path.resolve(write.file) === path.resolve(file));
+  const raw = readTextIfExists(file);
+  if (harness === 'codex') return { file, kind: 'text', value: replaceTomlTable(raw, 'mcp_servers.engram', codexTomlEntry(endpoint, token)) };
+  if (harness === 'opencode' && !raw && fs.existsSync(file + 'c')) throw new Error('OpenCode already uses a JSONC configuration. Setup preserved it; use the native OpenCode connection controls for this configuration format.');
+  const config = prior?.kind === 'json' ? structuredClone(prior.value) : readJsonObject(file);
+  const object = (value, label) => { if (!value || Array.isArray(value) || typeof value !== 'object') throw new Error(`${label} must be a JSON object. Existing configuration was preserved.`); return value; };
+  let root;
+  if (harness === 'openclaw') {
+    config.mcp = object(config.mcp || {}, 'OpenClaw MCP settings');
+    root = config.mcp;
+  } else root = config;
+  const key = ['vscode', 'openclaw'].includes(harness) ? 'servers' : harness === 'opencode' ? 'mcp' : 'mcpServers';
+  root[key] = object(root[key] || {}, 'MCP servers');
+  if (root[key].engram?.enabled === false || root[key].engram?.disabled === true) throw new Error('This Engram connection is explicitly disabled. Setup preserved that choice; enable it through the runtime controls before trying again.');
+  if (harness === 'gemini' && (config.mcp?.enabled === false || (Array.isArray(config.mcp?.allowed) && !config.mcp.allowed.includes('engram')) || config.mcp?.excluded?.includes('engram'))) throw new Error('Gemini MCP policy does not allow Engram. Setup preserved that policy.');
+  root[key].engram = harness === 'gemini' ? { httpUrl: endpoint, headers: { Authorization: `Bearer ${token}` } }
+    : harness === 'opencode' ? { type: 'remote', url: endpoint, headers: { Authorization: `Bearer ${token}` } }
+    : harness === 'openclaw' ? { url: endpoint, transport: 'streamable-http', headers: { Authorization: `Bearer ${token}` } }
+    : ['claude', 'vscode', 'copilot'].includes(harness) ? vscodeServer(endpoint, token) : cursorServer(endpoint, token);
+  return { file, kind: 'json', value: config };
+}
+
 function readHarnessConnection(harness) {
   const file = configPathForList(harness);
+  assertSafeConfigPath(file);
   if (!fs.existsSync(file)) throw new Error(`No ${harness} config at ${file}. Run engram-mcp setup ${harness}.`);
   if (harness !== 'codex') {
     const config = readJsonObject(file);
-    const entry = config[harness === 'vscode' ? 'servers' : 'mcpServers']?.engram;
-    if (!entry || typeof entry.url !== 'string') throw new Error(`No native Engram connection in ${file}. Run engram-mcp setup ${harness}, or use doctor --host with ENGRAM_TOKEN.`);
-    return { host: entry.url, token: /^Bearer (.+)$/i.exec(entry.headers?.Authorization || '')?.[1] };
+    const entry = harness === 'openclaw' ? config.mcp?.servers?.engram : config[harness === 'vscode' ? 'servers' : harness === 'opencode' ? 'mcp' : 'mcpServers']?.engram;
+    const host = harness === 'gemini' ? entry?.httpUrl : entry?.url;
+    if (!entry || typeof host !== 'string') throw new Error(`No native Engram connection in ${file}. Run engram-mcp setup ${harness}, or use doctor --host with ENGRAM_TOKEN.`);
+    const token = /^Bearer (.+)$/i.exec(entry.headers?.Authorization || '')?.[1];
+    return { host, token, authentication: token ? 'bearer' : 'runtime-managed' };
   }
   const lines = readTextIfExists(file).split(/\r?\n/);
   const headers = tomlHeaders(lines);
@@ -291,7 +337,7 @@ function readHarnessConnection(harness) {
   const authorization = text.match(new RegExp(`\\bAuthorization\\s*=\\s*(${quoted})`));
   const token = authorization ? /^Bearer (.+)$/i.exec(decode(authorization[1]))?.[1] : process.env[value('bearer_token_env_var') || ''];
   if (!host) throw new Error(`No supported native Engram URL in ${file}. Use doctor --host with ENGRAM_TOKEN, or run engram-mcp setup codex.`);
-  return { host, token };
+  return { host, token, authentication: token ? 'bearer' : 'runtime-managed' };
 }
 
 function normalizeRequiredValue(value) {
@@ -981,6 +1027,7 @@ module.exports = {
   toolCachePath,
   writeToolCache,
   configureHarness,
+  planHarnessConnection,
   configPathForList,
   readHarnessConnection,
   backupAndWrite,

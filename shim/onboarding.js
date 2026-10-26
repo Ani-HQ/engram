@@ -2,10 +2,12 @@
 
 const { randomBytes } = require('node:crypto');
 const readline = require('node:readline');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const HOSTED_URL = 'https://engram.ani.computer';
-const HARNESSES = ['claude', 'codex', 'cursor', 'vscode', 'windsurf'];
-const LABELS = { claude: 'Claude Code', codex: 'Codex', cursor: 'Cursor', vscode: 'VS Code', windsurf: 'Windsurf' };
+const HARNESSES = ['claude', 'codex', 'cursor', 'vscode', 'gemini', 'copilot', 'opencode', 'openclaw', 'windsurf'];
+const LABELS = { claude: 'Claude Code', codex: 'Codex', cursor: 'Cursor', vscode: 'VS Code', gemini: 'Gemini CLI', copilot: 'GitHub Copilot CLI', opencode: 'OpenCode', openclaw: 'OpenClaw Gateway', windsurf: 'Windsurf' };
 const TIMEOUT_MS = 20_000;
 const MAX_RESPONSE_BYTES = 256_000;
 
@@ -30,6 +32,11 @@ function parseArgs(args) {
     const arg = args[i];
     if (arg === '--help' || arg === '-h') { result.help = true; continue; }
     if (arg === '--token-stdin') { result.tokenStdin = true; continue; }
+    if (arg === '--memory') { result.memory = true; continue; }
+    if (arg === '--connection-only') { result.connectionOnly = true; continue; }
+    if (arg === '--portable') { result.portable = true; result.memory = true; continue; }
+    const values = { '--project': 'project', '--topic': 'topic', '--budget': 'budget', '--skill-scope': 'skillScope' };
+    if (values[arg]) { if (!args[i + 1] || args[i + 1].startsWith('--')) throw new Error(`${arg} requires a value.`); result[values[arg]] = args[++i]; continue; }
     if (arg === '--host') {
       if (!args[i + 1] || args[i + 1].startsWith('--')) throw new Error('--host requires a URL.');
       result.host = args[++i]; continue;
@@ -40,15 +47,25 @@ function parseArgs(args) {
     if (result.harness) throw new Error('Choose one agent per command.');
     result.harness = arg.toLowerCase();
   }
+  if (result.skillScope) {
+    if (!['user', 'project'].includes(result.skillScope)) throw new Error('--skill-scope must be user or project.');
+    result.memory = true;
+    if (result.skillScope === 'user') result.portable = true;
+  }
+  if (result.connectionOnly && (result.memory || result.project || result.topic || result.budget)) throw new Error('--connection-only cannot be combined with memory workflow options.');
+  if (result.harness === 'grokbot') throw new Error('Grok Bot runs on a separate cloud computer. Use Grok Bot Connect apps to connect Engram and enable its private memory skill; a local setup command cannot configure that Bot. No local files were changed.');
+  if (result.harness === 'generic') throw new Error('Choose the actual runtime for automatic setup. An owned runtime can use the Engram SDK or generic bridge; no universal configuration path is assumed.');
   if (result.harness && !HARNESSES.includes(result.harness)) throw new Error(`Choose one of: ${HARNESSES.join(', ')}.`);
   return result;
 }
 
 function printHelp(command, output) {
-  output.write(`Usage: engram-mcp ${command} [${HARNESSES.join('|')}] [--host <url>] [--token-stdin]\n\n`);
-  output.write(command === 'setup'
-    ? 'Guided setup checks access, then updates only this agent’s Engram entry.\n'
+  output.write(`Usage: engram-mcp ${command} [${HARNESSES.join('|')}] [--host <url>] [--project <directory>] [--topic <topic>] [--budget 4096] [--portable] [--skill-scope project|user] [--token-stdin]\n\n`);
+  output.write(['setup', 'upgrade'].includes(command)
+    ? 'Guided setup checks access and installs the connection and project memory workflow. No config or Markdown editing.\n'
     : 'Read-only checks of live identity and tool discovery. No memory is read or written.\n');
+  if (['setup', 'upgrade'].includes(command)) output.write('Interactive setup asks for a project. Automation: pass --project . (or --memory with --project). --connection-only keeps the legacy MCP-only setup.\n');
+  if (['setup', 'upgrade'].includes(command)) output.write('Skills default to project scope. Codex --skill-scope user installs portable guidance in ~/.agents/skills without adding files to the project.\n');
   output.write('Tokens use a hidden terminal prompt or ENGRAM_TOKEN. For automation, pipe a token with --token-stdin.\n');
 }
 
@@ -179,27 +196,47 @@ function nextPrompt() {
 }
 
 async function runOnboarding(command, args, dependencies) {
-  const { input = process.stdin, output = process.stdout, env = process.env, configure, configPath, readConnection, cacheTools, fetchImpl } = dependencies;
+  const { input = process.stdin, output = process.stdout, env = process.env, configure, configPath, readConnection, planConnection, cacheTools, fetchImpl } = dependencies;
   const parsed = parseArgs(args);
   if (parsed.help) { printHelp(command, output); return 0; }
+  const setup = command === 'setup' || command === 'upgrade';
+  if (!setup && (parsed.memory || parsed.project || parsed.topic || parsed.portable || parsed.budget || parsed.connectionOnly)) throw new Error('Doctor checks live access only. Use setup or upgrade for workflow installation.');
   const interactive = Boolean(input.isTTY && output.isTTY);
-  output.write(command === 'setup' ? '\nConnect your agent to Engram\n' : '\nCheck your Engram connection\n');
+  const full = setup && !parsed.connectionOnly && (interactive || !!parsed.project || parsed.memory || command === 'upgrade');
+  if (full && !interactive && !parsed.project) throw new Error('Full memory setup requires --project <directory> outside a terminal. Use --project . for the current project.');
+  output.write(setup ? '\nConnect your agent to Engram\n' : '\nCheck your Engram connection\n');
   let harness = parsed.harness;
-  if (command === 'setup' && !harness) {
-    if (!interactive) throw new Error('Choose an agent: engram-mcp setup <claude|codex|cursor|vscode|windsurf>. Use ENGRAM_TOKEN or --token-stdin outside a terminal.');
+  if (setup && !harness) {
+    if (!interactive) throw new Error(`Choose an agent: engram-mcp setup <${HARNESSES.join('|')}>. Use ENGRAM_TOKEN or --token-stdin outside a terminal.`);
     output.write(HARNESSES.map((name, i) => `  ${i + 1}. ${LABELS[name]}`).join('\n') + '\n');
-    const choice = await askLine('Which agent? [1-5 or name]: ', input, output);
+    const choice = await askLine(`Which agent? [1-${HARNESSES.length} or name]: `, input, output);
     harness = HARNESSES[Number(choice) - 1] || choice.toLowerCase();
     if (!HARNESSES.includes(harness)) throw new Error(`Choose one of: ${HARNESSES.join(', ')}. Run setup again to choose.`);
   }
-
+  if (parsed.skillScope === 'user' && harness !== 'codex') throw new Error('User-scoped automatic skill installation is currently supported only for Codex. Choose project scope for this runtime. No configuration was changed.');
+  let project = parsed.project;
+  let topic = parsed.topic;
+  if (full) {
+    output.write('This setup applies to the runtime on this computer. A local install does not configure another cloud host.\n');
+    if (!project) project = await askLine(`Project folder [${process.cwd()}]: `, input, output) || process.cwd();
+    if (project === '~' || project.startsWith('~/')) project = path.join(env.HOME || require('node:os').homedir(), project.slice(2));
+    try { project = fs.realpathSync(path.resolve(project)); if (!fs.statSync(project).isDirectory()) throw new Error(); }
+    catch { throw new Error('Choose an existing project folder. No configuration was changed.'); }
+    if (!topic && interactive) topic = await askLine(`Memory topic [${path.basename(project) || 'Project context'}]: `, input, output);
+    topic ||= path.basename(project) || 'Project context';
+  }
   let stored;
-  if (command !== 'setup' && harness) {
-    stored = readConnection(harness);
-    output.write(`Config: ${configPath(harness)}\n`);
+  if (harness && (!setup || fs.existsSync(configPath(harness)))) {
+    try { stored = readConnection(harness); }
+    catch (error) { if (!setup || !/^No native Engram connection|^No supported native Engram URL/.test(error.message)) throw error; }
+    if (!setup) output.write(`Config: ${configPath(harness)}\n`);
+  }
+  if (setup && !stored && full) {
+    try { const binding = require('./memory').bindingFor(project, harness); stored = { host: binding.host, token: binding.token }; }
+    catch (error) { if (!/^No memory lifecycle binding|^This project has no unambiguous/.test(error.message)) throw error; }
   }
   let host = parsed.host || env.ENGRAM_HOST || stored?.host;
-  if (!host && command === 'setup' && interactive) {
+  if (!host && setup && interactive) {
     output.write('  1. Engram hosted\n  2. My self-hosted server\n');
     const source = await askLine('Where is your memory? [1]: ', input, output);
     if (!source || source === '1' || source.toLowerCase() === 'hosted') host = HOSTED_URL;
@@ -208,10 +245,21 @@ async function runOnboarding(command, args, dependencies) {
   }
   const target = endpointForHost(host || HOSTED_URL);
   output.write(`Endpoint: ${target.endpoint}\n`);
-  // A --host override must never silently forward a saved credential to a
-  // different server. An explicitly supplied environment token remains usable.
   const sameStoredEndpoint = stored?.host && endpointForHost(stored.host).endpoint === target.endpoint;
   let token = env.ENGRAM_TOKEN || (sameStoredEndpoint ? stored?.token : undefined);
+  if (full && !token && !parsed.tokenStdin && sameStoredEndpoint && stored?.authentication === 'runtime-managed') {
+    const memory = require('./memory'), files = require('./setup-files');
+    const runtime = require('./runtime-contracts').runtimeId(harness);
+    const prepared = require('./runtime-install').planSkill(runtime, { project, home: fs.realpathSync(env.HOME || require('node:os').homedir()), skillScope: parsed.skillScope }, memory.internals);
+    const plan = files.planWrites(prepared.writes, memory.internals);
+    files.commitWrites(plan, memory.internals, dependencies);
+    output.write(`\n✓ Existing runtime-managed connection preserved: ${configPath(harness)}\n✓ ${parsed.skillScope === 'user' ? 'User' : 'Project'} memory skill installed: ${prepared.settings}\n`);
+    output.write('Access uses your agent’s existing authentication and was not tested by this CLI. No credential was copied or replaced.\n');
+    output.write('Portable guidance is model-chosen. Direct MCP reads retain the server’s per-response limit; no cumulative task budget is claimed.\n');
+    output.write(`Restart or reload ${LABELS[harness]}, then run a substantive task and check Connections → Memory use for real retrieval/save receipts.\n`);
+    output.write('No memories or task reports were created. Native automatic use is not verified.\n');
+    return 0;
+  }
   if (parsed.tokenStdin) {
     if (input.isTTY) throw new Error('--token-stdin expects piped input. Omit it to use the hidden terminal prompt.');
     token = await tokenFromStdin(input);
@@ -225,18 +273,40 @@ async function runOnboarding(command, args, dependencies) {
   output.write('Checking your live identity and tool catalog…\n');
   const checks = await inspectConnection(target, fetchImpl);
   printChecks(checks, output);
-
-  if (command === 'setup') {
+  if (full) {
+    try {
+      const memory = require('./memory'), files = require('./setup-files');
+      const prepared = await memory.prepareInstall(harness, { project, topic, budget: parsed.budget, portable: parsed.portable, skillScope: parsed.skillScope, host: target.host, token: target.token }, { checks, fetchImpl });
+      if (typeof planConnection !== 'function') throw new Error('This connector cannot prepare a complete setup. Reinstall the current package.');
+      const mcp = planConnection(harness, target.endpoint, target.token, prepared.writes);
+      const writes = [...prepared.writes.filter(write => path.resolve(write.file) !== path.resolve(mcp.file)), mcp];
+      const plan = files.planWrites(writes, memory.internals);
+      const committed = files.commitWrites(plan, memory.internals, dependencies);
+      output.write(`\n✓ Connection configured: ${mcp.file}\n✓ ${parsed.skillScope === 'user' ? 'User' : 'Project'} memory ${prepared.result.mode === 'portable' ? 'skill installed' : 'workflow installed'}: ${parsed.skillScope === 'user' ? prepared.result.settings : project}\n`);
+      output.write(`  ${committed.changed.length} files updated. Existing unrelated settings were preserved.\n`);
+      if (prepared.result.mode !== 'portable' && !prepared.result.capabilities.reportingOnly) output.write(`  Memory context budget: ${prepared.result.budget} bytes per task through this adapter.\n`);
+      else output.write('  Direct MCP reads retain the server’s per-response limit; model-chosen guidance has no hard cumulative task budget.\n');
+      if (prepared.result.runtimeRoot) output.write(`  Managed runtime: ${prepared.result.runtimeRoot} (independent of the npm cache).\n`);
+      if (prepared.result.mode === 'portable') output.write('  Portable guidance is model-chosen; no automatic lifecycle hooks were enabled.\n');
+      else if (prepared.result.capabilities.reportingOnly) output.write('  This adapter reports factual lifecycle events only; memory retrieval uses the connected MCP workflow.\n');
+      else output.write('  Native bridge reads are task-bounded. Ordinary native HTTP MCP calls keep per-response limits.\n');
+      if (harness === 'codex') output.write('  Review and trust the exact definitions with /hooks. Local orchestration and execution are required; managed/disabled policy is preserved.\n');
+      output.write(`\nEngram is configured. Restart ${LABELS[harness]} or refresh its MCP connections.\n`);
+      output.write('No memories or task reports were created. Access is verified; retrieval, saving, and automatic use still need real runtime receipts.\n');
+      output.write(`Run a substantive task in this project, then check Connections → Memory use. Rerun this setup to upgrade or repair it.\n`);
+    } catch (error) { throw new Error(`Live access passed, but full setup is not complete. ${safeLabel(error.message || 'Could not install the project workflow.', target.token)}`); }
+  } else if (setup) {
     output.write(`\nUpdating ${LABELS[harness]}: ${configPath(harness)}\nOnly the Engram entry is replaced. Existing configuration is backed up first.\n`);
     let code;
     try { code = configure(harness, target.endpoint, target.token); }
     catch (error) { throw new Error(`Live access passed, but agent configuration failed. ${safeLabel(error.message || 'Could not update the config file.', target.token)} Setup is not complete.`); }
     if (code !== 0) throw new Error('Live access passed, but agent configuration failed. Review the configuration error above; setup is not complete.');
-    if (cacheTools && cacheTools(target.host, target.token, checks.tools) === false) output.write('Tool catalog cache could not be saved; live access passed and agent configuration was written.\n');
     output.write(`\nEngram is configured. Restart ${LABELS[harness]} or refresh its MCP connections.\n`);
+    output.write('Connection-only setup: no project memory workflow was installed. Run interactive setup or add --project . to install it.\n');
     output.write(`Check this config again: engram-mcp doctor ${harness}\n`);
   } else output.write('\nLive access passed. This check does not prove your agent has loaded the connection.\n');
-  output.write('\nNext, paste this into your agent to explicitly test one memory write and recall:\n' + nextPrompt() + '\n');
+  if (setup && cacheTools && cacheTools(target.host, target.token, checks.tools) === false) output.write('Tool catalog cache could not be saved; configuration is installed and live access passed.\n');
+  if (!full) output.write('\nNext, paste this into your agent to explicitly test one memory write and recall:\n' + nextPrompt() + '\n');
   return 0;
 }
 

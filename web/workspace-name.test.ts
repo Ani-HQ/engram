@@ -82,6 +82,21 @@ describe("optional onboarding workspace name", () => {
     expect((onboardingGuide({ ...props, session: { ...owner, role: "member" } }) as Element).textContent).not.toContain("Name your workspace");
   });
 
+  test("existing workspaces can repair an agent after receipts complete without claiming installation", async () => {
+    let chosen = "", created = 0;
+    const data = { ...fresh, checks: { agentConnected: true, memorySaved: true, memoryRecalled: true, taskReported: true } };
+    const guide = onboardingGuide({ data, agentId: "codex", mcp: "https://custom.example/engram/mcp", session: owner,
+      onChoose: (value: string) => { chosen = value; }, onCreateKey: () => { created++; },
+      copyControl: (label: string) => new Element("button", label),
+    }) as Element;
+    expect(guide.textContent).toContain("setup codex --host 'https://custom.example/engram'");
+    expect(guide.textContent).toContain("These receipts do not confirm that every agent has a workflow installed");
+    expect(guide.textContent).not.toContain("SKILL.md"); expect(guide.textContent).not.toContain("/absolute/project");
+    const selector = find(guide, node => node.tag === "select"); selector.value = "cursor"; await selector.fire("change"); expect(chosen).toBe("cursor");
+    await find(guide, node => node.tag === "button" && node.textContent === "Create an access key").fire("click"); expect(created).toBe(1);
+    expect(onboardingProgress(data).completed).toBe(3);
+  });
+
   test("applying a confirmed name updates only matching display names", () => {
     const policies = { agentsMayWrite: false }, session = { org: { id: 7, name: "Old", slug: "stable", policies, provisioningStatus: "ready" }, orgs: [{ id: 7, name: "Old", role: "owner" }, { id: 8, name: "Other", role: "member" }] };
     expect(applyWorkspaceName(session, { id: 7, name: "New", slug: "stale", policies: {}, provisioningStatus: "pending" })).toBe(true);

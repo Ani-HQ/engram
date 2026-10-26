@@ -6,6 +6,7 @@ import { createRecallReranker, RECALL_PLAN_CAPACITY, RECALL_PLAN_INFLIGHT, RECAL
 import { prepareRecallCandidates, recallPassages, sourceHash } from "../gateway/src/reflex/passages";
 import { buildPassageRerankQuestions, buildRerankQuestions, MAX_RERANK_INPUT_BYTES, parsePassageRerank } from "../gateway/src/reflex/tasks/rerank";
 import { TypesafeReflexClient } from "../gateway/src/reflex/client";
+import { sanitizeProviderInput } from "../gateway/src/reflex/sanitize";
 import type { ReflexClient, ReflexResult } from "../gateway/src/reflex/types";
 
 function context(id = 7, name = "codex", enabled = true) {
@@ -60,6 +61,33 @@ describe("bounded Jev passage retrieval", () => {
     for (const question of Object.values<any>(input.questions)) expect(JSON.stringify(question.instructions)).not.toContain("Long Unicode memory");
     for (const candidate of input.state.candidates) { expect(candidate.passages.length).toBeLessThanOrEqual(3); for (const passage of candidate.passages) expect(passage.text.length).toBeLessThanOrEqual(180); }
     expect(new Set(output.map(hit => hit.chunk_text)).size).toBe(output.length);
+  });
+  test("redaction expansion cannot exceed the actual provider wire budget", async () => {
+    const query = "query";
+    const hits = Array.from({ length: 20 }, (_, index) => ({ slug: `notes/${index}`, chunk_text:
+      `Head${index} ` + "http://a ".repeat(70) + `query Middle${index} ` + "http://b ".repeat(70) + `Tail${index} ` + "http://c ".repeat(70) }));
+    const { candidates, ...input } = buildPassageRerankQuestions(query, prepareRecallCandidates(query, hits));
+    // Before admission accounted for redaction, this fixture admitted 13 rows:
+    // 11,530 raw bytes expanded to 13,012 bytes at the actual transport boundary.
+    expect(candidates.length).toBeGreaterThan(0);
+    expect(candidates.length).toBeLessThan(13);
+    for (const value of [input, sanitizeProviderInput(input)]) {
+      expect(Buffer.byteLength(JSON.stringify({ ...value as object, model: config.reflex.model }))).toBeLessThanOrEqual(MAX_RERANK_INPUT_BYTES);
+    }
+    const bodies: string[] = [];
+    const client = new TypesafeReflexClient(async (_url, options) => {
+      bodies.push(String(options?.body));
+      const sent = JSON.parse(bodies[0]);
+      return Response.json({ ...answersFor(sent), model: config.reflex.model, usage: { input_tokens: 10, output_tokens: 2 } });
+    }, Date.now, { apiKey: "fixture-key-never-real", model: config.reflex.model });
+    const rerank = createRecallReranker({ client: () => client });
+    const output = await inOrg(() => rerank(query, hits, 2));
+    expect(bodies).toHaveLength(1);
+    expect(Buffer.byteLength(bodies[0])).toBeLessThanOrEqual(MAX_RERANK_INPUT_BYTES);
+    expect(bodies[0]).not.toContain("http://a");
+    expect(bodies[0]).toContain("[resource]");
+    expect(output).toHaveLength(2);
+    expect((output[0] as any).recall_passage).toBeDefined();
   });
   test("coalesces concurrent same-scope work and reuses only validated index plans", async () => {
     let release!: () => void;

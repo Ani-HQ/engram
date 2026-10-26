@@ -287,3 +287,29 @@ in the focused profile/photo-editor/design-system suite: **37 tests passed,
 Disposable PostgreSQL verification passed **757 integration checks, 78
 authority/isolation checks, and 36 managed-provisioner checks**. These results
 cover local changes only; no production profile or deployment was changed.
+
+## Managed onboarding and connection repair — 26 October 2026
+
+New and existing users share a guided runtime setup command in onboarding,
+connection details, and the new-key dialog. Supported installers manage their
+own Engram files. Custom-client configuration remains an advanced disclosure.
+Grok Bot uses its provider's private-skill creation and enablement controls,
+with no claimed cloud hook installation. Existing agent-managed Codex sign-in
+is preserved; its managed-skill fallback is model-chosen and does not provide a
+hard cumulative task budget. Access, local setup, received calls, and automatic
+use remain separate claims.
+
+The root browser pass checked the local sample app at 1280px and 320px: completed
+workspace setup still exposes the agent selector; keyboard selection, command
+copy feedback, Grok skill prompt copying and review disclosure work. The empty
+personal workspace starts at zero of three checks and shows the Codex guide.
+The simulated connection-read failure retains its error, retry action, and usable
+setup guide. At 320px, the 305px content region fits without page-wide overflow.
+Captures are in the task's `managed-onboarding` visual artifacts:
+`desktop-claude.png`, `mobile-claude.png`, `mobile-grok.png`,
+`desktop-new-user.png`, `mobile-new-codex.png`, and `mobile-error.png`.
+
+Focused onboarding, memory-use, connection, workspace-name, and runtime-contract
+checks passed: **33 tests, 279 assertions, zero failures**. The browser entry
+bundle and `git diff --check` passed. Browser checks used local fixture data;
+they do not certify installation or automatic use in every external runtime.

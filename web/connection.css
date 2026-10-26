@@ -44,6 +44,9 @@
 .connection-explainer { font-size:var(--ds-text-xs); color:var(--ds-muted); line-height:1.8; margin-top:17px; max-width:650px; }
 .connection-guide { font-size:12px; line-height:1.8; color:var(--ds-muted); }
 .connection-guide .endpoint { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--ds-space-3); }
+.connection-guide > .ds-stack { margin-top:var(--ds-space-3); gap:var(--ds-space-3); min-width:0; }
+.connection-guide > .ds-stack > :is(p,ol) { margin-block:0; }
+.connection-guide > .ds-stack > button { justify-self:start; }
 .connection-guide ol { padding-left:19px; }
 .connection-guide li { margin:9px 0; }
 .connection-key-form { scroll-margin-top:24px; }

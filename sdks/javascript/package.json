@@ -4,6 +4,15 @@
   "type": "module",
   "description": "Bounded shared-memory lifecycle for owned agent runtimes",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ani-HQ/engram.git",
+    "directory": "sdks/javascript"
+  },
+  "homepage": "https://github.com/Ani-HQ/engram/blob/main/docs/MEMORY-SDK.md",
+  "bugs": { "url": "https://github.com/Ani-HQ/engram/issues" },
+  "keywords": ["engram", "mcp", "agent-memory", "bounded-context"],
+  "publishConfig": { "access": "public" },
   "exports": { ".": { "types": "./index.d.ts", "import": "./index.mjs" }, "./frameworks": { "types": "./frameworks.d.ts", "import": "./frameworks.mjs" } },
   "files": ["index.mjs", "index.d.ts", "frameworks.mjs", "frameworks.d.ts", "README.md", "LICENSE"],
   "engines": { "node": ">=18.17" }

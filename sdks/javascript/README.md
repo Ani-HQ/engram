@@ -5,11 +5,14 @@ with any model provider. It requires an explicit Engram host, credential and
 stable project/session/task identifiers; connecting an MCP tool alone does not
 install runtime behavior.
 
-This package is available as local source. From the Engram repository:
+Install the package:
 
 ```sh
-npm install ./sdks/javascript
+npm install @ani-hq/engram-memory
 ```
+
+Node.js 18.17 or later is required. For a local checkout, use
+`npm install ./sdks/javascript` from the Engram repository.
 
 ```js
 import { EngramMemory } from '@ani-hq/engram-memory';
@@ -66,5 +69,5 @@ requested. Both require application-defined context injection and stable task
 identity; completion needs an explicit outcome selector. A generic
 `runWithMemory` wrapper covers other owned runtimes.
 
-See [the SDK contract](../../docs/MEMORY-SDK.md) for framework examples, Python,
+See [the SDK contract](https://github.com/Ani-HQ/engram/blob/main/docs/MEMORY-SDK.md) for framework examples, Python,
 private state, explicit compatibility checks, and limitations.

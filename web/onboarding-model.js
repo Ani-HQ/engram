@@ -1,13 +1,20 @@
+import { managedSetupCommand } from './memory-runtime-options.js';
+
 // Progress comes only from successful server receipts. UI actions never complete a check.
 export const onboardingAgents = [
   { id: "claude-code", label: "Claude Code", harness: "claude" },
   { id: "codex", label: "Codex", harness: "codex" },
   { id: "cursor", label: "Cursor", harness: "cursor" },
+  { id: "gemini-cli", label: "Gemini CLI", harness: "gemini" },
+  { id: "github-copilot", label: "GitHub Copilot CLI", harness: "copilot" },
+  { id: "opencode", label: "OpenCode", harness: "opencode" },
+  { id: "openclaw", label: "OpenClaw Gateway", harness: "openclaw" },
+  { id: "windsurf", label: "Windsurf", harness: "windsurf" },
   { id: "claude", label: "Claude", oauth: true },
   { id: "chatgpt", label: "ChatGPT", oauth: true },
   { id: "grok", label: "Grok", oauth: true },
+  { id: "grok-bot", label: "Grok Bot", providerManaged: true },
   { id: "vscode", label: "VS Code", harness: "vscode" },
-  { id: "windsurf", label: "Windsurf", harness: "windsurf" },
   { id: "other", label: "Another MCP client" },
 ];
 const coreChecks = ["agentConnected", "memorySaved", "memoryRecalled"];
@@ -50,14 +57,15 @@ export function agentConnectionGuide(agentId, mcp) {
   if (!agent) return null;
   let endpoint;
   try {
+    if (typeof mcp !== "string" || mcp.length > 2048 || /[\x00-\x20\x7f-\x9f]/.test(mcp)) return null;
     const parsed = new URL(mcp);
     if (!["https:", "http:"].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash) return null;
+    if (parsed.protocol === "http:" && !["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname)) return null;
     endpoint = parsed.href.replace(/\/$/, "");
   } catch { return null; }
   const host = endpoint.replace(/\/mcp$/, "");
-  const quotedHost = `'${host.replace(/'/g, `'\\''`)}'`;
   return { ...agent, endpoint, host,
-    command: agent.harness ? `npx -y @ani-hq/engram-mcp setup ${agent.harness} --host ${quotedHost}` : null,
+    command: agent.harness ? managedSetupCommand(agent.harness, endpoint) : null,
   };
 }
 
