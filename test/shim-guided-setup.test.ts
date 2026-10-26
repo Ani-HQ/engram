@@ -52,6 +52,11 @@ describe('one-command project onboarding', () => {
         expect(result.stdout).toContain('Project memory workflow installed');
         expect(result.stdout).toContain('No memories or task reports were created');
         expect(result.stdout).not.toContain('paste this into your agent');
+        if (harness === 'claude') {
+          expect(result.stdout).toContain('Restart Claude Code to load the updated connection and hooks');
+          expect(result.stdout).toContain('claude --continue');
+          expect(result.stdout).not.toContain('or refresh its MCP connections');
+        }
         const config = readFileSync(configFile(harness, f), 'utf8');
         expect(config).toContain(upstream.host + '/mcp');
         expect(config).toContain(secret);

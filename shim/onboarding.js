@@ -291,7 +291,10 @@ async function runOnboarding(command, args, dependencies) {
       else if (prepared.result.capabilities.reportingOnly) output.write('  This adapter reports factual lifecycle events only; memory retrieval uses the connected MCP workflow.\n');
       else output.write('  Native bridge reads are task-bounded. Ordinary native HTTP MCP calls keep per-response limits.\n');
       if (harness === 'codex') output.write('  Review and trust the exact definitions with /hooks. Local orchestration and execution are required; managed/disabled policy is preserved.\n');
-      output.write(`\nEngram is configured. Restart ${LABELS[harness]} or refresh its MCP connections.\n`);
+      if (harness === 'claude' && prepared.result.mode !== 'portable') {
+        output.write('\nEngram is configured. Restart Claude Code to load the updated connection and hooks.\n');
+        output.write('When running work is settled, exit Claude Code and run claude --continue in this project to resume. Refreshing MCP alone does not confirm the new hooks are loaded.\n');
+      } else output.write(`\nEngram is configured. Restart or reload ${LABELS[harness]} to load the updated connection and workflow.\n`);
       output.write('No memories or task reports were created. Access is verified; retrieval, saving, and automatic use still need real runtime receipts.\n');
       output.write(`Run a substantive task in this project, then check Connections → Memory use. Rerun this setup to upgrade or repair it.\n`);
     } catch (error) { throw new Error(`Live access passed, but full setup is not complete. ${safeLabel(error.message || 'Could not install the project workflow.', target.token)}`); }

@@ -42,7 +42,7 @@ for (const id of ['gallery-logo-ticker', 'gallery-logo-ticker-static']) {
     frame.className = 'ds-product-logo-frame'; frame.setAttribute('data-tone', 'inverse'); logo.className = 'ds-product-logo'; logo.src = product.logo; logo.width = logo.height = 28; logo.alt = ''; name.textContent = product.label;
     frame.append(logo); item.append(frame, name); list.append(item);
   }
-  observeLogoTicker(root, { reduced: id.endsWith('-static') }); root.querySelector('[data-ticker-pause]').hidden = false;
+  observeLogoTicker(root, { reduced: id.endsWith('-static') });
 }
 document.querySelector('#agent-orbit-example').append(memoryOrbit({ agents: true, label: 'Illustrative agent ecosystem: Claude, OpenClaw, Grok Bot, Muse and Instinct around shared memory. Not live connections.' }));
 document.querySelector('#ink-orbit-example').append(memoryOrbit({ compact: true, className: 'ds-orbit--on-ink' }));
@@ -183,10 +183,10 @@ const stopLoadingMotion = observeLoadingMotion(document.body);
 window.addEventListener('pagehide', event => { if (!event.persisted) stopLoadingMotion(); });
 observeContextFlow(document.getElementById('context-flow-example'), { replayButton: document.getElementById('context-flow-example-replay') });
 document.getElementById('context-flow-glow-art').replaceWith(contextFlowArt({ variant: 'glow' }));
-observeContextFlow(document.getElementById('context-flow-glow-example'), { pauseButton: document.getElementById('context-flow-glow-pause'), mode: 'loop' });
+observeContextFlow(document.getElementById('context-flow-glow-example'), { mode: 'loop' });
 document.getElementById('context-flow-loop-art').replaceWith(contextFlowArt());
-observeContextFlow(document.getElementById('context-flow-loop-example'), { pauseButton: document.getElementById('context-flow-loop-pause'), mode: 'loop' });
-observeContextFlow(document.getElementById('context-flow-reduced-example'), { pauseButton: document.getElementById('context-flow-reduced-replay'), mode: 'loop', reduced: true });
+observeContextFlow(document.getElementById('context-flow-loop-example'), { mode: 'loop' });
+observeContextFlow(document.getElementById('context-flow-reduced-example'), { mode: 'loop', reduced: true });
 observeContextFlow(document.getElementById('context-flow-line-example'), { mode: 'loop', pauseOnInteraction: true });
 observeContextFlow(document.getElementById('context-flow-line-reduced-example'), { mode: 'loop', pauseOnInteraction: true, reduced: true });
 

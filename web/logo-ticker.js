@@ -3,31 +3,22 @@
 const tickers = new WeakMap();
 const interactive = 'a, button, input, select, textarea, summary, [tabindex], [contenteditable], audio[controls], video[controls]';
 
-export function observeLogoTicker(root, { pauseButton = root?.querySelector('[data-ticker-pause]'), list = root?.querySelector('[data-ticker-list]'), track = root?.querySelector('.ds-logo-ticker-track'), viewport = root?.querySelector('.ds-logo-ticker-viewport'), speed, persistenceKey, reduced = false } = {}) {
+export function observeLogoTicker(root, { list = root?.querySelector('[data-ticker-list]'), track = root?.querySelector('.ds-logo-ticker-track'), viewport = root?.querySelector('.ds-logo-ticker-viewport'), speed, reduced = false } = {}) {
   if (tickers.has(root)) return tickers.get(root);
   if (!root || !list || !track || !viewport) return { play: () => false, pause() {}, update() {}, dispose() {} };
   const doc = root.ownerDocument, view = doc.defaultView;
   const preference = view.matchMedia?.('(prefers-reduced-motion: reduce)');
-  const key = persistenceKey || (root.id ? `engram:logo-ticker:${root.id}:paused` : null);
-  const supported = Boolean(pauseButton && track.animate && view.IntersectionObserver);
+  const supported = Boolean(track.animate && view.IntersectionObserver);
   let disposed = false, intersecting = false, hovered = Boolean(root.matches?.(':hover')), focused = root.contains(doc.activeElement), userPaused = false;
   let animation = null, distance = 0, duration = 0, copyCount = 0, queued = false, updating = false, measuredAt = 0;
   const copies = [];
   const isReduced = () => reduced || preference?.matches || Boolean(root.closest?.('[data-motion="reduced"]'));
-  try { if (key) userPaused = view.localStorage.getItem(key) === '1'; } catch {}
-  const remember = () => { try { if (key) view.localStorage.setItem(key, userPaused ? '1' : '0'); } catch {} };
   const sync = () => {
     if (disposed) return;
     const staticMode = !animation || isReduced();
     const paused = staticMode || userPaused || hovered || focused || doc.hidden || !intersecting;
     root.setAttribute('data-ticker-paused', String(Boolean(paused)));
     if (animation) { if (paused) animation.pause(); else animation.play(); }
-    if (pauseButton) {
-      pauseButton.textContent = isReduced() ? 'Reduced motion' : staticMode ? 'Static logos' : userPaused ? 'Resume logos' : 'Pause logos';
-      pauseButton.disabled = Boolean(staticMode);
-      pauseButton.title = 'The ticker also pauses while hovered or focused.';
-      if (root.id) pauseButton.setAttribute('aria-controls', root.id);
-    }
   };
   const clear = () => { animation?.cancel(); animation = null; for (const copy of copies) copy.remove(); copies.length = 0; distance = duration = copyCount = 0; root.removeAttribute('data-ticker-enhanced'); };
   const measureVisibility = () => {
@@ -65,16 +56,14 @@ export function observeLogoTicker(root, { pauseButton = root?.querySelector('[da
     } finally { updating = false; }
   }
   const schedule = () => { if (!queued) { queued = true; queueMicrotask(() => { queued = false; if (!disposed) update(); }); } };
-  const play = () => { if (disposed || !root.isConnected || isReduced()) return false; userPaused = false; remember(); measureVisibility(); sync(); return Boolean(animation); };
-  const pause = () => { if (!disposed) { userPaused = true; remember(); sync(); } };
-  const toggle = () => { if (userPaused) play(); else pause(); };
+  const play = () => { if (disposed || !root.isConnected || isReduced()) return false; userPaused = false; measureVisibility(); sync(); return Boolean(animation); };
+  const pause = () => { if (!disposed) { userPaused = true; sync(); } };
   const enter = () => { hovered = true; sync(); }, leave = () => { hovered = false; sync(); };
   const focusin = () => { focused = true; sync(); };
   const focusout = event => { if (!root.contains(event.relatedTarget)) { focused = false; sync(); } };
   const visibility = () => sync();
   const restored = event => { if (event.persisted && !disposed && root.isConnected) { measureVisibility(); hovered = Boolean(root.matches?.(':hover')); focused = root.contains(doc.activeElement); update(); sync(); } };
   const pagehide = event => { if (event.persisted) { intersecting = false; sync(); } else dispose(); };
-  const storage = event => { if (key && event.key === key && ['0', '1', null].includes(event.newValue)) { userPaused = event.newValue === '1'; sync(); } };
   const observer = supported ? new view.IntersectionObserver(entries => {
     if (disposed) return;
     for (const entry of entries) if (entry.target === root && !(typeof entry.time === 'number' && entry.time < measuredAt)) { intersecting = entry.isIntersecting && entry.intersectionRatio > 0; sync(); }
@@ -89,16 +78,16 @@ export function observeLogoTicker(root, { pauseButton = root?.querySelector('[da
     disposed = true; observer?.disconnect(); resize?.disconnect(); mutation?.disconnect(); clear();
     root.removeEventListener('pointerenter', enter); root.removeEventListener('pointerleave', leave);
     root.removeEventListener('focusin', focusin); root.removeEventListener('focusout', focusout);
-    pauseButton?.removeEventListener('click', toggle); doc.removeEventListener('visibilitychange', visibility);
-    view.removeEventListener('resize', schedule); view.removeEventListener('pageshow', restored); view.removeEventListener('pagehide', pagehide); view.removeEventListener('storage', storage);
+    doc.removeEventListener('visibilitychange', visibility);
+    view.removeEventListener('resize', schedule); view.removeEventListener('pageshow', restored); view.removeEventListener('pagehide', pagehide);
     preference?.removeEventListener?.('change', schedule); root.removeAttribute('data-ticker-paused'); tickers.delete(root);
   }
   const api = { play, pause, update, dispose };
   tickers.set(root, api);
   root.addEventListener('pointerenter', enter); root.addEventListener('pointerleave', leave);
-  root.addEventListener('focusin', focusin); root.addEventListener('focusout', focusout); pauseButton?.addEventListener('click', toggle);
+  root.addEventListener('focusin', focusin); root.addEventListener('focusout', focusout);
   doc.addEventListener('visibilitychange', visibility); view.addEventListener('resize', schedule);
-  view.addEventListener('pageshow', restored); view.addEventListener('pagehide', pagehide); view.addEventListener('storage', storage);
+  view.addEventListener('pageshow', restored); view.addEventListener('pagehide', pagehide);
   preference?.addEventListener?.('change', schedule);
   observer?.observe(root); resize?.observe(viewport); resize?.observe(list);
   mutation?.observe(list, { childList: true, characterData: true, subtree: true });

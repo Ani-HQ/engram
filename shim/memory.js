@@ -15,7 +15,12 @@ const MAX_BUDGET = 16384;
 const MAX_INPUT = 32768;
 const MAX_RESPONSE = 65536;
 const TIMEOUT = 2000;
+// Explicit decision saves run as CLI actions outside a native hook's short
+// deadline. Their lock, versioned write, and confirmation need more time than
+// lightweight identity/read calls; an uncertain write is still never replayed.
+const REMEMBER_TIMEOUT = 15000;
 const KINDS = new Set(['decision', 'correction', 'constraint', 'handoff']);
+const DECISION_ERRORS = new Set(['timeout', 'unavailable', 'authorization_required', 'write_denied', 'rejected', 'invalid_response']);
 const hash = value => createHash('sha256').update(value).digest('hex');
 const bytes = value => Buffer.byteLength(value, 'utf8');
 const home = () => fs.realpathSync(process.env.HOME || os.homedir());
@@ -203,7 +208,21 @@ async function verify(operation, input, dependencies = {}) {
   });
 }
 
-async function limitedJson(response) {
+function timedOut(error, signal) {
+  return error?.name === 'TimeoutError' || (signal?.aborted && signal.reason?.name === 'TimeoutError');
+}
+
+function transportError(error, signal) {
+  const timeout = timedOut(error, signal);
+  return Object.assign(new Error(timeout ? 'Engram request timed out. Work can continue.' : 'Engram could not be reached. Work can continue.'), { code: timeout ? 'timeout' : 'unavailable', retryable: true });
+}
+
+function uncertainSave(value) {
+  const attemptedAt = typeof value.attemptedAt === 'string' && Number.isFinite(Date.parse(value.attemptedAt)) ? new Date(value.attemptedAt).toISOString() : null;
+  return { attemptedAt, errorCode: DECISION_ERRORS.has(value.errorCode) ? value.errorCode : 'unconfirmed' };
+}
+
+async function limitedJson(response, signal) {
   const chunks = [];
   let total = 0;
   try {
@@ -213,24 +232,29 @@ async function limitedJson(response) {
       chunks.push(Buffer.from(part));
     }
     return JSON.parse(Buffer.concat(chunks).toString('utf8'));
-  } catch { await response.body?.cancel().catch(() => {}); throw Object.assign(new Error('Engram returned an invalid or oversized lifecycle response.'), { code: 'invalid_response' }); }
+  } catch (error) {
+    await response.body?.cancel().catch(() => {});
+    if (timedOut(error, signal)) throw transportError(error, signal);
+    throw Object.assign(new Error('Engram returned an invalid or oversized lifecycle response.'), { code: 'invalid_response' });
+  }
 }
 
 async function rpc(binding, name, args, context, fetchImpl = fetch) {
   let response;
+  const signal = AbortSignal.timeout(name === 'remember' ? REMEMBER_TIMEOUT : TIMEOUT);
   try {
     response = await fetchImpl(binding.endpoint, {
-      method: 'POST', redirect: 'error', signal: AbortSignal.timeout(TIMEOUT),
+      method: 'POST', redirect: 'error', signal,
       headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${binding.token}`, 'Mcp-Method': 'tools/call', 'Mcp-Name': name, 'User-Agent': 'engram-memory-lifecycle/1' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args, ...(context ? { _meta: { 'com.engram/context': context } } : {}) } }),
     });
-  } catch { throw Object.assign(new Error('Engram is unavailable. Work can continue without it.'), { code: 'unavailable', retryable: true }); }
+  } catch (error) { throw transportError(error, signal); }
   if (!response.ok) {
     await response.body?.cancel().catch(() => {});
     const writeDenied = response.status === 403 && ['remember', 'record_action'].includes(name);
     throw Object.assign(new Error(writeDenied ? 'This connection cannot write shared memory or task reports.' : response.status === 401 || response.status === 403 ? 'Engram access was rejected. Reconnect this project before sending more events.' : 'Engram did not accept this lifecycle event.'), { code: writeDenied ? 'write_denied' : response.status === 401 || response.status === 403 ? 'authorization_required' : 'rejected', retryable: [429, 502, 503, 504].includes(response.status) });
   }
-  const payload = await limitedJson(response);
+  const payload = await limitedJson(response, signal);
   if (payload.result?.isError === true) {
     const items = payload.result.content;
     const message = Array.isArray(items) ? items.filter(item => item?.type === 'text' && typeof item.text === 'string').map(item => item.text).join('\n') : '';
@@ -338,7 +362,7 @@ async function lifecycle(event, input, dependencies = {}) {
   const binding = dependencies.binding || bindingForInput(input);
   const fetchImpl = dependencies.fetchImpl || fetch;
   return withRun(binding, input, async (state, persist) => {
-    if (event === 'status') return { ok: !state.blocked, status: state.blocked ? 'authorization_required' : 'ready', started: state.started === true, ended: state.ended === true, retrieved: state.retrieved || null, saved: Object.values(state.decisions).filter(item => item.status === 'saved').map(item => ({ at: item.at, slug: item.slug })), reports: state.events };
+    if (event === 'status') return { ok: !state.blocked, status: state.blocked ? 'authorization_required' : 'ready', started: state.started === true, ended: state.ended === true, retrieved: state.retrieved || null, saved: Object.values(state.decisions).filter(item => item.status === 'saved').map(item => ({ at: item.at, slug: item.slug })), uncertainSaves: Object.values(state.decisions).filter(item => item.status === 'uncertain').map(uncertainSave), reports: state.events };
     if (state.blocked) return { ok: false, status: 'authorization_required', message: 'Reconnect before using this project’s memory lifecycle.' };
     if (event === 'no-change') { state.noChange = true; return { ok: true, status: 'no-change' }; }
     if (event === 'stop') {
@@ -361,10 +385,10 @@ async function lifecycle(event, input, dependencies = {}) {
       const payloadHash = hash(`${kind}\n${text}`);
       if (state.decisions[id]) {
         if (state.decisions[id].payloadHash !== payloadHash) throw new Error('A delta ID cannot be reused for different memory text.');
-        return { ok: state.decisions[id].status === 'saved', status: state.decisions[id].status, duplicate: true };
+        return { ok: state.decisions[id].status === 'saved', status: state.decisions[id].status, duplicate: true, ...(state.decisions[id].status === 'uncertain' ? uncertainSave(state.decisions[id]) : {}) };
       }
       if (Object.keys(state.decisions).length >= 64) throw new Error('This task already has 64 memory deltas. Start a distinct task for new work.');
-      state.decisions[id] = { status: 'uncertain', payloadHash };
+      state.decisions[id] = { status: 'uncertain', payloadHash, attemptedAt: new Date().toISOString() };
       persist();
       try {
         const result = await rpc(binding, 'remember', { text, topic: binding.topic }, runContext(state), fetchImpl);
@@ -374,8 +398,9 @@ async function lifecycle(event, input, dependencies = {}) {
       } catch (error) {
         if (error.code === 'write_denied') { state.writeDenied = true; state.pending = []; }
         if (error.code === 'authorization_required') { state.blocked = true; state.pending = []; }
+        state.decisions[id].errorCode = DECISION_ERRORS.has(error.code) ? error.code : 'unavailable';
         // Never retry remember automatically after an uncertain acknowledgement.
-        return { ok: false, status: error.code || 'unavailable', message: 'Memory save was not confirmed. It will not be replayed automatically.' };
+        return { ok: false, status: state.decisions[id].errorCode, ...uncertainSave(state.decisions[id]), message: state.decisions[id].errorCode === 'timeout' ? 'Memory save timed out before confirmation. It may have reached the server and will not be replayed automatically.' : 'Memory save was not confirmed. It will not be replayed automatically.' };
       }
     }
     if (event === 'task-progress') {
@@ -675,7 +700,14 @@ async function runMemoryCli(args) {
     noLinks(dir);
     const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter(name => /^em_[a-f0-9]{64}\.json$/.test(name)).slice(-200) : [];
     const runs = files.map(file => readPrivate(path.join(dir, file), {}));
-    console.log(JSON.stringify({ connected: true, catalogTools: checks.tools.length, memoryRetrieved: runs.some(run => run.retrieved), memorySaved: runs.some(run => Object.values(run.decisions || {}).some(item => item.status === 'saved')), returnedContextBytes: runs.reduce((total, run) => total + (run.usedBytes || 0), 0), budgetBytesPerTask: binding.budget, tokenUsage: 'not provided by client; context bytes are measured, tokens are not estimated' }));
+    const uncertainSaves = { count: 0, errorCodeCounts: {} };
+    for (const run of runs) for (const decision of Object.values(run.decisions || {}).slice(-64)) {
+      if (decision.status !== 'uncertain') continue;
+      const { errorCode } = uncertainSave(decision);
+      uncertainSaves.count++;
+      uncertainSaves.errorCodeCounts[errorCode] = (uncertainSaves.errorCodeCounts[errorCode] || 0) + 1;
+    }
+    console.log(JSON.stringify({ connected: true, catalogTools: checks.tools.length, memoryRetrieved: runs.some(run => run.retrieved), memorySaved: runs.some(run => Object.values(run.decisions || {}).some(item => item.status === 'saved')), uncertainSaves, returnedContextBytes: runs.reduce((total, run) => total + (run.usedBytes || 0), 0), budgetBytesPerTask: binding.budget, tokenUsage: 'not provided by client; context bytes are measured, tokens are not estimated' }));
     return 0;
   }
   try {

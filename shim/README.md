@@ -52,11 +52,20 @@ Setup preflights every destination, commits files atomically, and restores files
 it changed if a later write fails. A concurrent user edit is preserved and
 reported instead of being overwritten during recovery.
 
-Restart your agent or refresh its MCP connections. Codex still requires native
+Restart or reload your agent after updating its memory workflow. For Claude Code,
+settle running work, exit, and run `claude --continue` in the same project to
+resume with the updated hooks. Refreshing MCP alone does not confirm the hooks
+are loaded. Codex still requires native
 hook review and trust through `/hooks`; managed or disabled policy is preserved.
 Setup itself never reads or writes memories or reports a task on your behalf.
 Run a real task, then review retrieval/save receipts in Connections → Memory use.
 Access checks and installed files do not prove automatic model use.
+
+Explicit memory saves wait up to fifteen seconds for a receipt; quick reads and
+hook checks keep their two-second network deadline. A timeout is reported as an
+unconfirmed save, not proof that Engram is offline. The bridge retains only the
+attempt time and a bounded failure code for diagnostics and never automatically
+replays an unconfirmed memory write.
 
 Existing users run the same command, or `engram-mcp upgrade <agent>`. An existing
 key is reused only for the same endpoint and is checked again before any write.

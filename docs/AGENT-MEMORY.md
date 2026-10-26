@@ -99,7 +99,20 @@ binding in `$XDG_CONFIG_HOME/engram/memory.json` (default
 `~/.claude/settings.json`. Other settings and hooks are preserved. Existing files
 receive uniquely named owner-only backups. Settings, credentials, and state are
 written atomically with mode 0600, with 0700 private directories; symbolic-link
-destinations and ancestors are rejected. Restart Claude Code after installing.
+destinations and ancestors are rejected. Restart Claude Code after installing or
+upgrading hooks. Once running work is settled, exit and run `claude --continue`
+from the same project to resume the conversation. Refreshing MCP connections
+alone does not confirm that updated hook commands are loaded. If a Stop message
+still shows a bare `engram-mcp memory` command instead of the quoted installed
+bridge, check `/hooks` for the command Claude is actually running.
+
+Health checks, reads, and hook requests have a two-second network deadline.
+Explicit memory saves have a separate fifteen-second deadline for the confirmed
+write receipt; this does not extend native hook execution. A timed-out save can
+already have reached the server, so its delivery stays unconfirmed and the bridge
+does not replay it. Run status exposes a bounded failure code and attempt time,
+without saving the memory text in diagnostics. Older unconfirmed attempts may
+have no recorded failure cause.
 
 The installed hooks do not read `transcript_path` or enable the older conversation
 capture feature:

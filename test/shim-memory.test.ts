@@ -25,7 +25,7 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-function fakeGateway(options: { delay?: number; large?: boolean; boundRecall?: (message: any, result: any) => Promise<any> } = {}) {
+function fakeGateway(options: { delay?: number; rememberDelay?: number; rememberBodyDelay?: number; large?: boolean; boundRecall?: (message: any, result: any) => Promise<any> } = {}) {
   const calls: any[] = [];
   const memories: string[] = [];
   const events = new Map<string, any>();
@@ -52,6 +52,7 @@ function fakeGateway(options: { delay?: number; large?: boolean; boundRecall?: (
       }
       if (params.name === "remember") {
         memories.push(args.text);
+        if (options.rememberDelay) await new Promise(resolve => setTimeout(resolve, options.rememberDelay));
         if (invalidRememberOnce) { invalidRememberOnce = false; return new Response("lost receipt"); }
         data = { ok: true, slug: "project-memory", appended: true };
       }
@@ -61,6 +62,16 @@ function fakeGateway(options: { delay?: number; large?: boolean; boundRecall?: (
       }
       let result = { content: [{ type: "text", text: JSON.stringify(data) }] };
       if (params.name === "recall" && options.boundRecall) result = await options.boundRecall(message, result);
+      if (params.name === "remember" && options.rememberBodyDelay) {
+        let timer: ReturnType<typeof setTimeout>;
+        return new Response(new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('{"jsonrpc":"2.0","id":1,"result":'));
+            timer = setTimeout(() => { controller.enqueue(new TextEncoder().encode(JSON.stringify(result) + '}')); controller.close(); }, options.rememberBodyDelay);
+          },
+          cancel() { clearTimeout(timer); },
+        }), { headers: { "Content-Type": "application/json" } });
+      }
       return Response.json({ jsonrpc: "2.0", id: message.id, result });
     },
   });
@@ -174,6 +185,18 @@ describe("bounded lifecycle bridge", () => {
     expect(JSON.parse(next.stdout).context).toContain("Keep retries idempotent");
     const doctor = JSON.parse((await command(["doctor"])).stdout);
     expect(doctor).toMatchObject({ connected: true, memoryRetrieved: true, memorySaved: true, budgetBytesPerTask: 4096 });
+    expect(doctor.uncertainSaves).toEqual({ count: 0, errorCodeCounts: {} });
+    gateway.uncertainRemember();
+    const unconfirmed = await command(["decision", "--run", run.runId], { kind: "handoff", deltaId: "uncertain-cli-delta", text: "The synthetic unconfirmed handoff must remain private." });
+    expect(JSON.parse(unconfirmed.stdout).errorCode).toBe("invalid_response");
+    const binding = memory.bindingFor(gateway.project, "generic"), stateFile = path.join(memory.stateRoot(), binding.scope, `${run.runId}.json`);
+    const state = JSON.parse(readFileSync(stateFile, "utf8"));
+    state.decisions["private-legacy-delta-id"] = { status: "uncertain", payloadHash: "private-legacy-payload-hash", errorCode: "fixture-alpha" };
+    writeFileSync(stateFile, JSON.stringify(state));
+    const beforeDoctor = gateway.calls.length, diagnosed = await command(["doctor"]);
+    expect(JSON.parse(diagnosed.stdout).uncertainSaves).toEqual({ count: 2, errorCodeCounts: { invalid_response: 1, unconfirmed: 1 } });
+    for (const privateDetail of ["private-legacy-delta-id", "private-legacy-payload-hash", "The synthetic unconfirmed handoff"]) expect(diagnosed.stdout).not.toContain(privateDetail);
+    expect(gateway.calls.slice(beforeDoctor).every(call => call.params?.name === "whoami" || call.method === "tools/list")).toBe(true);
     const bad = await command(["decision", "--run", run.runId], "fixture-alpha is invalid JSON");
     expect(bad.code).toBe(1);
     expect(bad.stderr).toContain("valid JSON");
@@ -254,6 +277,57 @@ describe("bounded lifecycle bridge", () => {
     expect((await memory.lifecycle("decision", input, { binding })).ok).toBe(false);
     expect((await memory.lifecycle("decision", input, { binding })).status).toBe("uncertain");
     expect(gateway.memories).toHaveLength(1);
+  });
+
+  test("explicit memory saves can confirm after the short read deadline without extending hook reads", async () => {
+    const gateway = fakeGateway({ rememberDelay: 2200 }), binding = gateway.binding();
+    const first = await memory.lifecycle("task-start", task, { binding });
+    const deadlines: number[] = [], originalTimeout = AbortSignal.timeout;
+    AbortSignal.timeout = function(milliseconds: number) { deadlines.push(milliseconds); return originalTimeout.call(AbortSignal, milliseconds); };
+    try {
+      const saved = await memory.lifecycle("decision", { runId: first.runId, kind: "decision", text: "Use stable request identifiers for this explicit slow save." }, { binding });
+      expect(saved.status).toBe("saved"); expect(saved.ok).toBe(true);
+      expect(await memory.claudeHook({ session_id: "deadline-check", cwd: gateway.project, hook_event_name: "SessionStart" }, { binding })).toHaveProperty("hookSpecificOutput");
+      await memory.internals.rpc(binding, "whoami", {}, undefined);
+      expect(deadlines).toEqual([15000, 2000]);
+      expect(gateway.calls.filter(call => call.params?.name === "remember")).toHaveLength(1);
+    } finally { AbortSignal.timeout = originalTimeout; }
+  });
+
+  test("aborted writes retain safe timeout diagnostics and never resend even when the server applied the save", async () => {
+    for (const responseStage of ["headers", "body"]) {
+      const gateway = fakeGateway(responseStage === "headers" ? { rememberDelay: 400 } : { rememberBodyDelay: 400 });
+      const binding = gateway.binding(), first = await memory.lifecycle("task-start", { ...task, sessionId: responseStage }, { binding });
+      const originalTimeout = AbortSignal.timeout;
+      AbortSignal.timeout = function(milliseconds: number) { return originalTimeout.call(AbortSignal, milliseconds === 15000 ? 100 : milliseconds); };
+      try {
+        const input = { runId: first.runId, kind: "handoff", deltaId: "bounded-timeout", text: "A synthetic delayed acknowledgement may follow a successful save." };
+        const failed = await memory.lifecycle("decision", input, { binding });
+        expect(failed).toMatchObject({ ok: false, status: "timeout", errorCode: "timeout" });
+        expect(failed.message).toContain("may have reached the server"); expect(failed.message).not.toContain("unavailable");
+        expect(Number.isFinite(Date.parse(failed.attemptedAt))).toBe(true);
+        expect(await memory.lifecycle("decision", input, { binding })).toMatchObject({ ok: false, status: "uncertain", duplicate: true, errorCode: "timeout", attemptedAt: failed.attemptedAt });
+        const status = await memory.lifecycle("status", { runId: first.runId }, { binding });
+        expect(status.uncertainSaves).toEqual([{ attemptedAt: failed.attemptedAt, errorCode: "timeout" }]);
+        expect(JSON.stringify(status)).not.toContain(input.text); expect(JSON.stringify(status)).not.toContain("payloadHash");
+        const state = JSON.parse(readFileSync(path.join(memory.stateRoot(), binding.scope, `${first.runId}.json`), "utf8"));
+        expect(Object.values(state.decisions)).toHaveLength(1);
+        expect(Object.values(state.decisions)[0]).toMatchObject({ status: "uncertain", errorCode: "timeout", attemptedAt: failed.attemptedAt });
+        expect(gateway.memories).toHaveLength(1); expect(gateway.calls.filter(call => call.params?.name === "remember")).toHaveLength(1);
+      } finally { AbortSignal.timeout = originalTimeout; }
+    }
+  });
+
+  test("decision rejection retains authorization diagnostics and blocks later calls without replay", async () => {
+    const gateway = fakeGateway(), binding = gateway.binding();
+    const first = await memory.lifecycle("task-start", task, { binding }); gateway.deny();
+    const input = { runId: first.runId, kind: "decision", text: "Do not save this after access is revoked." };
+    const denied = await memory.lifecycle("decision", input, { binding });
+    expect(denied).toMatchObject({ ok: false, status: "authorization_required", errorCode: "authorization_required" });
+    const status = await memory.lifecycle("status", { runId: first.runId }, { binding });
+    expect(status).toMatchObject({ ok: false, status: "authorization_required", uncertainSaves: [{ attemptedAt: denied.attemptedAt, errorCode: "authorization_required" }] });
+    expect(await memory.lifecycle("decision", input, { binding })).toMatchObject({ ok: false, status: "authorization_required" });
+    expect(gateway.calls.filter(call => call.params?.name === "remember")).toHaveLength(1); expect(gateway.memories).toHaveLength(0);
   });
 
   test("revoked credentials stop subsequent calls, and cannot transfer pending events to a new credential", async () => {

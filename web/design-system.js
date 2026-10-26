@@ -263,8 +263,8 @@ export function observeLoadingMotion(root = document) {
 }
 
 /** One finite illustration, never a request, connection, or activity state. */
-export function observeContextFlow(root, { replayButton, pauseButton, pauseOnInteraction = false, mode = 'finite', autoplay = true, reduced = false } = {}) {
-  if (mode === 'loop') return observeLoopingContextFlow(root, { pauseButton, pauseOnInteraction, autoplay, reduced });
+export function observeContextFlow(root, { replayButton, pauseOnInteraction = false, mode = 'finite', autoplay = true, reduced = false } = {}) {
+  if (mode === 'loop') return observeLoopingContextFlow(root, { pauseOnInteraction, autoplay, reduced });
   if (!root?.setAttribute) return { play: () => false, dispose() {} };
   const doc = root.ownerDocument;
   const view = doc?.defaultView;
@@ -352,11 +352,11 @@ export function observeContextFlow(root, { replayButton, pauseButton, pauseOnInt
 }
 
 /** Explicitly opted-in decorative loop; CSS owns time, JS owns permission. */
-function observeLoopingContextFlow(root, { pauseButton, pauseOnInteraction, autoplay, reduced }) {
+function observeLoopingContextFlow(root, { pauseOnInteraction, autoplay, reduced }) {
   if (!root?.setAttribute) return { play: () => false, pause() {}, dispose() {} };
   const doc = root.ownerDocument, view = doc?.defaultView;
   const preference = view?.matchMedia?.('(prefers-reduced-motion: reduce)');
-  const supported = Boolean(view?.IntersectionObserver && (pauseButton || pauseOnInteraction));
+  const supported = Boolean(view?.IntersectionObserver);
   // Tall mobile compositions may never fit half their area in the viewport.
   const entryThreshold = .01;
   let disposed = false, entered = false, intersecting = false, userPaused = !autoplay, keyboardPaused = false;
@@ -379,11 +379,6 @@ function observeLoopingContextFlow(root, { pauseButton, pauseOnInteraction, auto
     const paused = staticMode || userPaused || hovered || focused || !entered || !intersecting || doc.hidden;
     root.setAttribute('data-flow-state', staticMode ? 'static' : 'playing');
     root.setAttribute('data-flow-paused', String(Boolean(paused)));
-    if (pauseButton) {
-      pauseButton.textContent = isReduced() ? 'Reduced motion' : !entered ? 'Play animation' : userPaused || keyboardPaused ? 'Resume animation' : 'Pause animation';
-      pauseButton.disabled = Boolean(isReduced());
-      if (root.id) pauseButton.setAttribute('aria-controls', root.id);
-    }
   };
   const play = () => {
     if (disposed || !root.isConnected || doc.hidden || isReduced()) return false;
@@ -392,9 +387,8 @@ function observeLoopingContextFlow(root, { pauseButton, pauseOnInteraction, auto
     entered = true; userPaused = keyboardPaused = false; sync(); return true;
   };
   const pause = () => { if (!disposed) { userPaused = true; sync(); } };
-  const toggle = () => { if (!entered || userPaused || keyboardPaused) play(); else pause(); };
   const keyboard = event => {
-    if ((pauseButton && event.target === pauseButton) || ['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) return;
+    if (['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) return;
     keyboardPaused = true; sync();
   };
   const visibility = () => { measureInteraction(); sync(); };
@@ -419,7 +413,7 @@ function observeLoopingContextFlow(root, { pauseButton, pauseOnInteraction, auto
     if (disposed) return;
     disposed = true; observer?.disconnect(); removal?.disconnect();
     doc?.removeEventListener('visibilitychange', visibility); doc?.removeEventListener('keydown', keyboard);
-    view?.removeEventListener('pagehide', pagehide); view?.removeEventListener('pageshow', pageshow); pauseButton?.removeEventListener('click', toggle);
+    view?.removeEventListener('pagehide', pagehide); view?.removeEventListener('pageshow', pageshow);
     preference?.removeEventListener?.('change', visibility);
     for (const [name, handler] of interactions) root.removeEventListener(name, handler);
     root.removeAttribute('data-flow-mode'); root.removeAttribute('data-flow-paused'); root.removeAttribute('data-flow-state');
@@ -427,7 +421,7 @@ function observeLoopingContextFlow(root, { pauseButton, pauseOnInteraction, auto
   root.setAttribute('data-flow-mode', 'loop'); measureInteraction(); sync();
   observer?.observe(root); if (doc?.documentElement) removal?.observe(doc.documentElement, { childList: true, subtree: true });
   doc?.addEventListener('visibilitychange', visibility); doc?.addEventListener('keydown', keyboard);
-  view?.addEventListener('pagehide', pagehide); view?.addEventListener('pageshow', pageshow); pauseButton?.addEventListener('click', toggle);
+  view?.addEventListener('pagehide', pagehide); view?.addEventListener('pageshow', pageshow);
   preference?.addEventListener?.('change', visibility);
   for (const [name, handler] of interactions) root.addEventListener(name, handler);
   return { play, pause, dispose };
