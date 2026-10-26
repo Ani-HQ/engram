@@ -25,7 +25,6 @@
 .m-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ds-space-3); margin-top: var(--ds-space-8); }
 .m-quiet-note { display: block; margin-top: var(--ds-space-4); color: var(--ds-muted); font-size: var(--ds-text-xs); }
 .m-hero-art { width: 100%; max-width: 980px; min-width: 0; margin: 0; }
-.m-flow-controls { margin-left: auto; }
 .m-architecture { --m-architecture-gap: var(--ds-space-8); --m-agent-gap: var(--ds-space-3); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.22fr) minmax(0, 1fr); align-items: center; gap: var(--m-architecture-gap); padding: var(--ds-space-10); }
 .m-hero-art .m-architecture { position: relative; isolation: isolate; }
 .m-agent-identity { display: flex; align-items: center; gap: var(--ds-space-3); }

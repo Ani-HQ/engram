@@ -324,3 +324,27 @@ therefore asks the user to request the skill by name, with an optional picker
 only where available. The Bot reported successful identity and focused-recall
 calls; no dummy memory writes were used. Skill availability and those calls do
 not verify automatic use across sessions.
+
+
+## Decorative loops without playback controls — 26 October 2026
+
+Removed visible animation pause/resume controls from the homepage hero, agent
+logo ticker, and design-system loop previews. Empty control wrappers and their
+button listeners are gone. Decorative loops start automatically; the ticker
+ignores the retired saved pause preference so an old setting cannot leave it
+stopped without a control. Existing reduced-motion, keyboard/static,
+hover/focus where opted in, offscreen/background, and teardown behavior remains.
+Owner APIs can still suspend a mounted illustration when needed.
+
+Browser review at 1280×900 and 320×760 confirmed no loop playback buttons
+in the homepage or gallery, with the hero actively looping on desktop and
+mobile. The gallery's explicit reduced-motion preview remains static. At 320px,
+the document content stays within its 305px available width. The local console
+showed no errors. Additional 320×1000 screenshots fit the entire narrow hero and
+its surrounding context. Captures are in the task's `animation-controls` visual
+artifacts: `desktop-hero.jpg`, `mobile-hero.jpg`, `desktop-gallery.jpg`, and
+`mobile-gallery.jpg`.
+
+Validation: the shared context-flow, logo-ticker and design-system suites passed
+**36 tests, 351 assertions, zero failures**. Marketing/gallery browser bundles
+and `git diff --check` passed. This review covers local changes only.

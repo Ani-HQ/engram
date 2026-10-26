@@ -40,18 +40,18 @@ function fixture({ reduced = false, supported = true, stored = null as string | 
     MutationObserver: class { disconnected = false; constructor(public callback: Function) { mo.push(this); } observe() {} disconnect() { this.disconnected = true; } },
   });
   const doc = Object.assign(new Events(), { defaultView: view, hidden: false, activeElement: new Node(), documentElement: new Node() });
-  const root = new Node(), list = new Node('UL'), track: any = new Node(), viewport = new Node(), button = new Node('BUTTON');
+  const root = new Node(), list = new Node('UL'), track: any = new Node(), viewport = new Node();
   root.ownerDocument = doc; root.setAttribute('id', 'logos'); list.setAttribute('data-ticker-list', ''); list.setAttribute('id', 'original-list'); list.setAttribute('role', 'list');
   for (let index = 0; index < 21; index++) { const item = new Node('LI'), logo = new Node('IMG'); item.textContent = `Agent ${index + 1}`; item.setAttribute('id', `agent-${index}`); item.append(logo); list.append(item); }
-  track.append(list); viewport.append(track); root.append(button); root.append(viewport);
+  track.append(list); viewport.append(track); root.append(viewport);
   if (supported) track.animate = (frames: any, options: any) => {
     const animation = { frames, options, currentTime: 0, playState: 'running', cancelled: false,
       pause() { this.playState = 'paused'; }, play() { this.playState = 'running'; }, cancel() { this.cancelled = true; this.playState = 'idle'; } };
     animations.push(animation); return animation;
   };
-  const options = { list, track, viewport, pauseButton: button, persistenceKey: 'test:logos' };
+  const options = { list, track, viewport };
   const enter = (visible = true) => { root.bounds.top = visible ? 100 : 1000; root.bounds.bottom = root.bounds.top + 160; io.at(-1).callback([{ target: root, isIntersecting: visible, intersectionRatio: visible ? 1 : 0, time: 200 }]); };
-  return { root, list, track, viewport, button, options, doc, view, preference, animations, storage, io, ro, mo, enter };
+  return { root, list, track, viewport, options, doc, view, preference, animations, storage, io, ro, mo, enter };
 }
 
 describe('accessible local-logo ticker', () => {
@@ -62,7 +62,7 @@ describe('accessible local-logo ticker', () => {
     expect(copy.getAttribute('data-ticker-list')).toBeNull(); expect(copy.querySelectorAll('[id]')).toHaveLength(0);
     expect(animation.options).toEqual({ duration: 80000, iterations: Infinity, easing: 'linear' });
     expect(animation.frames[1].transform).toBe('translateX(-2400px)'); expect(animation.playState).toBe('paused');
-    f.enter(); expect(animation.playState).toBe('running'); expect(f.button.textContent).toBe('Pause logos'); controller.dispose();
+    f.enter(); expect(animation.playState).toBe('running'); controller.dispose();
   });
 
   test('hover, focus, offscreen and background freeze the same timeline without changing user preference', () => {
@@ -74,17 +74,19 @@ describe('accessible local-logo ticker', () => {
     expect(animation.currentTime).toBe(2345); expect(animation.playState).toBe('running'); expect(f.storage.size).toBe(0); controller.dispose();
   });
 
-  test('Pause/Resume is immediate, persisted and survives automatic pauses/remounts', () => {
-    const f = fixture(), controller = observeLogoTicker(f.root, f.options); f.enter();
-    f.button.emit('click', { detail: 0 }); expect(f.animations[0].playState).toBe('paused'); expect(f.button.textContent).toBe('Resume logos'); expect(f.storage.get('test:logos')).toBe('1');
+  test('retired stored pause preferences cannot disable an automatic ticker without controls', () => {
+    const f = fixture({ stored: '1' }), controller = observeLogoTicker(f.root, f.options); f.enter();
+    expect(f.root.children).toEqual([f.viewport]); expect(f.animations[0].playState).toBe('running');
+    f.view.emit('storage', { key: 'test:logos', newValue: '1' }); expect(f.animations[0].playState).toBe('running');
+    controller.pause(); expect(f.animations[0].playState).toBe('paused');
     f.enter(false); f.enter(); expect(f.animations[0].playState).toBe('paused'); controller.dispose();
-    const restored = observeLogoTicker(f.root, f.options); f.enter(); expect(f.animations.at(-1).playState).toBe('paused');
-    f.button.emit('click', { detail: 0 }); expect(f.button.textContent).toBe('Pause logos'); expect(f.storage.get('test:logos')).toBe('0'); expect(f.animations.at(-1).playState).toBe('running'); restored.dispose();
+    const restored = observeLogoTicker(f.root, f.options); f.enter(); expect(f.animations.at(-1).playState).toBe('running');
+    expect(f.storage.get('test:logos')).toBe('1'); restored.dispose();
   });
 
   test('reduced motion and unsupported/interactive lists retain all original readable items without clipping or copies', async () => {
     const f = fixture({ reduced: true }), controller = observeLogoTicker(f.root, f.options);
-    expect(f.root.getAttribute('data-ticker-enhanced')).toBeNull(); expect(f.track.children).toEqual([f.list]); expect(f.list.children).toHaveLength(21); expect(f.button.disabled).toBe(true);
+    expect(f.root.getAttribute('data-ticker-enhanced')).toBeNull(); expect(f.track.children).toEqual([f.list]); expect(f.list.children).toHaveLength(21);
     f.preference.matches = false; f.preference.emit('change'); await Promise.resolve(); expect(f.track.children).toHaveLength(2); f.enter();
     f.preference.matches = true; f.preference.emit('change'); await Promise.resolve(); expect(f.animations[0].cancelled).toBe(true); expect(f.track.children).toEqual([f.list]); controller.dispose();
     for (const interactive of [false, true]) {
@@ -100,7 +102,7 @@ describe('accessible local-logo ticker', () => {
     f.list.width = 200; controller.update(); expect(f.track.children).toHaveLength(6); expect(f.list.children).toHaveLength(21); controller.dispose();
   });
 
-  test('BFCache restores measured visibility while keeping a persisted user pause', () => {
+  test('BFCache restores measured visibility while keeping the owner pause', () => {
     for (const paused of [false, true]) {
       const f = fixture(), controller = observeLogoTicker(f.root, f.options); f.enter(); const animation = f.animations[0]; animation.currentTime = 4500;
       if (paused) controller.pause(); f.view.emit('pagehide', { persisted: true }); expect(animation.playState).toBe('paused');
@@ -112,7 +114,7 @@ describe('accessible local-logo ticker', () => {
     const f = fixture(), controller = observeLogoTicker(f.root, f.options); expect(observeLogoTicker(f.root, f.options)).toBe(controller);
     f.root.isConnected = false; f.mo[0].callback([]); controller.dispose();
     expect(f.animations[0].cancelled).toBe(true); expect(f.track.children).toEqual([f.list]); expect(f.list.children).toHaveLength(21);
-    expect(f.root.listenerCount + f.button.listenerCount + f.doc.listenerCount + f.view.listenerCount + f.preference.listenerCount).toBe(0);
+    expect(f.root.listenerCount + f.doc.listenerCount + f.view.listenerCount + f.preference.listenerCount).toBe(0);
     expect(f.io[0].disconnected && f.ro[0].disconnected && f.mo[0].disconnected).toBe(true); expect(controller.play()).toBe(false);
   });
 });

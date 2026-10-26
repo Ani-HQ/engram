@@ -164,24 +164,24 @@ describe('finite illustrative context flow', () => {
 });
 
 describe('explicit illustrative circuit loop', () => {
-  test('starts on entry with no JavaScript loop and preserves a deliberate pause', () => {
-    const f = fixture(), controller = observeContextFlow(f.root, { mode: 'loop', pauseButton: f.button });
+  test('starts on entry without playback controls or a JavaScript loop and preserves an owner pause', () => {
+    const f = fixture(), controller = observeContextFlow(f.root, { mode: 'loop' });
     expect(f.root.attrs['data-flow-mode']).toBe('loop'); expect(f.root.attrs['data-flow-paused']).toBe('true');
-    expect(f.button.textContent).toBe('Play animation'); expect(f.observers[0].options.threshold).toEqual([0, .01]);
+    expect(f.observers[0].options.threshold).toEqual([0, .01]);
     f.enter(true, .005); expect(f.root.attrs['data-flow-paused']).toBe('true');
     f.enter(true, .01); expect(f.root.attrs['data-flow-paused']).toBe('false'); expect(f.frames.size + f.timers.size).toBe(0);
-    f.button.emit('click', { detail: 1 }); expect(f.root.attrs['data-flow-paused']).toBe('true'); expect(f.button.textContent).toBe('Resume animation');
+    controller.pause(); expect(f.root.attrs['data-flow-paused']).toBe('true');
     f.enter(false); f.enter(); expect(f.root.attrs['data-flow-paused']).toBe('true');
-    f.button.emit('click', { detail: 1 }); expect(f.root.attrs['data-flow-paused']).toBe('false'); expect(f.button.textContent).toBe('Pause animation');
+    controller.play(); expect(f.root.attrs['data-flow-paused']).toBe('false');
     controller.dispose();
   });
 
   test('a tall mobile composition starts even when half its area cannot fit on screen', () => {
-    const f = fixture(), controller = observeContextFlow(f.root, { mode: 'loop', pauseButton: f.button });
+    const f = fixture(), controller = observeContextFlow(f.root, { mode: 'loop' });
     f.view.innerHeight = 280;
     Object.assign(f.bounds, { top: 0, bottom: 654, height: 654 });
     f.observers[0].callback([{ target: f.root, isIntersecting: true, intersectionRatio: 280 / 654, time: 200 }]);
-    expect(f.root.attrs['data-flow-paused']).toBe('false'); expect(f.button.textContent).toBe('Pause animation');
+    expect(f.root.attrs['data-flow-paused']).toBe('false');
     f.observers[0].callback([{ target: f.root, isIntersecting: false, intersectionRatio: 0, time: 210 }]);
     expect(f.root.attrs['data-flow-paused']).toBe('true');
     f.observers[0].callback([{ target: f.root, isIntersecting: true, intersectionRatio: .1, time: 220 }]);
@@ -189,16 +189,15 @@ describe('explicit illustrative circuit loop', () => {
   });
 
   test('Play starts the first visible frame before an observer sample arrives', () => {
-    const f = fixture(), controller = observeContextFlow(f.root, { mode: 'loop', pauseButton: f.button });
+    const f = fixture(), controller = observeContextFlow(f.root, { mode: 'loop' });
     Object.assign(f.bounds, { top: 790, bottom: 990 });
-    expect(f.button.textContent).toBe('Play animation');
-    f.button.emit('click', { detail: 1 });
-    expect(f.root.attrs['data-flow-paused']).toBe('false'); expect(f.button.textContent).toBe('Pause animation');
+    expect(controller.play()).toBe(true);
+    expect(f.root.attrs['data-flow-paused']).toBe('false');
     expect(f.frames.size + f.timers.size).toBe(0); controller.dispose();
   });
 
   test('viewport and background suspend the same animation timeline and resume only while visible', () => {
-    const f = fixture(), controller = observeContextFlow(f.root, { mode: 'loop', pauseButton: f.button });
+    const f = fixture(), controller = observeContextFlow(f.root, { mode: 'loop' });
     f.enter(); f.enter(false); expect(f.root.attrs['data-flow-paused']).toBe('true');
     f.enter(true, .2); expect(f.root.attrs['data-flow-paused']).toBe('false');
     f.doc.hidden = true; f.doc.emit('visibilitychange'); expect(f.root.attrs['data-flow-paused']).toBe('true');
@@ -207,20 +206,20 @@ describe('explicit illustrative circuit loop', () => {
   });
 
   test('reduced motion stays static and keyboard pause/resume updates immediately', () => {
-    const reduced = fixture(), staticController = observeContextFlow(reduced.root, { mode: 'loop', pauseButton: reduced.button, reduced: true });
-    reduced.enter(); expect(reduced.root.attrs['data-flow-state']).toBe('static'); expect(reduced.button.disabled).toBe(true);
-    expect(reduced.button.textContent).toBe('Reduced motion'); expect(staticController.play()).toBe(false); staticController.dispose();
-    const f = fixture(), controller = observeContextFlow(f.root, { mode: 'loop', pauseButton: f.button });
-    f.enter(); f.doc.emit('keydown', { key: 'Tab' }); expect(f.root.attrs['data-flow-state']).toBe('static'); expect(f.button.textContent).toBe('Resume animation');
-    f.doc.emit('keydown', { key: 'Enter', target: f.button }); f.button.emit('click', { detail: 0 });
+    const reduced = fixture(), staticController = observeContextFlow(reduced.root, { mode: 'loop', reduced: true });
+    reduced.enter(); expect(reduced.root.attrs['data-flow-state']).toBe('static');
+    expect(staticController.play()).toBe(false); staticController.dispose();
+    const f = fixture(), controller = observeContextFlow(f.root, { mode: 'loop' });
+    f.enter(); f.doc.emit('keydown', { key: 'Tab' }); expect(f.root.attrs['data-flow-state']).toBe('static');
+    controller.play();
     expect(f.root.attrs['data-flow-state']).toBe('playing'); expect(f.root.attrs['data-flow-paused']).toBe('false');
-    f.preference.matches = true; f.preference.emit('change'); expect(f.root.attrs['data-flow-state']).toBe('static'); expect(f.button.disabled).toBe(true);
+    f.preference.matches = true; f.preference.emit('change'); expect(f.root.attrs['data-flow-state']).toBe('static');
     expect(f.frames.size + f.timers.size).toBe(0); controller.dispose();
   });
 
   test('BFCache restoration reconciles fresh visibility while preserving user and reduced-motion choices', () => {
     for (const choice of ['running', 'paused', 'keyboard', 'reduced']) {
-      const f = fixture(), controller = observeContextFlow(f.root, { mode: 'loop', pauseButton: f.button }); f.enter();
+      const f = fixture(), controller = observeContextFlow(f.root, { mode: 'loop' }); f.enter();
       if (choice === 'paused') controller.pause();
       if (choice === 'keyboard') f.doc.emit('keydown', { key: 'Tab' });
       if (choice === 'reduced') { f.preference.matches = true; f.preference.emit('change'); }
@@ -231,13 +230,13 @@ describe('explicit illustrative circuit loop', () => {
     }
   });
 
-  test('loop teardown removes all lifecycle listeners and an absent pause control retains static fallback', () => {
-    const f = fixture(), controller = observeContextFlow(f.root, { mode: 'loop', pauseButton: f.button });
+  test('loop teardown removes all lifecycle listeners and unsupported browsers retain a static fallback', () => {
+    const f = fixture(), controller = observeContextFlow(f.root, { mode: 'loop' });
     f.enter(); f.root.isConnected = false; f.removals[0].callback(); controller.dispose();
     expect(f.doc.count + f.view.count + f.preference.count + f.button.count).toBe(0);
     expect(f.observers[0].disconnected && f.removals[0].disconnected).toBe(true);
     expect(f.root.attrs['data-flow-mode']).toBeUndefined(); expect(controller.play()).toBe(false);
-    const fallback = fixture(), staticController = observeContextFlow(fallback.root, { mode: 'loop' });
+    const fallback = fixture({ supported: false }), staticController = observeContextFlow(fallback.root, { mode: 'loop' });
     expect(fallback.root.attrs['data-flow-state']).toBe('static'); expect(fallback.frames.size + fallback.timers.size).toBe(0); staticController.dispose();
   });
 
