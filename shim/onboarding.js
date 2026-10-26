@@ -11,7 +11,11 @@ const MAX_RESPONSE_BYTES = 256_000;
 
 function endpointForHost(value) {
   let url;
-  try { url = new URL(String(value).trim()); } catch { throw new Error('Use a complete Engram URL, such as https://engram.ani.computer.'); }
+  const raw = String(value).trim();
+  // URL parsers silently discard embedded tabs/newlines. Reject these before
+  // parsing so a pasted value cannot change the credential destination.
+  if (/[\s\x00-\x1f\x7f-\x9f]/u.test(raw)) throw new Error('The Engram URL must not contain internal whitespace or control characters.');
+  try { url = new URL(raw); } catch { throw new Error('Use a complete Engram URL, such as https://engram.ani.computer.'); }
   const loopback = url.hostname === 'localhost' || url.hostname === '[::1]' || /^127(?:\.\d{1,3}){3}$/.test(url.hostname);
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) throw new Error('Engram requires HTTPS. HTTP is allowed only for a local loopback server.');
   if (url.username || url.password || url.search || url.hash) throw new Error('The Engram URL must not contain credentials, a query, or a fragment.');

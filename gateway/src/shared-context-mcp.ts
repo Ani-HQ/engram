@@ -1,12 +1,14 @@
 import { authenticateContextShareToken } from "./context-sharing-access";
 import { callSharedContextTool, contextSnapshotPages } from "./shared-context-read";
 import { negotiateProtocolVersion, resolveMcpRouting } from "./proxy";
+import { boundMcpResult, contextMaxBytes, contextReadArguments, PAGE_READ_PROPERTIES } from "./mcp-context";
+import { parseMcpMemoryContext } from "./mcp-request-context";
 
 const READ_TOOLS = [
   { name: "recall", description: "Search only the approved shared context and return short snippets.", properties: { query: { type: "string" }, full: { type: "boolean" } }, required: ["query"] },
   { name: "search", description: "Keyword search over approved shared snapshots only.", properties: { query: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 25 } }, required: ["query"] },
   { name: "list_pages", description: "List approved shared snapshots. These pages are read-only.", properties: { limit: { type: "integer", minimum: 1, maximum: 25 }, offset: { type: "integer", minimum: 0 }, sort: { type: "string", enum: ["slug", "updated_desc", "updated_asc", "created_desc"] } } },
-  { name: "get_page", description: "Read an approved snapshot by its shared-context slug.", properties: { slug: { type: "string" } }, required: ["slug"] },
+  { name: "get_page", description: "Read an approved snapshot in bounded pages. Use next_cursor for more.", properties: { slug: { type: "string" }, ...PAGE_READ_PROPERTIES }, required: ["slug"] },
   { name: "whoami", description: "Show this connection's restricted, read-only access.", properties: {} },
 ].map(({ properties, required, ...tool }) => ({ ...tool, annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", additionalProperties: false, properties, ...(required ? { required } : {}) } }));
 
@@ -51,6 +53,13 @@ export async function handleSharedContextMcp(req: Request, authenticate: Authent
   if (typeof name !== "string" || !READ_TOOLS.some(tool => tool.name === name)) return error(msg.id, -32601, "Tool not available for shared context.");
   const args = msg.params?.arguments ?? {};
   if (!args || typeof args !== "object" || Array.isArray(args)) return error(msg.id, -32602, "Arguments must be an object.");
+  let context;
+  try { context = parseMcpMemoryContext(msg.params?._meta); }
+  catch { return error(msg.id, -32602, "Invalid Engram context metadata.", 400); }
+  if (context.verification || context.probeId) return error(msg.id, -32602, "Scoped read-only shares do not support read/save workflow verification.", 400);
   const pages = contextSnapshotPages(grant.items.map(item => ({ ...item, shareId: grant!.shareId })));
-  return rpc(msg.id, callSharedContextTool(pages, name, args));
+  // Scoped shares cannot borrow an owner's task/usage ledger. Their adapter
+  // maintains a local task budget; this endpoint independently caps each reply.
+  const result = callSharedContextTool(pages, name, name === "get_page" ? contextReadArguments(args) : args);
+  return rpc(msg.id, boundMcpResult(name, args, { ...result, _meta: { engramContext: { scope: "response", runScoped: false, budgetBytes: contextMaxBytes(context.maxBytes) } } }, contextMaxBytes(context.maxBytes)));
 }

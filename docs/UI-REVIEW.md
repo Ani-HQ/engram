@@ -1,5 +1,68 @@
 # Responsive and interaction review
 
+## Portable agent memory — 26 October 2026
+
+Connections now distinguish access, successful recall/save receipts, an explicit
+read-and-save workflow check, and unknown automatic use. Client-declared adapter
+identity and version remain labeled. A passed check never claims memory is used
+on every task. The design-system evidence gallery includes this shared pattern.
+
+The local sample-data Connections drawer and gallery were reviewed at 1280px and
+320px. Checks covered measured and unmeasured connections, the workflow evidence
+disclosure, and Codex setup guidance. Long setup commands remain single-line and
+scroll within their own named region. No page-wide overflow or console errors
+were found. Captures are in the task's local visual artifacts under
+`quiet-hero-ticker/all-agents/`.
+
+Validation: **829 tests passed, 1 Cloud Run-only skip, 0 failures, and 8873
+assertions**. The Python wrapper includes 14 HTTP/framework cases. Actual
+JavaScript-to-Python and Python-to-JavaScript HTTP handoffs passed with synthetic
+data. Disposable PostgreSQL verification passed **828 integration checks, 78
+authority/isolation checks, and 36 managed-provisioner checks**. Browser/server
+bundles, the 69-file runtime asset privacy gate, 21 offline release-automation
+tests, package dry runs, and `git diff --check` passed.
+
+Native event conformance is fixture-tested, not live certification of every app
+or edition. The compatibility guide records injection and task-budget limits;
+unknown runtime combinations remain explicit. No global agent configuration,
+production data, package publication, or deployment was changed in this pass.
+
+## Memory workflow and context diagnostics — 26 October 2026
+
+The Connections drawer now separates successful recall/save receipts from access
+status, measured response bytes, estimated tokens, duplicate skips and budget
+stops. Unknown measurements remain explicit. The shared `evidenceList` primitive
+and its received, unmeasured and unavailable examples live at
+`/design-system#memory-evidence`. The drawer excludes this component from its
+older float-based definition-list layout.
+
+Local sample-data review at 1280px and 320px checked the measured and unmeasured
+drawers, disclosures, keyboard dismissal/focus, and the horizontally scrollable
+setup command. The Copy control remains reachable and the page/dialog have no
+horizontal overflow. Setup commands preserve the current workspace endpoint,
+including custom instance paths, and reject credential-bearing or invalid URLs.
+The new evidence rows are static and use existing shared state/type/spacing tokens.
+Captures are kept with the task's visual artifacts outside the repository.
+
+The optional Claude command-hook installer, generic lifecycle bridge and Grok
+skill export are built locally. The Grok skill supports an existing MCP
+connection without a CLI binding; the optional bridge must be installed on the
+actual agent runtime, which can be a cloud computer. These are explicit setup
+paths, not claims that installed settings or automatic use were verified in a
+live account. No global agent settings or production memories were changed.
+
+Final validation: **783 tests passed, 1 Cloud Run-only test skipped, 0 failures,
+8,334 assertions**. Disposable PostgreSQL checks passed 798 integration checks,
+78 authority/isolation checks and 36 provisioner checks; the cluster was stopped
+and removed. Browser bundles, the 68-file runtime-asset gate, 21 offline release
+automation tests and `git diff --check` passed. Jev passage-selection tests used
+fake transports and offline fixtures, with no live paid provider calls. See
+[Agent memory lifecycle](AGENT-MEMORY.md), [MCP context limits](MCP-CONTEXT.md),
+[Private usage accounting](MEMORY-USAGE.md) and [Jev retrieval](REFLEX.md).
+
+These changes remain local for review; they have not been pushed, published or
+deployed. Earlier sections below describe their respective historical passes.
+
 Reviewed locally on 25 October 2026 using the in-app browser and the actual app
 components with sample data. This supplements the [design system](DESIGN-SYSTEM.md)
 and [agent identity rules](AVATARS.md).

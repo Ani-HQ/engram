@@ -624,13 +624,26 @@ function demoConnections(workspaceId: number, now = new Date()) {
   // logical actions. Sign-in metadata never invents contact or running work.
   const receipts = workspaceActions(workspaceId);
   const latest = (rows: any[]) => rows.map(row => row.recordedAt).filter(Boolean).sort().at(-1) || null;
-  const connections = metadata.slice(0, 200).map(connection => {
+  const connections = metadata.slice(0, 200).map((connection, index) => {
     const own = receipts.filter((receipt: any) => receipt.agent === connection.agent);
     const observed = own.filter((receipt: any) => receipt.evidence === "observed");
     const memory = observed.filter((receipt: any) => !["whoami", "list_actions", "record_action"].includes(receipt.tool));
     const reported = own.filter((receipt: any) => receipt.evidence === "reported");
+    const measured = index === 0;
+    // Fixed review measurements, never production telemetry or model billing.
+    const memoryUse = { available: measured, trackingSince: measured ? now.toISOString() : null,
+      lastRecallAt: measured ? now.toISOString() : null, lastRememberAt: measured ? now.toISOString() : null,
+      recalls: measured ? 3 : null, remembers: measured ? 2 : null, responseBytes: measured ? 6144 : null,
+      estimatedTokens: measured ? 1536 : null, tokenEstimate: 'utf8-bytes-divided-by-4', duplicateRecalls: measured ? 2 : null,
+      budgetStops: measured ? 1 : null, truncatedResponses: measured ? 1 : null, runScopedResponses: measured ? 4 : null,
+      responseScopedResponses: measured ? 1 : null,
+      integration: { declaration: measured ? { id: 'engram-sdk-js', version: '0.1.0', runtime: 'generic', capabilities: ['task-context', 'lifecycle-events', 'explicit-deltas'] } : null,
+        declaredAt: measured ? now.toISOString() : null, lastSeenAt: measured ? now.toISOString() : null,
+        connected: measured, recallVerified: measured, saveVerified: measured, workflowCheck: measured ? 'passed' : 'not-checked',
+        checkStartedAt: measured ? now.toISOString() : null, checkedAt: measured ? now.toISOString() : null,
+        checkExpiresAt: measured ? new Date(now.getTime() + 900000).toISOString() : null, automaticWorkflowVerified: null } };
     return { ...connection, lastContactAt: latest([...observed, ...reported]), lastMemoryAt: latest(memory),
-      lastTaskReportAt: latest(reported), memoryCalls: memory.length, taskReports: reported.length };
+      lastTaskReportAt: latest(reported), memoryCalls: memory.length, taskReports: reported.length, memoryUse };
   });
   return { connections, more: metadata.length > 200, limit: 200, checkedAt: now.toISOString(), recentWindowSeconds: 900, demo: true };
 }

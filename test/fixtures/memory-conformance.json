@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "topic": "Conformance retry policy",
+  "query": "background job retry request ID",
+  "decision": "Retries reuse the original request ID so repeated delivery cannot create a second job.",
+  "unicodeDecision": "Keep the original request ID. 記憶 🌿 إعادة المحاولة",
+  "readTools": ["recall", "search", "get_page", "list_pages", "list_actions"],
+  "defaultBudgetBytes": 4096,
+  "maximumBudgetBytes": 16384,
+  "requiredChecks": [
+    "cross-agent-handoff",
+    "all-reads-carry-task-context",
+    "resume-does-not-duplicate-context",
+    "unicode-context-stays-bounded",
+    "uncertain-save-is-not-replayed",
+    "report-retry-keeps-event-identity",
+    "stop-or-cancellation-is-not-completion",
+    "workspace-isolation",
+    "declaration-is-not-verification",
+    "explicit-check-requires-matching-receipts"
+  ]
+}

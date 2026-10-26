@@ -41,7 +41,8 @@ describe("onboarding endpoint and credential safety", () => {
     expect(onboarding.endpointForHost("http://localhost:9000/").endpoint).toBe("http://localhost:9000/mcp");
     expect(onboarding.endpointForHost("http://[::1]:9000/mcp").endpoint).toBe("http://[::1]:9000/mcp");
     expect(onboarding.endpointForHost("https://example.com/engram/").endpoint).toBe("https://example.com/engram/mcp");
-    for (const value of ["http://example.com", "https://user:secret@example.com", "https://example.com?token=secret", "https://example.com/#secret", "file:///tmp/config"]) {
+    expect(onboarding.endpointForHost(" \nhttps://example.com/mcp\t ").endpoint).toBe("https://example.com/mcp");
+    for (const value of ["http://example.com", "https://user:secret@example.com", "https://example.com?token=secret", "https://example.com/#secret", "file:///tmp/config", "https://foo\nbar.example", "https://foo\tbar.example", "https://example.com/a b", "https://example.com/\u0000path"]) {
       expect(() => onboarding.endpointForHost(value)).toThrow();
     }
   });

@@ -27,21 +27,22 @@ Use `remember` with a `topic` matching the project. It appends a dated bullet to
 continuous thread instead of forty near-duplicate session notes that make every
 later search worse.
 
-A topic page cannot grow forever. `get_page` returns a page whole and has no cap, so
-an unbounded page charges its entire history to the context of every agent that opens
-it, and `recall` could only ever hand back a slice. Once a topic page outgrows its
+A topic page cannot grow forever. `get_page` now returns bounded, versioned pages,
+and `recall` returns compact excerpts within a total response-byte limit. Once a topic page outgrows its
 budget, `remember` moves the oldest entries to `projects/<topic>-archive` and leaves a
 link to it. Nothing is lost: an archive is a page like any other, so `search` and
 `recall` still reach it. What changes is that the live page stays short enough to be
-returned in full, which is the only way a resuming agent reads the *newest* decisions
-rather than the oldest.
+read in a small number of pages. A resuming agent can use targeted recall rather
+than spending context on the complete history. Partial responses retain the full
+version hash and must not be used as replacement bodies.
 
 If you do ask `recall` for a full body and the page is still over the cap, you get its
 opening and its most recent entries with the middle elided, never the head alone.
 
-A shell hook can see the conversation. Claude Code Stop/SessionEnd, Cursor stop,
-and Codex notify upload a redacted trail to the personal brain. See
-[SHARING.md](SHARING.md).
+The optional [memory lifecycle integration](AGENT-MEMORY.md) retrieves bounded
+context and accepts explicit decision/handoff deltas without reading transcripts.
+The older conversation-capture hooks remain a separate opt-in; they do not ensure
+recall, memory saves, or task reports. See [SHARING.md](SHARING.md).
 
 ```
 remember(topic: "engram", text: "Deferred the Claude Code hook until we proved

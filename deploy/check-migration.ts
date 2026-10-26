@@ -7,6 +7,7 @@ import { BILLING_SCHEMA_VERSION } from "../gateway/src/billing-schema";
 import { PROFILE_PHOTO_SCHEMA_VERSION, PROFILE_PRESENTATION_SCHEMA_VERSION, SHOWCASE_SCHEMA_VERSION } from "../gateway/src/showcase-schema";
 import { CONTEXT_SHARING_SCHEMA_VERSION } from "../gateway/src/context-sharing-schema";
 import { CONNECTIONS_SCHEMA_VERSION } from "../gateway/src/connections-schema";
+import { MEMORY_USAGE_SCHEMA_VERSION } from "../gateway/src/memory-usage-schema";
 
 export function migrationSettings(args: string[]) {
   const mapped = args.map(arg => arg === "--owner-email" ? "--email" : arg);
@@ -19,7 +20,7 @@ export async function inspectMigration(db: postgres.Sql, ownerEmail: string) {
   return db.begin("isolation level repeatable read read only", async tx => {
     const mode = await tx`SHOW transaction_read_only`;
     if (mode[0]?.transaction_read_only !== "on") throw new OwnerCheckError("readonly_not_enforced");
-    const schema = await tx`SELECT version, activity_version, billing_version, showcase_version, profile_presentation_version, profile_photo_version, context_sharing_version, connections_version FROM public.engram_schema_state WHERE id = true`;
+    const schema = await tx`SELECT version, activity_version, billing_version, showcase_version, profile_presentation_version, profile_photo_version, context_sharing_version, connections_version, memory_usage_version FROM public.engram_schema_state WHERE id = true`;
     const owner = await tx`
       SELECT count(*) FILTER (WHERE role = 'owner')::integer AS owners,
         count(*) FILTER (WHERE role = 'owner' AND email = ${ownerEmail})::integer AS selected_owner
@@ -64,7 +65,7 @@ export async function inspectMigration(db: postgres.Sql, ownerEmail: string) {
       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND left(c.relname, 8) <> '_engram_'`;
     const checks = {
-      schema: schema.length === 1 && Number(schema[0].version) === 2026102202 && Number(schema[0].activity_version) === 2026102301 && Number(schema[0].billing_version) === BILLING_SCHEMA_VERSION && Number(schema[0].showcase_version) === SHOWCASE_SCHEMA_VERSION && Number(schema[0].profile_presentation_version) === PROFILE_PRESENTATION_SCHEMA_VERSION && Number(schema[0].profile_photo_version) === PROFILE_PHOTO_SCHEMA_VERSION && Number(schema[0].context_sharing_version) === CONTEXT_SHARING_SCHEMA_VERSION && Number(schema[0].connections_version) === CONNECTIONS_SCHEMA_VERSION,
+      schema: schema.length === 1 && Number(schema[0].version) === 2026102202 && Number(schema[0].activity_version) === 2026102301 && Number(schema[0].billing_version) === BILLING_SCHEMA_VERSION && Number(schema[0].showcase_version) === SHOWCASE_SCHEMA_VERSION && Number(schema[0].profile_presentation_version) === PROFILE_PRESENTATION_SCHEMA_VERSION && Number(schema[0].profile_photo_version) === PROFILE_PHOTO_SCHEMA_VERSION && Number(schema[0].context_sharing_version) === CONTEXT_SHARING_SCHEMA_VERSION && Number(schema[0].connections_version) === CONNECTIONS_SCHEMA_VERSION && Number(schema[0].memory_usage_version) === MEMORY_USAGE_SCHEMA_VERSION,
       owner: Number(owner[0]?.owners) >= 1 && Number(owner[0]?.selected_owner) === 1,
       workspacesReady: Number(orgs[0]?.total) > 0 && Number(orgs[0]?.total) === Number(orgs[0]?.ready),
       storageBindings: Number(orgs[0]?.legacy_binding) === 1 && Number(orgs[0]?.invalid_bindings) === 0,

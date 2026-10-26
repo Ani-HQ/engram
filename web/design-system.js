@@ -97,6 +97,19 @@ export function statusBadge(value, { tone = 'neutral', className = '' } = {}) {
   const badge = document.createElement('span'); badge.className = ['ds-badge', typeof className === 'string' ? className : ''].filter(Boolean).join(' '); badge.dataset.tone = tones.has(tone) ? tone : 'neutral'; badge.textContent = String(value); return badge;
 }
 
+/** Compact, text-only evidence. Unknown values must be supplied as words, not zeroes. */
+export function evidenceList(rows = [], { label = 'Recorded evidence' } = {}) {
+  const list = document.createElement('dl'); list.setAttribute('class', 'ds-evidence-list'); list.setAttribute('aria-label', String(label));
+  for (const item of rows) {
+    const row = document.createElement('div'); row.setAttribute('class', 'ds-evidence-row');
+    const term = document.createElement('dt'); term.textContent = String(item.label ?? '');
+    const value = document.createElement('dd'); value.textContent = String(item.value ?? 'Not measured');
+    if (item.note) { const note = document.createElement('small'); note.textContent = String(item.note); value.append(note); }
+    row.append(term, value); list.append(row);
+  }
+  return list;
+}
+
 /** Readable status copy, with an optional decorative sheen for fresh work only. */
 export function statusText(label, { active = false, className = '' } = {}) {
   const value = String(label);

@@ -567,6 +567,12 @@ html[data-design-system] .ds-tab:focus-visible { outline-offset: -3px; }
 .ds-metric-label { display: block; color: var(--ds-muted); font-size: var(--ds-text-xs); font-weight: 450; }
 .ds-metric-value { display: block; margin-top: var(--ds-space-3); color: var(--ds-ink); font-size: var(--ds-text-2xl); font-weight: 500; letter-spacing: -.04em; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .ds-metric-note { display: block; margin-top: var(--ds-space-3); color: var(--ds-muted); font-size: var(--ds-text-xs); line-height: 1.6; }
+.ds-evidence-list { margin: 0; min-width: 0; }
+.ds-evidence-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: var(--ds-space-4); padding-block: var(--ds-space-3); border-bottom: 1px solid var(--ds-line); font-size: var(--ds-text-sm); line-height: 1.6; }
+.ds-evidence-row:last-child { border-bottom: 0; }
+.ds-evidence-row dt { color: var(--ds-muted); min-width: 0; }
+.ds-evidence-row dd { margin: 0; min-width: 0; color: var(--ds-ink); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ds-evidence-row dd small { display: block; color: var(--ds-muted); font-size: var(--ds-text-xs); }
 .ds-disclosure-indicator { display: inline-flex; flex-shrink: 0; transition: transform var(--ds-duration-fast) var(--ds-ease-out); }
 .ds-disclosure-toggle[aria-expanded='true'] .ds-disclosure-indicator { transform: rotate(180deg); }
 [data-input='keyboard'] .ds-disclosure-indicator { transition: none; }

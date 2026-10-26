@@ -13,6 +13,7 @@ import { memoryLoading, setMemoryLoadingDelayed } from "./memory-loading.js";
 import { memoryDocumentView } from "./memory-document-view.js";
 import { taskReportingSetup, taskReportingInstructions } from "./task-reporting-view.js";
 import { taskReportingStatus } from "./task-reporting-model.js";
+import { memoryUsagePanel, memorySetupGuide } from "./memory-usage-view.js";
 import { aiConfiguration, attentionResults } from "./insights-view.js";
 import { confidenceLabel, reviewAllowed, reviewPlan } from "./insight-model.js";
 import { onboardingGuide } from "./onboarding-view.js";
@@ -952,6 +953,8 @@ function connectionHelp(connection) {
       el("p", { class: "detail-note" }, "Delete removes this connection permanently. Memories and activity stay available.")),
     el("dl", {}, el("dt", {}, "Connection"), el("dd", {}, connection.kind === "oauth" ? "Agent sign-in" : connection.name || "Unavailable"), el("dt", {}, "Access"), el("dd", {}, connection.canWrite === true ? "Read and write" : connection.canWrite === false ? "Read only" : "Unavailable"), el("dt", {}, "Task reports"), el("dd", {}, reporting.label)),
     el("p", { class: "detail-note" }, reporting.detail),
+    memoryUsagePanel(connection),
+    !archived && memorySetupGuide(connection, { endpoint, copyControl: (command, label) => copyButton("Copy", command, { "aria-label": label }) }),
     !archived && button("Set up task reporting", taskReportingHelp, { class: "small" }),
     !archived && el("details", { class: "connection-guide" }, el("summary", {}, "Reconnect from your agent"), el("ol", {},
       el("li", {}, "Open the agent’s MCP or connector settings and choose Engram."),

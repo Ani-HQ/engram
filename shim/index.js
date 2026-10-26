@@ -23,6 +23,14 @@ const SUPPORTED_HARNESSES = ['claude', 'codex', 'cursor', 'vscode', 'windsurf'];
 function dispatch() {
   const [subcommand, ...args] = process.argv.slice(2);
 
+  if (subcommand === 'memory') {
+    require('./memory').runMemoryCli(args).then(code => { process.exitCode = code; }).catch(() => {
+      console.error('Memory lifecycle setup failed. Check the project binding, credentials, and file permissions. No transcript was captured.');
+      process.exitCode = 1;
+    });
+    return;
+  }
+
   if (subcommand === 'setup' || subcommand === 'doctor' || subcommand === 'verify') {
     const { runOnboarding } = require('./onboarding');
     runOnboarding(subcommand === 'setup' ? 'setup' : 'doctor', args, {
@@ -103,6 +111,7 @@ function printRootHelp() {
   engram-mcp
   engram-mcp setup [harness] [--host <url>] [--token-stdin]
   engram-mcp doctor [harness] [--host <url>] [--token-stdin]
+  engram-mcp memory --help
   engram-mcp connect [harness] [--host <url>] [--token <token>]
   engram-mcp connect --list
   engram-mcp hooks install <claude|cursor|codex>
@@ -935,16 +944,18 @@ async function runProxy() {
       if (!args.harness && extra.harness) args.harness = extra.harness;
       if (!args.session_id && extra.session_id) args.session_id = extra.session_id;
     }
+    const metadata = require('./runtime-adapters').augmentProxyMeta(request.params._meta, { host: HOST, token: TOKEN, project: process.env.ENGRAM_MEMORY_PROJECT, runId: process.env.ENGRAM_MEMORY_RUN_ID, sessionId: process.env.ENGRAM_MEMORY_SESSION_ID });
     const result = await engramRpc('tools/call', {
       name: request.params.name,
       arguments: args,
+      ...(metadata ? { _meta: metadata } : {}),
     });
     // A successful real call can wake a sleeping service after a catalog fetch
     // failed. Refresh discovery then; never create a task or replay a write.
     if (!liveTools && !refresh) refreshTools();
 
     if (result?.content) {
-      return result.isError ? { content: result.content, isError: true } : { content: result.content };
+      return { content: result.content, ...(result.isError ? { isError: true } : {}), ...(result._meta ? { _meta: result._meta } : {}), ...(result.structuredContent ? { structuredContent: result.structuredContent } : {}) };
     }
     return {
       content: [

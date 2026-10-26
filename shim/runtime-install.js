@@ -1,0 +1,88 @@
+'use strict';
+
+const fs = require('node:fs');
+const path = require('node:path');
+const { runtimeCapabilities } = require('./runtime-contracts');
+
+function object(value, label) {
+  if (!value || Array.isArray(value) || typeof value !== 'object') throw new Error(`${label} must be a JSON object. Export the portable skill for a runtime using another config format.`);
+  return value;
+}
+function managedCommand(entry, runtime) {
+  return [entry?.command, entry?.bash, ...(entry?.hooks || []).map(hook => hook.command)].some(command => typeof command === 'string' && command.includes(` memory hook ${runtime}`));
+}
+
+function planInstall(runtime, options, helpers) {
+  const contract = runtimeCapabilities(runtime);
+  if (!contract?.installable || contract.kind === 'guidance') throw new Error('This runtime uses portable guidance or the generic bridge; no native installer is certified.');
+  if (!contract.platforms.includes(options.platform || process.platform)) throw new Error('Native installers currently support macOS and Linux. Export the portable skill on this platform.');
+  const { readPrivate, readTextPrivate, noLinks, shellQuote } = helpers;
+  const home = options.home;
+  const command = event => `${shellQuote(process.execPath)} ${shellQuote(path.join(__dirname, 'index.js'))} memory hook ${runtime}${event ? ` ${event}` : ''}`;
+  const writes = [];
+  let settings;
+  const hookFile = (file, style, events, extra = {}) => {
+    const value = object(readPrivate(file, {}), 'Runtime settings');
+    if (extra.version && value.version !== undefined && value.version !== extra.version) throw new Error('Unsupported existing hook configuration version. Existing settings were preserved.');
+    if (value.disableAllHooks === true) throw new Error('Hooks are explicitly disabled in this file. Review that policy before opting in.');
+    value.hooks = object(value.hooks || {}, 'Runtime hooks');
+    for (const event of events) {
+      const existing = value.hooks[event] || [];
+      if (!Array.isArray(existing)) throw new Error('Runtime event hooks must be arrays. Existing settings were preserved.');
+      const retained = existing.filter(entry => !managedCommand(entry, runtime));
+      let entry;
+      if (style === 'nested') entry = { hooks: [{ type: 'command', command: command(event), timeout: runtime === 'gemini' ? 6000 : 6, ...(runtime === 'codex' ? { additionalContextLimit: 1400 } : {}) }] };
+      else if (style === 'copilot') entry = { type: 'command', bash: command(event), timeoutSec: 6 };
+      else entry = { command: command(event), ...(runtime === 'cursor' ? { timeout: 6 } : {}) };
+      value.hooks[event] = [...retained, entry];
+    }
+    Object.assign(value, extra);
+    writes.push({ file, kind: 'json', value });
+    settings = file;
+  };
+  const textFile = (file, content) => {
+    noLinks(file);
+    const prior = readTextPrivate(file, null);
+    if (prior !== null && !prior.includes('Engram managed native adapter')) throw new Error('An unrelated plugin already uses the Engram adapter filename. Choose portable guidance or rename it before installing.');
+    writes.push({ file, kind: 'text', value: content });
+  };
+  if (runtime === 'codex') hookFile(path.join(home, '.codex', 'hooks.json'), 'nested', contract.events);
+  if (runtime === 'cursor') hookFile(path.join(home, '.cursor', 'hooks.json'), 'flat', contract.events, { version: 1 });
+  if (runtime === 'gemini') hookFile(path.join(home, '.gemini', 'settings.json'), 'nested', contract.events);
+  if (runtime === 'copilot') hookFile(path.join(options.project, '.github', 'hooks', 'engram-memory.json'), 'copilot', contract.events, { version: 1 });
+  if (runtime === 'windsurf') hookFile(path.join(home, '.codeium', 'windsurf', 'hooks.json'), 'flat', contract.events);
+  if (runtime === 'opencode') {
+    const file = path.join(options.configHome || path.join(home, '.config'), 'opencode', 'plugins', 'engram-memory.js');
+    textFile(file, `// Engram managed native adapter. No credentials or transcript capture.\nimport { createRequire } from 'node:module';\nconst { openCodePlugin } = createRequire(import.meta.url)(${JSON.stringify(path.join(__dirname, 'runtime-plugins.js'))});\nexport const EngramMemory = openCodePlugin;\n`);
+    settings = file;
+  }
+  if (runtime === 'openclaw') {
+    const dir = path.join(options.configHome || path.join(home, '.config'), 'engram', 'runtime-plugins', 'openclaw');
+    textFile(path.join(dir, 'index.js'), `// Engram managed native adapter. Reads only the explicit current request.\nimport { createRequire } from 'node:module';\nconst { openClawPlugin } = createRequire(import.meta.url)(${JSON.stringify(path.join(__dirname, 'runtime-plugins.js'))});\nexport default openClawPlugin;\n`);
+    writes.push({ file: path.join(dir, 'package.json'), kind: 'json', value: { name: 'engram-memory-local', version: require('./package.json').version, private: true, type: 'module', openclaw: { extensions: ['./index.js'] } } });
+    writes.push({ file: path.join(dir, 'openclaw.plugin.json'), kind: 'json', value: { id: 'engram-memory', name: 'Engram shared memory', description: 'Bounded project memory with explicit durable deltas.', activation: { onCapabilities: ['hook'] }, configSchema: { type: 'object', additionalProperties: false, properties: {} } } });
+    const file = path.join(home, '.openclaw', 'openclaw.json');
+    const config = object(readPrivate(file, {}), 'OpenClaw settings');
+    config.plugins = object(config.plugins || {}, 'OpenClaw plugins');
+    if (config.plugins.enabled === false) throw new Error('OpenClaw plugins are explicitly disabled. Review that policy before opting in.');
+    config.plugins.load = object(config.plugins.load || {}, 'OpenClaw plugin loading');
+    const paths = config.plugins.load.paths || [];
+    if (!Array.isArray(paths) || paths.some(item => typeof item !== 'string')) throw new Error('OpenClaw plugin paths must be an array. Existing settings were preserved.');
+    config.plugins.load.paths = [...new Set([...paths, dir])];
+    if (Array.isArray(config.plugins.deny) && config.plugins.deny.includes('engram-memory')) throw new Error('Engram is explicitly denied in OpenClaw. Remove that deny yourself before opting in.');
+    if (config.plugins.allow !== undefined) {
+      if (!Array.isArray(config.plugins.allow)) throw new Error('OpenClaw plugin allowlist must be an array.');
+      config.plugins.allow = [...new Set([...config.plugins.allow, 'engram-memory'])];
+    }
+    config.plugins.entries = object(config.plugins.entries || {}, 'OpenClaw plugin entries');
+    const entry = object(config.plugins.entries['engram-memory'] || {}, 'Engram OpenClaw entry');
+    const hooks = object(entry.hooks || {}, 'Engram OpenClaw hook policy');
+    config.plugins.entries['engram-memory'] = { ...entry, enabled: true, hooks: { ...hooks, allowPromptInjection: true, allowConversationAccess: true } };
+    writes.push({ file, kind: 'json', value: config }); settings = file;
+  }
+  // Preflight every target before committing a private binding or plugin file.
+  for (const write of writes) { noLinks(write.file); if (write.kind === 'json' && fs.existsSync(write.file)) object(readPrivate(write.file, {}), 'Runtime configuration'); }
+  return { writes, settings, contract };
+}
+
+module.exports = { planInstall };

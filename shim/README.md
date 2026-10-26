@@ -60,6 +60,80 @@ it does not prove that your agent has loaded its config, or that a memory write
 will be permitted by workspace policy or billing. Use the printed test prompt
 from the agent to verify the full journey.
 
+The separate lifecycle command `memory verify begin|status --run <known-run-id>`
+starts or reads an explicit server-issued workflow check. Beginning the check
+writes no memory or task report; real later bounded reads and explicit decision
+saves on that run supply the receipts. Checks expire after 15 minutes and never
+prove automatic model use. See [memory lifecycle](../docs/AGENT-MEMORY.md).
+
+## Opt-in memory lifecycle
+
+MCP access alone does not ensure an agent uses shared memory. Version 0.5 adds
+an explicit project-scoped lifecycle bridge:
+
+```bash
+engram-mcp memory install claude --project /absolute/project --topic "Project architecture"
+engram-mcp memory doctor --project /absolute/project
+```
+
+Installation verifies access, backs up existing settings, and adds lightweight
+Claude Code command hooks. It retrieves targeted context for the first substantive
+prompt per session, deduplicates calls across restart/compaction, and limits returned memory
+to 4096 UTF-8 bytes per task by default (configurable up to 16384). Decisions and
+handoffs are saved only through explicit structured `memory decision` events.
+There is no transcript capture, second model call, or per-message recall. A Stop
+notification never marks a task completed. Operational failures do not block work.
+Later task boundaries need an explicit `Engram task: <name>` prompt or a recorded
+task-end; arbitrary natural-language task changes are not reliably inferred.
+
+Native opt-in installers also cover `codex`, `cursor` (desktop), `gemini`,
+`copilot` (the VS Code Copilot runtime/CLI), `opencode`, `openclaw`, and `windsurf`.
+Run `engram-mcp memory capabilities <runtime>` to inspect the exact surface and
+limitations. Install on the actual runtime host, then reload it. Windsurf reports
+factual lifecycle events only. Cursor/Copilot prompt hooks cannot inject context
+directly; their adapters use documented startup/post-tool outputs instead.
+
+Clients without a certified native adapter can export portable MCP guidance:
+
+```bash
+engram-mcp memory instructions goose
+engram-mcp memory skill cline --output /absolute/review/engram-memory/SKILL.md
+```
+
+Instructions alone are best-effort. Native HTTP MCP calls receive per-response
+limits unless their client sends task metadata. To propagate metadata on ordinary
+model reads through the **stdio connector**, explicitly set
+`ENGRAM_MEMORY_PROJECT=/actual/project` on that connector. Endpoint and credential
+must match the private binding. Ambiguous sessions need an explicit
+`ENGRAM_MEMORY_SESSION_ID` or owned `ENGRAM_MEMORY_RUN_ID`; otherwise calls stay
+response-scoped. Caller task/probe IDs take precedence. See
+[agent compatibility](https://github.com/Ani-HQ/engram/blob/main/docs/AGENT-COMPATIBILITY.md)
+for implemented surfaces, fixture checks, and remaining real-app validation.
+
+Grok Bot has an included skill workflow, with honest best-effort status:
+
+```bash
+engram-mcp memory instructions grokbot
+engram-mcp memory skill grokbot --output /absolute/review/engram-memory/SKILL.md
+```
+
+Review and enable the skill in Grok Bot. Its default path uses an existing MCP
+connection without a CLI or local binding. Plain MCP has the server’s 4096-byte
+per-response default; cumulative task budgets need client context metadata or
+the bridge. The skill remains best-effort agent guidance.
+
+Grok Bot works on a persistent cloud computer. A CLI installed on your Mac does
+not configure that cloud runtime. Only if the CLI is installed on the actual
+agent runtime should you bind its project there using `memory install grokbot`.
+Do not supply credentials in chat. This optional installer writes only that
+runtime’s private Engram binding; it does not edit Grok Bot settings or install
+native hooks. Owned runtimes can use `memory task-start`, `task-progress`,
+`decision`, and `task-end` directly on factual lifecycle events. `memory doctor` distinguishes
+connected access from actual retrieval/save receipts; returned bytes are measured
+context, not a model token bill. See
+[the lifecycle contract](https://github.com/Ani-HQ/engram/blob/main/docs/AGENT-MEMORY.md)
+for setup, the generic bridge protocol, private state, retry limits, and caveats.
+
 ## Automation and environment
 
 `ENGRAM_HOST` is the base URL of your engram gateway. Guided setup and doctor

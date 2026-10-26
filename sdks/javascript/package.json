@@ -1,0 +1,10 @@
+{
+  "name": "@ani-hq/engram-memory",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Bounded shared-memory lifecycle for owned agent runtimes",
+  "license": "MIT",
+  "exports": { ".": { "types": "./index.d.ts", "import": "./index.mjs" }, "./frameworks": { "types": "./frameworks.d.ts", "import": "./frameworks.mjs" } },
+  "files": ["index.mjs", "index.d.ts", "frameworks.mjs", "frameworks.d.ts", "README.md", "LICENSE"],
+  "engines": { "node": ">=18.17" }
+}

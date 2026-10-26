@@ -17,6 +17,7 @@ import { spawnSync } from "node:child_process";
 import { renderAsync } from "@resvg/resvg-js";
 import { fileURLToPath } from "node:url";
 import { PROFILE_PHOTO_SCHEMA_VERSION, PROFILE_PRESENTATION_SCHEMA_VERSION } from "../gateway/src/showcase-schema";
+import { MEMORY_USAGE_SCHEMA_VERSION } from "../gateway/src/memory-usage-schema";
 
 const template = process.env.ENGRAM_TEST_DB_URL_TEMPLATE;
 if (!template) throw new Error("Set ENGRAM_TEST_DB_URL_TEMPLATE to a disposable local PostgreSQL test cluster");
@@ -105,6 +106,13 @@ try {
   equal((await sql`SELECT slug, display_name, bio, published, layout, highlights FROM action_profiles WHERE org_id = 1`)[0], upgradedProfile, "Photo migration preserves owner publication and presentation choices");
   await migrate();
   equal((await sql`SELECT profile_photo_version FROM engram_schema_state WHERE id = true`)[0].profile_photo_version, PROFILE_PHOTO_SCHEMA_VERSION, "Photo migration is repeatable");
+  const beforeUsageMarkers = (await sql`SELECT version, activity_version, billing_version, signup_version, signup_access_version, mail_series_version, jev_version, showcase_version, profile_presentation_version, profile_photo_version, context_sharing_version, connections_version FROM engram_schema_state WHERE id = true`)[0];
+  await sql`ALTER TABLE engram_schema_state DROP COLUMN memory_usage_version`;
+  await migrate();
+  equal((await sql`SELECT memory_usage_version FROM engram_schema_state WHERE id = true`)[0].memory_usage_version, MEMORY_USAGE_SCHEMA_VERSION, "Memory usage gets its own exact additive readiness marker");
+  equal((await sql`SELECT version, activity_version, billing_version, signup_version, signup_access_version, mail_series_version, jev_version, showcase_version, profile_presentation_version, profile_photo_version, context_sharing_version, connections_version FROM engram_schema_state WHERE id = true`)[0], beforeUsageMarkers, "Memory usage migration preserves every prior feature and authority marker");
+  await migrate();
+  equal((await sql`SELECT memory_usage_version FROM engram_schema_state WHERE id = true`)[0].memory_usage_version, MEMORY_USAGE_SCHEMA_VERSION, "Memory usage migration is repeatable");
   await sql`DELETE FROM action_profiles WHERE org_id = 1 AND slug = 'legacy-presentation-row'`;
   equal(Number((await sql`SELECT count(*) AS n FROM orgs`)[0].n), 1, "Central migrations are repeatable without duplicating the legacy workspace");
   equal(Number((await sql`SELECT count(*) AS n FROM pg_indexes WHERE schemaname = 'public' AND indexname IN ('tokens_org_name_idx', 'action_events_org_time_idx')`)[0].n), 2, "Tenant identity and action indexes exist on PostgreSQL");
@@ -465,6 +473,8 @@ try {
 
   const { checkConnections } = await import("./integration-connections");
   checks += await checkConnections(sql);
+  const { checkMemoryUsage } = await import("./integration-memory-usage");
+  checks += await checkMemoryUsage(sql);
   const { checkConnectionLifecycle } = await import("./integration-connection-lifecycle");
   checks += await checkConnectionLifecycle(sql);
   const { checkComplimentaryAccess } = await import("./integration-complimentary");

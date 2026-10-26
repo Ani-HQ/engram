@@ -11,6 +11,27 @@ const request = (method: string, params: any = {}, token = raw, headers: Record<
 const authenticate = async (token: string) => token === raw ? grant : null;
 
 describe("stateless restricted MCP endpoint", () => {
+  test("read-only scoped shares cannot issue a read/save compatibility probe", async () => {
+    const request = new Request("https://example.test/mcp/shared", { method: "POST", headers: { authorization: `Bearer egs_${"a".repeat(32)}`, "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "whoami", arguments: {}, _meta: { "com.engram/context": { runId: "test", integration: { id: "test", version: "1", runtime: "test" }, verification: "begin" } } } }) });
+    const response = await handleSharedContextMcp(request, async () => ({ shareId: 1, items: [] }) as any);
+    expect(response.status).toBe(400);
+    expect((await response.json()).error.message).toContain("read-only shares");
+  });
+  test("long approved snapshots stay bounded and page without access to any source workspace", async () => {
+    const text = 'A useful shared decision. '.repeat(2000);
+    const approve = async () => ({ ...grant, items: [{ id, title: 'Approved', text }] });
+    const params = { name: 'get_page', arguments: { slug: `shared-context/${shareId}/${id}` }, _meta: { 'com.engram/context': { runId: 'task-1', maxBytes: 4096 } } };
+    const first = (await (await handleSharedContextMcp(request('tools/call', params), approve)).json()).result;
+    expect(Buffer.byteLength(JSON.stringify(first))).toBeLessThanOrEqual(4096);
+    const page = JSON.parse(first.content[0].text);
+    expect(page.compiled_truth.length).toBeLessThan(text.length);
+    expect(page._page.partial).toBe(true);
+    expect(first._meta.engramContext.runScoped).toBe(false);
+    const second = (await (await handleSharedContextMcp(request('tools/call', { ...params, arguments: { ...params.arguments, cursor: page._page.next_cursor } }), approve)).json()).result;
+    const next = JSON.parse(second.content[0].text);
+    expect(next._page.offset).toBe(page._page.next_offset);
+    expect(Buffer.byteLength(JSON.stringify(second))).toBeLessThanOrEqual(4096);
+  });
   test("initializes and lists only read tools without workspace/brain access", async () => {
     const init = await handleSharedContextMcp(request("initialize", { protocolVersion: "2025-06-18" }), authenticate);
     expect(init.headers.get("cache-control")).toBe("no-store");
