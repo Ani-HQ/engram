@@ -70,6 +70,7 @@ export const api = {
   capture: (payload, workspaceId) => post("/api/capture", payload, workspaceId),
   tokens: workspaceId => request("/api/tokens", scoped(workspaceId)),
   connections: workspaceId => request("/api/connections", { ...scoped(workspaceId), signal: AbortSignal.timeout(5000) }),
+  manageConnection: (id, action, workspaceId) => post("/api/connections", { id, action }, workspaceId),
   wiring: workspaceId => request("/api/wiring", scoped(workspaceId)),
   mintToken: (payload, workspaceId) => post("/api/tokens", payload, workspaceId),
   revokeToken: (name, workspaceId) => post("/api/tokens/revoke", { name }, workspaceId),
@@ -84,5 +85,5 @@ export const api = {
 // changes before a request reaches the server. The server verifies this header.
 export function workspaceApi(workspaceId) {
   const methods = ["sharing", "sharingPreview", "sharingCommit", "revokeSharing", "rotateSharingToken", "jev", "saveJev", "renameWorkspace", "signupInvites", "issueSignupInvite", "signupInviteLink", "revokeSignupInvite", "provisioning", "onboarding", "billing", "checkout", "billingPortal", "members", "invite", "removeMember", "savePolicies", "setTokenWrite", "setTokenSource", "showcase", "saveShowcase", "actions", "activities", "activity", "pages", "search", "page", "capture", "tokens", "connections", "wiring", "mintToken", "revokeToken", "insights", "runInsights", "reviews", "review", "resolveReview"];
-  return Object.fromEntries(methods.map(name => [name, (...args) => api[name](...args, workspaceId)]));
+  return Object.fromEntries([...methods, "manageConnection"].map(name => [name, (...args) => api[name](...args, workspaceId)]));
 }

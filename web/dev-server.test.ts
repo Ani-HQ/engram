@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { devFetch } from "./dev-server";
+import { renderAsync } from "@resvg/resvg-js";
 
 const request = (path: string, options?: RequestInit) => devFetch(new Request(`http://localhost:8099${path}`, options));
 
@@ -254,8 +255,8 @@ describe("local activity demo", () => {
     expect(data.connections.map((row: any) => row.createdAt)).toEqual(data.connections.map((row: any) => row.createdAt).sort().reverse());
     expect((await request("/api/connections", { headers: { Cookie: "engram_dev=0" } })).status).toBe(401);
     expect((await request("/api/connections", { headers: { "X-Engram-Workspace": "2" } })).status).toBe(409);
-    const method = await request("/api/connections", { method: "POST" });
-    expect(method.status).toBe(405); expect(method.headers.get("allow")).toBe("GET");
+    const method = await request("/api/connections", { method: "DELETE" });
+    expect(method.status).toBe(405); expect(method.headers.get("allow")).toBe("GET, POST");
   });
 
   test("combines search, exact filters, and pagination", async () => {
@@ -369,7 +370,7 @@ describe("local activity demo", () => {
 
   test("previews real aggregate counts privately before explicit publication", async () => {
     const settings = await (await request("/api/showcase")).json();
-    expect(settings.profile).toEqual({ slug: "", displayName: "", bio: "", published: false, showActivity: false, layout: "studio", highlights: [] });
+    expect(settings.profile).toEqual({ slug: "", displayName: "", bio: "", published: false, showActivity: false, layout: "studio", highlights: [], photo: null });
     expect(settings.urls.page).toBeNull();
     const data = await (await request("/api/actions?limit=100")).json();
     const expected = data.actions.filter((row: any) => !["list_actions", "record_action", "whoami"].includes(row.tool));
@@ -386,7 +387,7 @@ describe("local activity demo", () => {
     const invalid = await request("/api/showcase", { method: "PUT", body: JSON.stringify({ ...profile, slug: "../private" }) });
     expect(invalid.status).toBe(400);
     const saved = await (await request("/api/showcase", { method: "PUT", body: JSON.stringify(profile) })).json();
-    expect(saved.profile).toEqual({ ...profile, showActivity: false, layout: "studio", highlights: [] });
+    expect(saved.profile).toEqual({ ...profile, showActivity: false, layout: "studio", highlights: [], photo: null });
     expect(saved.urls.card).toBe("http://localhost:8099/api/public/activity/demo-agents/card.png");
     const dataResponse = await request("/api/public/activity/demo-agents", { headers: { Cookie: "engram_dev=0" } });
     expect(dataResponse.status).toBe(200);
@@ -394,7 +395,7 @@ describe("local activity demo", () => {
     expect(dataResponse.headers.get("cache-control")).toBe("no-store");
     const data = await dataResponse.json();
     expect(data.stats.totalActions).toBe(saved.preview.stats.totalActions);
-    expect(data.profile).toEqual({ slug: profile.slug, displayName: profile.displayName, bio: profile.bio, layout: "studio", highlights: [] });
+    expect(data.profile).toEqual({ slug: profile.slug, displayName: profile.displayName, bio: profile.bio, layout: "studio", highlights: [], photoUrl: null });
     expect(data).not.toHaveProperty("actions");
     expect(data).not.toHaveProperty("agents");
     for (const value of ["ada@example.com", "github.create_pull_request", "file://demo-test", "run-job-check"]) expect(JSON.stringify(data)).not.toContain(value);
@@ -420,8 +421,8 @@ describe("local activity demo", () => {
     const put = (value: unknown) => request("/api/showcase", { method: "PUT", body: JSON.stringify(value) });
     try {
       const result = await (await put(profile)).json();
-      expect(result.profile).toEqual({ ...profile, showActivity: false });
-      expect((await (await request("/api/public/activity/layout-demo")).json()).profile).toEqual({ slug: profile.slug, displayName: profile.displayName, bio: profile.bio, layout: profile.layout, highlights: profile.highlights });
+      expect(result.profile).toEqual({ ...profile, showActivity: false, photo: null });
+      expect((await (await request("/api/public/activity/layout-demo")).json()).profile).toEqual({ slug: profile.slug, displayName: profile.displayName, bio: profile.bio, layout: profile.layout, highlights: profile.highlights, photoUrl: null });
       const stream = await request("/api/public/activity/layout-demo/stream"), reader = stream.body!.getReader();
       try { expect(JSON.parse(new TextDecoder().decode((await reader.read()).value).split("data: ")[1].trim()).profile.highlights).toEqual(profile.highlights); }
       finally { await reader.cancel(); }
@@ -431,6 +432,43 @@ describe("local activity demo", () => {
       expect((await (await request("/api/showcase")).json()).profile.highlights).toEqual(profile.highlights);
       expect((await (await put({ ...legacy, layout: "studio", highlights: [] })).json()).profile).toMatchObject({ layout: "studio", highlights: [] });
     } finally { await put(previous); }
+  });
+
+  test("stages a private profile photo, publishes only its URL and revokes removed images", async () => {
+    await request("/api/session/switch", { method: "POST", body: JSON.stringify({ orgId: 1 }) });
+    const headers = { "X-Engram-Workspace": "1", "X-Engram-Console": "1" };
+    const previous = (await (await request("/api/showcase", { headers })).json()).profile;
+    const put = (value: unknown) => request("/api/showcase", { method: "PUT", headers, body: JSON.stringify(value) });
+    const rendered = await renderAsync('<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#77d9ad"/></svg>');
+    const photo = "data:image/png;base64," + Buffer.from(rendered.asPng()).toString("base64");
+    const profile = { slug: "photo-demo-review", displayName: "Photo review", bio: "", published: false, showActivity: false, photo };
+    try {
+      const saved = await (await put(profile)).json();
+      expect(saved.profile.photo).toStartWith("data:image/png;base64,");
+      expect(saved.preview.profile.photoUrl).toBe(saved.profile.photo);
+      expect((await request(`/api/public/activity/${profile.slug}`)).status).toBe(404);
+      const { photo: omitted, ...legacy } = profile;
+      const legacySaved = await (await put(legacy)).json();
+      expect(legacySaved.profile.photo).toBe(saved.profile.photo);
+      await put({ ...profile, published: true });
+      const publicData = await (await request(`/api/public/activity/${profile.slug}`)).json();
+      const photoUrl = publicData.profile.photoUrl;
+      expect(photoUrl).toMatch(/^\/api\/public\/activity\/photo-demo-review\/photo\.png\?v=[a-f0-9]{64}$/);
+      expect(JSON.stringify(publicData)).not.toContain("data:image");
+      expect((await request(photoUrl)).headers.get("content-type")).toBe("image/png");
+      const head = await request(photoUrl, { method: "HEAD" });
+      expect(head.status).toBe(200); expect(await head.text()).toBe("");
+      expect((await request(photoUrl.replace(/v=./, "v=z"))).status).toBe(404);
+      const invalid = await put({ ...profile, published: true, photo: "data:image/png;base64,bm90LWFuLWltYWdl" });
+      expect(invalid.status).toBe(400); expect((await request(photoUrl)).status).toBe(200);
+      await put({ ...profile, published: false });
+      expect((await request(photoUrl)).status).toBe(404);
+      await put({ ...profile, published: true, photo: null });
+      expect((await request(photoUrl)).status).toBe(404);
+      expect((await (await request(`/api/public/activity/${profile.slug}`)).json()).profile.photoUrl).toBeNull();
+    } finally {
+      await put(previous.slug ? previous : { ...profile, published: false, photo: null });
+    }
   });
 
   test("streams working to completed as one logical action and closes the stream when unpublished", async () => {
@@ -676,6 +714,44 @@ describe("local activity demo", () => {
     const logical = await (await request("/api/actions?tool=demo.connection-receipts")).json();
     expect(logical.actions).toHaveLength(1);
     expect(logical.actions[0].status).toBe("completed");
+  });
+
+  test("archives, restores and deletes demo connections without removing saved history", async () => {
+    const headers = { "X-Engram-Workspace": "1", "X-Engram-Console": "1", "Content-Type": "application/json" };
+    const list = async () => (await (await request("/api/connections", { headers })).json()).connections;
+    const mutate = (id: string, action: string, custom: HeadersInit = headers) => request("/api/connections", { method: "POST", headers: custom, body: JSON.stringify({ id, action }) });
+    const historyBefore = await (await request("/api/actions?agent=codex")).json();
+    const pagesBefore = await (await request("/api/pages")).json();
+    await request("/api/tokens", { method: "POST", body: JSON.stringify({ name: "lifecycle-preview", harness: "claude-code" }) });
+    const key = (await list()).find((row: any) => row.name === "lifecycle-preview");
+    expect(key).toMatchObject({ status: "authorized", archivedAt: null });
+    expect((await mutate(key.id, "archive", { "X-Engram-Workspace": "1" })).status).toBe(403);
+    expect((await mutate(key.id, "archive", { "X-Engram-Console": "1" })).status).toBe(400);
+    expect((await mutate(key.id, "archive", { ...headers, Origin: "https://foreign.example" })).status).toBe(403);
+    expect((await mutate(key.id, "archive", { ...headers, "X-Engram-Workspace": "2" })).status).toBe(409);
+    expect((await mutate("token:99999999", "archive")).status).toBe(404);
+    expect((await mutate(key.id, "erase")).status).toBe(400);
+    expect((await mutate(key.id, "archive")).status).toBe(200);
+    const archived = (await list()).find((row: any) => row.id === key.id);
+    expect(archived.status).toBe("revoked");
+    expect(Number.isFinite(Date.parse(archived.archivedAt))).toBe(true);
+    const rows = await list();
+    expect(rows.at(-1).id).toBe(key.id);
+    expect((await mutate(key.id, "restore")).status).toBe(200);
+    expect((await list()).find((row: any) => row.id === key.id)).toMatchObject({ archivedAt: null, status: "revoked" });
+    expect((await mutate(key.id, "delete")).status).toBe(200);
+    expect((await list()).some((row: any) => row.id === key.id)).toBe(false);
+    expect((await mutate(key.id, "delete")).status).toBe(200);
+    expect((await mutate(key.id, "restore")).status).toBe(404);
+    const oauth = (await list()).find((row: any) => row.kind === "oauth");
+    expect((await mutate(oauth.id, "archive")).status).toBe(200);
+    expect((await list()).find((row: any) => row.id === oauth.id).status).toBe("revoked");
+    expect((await mutate(oauth.id, "restore")).status).toBe(200);
+    expect((await list()).find((row: any) => row.id === oauth.id)).toMatchObject({ archivedAt: null, status: "revoked" });
+    expect((await mutate(oauth.id, "delete")).status).toBe(200);
+    expect((await list()).some((row: any) => row.id === oauth.id)).toBe(false);
+    expect(await (await request("/api/actions?agent=codex")).json()).toEqual(historyBefore);
+    expect(await (await request("/api/pages")).json()).toEqual(pagesBefore);
   });
 });
 

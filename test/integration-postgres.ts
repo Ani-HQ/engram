@@ -14,8 +14,9 @@
  */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { renderAsync } from "@resvg/resvg-js";
 import { fileURLToPath } from "node:url";
-import { PROFILE_PRESENTATION_SCHEMA_VERSION } from "../gateway/src/showcase-schema";
+import { PROFILE_PHOTO_SCHEMA_VERSION, PROFILE_PRESENTATION_SCHEMA_VERSION } from "../gateway/src/showcase-schema";
 
 const template = process.env.ENGRAM_TEST_DB_URL_TEMPLATE;
 if (!template) throw new Error("Set ENGRAM_TEST_DB_URL_TEMPLATE to a disposable local PostgreSQL test cluster");
@@ -93,6 +94,17 @@ try {
   equal((await sql`SELECT version, activity_version, billing_version, signup_version, signup_access_version, mail_series_version, jev_version, showcase_version, context_sharing_version FROM engram_schema_state WHERE id = true`)[0], predecessorMarkers, "Repeating the additive migration still preserves all predecessor readiness markers");
   equal((await sql`SELECT profile_presentation_version FROM engram_schema_state WHERE id = true`)[0].profile_presentation_version, PROFILE_PRESENTATION_SCHEMA_VERSION, "Repeating the additive migration retains exact presentation readiness");
   equal((await sql`SELECT slug, display_name, bio, published, layout, highlights FROM action_profiles WHERE org_id = 1`)[0], upgradedProfile, "Repeating the presentation migration leaves the original owner choices intact");
+  // The photo upgrade is additive to every already deployed contract.
+  await sql`ALTER TABLE action_profiles DROP COLUMN photo_png, DROP COLUMN photo_digest`;
+  await sql`ALTER TABLE engram_schema_state DROP COLUMN profile_photo_version`;
+  const beforePhotoMarkers = (await sql`SELECT version, activity_version, billing_version, signup_version, signup_access_version, mail_series_version, jev_version, showcase_version, profile_presentation_version, context_sharing_version, connections_version FROM engram_schema_state WHERE id = true`)[0];
+  await migrate();
+  equal((await sql`SELECT version, activity_version, billing_version, signup_version, signup_access_version, mail_series_version, jev_version, showcase_version, profile_presentation_version, context_sharing_version, connections_version FROM engram_schema_state WHERE id = true`)[0], beforePhotoMarkers, "Photo migration preserves all predecessor readiness contracts");
+  equal((await sql`SELECT profile_photo_version FROM engram_schema_state WHERE id = true`)[0].profile_photo_version, PROFILE_PHOTO_SCHEMA_VERSION, "Photo readiness uses its exact additive marker");
+  equal((await sql`SELECT photo_png, photo_digest FROM action_profiles WHERE org_id = 1`)[0], { photo_png: null, photo_digest: null }, "Existing profiles default to no uploaded image");
+  equal((await sql`SELECT slug, display_name, bio, published, layout, highlights FROM action_profiles WHERE org_id = 1`)[0], upgradedProfile, "Photo migration preserves owner publication and presentation choices");
+  await migrate();
+  equal((await sql`SELECT profile_photo_version FROM engram_schema_state WHERE id = true`)[0].profile_photo_version, PROFILE_PHOTO_SCHEMA_VERSION, "Photo migration is repeatable");
   await sql`DELETE FROM action_profiles WHERE org_id = 1 AND slug = 'legacy-presentation-row'`;
   equal(Number((await sql`SELECT count(*) AS n FROM orgs`)[0].n), 1, "Central migrations are repeatable without duplicating the legacy workspace");
   equal(Number((await sql`SELECT count(*) AS n FROM pg_indexes WHERE schemaname = 'public' AND indexname IN ('tokens_org_name_idx', 'action_events_org_time_idx')`)[0].n), 2, "Tenant identity and action indexes exist on PostgreSQL");
@@ -238,6 +250,27 @@ try {
   await rejects(() => sql`UPDATE action_profiles SET highlights = ${sql.json(Array.from({ length: 4 }, () => ({ ...publicHighlights[0] })))} WHERE org_id = 2`, error => error.code === "23514", "The database bounds stored highlight arrays to three records");
   await updateShowcaseSettings(ownerA, { slug: "integration-a", displayName: "Public A", bio: "Only aggregates", published: true, layout: "studio", highlights: [] }, "https://integration.example");
   equal((await getPublicActivity("integration-a"))?.profile.highlights, [], "An explicit empty highlight list clears previously approved public text");
+  const selectedPhoto = "data:image/png;base64," + (await renderAsync('<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#75d8b0"/></svg>', { font: { loadSystemFonts: false } })).asPng().toString("base64");
+  const photographed = await updateShowcaseSettings(ownerA, { slug: "integration-a", displayName: "Public A", bio: "Only aggregates", published: true, photo: selectedPhoto }, "https://integration.example");
+  check(photographed.profile.photo?.startsWith("data:image/png;base64,"), "The authorized owner receives a normalized draft image");
+  const storedPhoto = (await sql`SELECT photo_png, photo_digest FROM action_profiles WHERE org_id = 2`)[0];
+  check(storedPhoto.photo_png instanceof Uint8Array && /^[a-f0-9]{64}$/.test(storedPhoto.photo_digest), "PostgreSQL stores a bounded bytea image and its digest");
+  const photographedPublic = (await getPublicActivity("integration-a"))!;
+  const photoPath = photographedPublic.profile.photoUrl!;
+  check(photoPath.endsWith(`photo.png?v=${storedPhoto.photo_digest}`), "The public projection exposes only a versioned image URL");
+  check(!JSON.stringify(photographedPublic).includes("base64"), "Photo bytes never enter public JSON/SSE projections");
+  equal((await getPublicActivity("integration-b"))?.profile.photoUrl, null, "Another tenant receives no image by inheritance");
+  const photoResponse = (await handlePublicShowcase(new Request("https://integration.example" + photoPath)))!;
+  equal(photoResponse.status, 200, "The published image is available through its digest-bound route");
+  equal(Buffer.from(await photoResponse.arrayBuffer()), Buffer.from(storedPhoto.photo_png), "The image response serves precisely the normalized saved bytes");
+  await updateShowcaseSettings(ownerA, { slug: "integration-a", displayName: "Public A", bio: "Legacy client", published: true }, "https://integration.example");
+  equal((await getPublicActivity("integration-a"))?.profile.photoUrl, photoPath, "Legacy client writes atomically preserve uploaded images");
+  await rejects(() => sql`UPDATE action_profiles SET photo_png = NULL WHERE org_id = 2`, error => error.code === "23514", "Database rejects incomplete photo digest/byte pairs");
+  await rejects(() => sql`UPDATE action_profiles SET photo_digest = 'invalid' WHERE org_id = 2`, error => error.code === "23514", "Database rejects invalid photo digest shapes");
+  await rejects(() => sql`UPDATE action_profiles SET photo_png = ${Buffer.alloc(524289)} WHERE org_id = 2`, error => error.code === "23514", "Database enforces the normalized image byte ceiling");
+  await updateShowcaseSettings(ownerA, { slug: "integration-a", displayName: "Public A", bio: "Only aggregates", published: true, photo: null }, "https://integration.example");
+  equal((await getPublicActivity("integration-a"))?.profile.photoUrl, null, "Explicit image removal is immediately reflected in public projection");
+  equal((await handlePublicShowcase(new Request("https://integration.example" + photoPath)))?.status, 404, "An old digest URL stops serving after removal");
   equal(publicA.stats, { totalActions: 4, completedActions: 3, failedActions: 1, runningActions: 0, activeAgents: 2, activeDays: 1 }, "Public totals aggregate only tenant A's actions");
   equal(publicB.stats.totalActions, 3, "Public tenant B totals stay separate");
   equal(publicA.tools, [{ category: "memory", count: 2 }, { category: "code", count: 1 }, { category: "email", count: 1 }], "Public categories execute in PostgreSQL and reveal generic tool groups only");
@@ -432,6 +465,8 @@ try {
 
   const { checkConnections } = await import("./integration-connections");
   checks += await checkConnections(sql);
+  const { checkConnectionLifecycle } = await import("./integration-connection-lifecycle");
+  checks += await checkConnectionLifecycle(sql);
   const { checkComplimentaryAccess } = await import("./integration-complimentary");
   checks += await checkComplimentaryAccess(sql);
   const { checkSignupInviteAccess } = await import("./integration-signup-access");

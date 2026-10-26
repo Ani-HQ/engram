@@ -97,6 +97,53 @@ export function statusBadge(value, { tone = 'neutral', className = '' } = {}) {
   const badge = document.createElement('span'); badge.className = ['ds-badge', typeof className === 'string' ? className : ''].filter(Boolean).join(' '); badge.dataset.tone = tones.has(tone) ? tone : 'neutral'; badge.textContent = String(value); return badge;
 }
 
+/** Readable status copy, with an optional decorative sheen for fresh work only. */
+export function statusText(label, { active = false, className = '' } = {}) {
+  const value = String(label);
+  const text = document.createElement('span');
+  text.setAttribute('class', ['ds-status-text', typeof className === 'string' ? className : ''].filter(Boolean).join(' '));
+  text.setAttribute('data-active', String(active === true));
+  text.setAttribute('data-motion-paused', 'true');
+  const copy = document.createElement('span'); copy.setAttribute('class', 'ds-status-copy'); copy.textContent = value;
+  const sheen = document.createElement('span'); sheen.setAttribute('class', 'ds-status-sheen'); sheen.setAttribute('aria-hidden', 'true');
+  const shine = document.createElement('span'); shine.setAttribute('class', 'ds-status-shine'); shine.setAttribute('data-text', value);
+  sheen.append(shine); text.append(copy, sheen);
+  return text;
+}
+
+const publicProfilePhoto = /^\/api\/public\/activity\/(?=[a-z0-9-]{3,48}\/photo\.png)[a-z0-9]+(?:-[a-z0-9]+)*\/photo\.png\?v=[a-f0-9]{64}$/;
+const draftProfilePhoto = /^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/;
+/** A human profile identity. The local memory bloom is a fallback, never a status. */
+export function profileAvatar({ src = '', label = 'Profile photo', size = 'md' } = {}) {
+  const avatar = document.createElement('span');
+  avatar.setAttribute('class', 'ds-profile-avatar');
+  avatar.setAttribute('data-size', ['sm', 'md', 'lg'].includes(size) ? size : 'md');
+  avatar.setAttribute('data-state', 'empty');
+  avatar.setAttribute('role', 'img');
+  avatar.setAttribute('aria-label', typeof label === 'string' && label.trim() ? label : 'Profile photo');
+  const bloom = graphic('ds-profile-avatar-fallback', '0 0 112 112');
+  bloom.append(node('circle', { cx: 56, cy: 56, r: 39, class: 'ds-profile-avatar-halo' }),
+    node('circle', { cx: 56, cy: 56, r: 23, class: 'ds-profile-avatar-core' }));
+  for (const rotation of [-30, 30, 90]) bloom.append(node('ellipse', { cx: 56, cy: 56, rx: 33, ry: 13, transform: `rotate(${rotation} 56 56)`, class: 'ds-profile-avatar-orbit' }));
+  bloom.append(node('path', { d: 'M56 49 63 56 56 63 49 56Z', class: 'ds-profile-avatar-seed' }),
+    node('circle', { cx: 84.6, cy: 39.5, r: 2.5, class: 'ds-profile-avatar-seed' }),
+    node('circle', { cx: 27.4, cy: 72.5, r: 2.5, class: 'ds-profile-avatar-seed' }));
+  avatar.append(bloom);
+  // Only the bounded local upload pipeline can supply images. No remote tracking,
+  // SVG, object URL, HTML parsing or third-party image fallback is allowed here.
+  if (typeof src !== 'string' || src.length > 700_000 || !(publicProfilePhoto.test(src) || draftProfilePhoto.test(src))) return avatar;
+  const image = document.createElement('img');
+  image.setAttribute('class', 'ds-profile-avatar-image');
+  image.setAttribute('alt', ''); image.setAttribute('aria-hidden', 'true');
+  image.setAttribute('width', '112'); image.setAttribute('height', '112');
+  image.setAttribute('decoding', 'async'); image.setAttribute('draggable', 'false');
+  avatar.setAttribute('data-state', 'loading');
+  image.addEventListener('load', () => avatar.setAttribute('data-state', 'ready'), { once: true });
+  image.addEventListener('error', () => { avatar.setAttribute('data-state', 'error'); image.hidden = true; }, { once: true });
+  image.setAttribute('src', src); avatar.append(image);
+  return avatar;
+}
+
 /** A resource identity with a locally rendered mark. Text never becomes markup. */
 export function resourceChip(value, { visual, trailing, onClick, title, actionLabel, disabled = false } = {}) {
   const interactive = typeof onClick === 'function';
@@ -188,7 +235,7 @@ export function observeLoadingMotion(root = document) {
   });
   const scan = () => {
     queued = false; if (disposed) return;
-    const selector = '.ds-spinner, .ds-skeleton, .ds-progress[data-indeterminate="true"]';
+    const selector = '.ds-spinner, .ds-skeleton, .ds-progress[data-indeterminate="true"], .ds-status-text[data-active="true"]';
     const found = new Set(root.querySelectorAll(selector));
     if (root.matches?.(selector)) found.add(root);
     for (const target of targets.keys()) if (!found.has(target)) { observer.unobserve(target); targets.delete(target); target.removeAttribute('data-motion-paused'); }
@@ -196,7 +243,7 @@ export function observeLoadingMotion(root = document) {
   };
   const changed = () => { if (!queued) { queued = true; queueMicrotask(scan); } };
   const mutation = typeof MutationObserver === 'function' ? new MutationObserver(changed) : null;
-  mutation?.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-indeterminate'] });
+  mutation?.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-indeterminate', 'data-active'] });
   const visibility = () => { for (const [target, visible] of targets) pause(target, visible); };
   document.addEventListener('visibilitychange', visibility); scan();
   return () => { disposed = true; observer.disconnect(); mutation?.disconnect(); document.removeEventListener('visibilitychange', visibility); for (const target of targets.keys()) target.removeAttribute('data-motion-paused'); targets.clear(); };

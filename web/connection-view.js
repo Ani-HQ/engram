@@ -2,7 +2,7 @@ import { h } from "./profile.js";
 import { icon } from "./icons.js";
 import { agentVisual, visualIcon } from "./tooling.js";
 import { relativeTime } from "./activity-view.js";
-import { connectionState, connectionSummary, lastConnectionContact } from "./connection-model.js";
+import { connectionState, connectionSummary, currentConnections, lastConnectionContact } from "./connection-model.js";
 import { taskReportingStatus } from "./task-reporting-model.js";
 
 const button = (children, action, attrs = {}) => h("button", { type: "button", onclick: action, ...attrs }, children);
@@ -14,7 +14,7 @@ const time = value => h("time", { datetime: value, "data-relative-time": value, 
 export function agentOverview(data, { onManage, onFilter, selectedAgent = "", error = "", now = Date.now() } = {}) {
   if (!data) return error ? h("aside", { class: "agent-overview unavailable" }, icon("info", { size: 14 }), h("span", {}, "Connection status is unavailable."), button("View connections", onManage, { class: "text small" }))
     : h("aside", { class: "agent-overview is-loading", "aria-label": "Loading agent connections" }, h("span", { class: "ds-spinner", "aria-hidden": "true" }), h("span", { class: "muted" }, "Checking agent connections…"));
-  const connections = data.connections || [], summary = connectionSummary(connections, now, data.recentWindowSeconds);
+  const connections = currentConnections(data.connections || []), summary = connectionSummary(connections, now, data.recentWindowSeconds);
   const visible = [...connections].sort((a, b) => Number(b.status === "authorized") - Number(a.status === "authorized") || (Date.parse(lastConnectionContact(b, now) || b.createdAt) || 0) - (Date.parse(lastConnectionContact(a, now) || a.createdAt) || 0)).slice(0, 5);
   return h("aside", { class: "agent-overview ds-card", "aria-label": "Agent connections" },
     h("div", { class: "agent-overview-heading" }, h("div", {}, h("h2", {}, "Your agents"), h("span", {}, summary.recent ? `${summary.recent} seen recently` : summary.authorized ? `${summary.authorized} authorized · No recent contact` : connections.length ? "Connections need attention" : "Connect your first agent")),
@@ -31,9 +31,9 @@ export function agentOverview(data, { onManage, onFilter, selectedAgent = "", er
     data.more && h("p", { class: "agent-overview-note" }, `Showing the first ${count(data.limit || connections.length)} connections.`));
 }
 
-export function connectionInventory(data, { actions, onInspect, now = Date.now() } = {}) {
+export function connectionInventory(data, { actions, onInspect, list = "current", now = Date.now() } = {}) {
   if (!data) return null;
-  const all = data.connections || [], authorized = all.filter(connection => connection.status === "authorized"), attention = all.filter(connection => connection.status !== "authorized");
+  const all = (data.connections || []).filter(connection => !connection.deletedAt && Boolean(connection.archivedAt) === (list === "archived")), authorized = all.filter(connection => connection.status === "authorized"), attention = all.filter(connection => connection.status !== "authorized");
   const row = connection => {
     const state = connectionState(connection, now, data.recentWindowSeconds);
     return h("article", { class: `connection-row ds-card ${state.state}`, "data-connection-id": connection.id }, avatar(connection),
@@ -41,14 +41,16 @@ export function connectionInventory(data, { actions, onInspect, now = Date.now()
         connection.kind === "token" && connection.name !== name(connection) && h("p", { class: "connection-installation" }, connection.name),
         h("p", {}, state.lastContactAt ? ["Last contact ", time(state.lastContactAt)] : "No agent calls recorded yet"),
         h("p", { class: "connection-counts" }, `${count(connection.memoryCalls)} memory ${Number(connection.memoryCalls) === 1 ? "call" : "calls"}`, h("span", { "aria-hidden": "true" }, "·"), `${count(connection.taskReports)} task ${Number(connection.taskReports) === 1 ? "report" : "reports"}`),
+        connection.archivedAt && h("p", {}, "Archived ", time(connection.archivedAt)),
         h("p", { class: "connection-reporting-state", title: taskReportingStatus(connection).detail }, taskReportingStatus(connection).label)),
       h("div", { class: "connection-row-end" }, h("span", { class: `connection-state ds-badge ${state.state}`, "data-tone": state.state === "recent" ? "success" : state.state === "reconnect" ? "warning" : "neutral", title: state.explanation }, icon(state.state === "reconnect" ? "info" : state.state === "recent" ? "check" : "circle-dashed", { size: 12 }), state.label),
         actions?.(connection) || button(state.state === "reconnect" ? "Reconnect" : "Details", () => onInspect?.(connection), { class: "text small" })));
   };
   return h("div", { class: "connection-inventory" },
-    authorized.length > 0 && h("section", {}, h("div", { class: "connection-section-title" }, h("h3", {}, "Authorized"), h("span", {}, count(authorized.length))), authorized.map(row)),
-    attention.length > 0 && h("section", {}, h("div", { class: "connection-section-title" }, h("h3", {}, "Needs attention"), h("span", {}, count(attention.length))), attention.map(row)),
-    !all.length && h("p", { class: "connection-empty" }, "No agent connections yet. Sign in from an agent or create a dedicated access key below."),
+    list === "archived" ? all.length > 0 && h("section", {}, h("div", { class: "connection-section-title" }, h("h3", {}, "Archived"), h("span", {}, count(all.length))), all.map(row)) : [
+      authorized.length > 0 && h("section", {}, h("div", { class: "connection-section-title" }, h("h3", {}, "Authorized"), h("span", {}, count(authorized.length))), authorized.map(row)),
+      attention.length > 0 && h("section", {}, h("div", { class: "connection-section-title" }, h("h3", {}, "Needs attention"), h("span", {}, count(attention.length))), attention.map(row))],
+    !all.length && h("p", { class: "connection-empty" }, list === "archived" ? "No archived connections. Archived connections stay here until you restore or delete them." : "No current connections. Sign in from an agent, create an access key below, or restore an archived connection."),
     data.more && h("p", { class: "detail-note" }, `Showing the first ${count(data.limit || all.length)} connections. Older connections are omitted from this view.`),
     h("p", { class: "connection-explainer" }, "Authorization confirms access. Last contact records a request received by Engram; it does not mean an agent is currently working. Work outside Engram appears when the agent reports it."));
 }

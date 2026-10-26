@@ -26,7 +26,7 @@ const text = value => typeof value === "string" ? value.trim() : "";
 /** Workspace inventory evidence only; callbacks remain with the owning app. */
 export function taskReportingSetup(data, { onInspect, onManage, copyControl } = {}) {
   const summary = taskReportingSummary(data);
-  const connections = Array.isArray(data?.connections) ? data.connections : [];
+  const connections = Array.isArray(data?.connections) ? data.connections.filter(connection => !connection?.archivedAt && !connection?.deletedAt) : [];
   const reconnectDetail = !summary.available
     ? "Connection status is unavailable. Open Connections to check access, then refresh your agent's Engram tools."
     : !summary.total

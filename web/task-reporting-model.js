@@ -10,12 +10,15 @@ const validCount = value => Number.isSafeInteger(value) && value >= 0;
 export function taskReportingStatus(connection) {
   const source = record(connection);
   const reportCount = validCount(source.taskReports) ? source.taskReports : 0;
-  const reconnect = reconnectStatuses.has(source.status);
-  const authorized = source.status === "authorized";
+  const archived = Boolean(source.archivedAt);
+  const reconnect = !archived && reconnectStatuses.has(source.status);
+  const authorized = !archived && !source.deletedAt && source.status === "authorized";
   const eligible = authorized && source.canWrite === true;
   const readOnly = authorized && source.canWrite === false;
   const withReports = eligible && reportCount > 0;
   const evidence = { eligible, reconnect, readOnly, withReports, reportCount };
+
+  if (archived) return { ...evidence, state: "archived", label: "Archived", detail: "This connection is archived and disconnected. Its past task reports remain available." };
 
   if (reconnect) return {
     ...evidence, state: "reconnect", label: "Reconnect needed",
@@ -46,7 +49,7 @@ export function taskReportingStatus(connection) {
 /** Counts only the supplied workspace inventory; `more` preserves its bounds. */
 export function taskReportingSummary(payload) {
   const source = record(payload), available = Array.isArray(source.connections);
-  const connections = available ? source.connections : [];
+  const connections = available ? source.connections.filter(connection => !connection?.archivedAt && !connection?.deletedAt) : [];
   const summary = { eligible: 0, reconnect: 0, readOnly: 0, withReports: 0,
     total: connections.length, more: available && source.more === true, available };
   for (const connection of connections) {

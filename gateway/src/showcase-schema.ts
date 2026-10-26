@@ -3,3 +3,6 @@
 export const SHOWCASE_SCHEMA_VERSION = 2026102501;
 // Layout and highlights are explicit owner-written presentation fields.
 export const PROFILE_PRESENTATION_SCHEMA_VERSION = 2026102502;
+
+// Owner-uploaded normalized PNGs use a separate additive readiness marker.
+export const PROFILE_PHOTO_SCHEMA_VERSION = 2026102602;

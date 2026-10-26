@@ -1,12 +1,14 @@
 import { h, profileCard, profileSkeleton, updateProfileCard, updateProfileTimes } from "./profile.js";
 import { icon } from "./icons.js";
 import { watchPublicActivity } from "./live-activity.js";
+import { observeLoadingMotion } from "./design-system.js";
 
 const root = document.querySelector("#public-showcase");
 const slug = root?.dataset.slug;
 const jsonUrl = `/api/public/activity/${encodeURIComponent(slug || "")}`;
 const streamUrl = `${jsonUrl}/stream`;
 let watcher, loading, timeRefresh, version = 0;
+let stopMotion = observeLoadingMotion(document.body);
 const copyTimers = new WeakMap();
 const toast = h("div", { class: "sr-only", role: "status", "aria-live": "polite" });
 document.body.append(toast);
@@ -90,7 +92,7 @@ async function load() {
   } catch { if (current === version) unavailable("unavailable"); }
   finally { clearTimeout(timeout); }
 }
-document.addEventListener("visibilitychange", () => { if (document.hidden) watcher?.pause(); else watcher?.resume(); });
-window.addEventListener("pagehide", () => { ++version; loading?.abort(); clearInterval(timeRefresh); watcher?.pause(); });
-window.addEventListener("pageshow", event => { if (event.persisted) load(); });
+document.addEventListener("visibilitychange", () => { if (document.hidden) watcher?.pause(); else { root?.querySelectorAll(".public-profile").forEach(card => updateProfileTimes(card)); watcher?.resume(); } });
+window.addEventListener("pagehide", () => { ++version; loading?.abort(); clearInterval(timeRefresh); watcher?.pause(); stopMotion(); });
+window.addEventListener("pageshow", event => { if (event.persisted) { stopMotion = observeLoadingMotion(document.body); load(); } });
 if (root) load();

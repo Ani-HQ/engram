@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { contributionGrid, profileCard, updateProfileCard, updateProfileTimes } from "./profile.js";
 
 const dataKey = (key: string) => key.slice(5).replace(/-([a-z])/g, (_: string, letter: string) => letter.toUpperCase());
@@ -45,10 +45,34 @@ const event = { id: "a".repeat(32), agent: { product: "codex", label: "Codex" },
 const sample = { profile: { displayName: "Ada", bio: "Building useful things.", slug: "ada" }, stats: { totalActions: 6, activeAgents: 1, activeDays: 3 }, daily, tools: [{ category: "code", count: 6 }], live: { workingAgents: 1, recentlyActiveAgents: 1, completedAgents: 1, staleActions: 0 }, activity: { enabled: true, events: [event] } };
 
 describe("public activity profile", () => {
+  test("profile photos update without resetting activity or charts and removals use the fallback", () => {
+    const photoUrl = `/api/public/activity/ada/photo.png?v=${"a".repeat(64)}`;
+    const data = { ...sample, profile: { ...sample.profile, photoUrl } };
+    const card = profileCard(data) as unknown as Element;
+    const slot = card.querySelector(".profile-identity-photo")!;
+    const avatar = slot.children[0], image = avatar.querySelector("img")!;
+    const grid = card.querySelector(".contribution-grid")!;
+    expect(image.getAttribute("src")).toBe(photoUrl);
+    grid.children[1].focus();
+    updateProfileCard(card, { ...data, stats: { ...data.stats, totalActions: 8 } });
+    expect(slot.children[0]).toBe(avatar); expect(avatar.querySelector("img")).toBe(image);
+    expect(document.activeElement).toBe(grid.children[1] as any);
+    updateProfileCard(card, { ...data, profile: { ...data.profile, photo: null } });
+    expect(slot.querySelector("img")).toBeNull();
+    expect(slot.children[0].getAttribute("data-state")).toBe("empty");
+    expect(card.querySelector(".contribution-grid")).toBe(grid);
+    const draftPhoto = "data:image/png;base64,aGVsbG8=";
+    updateProfileCard(card, { ...data, profile: { ...data.profile, photo: draftPhoto } });
+    expect(slot.querySelector("img")!.getAttribute("src")).toBe(draftPhoto);
+    expect(document.activeElement).toBe(grid.children[1] as any);
+  });
+
   test("renders canonical product/service identities and only safe projected fields", () => {
     const card = profileCard(sample) as unknown as Element;
-    expect(card.textContent).toContain("Codex"); expect(card.textContent).toContain("GitHub activity");
-    expect(card.textContent).toContain("Agent reported"); expect(card.textContent).toContain("In progress");
+    expect(card.textContent).not.toContain("Codex"); expect(card.textContent).toContain("GitHub activity");
+    expect(card.textContent).not.toContain("Agent reported"); expect(card.textContent).toContain("In progress");
+    expect(all(card).some(node => node.getAttribute("role") === "img" && node.getAttribute("aria-label") === "Codex")).toBe(true);
+    expect(card.querySelector("[data-public-event]")!.getAttribute("aria-description")).toContain("Agent-reported activity");
     for (const privateText of ["private laptop alias", "private task title", "private.example"]) {
       expect(card.textContent).not.toContain(privateText);
       expect(JSON.stringify(all(card).map(node => ({ attrs: node.attrs, dataset: node.dataset })))).not.toContain(privateText);
@@ -71,6 +95,7 @@ describe("public activity profile", () => {
     const card = profileCard(sample) as unknown as Element;
     const row = card.querySelector("[data-public-event]"), grid = card.querySelector(".contribution-grid")!;
     const history = card.querySelector(".profile-history")!; history.open = true;
+    const receipts = card.querySelector(".profile-receipts")!; receipts.open = true;
     const viewport = card.querySelector(".contribution-viewport")!; viewport.scrollLeft = 144;
     grid.children[1].focus();
     const changed = { ...sample, activity: { enabled: true, events: [{ ...event, id: "b".repeat(32), status: "running" }, { ...event, status: "completed" }] } };
@@ -79,7 +104,7 @@ describe("public activity profile", () => {
     expect(card.querySelector('[data-public-events="recent"]')!.children[0]).toBe(row);
     expect(card.querySelector(".contribution-grid")).toBe(grid); expect(document.activeElement).toBe(grid.children[1] as any);
     expect(card.querySelector(".contribution-viewport")).toBe(viewport); expect(viewport.scrollLeft).toBe(144);
-    expect(grid.dataset.selectedDate).toBe("2026-10-24"); expect(history.open).toBe(true);
+    expect(grid.dataset.selectedDate).toBe("2026-10-24"); expect(history.open).toBe(true); expect(receipts.open).toBe(true);
     updateProfileCard(card, changed);
     expect(card.querySelector('[data-public-events="recent"]')!.children[0]).toBe(row);
   });
@@ -125,7 +150,8 @@ describe("public activity profile", () => {
   test("timestamps age quietly and stale reports have an explicit state", () => {
     const card = profileCard({ ...sample, activity: { enabled: true, events: [{ ...event, status: "stale", evidence: "observed" }] } }) as unknown as Element;
     updateProfileTimes(card, Date.parse(event.updatedAt) + 120_000);
-    expect(card.textContent).toContain("Update overdue"); expect(card.textContent).toContain("Observed by Engram");
+    expect(card.textContent).toContain("Update overdue"); expect(card.textContent).not.toContain("Observed by Engram");
+    expect(card.querySelector("[data-public-event]")!.getAttribute("aria-description")).toBe("Observed by Engram");
     expect(card.querySelector("[data-public-time]")!.textContent).toBe("2 minutes ago");
   });
 
@@ -141,6 +167,13 @@ describe("public activity profile", () => {
     expect(notes.textContent).toContain("Some work stays behind the scenes.");
     expect(notes.querySelectorAll("[data-public-event]")).toHaveLength(0);
     expect(notes.querySelectorAll("[data-stage-event]")).toHaveLength(0);
+    for (const card of [studio, notes]) {
+      const overview = card.querySelector(".profile-overview")!;
+      expect(overview.parentElement).toBe(card.querySelector(".profile-main"));
+      expect(overview.closest("details")).toBeNull();
+      expect(overview.querySelector(".profile-statistics")).not.toBeNull();
+      expect(overview.querySelector(".contribution-grid")).not.toBeNull();
+    }
     const quiet = profileCard({ ...sample, tools: [], activity: { enabled: true, events: [] } }) as unknown as Element;
     expect(quiet.textContent).toContain("No action counts yet.");
     expect(quiet.textContent).toContain("A quiet moment.");
@@ -182,8 +215,12 @@ describe("public activity profile", () => {
     expect(card.querySelectorAll("[data-public-event]")).toHaveLength(5);
     expect(card.querySelector(".profile-receipts")!.open).toBe(false);
     const stage = card.querySelector("[data-stage-event]");
+    const status = stage!.querySelector(".ds-status-text"), mark = stage!.querySelector('[role="img"]');
     updateProfileCard(card, data);
     expect(card.querySelector("[data-stage-event]")).toBe(stage);
+    expect(stage!.querySelector(".ds-status-text")).toBe(status);
+    expect(stage!.querySelector('[role="img"]')).toBe(mark);
+    expect(status!.getAttribute("data-active")).toBe("true");
     updateProfileCard(card, { ...data, live: { ...data.live, checkedAt: "2026-10-25T10:16:00Z" } });
     expect(card.querySelectorAll("[data-stage-event]")).toHaveLength(0);
     expect(card.querySelector(".profile-desk-state")!.hidden).toBe(false);
@@ -193,49 +230,133 @@ describe("public activity profile", () => {
     expect(card.querySelectorAll("[data-public-event]")).toHaveLength(0);
   });
 
-  test("weekly pulse derives only the last seven supplied UTC counts and preserves live exploration", () => {
-    const days = Array.from({ length: 10 }, (_, index) => ({ date: `2026-10-${String(index + 1).padStart(2, "0")}`, count: index }));
-    const card = profileCard({ ...sample, daily: days }) as unknown as Element;
-    const weekly = card.querySelector(".profile-weekly")!, list = weekly.querySelector(".ds-week-pulse")!;
-    const buttons = weekly.querySelectorAll("[data-week-date]");
-    expect(buttons).toHaveLength(7); expect(buttons[0].dataset.weekDate).toBe("2026-10-04");
-    expect(weekly.querySelector(".profile-week-total")!.querySelector("strong")!.textContent).toBe("42");
-    expect(buttons[0].style.values["--ds-pulse-ratio"]).toBe(String(3 / 9));
-    buttons[6].focus();
-    list.events.keydown({ key: "ArrowLeft", preventDefault() {} });
-    expect(document.activeElement).toBe(buttons[5] as any);
-    list.events.keydown({ key: "Home", preventDefault() {} });
-    expect(document.activeElement).toBe(buttons[0] as any);
-    list.events.keydown({ key: "End", preventDefault() {} });
-    expect(document.activeElement).toBe(buttons[6] as any);
-    list.scrollLeft = 44;
-    const changed = days.map((day, index) => index === 9 ? { ...day, count: 20 } : day);
-    updateProfileCard(card, { ...sample, daily: changed });
-    expect(document.activeElement).toBe(buttons[6] as any);
-    expect(weekly.querySelectorAll("[data-week-date]")[6]).toBe(buttons[6]);
-    expect(list.scrollLeft).toBe(44);
-    expect(weekly.querySelector(".profile-week-caption")!.textContent).toContain("20 actions");
-    expect(weekly.querySelectorAll("[data-week-date]").filter(button => button.tabIndex === 0)).toHaveLength(1);
-    expect(buttons[6].getAttribute("aria-pressed")).toBe("true");
+  test("only fresh running labels shimmer and expire without a new snapshot", () => {
+    const receivedAt = Date.now();
+    const data = { ...sample, live: { ...sample.live, checkedAt: "2026-10-25T10:05:00Z", freshnessSeconds: 900 }, activity: { enabled: true, events: [
+      event,
+      { ...event, id: "old", updatedAt: "2026-10-25T09:40:00Z" },
+      ...["completed", "failed", "stale"].map(status => ({ ...event, id: status, status })),
+    ] } };
+    const card = profileCard(data) as unknown as Element;
+    const receipt = (id: string) => card.querySelector(`[data-public-event="${id}"]`)!.querySelector(".ds-status-text")!;
+    expect(receipt(event.id).getAttribute("data-active")).toBe("true");
+    for (const id of ["old", "completed", "failed", "stale"]) expect(receipt(id).getAttribute("data-active")).toBe("false");
+    const label = receipt(event.id);
+    updateProfileTimes(card, receivedAt + 11 * 60_000);
+    expect(receipt(event.id)).toBe(label);
+    expect(label.getAttribute("data-active")).toBe("false");
+    expect(card.querySelector("[data-stage-event]")!.querySelector(".ds-status-text")!.getAttribute("data-active")).toBe("false");
+    updateProfileCard(card, { ...data, live: { ...data.live, checkedAt: "2026-10-25T10:16:00Z" }, activity: { enabled: true, events: [{ ...event, updatedAt: "2026-10-25T10:16:00Z" }] } });
+    expect(receipt(event.id).getAttribute("data-active")).toBe("true");
+    expect(card.textContent).not.toContain("Codex");
+    expect(card.querySelector("[data-stage-event]")!.getAttribute("aria-description")).toContain("Agent-reported activity");
+  });
+
+  test("repeated snapshots preserve freshness deadlines and update accessible provenance", () => {
+    const checkedAt = "2026-10-25T10:05:00Z", receivedAt = Date.parse(checkedAt) + 2 * 3_600_000;
+    const clock = spyOn(Date, "now").mockReturnValue(receivedAt);
+    try {
+      const data = { ...sample, live: { ...sample.live, checkedAt, freshnessSeconds: 900 } };
+      const card = profileCard(data) as unknown as Element;
+      clock.mockReturnValue(receivedAt + 6 * 60_000);
+      updateProfileCard(card, data);
+      expect(card.querySelector("[data-stage-event]")!.querySelector(".ds-status-text")!.getAttribute("data-active")).toBe("true");
+      clock.mockReturnValue(receivedAt + 11 * 60_000);
+      updateProfileCard(card, data);
+      for (const selector of ["[data-stage-event]", "[data-public-event]"]) {
+        expect(card.querySelector(selector)!.querySelector(".ds-status-text")!.getAttribute("data-active")).toBe("false");
+      }
+      updateProfileCard(card, { ...data, live: { ...data.live, checkedAt: "2026-10-25T10:16:00Z" }, activity: { enabled: true, events: [{ ...event, updatedAt: "2026-10-25T10:16:00Z", evidence: "observed" }] } });
+      for (const selector of ["[data-stage-event]", "[data-public-event]"]) {
+        expect(card.querySelector(selector)!.getAttribute("aria-description")).toBe("Observed by Engram");
+        expect(card.querySelector(selector)!.getAttribute("title")).toBe("Observed by Engram");
+      }
+    } finally { clock.mockRestore(); }
+  });
+
+  test("the visible overview combines all-time totals with the full supplied twelve-week grid", () => {
+    const days = Array.from({ length: 84 }, (_, index) => ({ date: new Date(Date.UTC(2026, 6, index + 1)).toISOString().slice(0, 10), count: index % 4 }));
+    const stats = { totalActions: 1234, activeAgents: 9, activeDays: 104 };
+    const card = profileCard({ ...sample, stats, daily: days }) as unknown as Element;
+    const overview = card.querySelector(".profile-overview")!;
+    expect(overview.classList.contains("ds-card")).toBe(true);
+    expect(overview.parentElement).toBe(card.querySelector(".profile-main"));
+    expect(overview.closest("details")).toBeNull();
+    expect(card.querySelector(".profile-weekly")).toBeNull();
+    const history = card.querySelector(".profile-history")!;
+    expect(history.querySelector(".profile-statistics")).toBeNull();
+    expect(history.querySelector(".contributions")).toBeNull();
+    expect(history.querySelector(".profile-tools")).not.toBeNull();
+    expect(card.textContent).not.toContain("A little momentum.");
+    const totals = overview.querySelector(".profile-statistics")!;
+    expect(totals.getAttribute("aria-label")).toBe("All-time activity totals");
+    expect(totals.querySelector('[data-public-stat="totalActions"]')!.textContent).toBe("1,234");
+    expect(totals.querySelector('[data-public-stat="activeAgents"]')!.textContent).toBe("9");
+    expect(totals.querySelector('[data-public-stat="activeDays"]')!.textContent).toBe("104");
+    expect(totals.textContent).toContain("Actions"); expect(totals.textContent).toContain("Agents"); expect(totals.textContent).toContain("Active days");
+    const chart = overview.querySelector(".contributions")!, grid = chart.querySelector(".contribution-grid")!;
+    expect(chart.closest("details")).toBeNull();
+    expect(chart.textContent).toContain("Last 12 weeks");
+    expect(grid.children).toHaveLength(84);
+    expect(grid.children[0].dataset.date).toBe(days[0].date);
+    expect(grid.children[83].dataset.date).toBe(days[83].date);
+    expect(overview.querySelector(".profile-tools")).toBeNull();
+
+    const cells = [...grid.children], viewport = overview.querySelector(".contribution-viewport")!;
+    cells[10].focus(); viewport.scrollLeft = 160;
+    const changed = days.map((day, index) => index === 10 ? { ...day, count: 20 } : day);
+    updateProfileCard(card, { ...sample, stats: { totalActions: 1252, activeAgents: 10, activeDays: 105 }, daily: changed });
+    expect(card.querySelector(".profile-overview")).toBe(overview);
+    expect(card.querySelector(".contribution-grid")).toBe(grid);
+    expect(grid.children.every((cell, index) => cell === cells[index])).toBe(true);
+    expect(document.activeElement).toBe(cells[10] as any);
+    expect(grid.dataset.selectedDate).toBe(days[10].date);
+    expect(grid.children.filter(cell => cell.tabIndex === 0)).toHaveLength(1);
+    expect(viewport.scrollLeft).toBe(160);
+    expect(chart.querySelector(".contribution-caption")!.textContent).toContain("20 actions");
+    expect(totals.querySelector('[data-public-stat="totalActions"]')!.textContent).toBe("1,252");
+    expect(totals.querySelector('[data-public-stat="activeAgents"]')!.textContent).toBe("10");
+    expect(totals.querySelector('[data-public-stat="activeDays"]')!.textContent).toBe("105");
+  });
+
+  test("aggregate-only and zero-activity profiles keep the overview visible without sample activity", () => {
+    for (const layout of ["studio", "field-notes"]) {
+      const card = profileCard({ ...sample, profile: { ...sample.profile, layout }, activity: { enabled: false, events: [event] } }) as unknown as Element;
+      const overview = card.querySelector(".profile-overview")!;
+      expect(overview.closest("details")).toBeNull();
+      expect(overview.querySelector('[data-public-stat="totalActions"]')!.textContent).toBe("6");
+      expect(overview.querySelector(".contribution-grid")!.children).toHaveLength(daily.length);
+      expect(card.querySelectorAll("[data-public-event]")).toHaveLength(0);
+      expect(card.querySelectorAll("[data-stage-event]")).toHaveLength(0);
+
+      updateProfileCard(card, { ...sample, profile: { ...sample.profile, layout }, stats: { totalActions: 0, activeAgents: 0, activeDays: 0 }, daily: [], tools: [], activity: { enabled: false, events: [] } });
+      expect(card.querySelector(".profile-overview")).toBe(overview);
+      for (const key of ["totalActions", "activeAgents", "activeDays"]) expect(overview.querySelector(`[data-public-stat="${key}"]`)!.textContent).toBe("0");
+      expect(overview.querySelector(".contribution-grid")!.children).toHaveLength(0);
+      expect(overview.querySelector(".contribution-caption")!.textContent).toContain("0 actions");
+      expect(overview.hidden).toBe(false);
+      expect(overview.closest("details")).toBeNull();
+    }
   });
 
   test("switching layouts and updating highlights retains native disclosures, selected dates and focus", () => {
     const highlights = [{ title: "A deliberately public note", body: "An owner-approved sentence. ".repeat(10), url: "https://example.com/first" }];
     const card = profileCard({ ...sample, profile: { ...sample.profile, highlights } }) as unknown as Element;
     const highlight = card.querySelector("[data-profile-highlight]")!, note = highlight.querySelector(".ds-highlight-disclosure")!;
-    const history = card.querySelector(".profile-history")!, receipts = card.querySelector(".profile-receipts")!;
+    const history = card.querySelector(".profile-history")!;
+    const receipts = card.querySelector(".profile-receipts")!;
     note.open = true; history.open = true; receipts.open = true;
     const chart = card.querySelector(".contribution-grid")!, viewport = card.querySelector(".contribution-viewport")!;
     chart.children[1].focus(); viewport.scrollLeft = 144;
-    const weekly = card.querySelector(".profile-weekly")!, weekButton = weekly.querySelectorAll("[data-week-date]")[0]; weekButton.focus();
+    const selectedCell = chart.children[1], overview = card.querySelector(".profile-overview")!;
     const changed = { ...sample, profile: { ...sample.profile, layout: "field-notes", highlights: [{ ...highlights[0], title: "A revised public note", body: highlights[0].body + "Updated.", url: "" }] } };
     updateProfileCard(card, changed);
     expect(card.querySelector(".profile-main")!.children[0]).toBe(card.querySelector(".profile-highlights"));
     expect(card.querySelector("[data-profile-highlight]")).toBe(highlight);
     expect(note.open).toBe(true); expect(history.open).toBe(true); expect(receipts.open).toBe(true);
     expect(card.querySelector(".contribution-grid")).toBe(chart); expect(chart.dataset.selectedDate).toBe("2026-10-24");
-    expect(viewport.scrollLeft).toBe(144); expect(document.activeElement).toBe(weekButton as any);
-    expect(weekly.dataset.selectedDate).toBe("2026-10-23");
+    expect(viewport.scrollLeft).toBe(144); expect(document.activeElement).toBe(selectedCell as any);
+    expect(card.querySelector(".profile-overview")).toBe(overview); expect(overview.closest("details")).toBeNull();
     expect(highlight.querySelector(".profile-highlight-link")!.getAttribute("href")).toBeNull();
     expect(highlight.textContent).toContain("A revised public note");
     const outside = new Element("button"); outside.setAttribute("data-date", "2026-10-24"); outside.focus();
@@ -256,10 +377,9 @@ describe("public activity profile", () => {
     card.querySelector(".contribution-grid")!.children[0].focus();
     updateProfileCard(card, { ...sample, daily: daily.slice(1) });
     expect(document.activeElement).toBe(card.querySelector(".contribution-grid")!.children[1] as any);
-    const weekly = card.querySelector(".profile-weekly")!;
-    weekly.querySelectorAll("[data-week-date]")[0].focus();
+    card.querySelector(".contribution-grid")!.children[0].focus();
     updateProfileCard(card, { ...sample, daily: daily.slice(2) });
-    expect(document.activeElement).toBe(weekly.querySelectorAll("[data-week-date]")[0] as any);
+    expect(document.activeElement).toBe(card.querySelector(".contribution-grid")!.children[0] as any);
     const studio = profileCard({ ...sample, profile: { ...sample.profile, highlights } }) as unknown as Element;
     studio.querySelector(".ds-highlight-disclosure")!.querySelector("summary")!.focus();
     updateProfileCard(studio, sample);

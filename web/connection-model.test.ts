@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { activityKind, connectionState, connectionSummary, withConnectionIdentity } from "./connection-model.js";
+import { activityKind, connectionState, connectionSummary, currentConnections, withConnectionIdentity } from "./connection-model.js";
 import { agentVisual } from "./tooling.js";
 
 const now=Date.parse("2026-10-24T10:00:00Z");
@@ -27,6 +27,15 @@ describe("connection evidence and activity defaults",()=>{
  test("summarizes actual contact and keeps revoked actors out of authorized totals",()=>{
   const rows=[{status:"authorized",lastAuthenticatedAt:"2026-10-24T09:59:00Z"},{status:"revoked",lastContactAt:"2026-10-24T09:59:30Z"},{status:"authorized",kind:"oauth"}];
   expect(connectionSummary(rows,now)).toEqual({total:3,authorized:2,reconnect:1,recent:1,lastContactAt:"2026-10-24T09:59:30.000Z"});
+ });
+ test("archived connections leave attention and presence totals while retaining historical identity",()=>{
+  const archived={agent:"old-client",displayName:"Old laptop",status:"revoked",archivedAt:"2026-10-24T09:00:00Z",lastContactAt:"2026-10-24T09:59:30Z",harness:"codex"};
+  const current={agent:"current-client",status:"authorized",kind:"oauth"};
+  expect(currentConnections([archived,current,{...archived,archivedAt:null,deletedAt:"2026-10-24T09:00:00Z"}])).toEqual([current]);
+  expect(connectionState(archived,now)).toMatchObject({state:"archived",label:"Archived"});
+  expect(connectionState({...archived,status:"authorized"},now).state).toBe("archived");
+  expect(connectionSummary([archived,current],now)).toMatchObject({total:1,authorized:1,reconnect:0,recent:0,lastContactAt:null});
+  expect(withConnectionIdentity({agents:[{name:"old-client"}]},[archived]).agents[0]).toMatchObject({name:"old-client",displayName:"Old laptop",harness:"codex"});
  });
  test("uses bound display metadata without changing authenticated filters or stored reports",()=>{
   const source={id:"run:1",agents:[{name:"oauth:private:client",harness:null}],actions:[{agent:"oauth:private:client",harness:"claude-code",sourceLabel:"Reported source"}]};

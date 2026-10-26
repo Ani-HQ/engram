@@ -1,6 +1,7 @@
-import { createHash } from "node:crypto";
 import type postgres from "postgres";
+import { lockConnection, oauthConnectionId } from "./connection-identity";
 import { currentOrg } from "./context";
+import { config } from "./config";
 import { sql } from "./db";
 import { oauthActorName, parseScopes } from "./oauth";
 import { hasOauthScope, isHuman, normalizeToken, type TokenRecord } from "./policies";
@@ -18,6 +19,7 @@ export interface Connection {
   status: ConnectionStatus;
   canWrite: boolean;
   createdAt: string;
+  archivedAt: string | null;
   lastAuthenticatedAt: string | null;
   lastContactAt: string | null;
   lastMemoryAt: string | null;
@@ -69,14 +71,14 @@ function mapConnection(row: any, orgId: number): Connection {
   const harness = oauth ? source?.harness ?? null : safeText(row.harness, 80);
   const sourceLabel = oauth ? safeText(row.client_name) : safeText(row.source_label);
   const name = oauth ? sourceLabel ?? "OAuth connection" : safeText(row.name, 200) ?? "API connection";
-  const id = oauth ? `oauth:${createHash("sha256").update(JSON.stringify([orgId, row.email, row.client_id])).digest("hex")}` : `token:${row.id}`;
+  const id = oauth ? oauthConnectionId(orgId, row.email, row.client_id) : `token:${row.id}`;
   const status: ConnectionStatus = ["authorized", "revoked", "membership_removed"].includes(row.status) ? row.status : "expired";
   const canWrite = oauth ? hasOauthScope(normalizeToken({ name: agent, orgId, kind: "oauth", scopes: parseScopes(row.scope) }), "memory:write") : row.can_write !== false;
   return {
     id, kind: oauth ? "oauth" : "token", name,
     displayName: oauth ? source?.label ?? "OAuth connection" : sourceLabel ?? (harness && Object.hasOwn(HARNESS_LABELS, harness) ? HARNESS_LABELS[harness] : null) ?? name,
     agent, harness, sourceLabel, status, canWrite,
-    createdAt: date(row.created_at)!, lastAuthenticatedAt: oauth ? null : date(row.last_authenticated_at),
+    createdAt: date(row.created_at)!, archivedAt: date(row.archived_at), lastAuthenticatedAt: oauth ? null : date(row.last_authenticated_at),
     lastContactAt: date(row.last_contact_at), lastMemoryAt: date(row.last_memory_at), lastTaskReportAt: date(row.last_task_report_at),
     lastSuccessfulContactAt: date(row.last_successful_contact_at), lastSuccessfulMemoryAt: date(row.last_successful_memory_at),
     memoryCalls: count(row.memory_calls), successfulMemoryCalls: count(row.successful_memory_calls), taskReports: count(row.task_reports),
@@ -92,16 +94,17 @@ export async function listConnections(token: TokenRecord, db: postgres.Sql = sql
     WITH token_connections AS (
       SELECT t.id::text AS id, 'token'::text AS kind, t.name,
         NULL::text AS email, NULL::text AS client_id, NULL::text AS client_name, NULL::text AS scope,
-        t.harness, t.source_label, t.can_write, t.created_at, t.last_used_at AS last_authenticated_at,
+        t.harness, t.source_label, t.can_write, t.created_at, t.last_used_at AS last_authenticated_at, l.archived_at,
         CASE WHEN t.issuer_kind = 'member' AND (m.id IS NULL OR m.role NOT IN ('owner', 'member')) THEN 'membership_removed'
           WHEN t.revoked_at IS NOT NULL THEN 'revoked' ELSE 'authorized' END AS status
       FROM tokens t LEFT JOIN org_members m ON m.id = t.issued_by_member_id
         AND m.org_id = t.org_id AND m.email = t.issued_by_email
-      WHERE t.org_id = ${actor.orgId} AND left(t.name, 25) <> 'operator-candidate-smoke-'
+      LEFT JOIN connection_lifecycle l ON l.org_id = t.org_id AND l.kind = 'token' AND l.token_id = t.id
+      WHERE t.org_id = ${actor.orgId} AND left(t.name, 25) <> 'operator-candidate-smoke-' AND l.deleted_at IS NULL
     ), oauth_grants AS (
       SELECT r.id::text AS id, 'oauth'::text AS kind, NULL::text AS name,
         r.email, r.client_id, c.client_name, r.scope, NULL::text AS harness, NULL::text AS source_label,
-        true AS can_write, r.created_at, NULL::timestamptz AS last_authenticated_at,
+        true AS can_write, r.created_at, NULL::timestamptz AS last_authenticated_at, l.archived_at,
         CASE WHEN m.id IS NULL OR m.role NOT IN ('owner', 'member') THEN 'membership_removed'
           WHEN r.membership_id IS NULL THEN 'expired'
           WHEN m.id <> r.membership_id THEN 'membership_removed'
@@ -110,16 +113,17 @@ export async function listConnections(token: TokenRecord, db: postgres.Sql = sql
       FROM oauth_refresh_tokens r
       LEFT JOIN org_members m ON m.org_id = r.org_id AND m.email = r.email
       LEFT JOIN oauth_clients c ON c.client_id = r.client_id
-      WHERE r.org_id = ${actor.orgId}
+      LEFT JOIN connection_lifecycle l ON l.org_id = r.org_id AND l.kind = 'oauth' AND l.email = r.email AND l.client_id = r.client_id
+      WHERE r.org_id = ${actor.orgId} AND l.deleted_at IS NULL
     ), oauth_ranked AS (
       SELECT *, row_number() OVER (PARTITION BY email, client_id ORDER BY (status = 'authorized') DESC, created_at DESC, id DESC) AS grant_rank
       FROM oauth_grants
     ), inventory AS (
       SELECT * FROM token_connections
-      UNION ALL SELECT id, kind, name, email, client_id, client_name, scope, harness, source_label, can_write, created_at, last_authenticated_at, status
+      UNION ALL SELECT id, kind, name, email, client_id, client_name, scope, harness, source_label, can_write, created_at, last_authenticated_at, archived_at, status
       FROM oauth_ranked WHERE grant_rank = 1
     )
-    SELECT * FROM inventory ORDER BY created_at DESC, kind, id DESC LIMIT ${CONNECTION_LIMIT + 1}`;
+    SELECT * FROM inventory ORDER BY (archived_at IS NOT NULL), created_at DESC, kind, id DESC LIMIT ${CONNECTION_LIMIT + 1}`;
     const page = inventory.slice(0, CONNECTION_LIMIT);
     // Use the same JS encoder as authentication for every UTF-8/punctuation
     // case. A fixed pair of batched receipt queries avoids N per-row queries.
@@ -149,6 +153,60 @@ export async function listConnections(token: TokenRecord, db: postgres.Sql = sql
     });
   });
   return { connections: rows.slice(0, CONNECTION_LIMIT).map(row => mapConnection(row, actor.orgId)), more: rows.length > CONNECTION_LIMIT, limit: CONNECTION_LIMIT, checkedAt: now.toISOString(), recentWindowSeconds: 900 };
+}
+
+export type ConnectionAction = "archive" | "restore" | "delete";
+export async function updateConnection(token: TokenRecord, input: unknown, db: postgres.Sql = sql) {
+  const actor = authorize(token);
+  if (actor.role !== "owner" || actor.kind !== "session" || !actor.email) throw new ConnectionError("Only a workspace owner can manage connections", 403);
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new ConnectionError("A connection and action are required");
+  const { id, action } = input as Record<string, unknown>;
+  if (typeof id !== "string" || !/^(?:token:[1-9]\d{0,9}|oauth:[a-f0-9]{64})$/.test(id) || typeof action !== "string" || !["archive", "restore", "delete"].includes(action)) {
+    throw new ConnectionError("Choose a connection and a valid action");
+  }
+  if (id.startsWith("token:") && Number(id.slice(6)) > 2147483647) throw new ConnectionError("Choose a valid connection");
+  return db.begin(async tx => {
+    // Re-check and lock live authority so a role change/removal cannot race a
+    // console cookie authenticated just before that change.
+    const owners = await tx`SELECT id FROM org_members WHERE org_id = ${actor.orgId} AND email = ${actor.email} AND role = 'owner' FOR SHARE`;
+    if (!owners.length) throw new ConnectionError("Only a workspace owner can manage connections", 403);
+    await lockConnection(tx as unknown as postgres.Sql, actor.orgId, id);
+    let identity: { tokenId: number | null; email: string | null; clientId: string | null };
+    if (id.startsWith("token:")) {
+      const tokenId = Number(id.slice(6));
+      const rows = await tx`SELECT id FROM tokens WHERE org_id = ${actor.orgId} AND id = ${tokenId} AND left(name, 25) <> 'operator-candidate-smoke-' FOR UPDATE`;
+      if (!rows.length) throw new ConnectionError("Connection not found", 404);
+      identity = { tokenId, email: null, clientId: null };
+    } else {
+      // The public ID is deliberately opaque. Resolve it only against this
+      // workspace's distinct grant identities, never caller-supplied email.
+      const rows = await tx`SELECT DISTINCT email, client_id FROM oauth_refresh_tokens WHERE org_id = ${actor.orgId}`;
+      const row = rows.find(row => oauthConnectionId(actor.orgId, String(row.email), String(row.client_id)) === id);
+      if (!row) throw new ConnectionError("Connection not found", 404);
+      identity = { tokenId: null, email: String(row.email), clientId: String(row.client_id) };
+    }
+    const prior = await tx`SELECT archived_at, deleted_at FROM connection_lifecycle WHERE org_id = ${actor.orgId} AND connection_id = ${id} FOR UPDATE`;
+    if (prior[0]?.deleted_at && action !== "delete") throw new ConnectionError("Connection not found", 404);
+    if (action === "restore") {
+      await tx`UPDATE connection_lifecycle SET archived_at = NULL WHERE org_id = ${actor.orgId} AND connection_id = ${id} AND deleted_at IS NULL`;
+    } else {
+      const deleting = action === "delete";
+      await tx`INSERT INTO connection_lifecycle (org_id, connection_id, kind, token_id, email, client_id, generation, archived_at, deleted_at)
+        VALUES (${actor.orgId}, ${id}, ${identity.tokenId === null ? "oauth" : "token"}, ${identity.tokenId}, ${identity.email}, ${identity.clientId}, 1,
+          CASE WHEN ${!deleting} THEN now() ELSE NULL END, CASE WHEN ${deleting} THEN now() ELSE NULL END)
+        ON CONFLICT (org_id, connection_id) DO UPDATE SET generation = connection_lifecycle.generation + 1,
+          archived_at = CASE WHEN ${!deleting} THEN coalesce(connection_lifecycle.archived_at, now()) ELSE connection_lifecycle.archived_at END,
+          deleted_at = CASE WHEN ${deleting} THEN coalesce(connection_lifecycle.deleted_at, now()) ELSE NULL END`;
+      if (identity.tokenId !== null) {
+        await tx`UPDATE tokens SET revoked_at = coalesce(revoked_at, now()) WHERE org_id = ${actor.orgId} AND id = ${identity.tokenId}`;
+      } else {
+        await tx`UPDATE oauth_refresh_tokens SET revoked_at = coalesce(revoked_at, now()) WHERE org_id = ${actor.orgId} AND email = ${identity.email} AND client_id = ${identity.clientId}`;
+        await tx`UPDATE oauth_codes SET used_at = coalesce(used_at, now()) WHERE org_id = ${actor.orgId} AND email = ${identity.email} AND client_id = ${identity.clientId}`;
+      }
+    }
+    const [state] = await tx`SELECT archived_at, deleted_at FROM connection_lifecycle WHERE org_id = ${actor.orgId} AND connection_id = ${id}`;
+    return { ok: true, id, action, archivedAt: date(state?.archived_at), deletedAt: date(state?.deleted_at) };
+  });
 }
 
 export interface AgentOnboardingChecks {
@@ -209,7 +267,19 @@ export async function agentOnboardingChecks(orgId: number, db: postgres.Sql = sq
 export async function handleConnectionsApi(req: Request, token: TokenRecord, db: postgres.Sql = sql): Promise<Response> {
   try {
     authorize(token);
-    if (req.method !== "GET") return Response.json({ error: "method not allowed" }, { status: 405, headers: { ...HEADERS, Allow: "GET" } });
+    if (req.method === "POST") {
+      if (req.headers.get("x-engram-console") !== "1") throw new ConnectionError("forbidden", 403);
+      if (req.headers.get("x-engram-workspace") !== String(normalizeToken(token).orgId)) throw new ConnectionError("The selected workspace changed. Refresh and try again.", 409);
+      const origin = req.headers.get("origin");
+      if (origin && origin !== new URL(config.publicUrl || req.url).origin) throw new ConnectionError("forbidden", 403);
+      if (Number(req.headers.get("content-length")) > 2048) throw new ConnectionError("Connection request is too large", 413);
+      const raw = await req.text();
+      if (new TextEncoder().encode(raw).length > 2048) throw new ConnectionError("Connection request is too large", 413);
+      let input: unknown;
+      try { input = JSON.parse(raw); } catch { throw new ConnectionError("A connection and action are required"); }
+      return Response.json(await updateConnection(token, input, db), { headers: HEADERS });
+    }
+    if (req.method !== "GET") return Response.json({ error: "method not allowed" }, { status: 405, headers: { ...HEADERS, Allow: "GET, POST" } });
     return Response.json(await listConnections(token, db), { headers: HEADERS });
   } catch (error) {
     if (error instanceof ConnectionError) return Response.json({ error: error.message }, { status: error.status, headers: HEADERS });

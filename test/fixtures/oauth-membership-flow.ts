@@ -17,6 +17,7 @@ let member: { id: number; org_id: number; email: string; role: string } | null =
 let afterRefreshRead: (() => void) | undefined;
 const codes: any[] = [], refreshes: any[] = [];
 let nextId = 1, checks = 0;
+let lifecycle: any = null;
 function equal(actual: unknown, expected: unknown, message: string) { assert.deepEqual(actual, expected, message); checks++; }
 const org = { id: 7, name: "Fixture", slug: "fixture", kind: "team", brain_db: "brain_org_7", data_db: "brain_org_7", home_dir: "org-7", policies: {}, created_at: new Date(), provisioning_status: "ready" };
 function insert(statement: string, values: unknown[], list: any[]) {
@@ -27,19 +28,29 @@ function insert(statement: string, values: unknown[], list: any[]) {
 }
 const fixtureSql = (async (parts: TemplateStringsArray, ...values: unknown[]) => {
   const statement = parts.join("?");
+  if (statement.includes("pg_advisory_xact_lock")) return [];
+  if (statement.includes("INSERT INTO connection_lifecycle")) {
+    lifecycle={generation:(lifecycle?.generation??0)+1,archived_at:values[6]?new Date():lifecycle?.archived_at??null,deleted_at:values[7]?new Date():null}; return [];
+  }
+  if (statement.includes("UPDATE connection_lifecycle")) { if(lifecycle){lifecycle.archived_at=null;if(statement.includes("deleted_at = NULL"))lifecycle.deleted_at=null;} return []; }
+  if (statement.includes("FROM connection_lifecycle")) return lifecycle?[{...lifecycle}]:[];
   if (statement.includes("FROM tokens t")) return [];
   if (statement.includes("FROM sessions s")) return member ? [{ name: member.email, org_id: 7, role: member.role, email: member.email }] : [];
-  if (statement.includes("FROM org_members")) return member && values[0] === 7 && values[1] === member.email ? [{ ...member }] : [];
+  if (statement.includes("FROM org_members")) return values[0]===7&&values[1]==="owner@example.com"?[{id:99,org_id:7,email:"owner@example.com",role:"owner"}]:member && values[0] === 7 && values[1] === member.email ? [{ ...member }] : [];
   if (statement.includes("FROM orgs")) return values[0] === 7 ? [org] : [];
   if (statement.includes("FROM oauth_clients")) return [{ client_id: "oc_fixture", redirect_uris: ["http://localhost:7777/cb"] }];
   if (statement.includes("INSERT INTO oauth_codes")) return insert(statement, values, codes);
   if (statement.includes("INSERT INTO oauth_refresh_tokens")) return insert(statement, values, refreshes);
   if (statement.includes("SELECT * FROM oauth_codes")) return codes.filter(row => row.sha256_hash === values[0] && !row.used_at).map(row => ({ ...row }));
+  if (statement.includes("UPDATE oauth_codes SET used_at = coalesce")) { for(const row of codes)if(row.org_id===values[0]&&row.email===values[1]&&row.client_id===values[2])row.used_at=new Date();return []; }
   if (statement.includes("UPDATE oauth_codes SET used_at")) {
     const row = codes.find(row => row.id === values[0] && !row.used_at);
     if (!row) return [];
     row.used_at = new Date(); return [{ id: row.id }];
   }
+  if (statement.includes("SELECT DISTINCT email, client_id FROM oauth_refresh_tokens")) return refreshes.map(row=>({email:row.email,client_id:row.client_id}));
+  if (statement.includes("UPDATE oauth_refresh_tokens")) { for(const row of refreshes)if(row.org_id===values[0]&&row.email===values[1]&&row.client_id===values[2])row.revoked_at=new Date();return []; }
+  if (statement.includes("SELECT id FROM oauth_refresh_tokens")) return refreshes.filter(row => row.org_id === values[0] && row.email === values[1] && row.client_id === values[2] && row.sha256_hash === values[3] && row.membership_id === values[4] && !row.revoked_at);
   if (statement.includes("FROM oauth_refresh_tokens")) {
     const rows = refreshes.filter(row => row.sha256_hash === values[0] && row.client_id === values[1] && !row.revoked_at).map(row => ({ ...row }));
     afterRefreshRead?.(); afterRefreshRead = undefined;
@@ -55,6 +66,9 @@ const { handleOauth, pkceChallenge } = await import("../../gateway/src/oauth-as"
 const { authenticateJwt, decodeJwt } = await import("../../gateway/src/oauth");
 const { signJwt } = await import("../../gateway/src/oauth-keys");
 const { sha256 } = await import("../../gateway/src/hash");
+const { updateConnection } = await import("../../gateway/src/connections");
+const { oauthConnectionId } = await import("../../gateway/src/connection-identity");
+const { normalizeToken } = await import("../../gateway/src/policies");
 const issuer = "https://engram.example", audience = `${issuer}/mcp`, verifier = "a".repeat(43);
 
 async function authorize(): Promise<string> {
@@ -107,4 +121,36 @@ equal(decodeJwt(fresh.body.access_token)?.payload.membership_id, 42, "New author
 equal((await authenticateJwt(fresh.body.access_token, audience))?.email, member.email, "Fresh access token authenticates normally");
 afterRefreshRead = () => { member = { id: 43, org_id: 7, email: "ada@example.com", role: "member" }; };
 equal((await refresh(fresh.body.refresh_token)).status, 400, "Refresh selected before removal/rejoin cannot bridge to the next membership");
+
+const owner=normalizeToken({name:"owner",orgId:7,role:"owner",kind:"session",email:"owner@example.com"});
+const id=oauthConnectionId(7,member.email,"oc_fixture");
+const connected=await exchange(await authorize());
+const legacy=signJwt({sub:member.email,email:member.email,org_id:7,membership_id:43,client_id:"oc_fixture",scope:"memory:read"},{issuer,audience});
+equal((await authenticateJwt(legacy,audience))?.orgId,7,"Generation-zero legacy access remains valid before any lifecycle revocation");
+const beforeArchive=await authorize();
+const archived=await updateConnection(owner,{id,action:"archive"});
+equal(archived.archivedAt!==null,true,"Archive returns the archived receipt");
+equal(await authenticateJwt(connected.body.access_token,audience),null,"Archive immediately rejects previously issued access JWTs");
+equal(await authenticateJwt(legacy,audience),null,"Archive immediately rejects unbound generation-zero legacy JWTs");
+equal((await refresh(connected.body.refresh_token)).status,400,"Archive revokes refresh credentials");
+equal((await exchange(beforeArchive)).status,400,"Archive revokes pending authorization codes");
+await updateConnection(owner,{id,action:"restore"});
+equal(await authenticateJwt(legacy,audience),null,"Restore never reactivates legacy JWT access");
+equal((await refresh(connected.body.refresh_token)).status,400,"Restore never reactivates old refresh credentials");
+const reconnected=await exchange(await authorize());
+equal(reconnected.status,200,"A fresh current-generation authorization reconnects");
+equal(decodeJwt(reconnected.body.access_token)?.payload.connection_generation,1,"Fresh JWT binds the post-archive generation");
+equal((await authenticateJwt(reconnected.body.access_token,audience))?.orgId,7,"Fresh current-generation JWT authenticates");
+equal(await authenticateJwt(legacy,audience),null,"Fresh authorization still cannot reactivate an old JWT");
+const beforeDelete=await authorize();
+await updateConnection(owner,{id,action:"delete"});
+equal(await authenticateJwt(reconnected.body.access_token,audience),null,"Delete rejects issued access JWTs");
+equal((await exchange(beforeDelete)).status,400,"Delete rejects pending pre-delete authorization");
+const afterDelete=await exchange(await authorize());
+equal(afterDelete.status,200,"Explicit fresh authorization can reconnect a deleted identity");
+equal(lifecycle.deleted_at,null,"Fresh exchange clears the inventory tombstone");
+equal(decodeJwt(afterDelete.body.access_token)?.payload.connection_generation,2,"Reconnected identity retains the advanced generation");
+afterRefreshRead=()=>{lifecycle.generation++;lifecycle.archived_at=new Date();for(const row of refreshes)row.revoked_at=new Date();};
+equal((await refresh(afterDelete.body.refresh_token)).status,400,"Refresh selected before archive cannot mint access after archive commits");
+equal(await authenticateJwt(afterDelete.body.access_token,audience),null,"In-flight refresh race cannot reactivate the old access JWT");
 console.log(JSON.stringify({ checks }));
