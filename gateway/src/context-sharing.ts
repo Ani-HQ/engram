@@ -12,6 +12,7 @@ import { redactSecrets } from "./redact";
 import { reflexClient } from "./reflex/client";
 import { choiceOf } from "./reflex/answers";
 import type { ReflexClient, ReflexQuestion } from "./reflex/types";
+import { listApprovedTeamItems } from "./context-sharing-access";
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const MAX_ITEMS = 12, MAX_TEXT = 1200, PREVIEW_MS = 15 * 60_000;
@@ -69,6 +70,25 @@ async function owner(token: TokenRecord, org: Org, db: postgres.Sql) {
     WHERE m.org_id = ${org.id} AND m.email = ${actor.email} AND m.role = 'owner' FOR SHARE OF m, o`;
   if (rows.length !== 1) throw new ContextSharingError("This workspace membership is no longer available.", 403, "forbidden");
   return { actor, memberId: Number(rows[0].id), source: { ...org, kind: rows[0].kind, policies: parsePolicies(rows[0].policies) } as Org };
+}
+async function catalogReader(token: TokenRecord, org: Org, db: postgres.Sql) {
+  const actor = normalizeToken(token), ctx = currentContext();
+  if (actor.kind !== "session" || !["owner","member"].includes(actor.role) || !actor.email || actor.orgId !== org.id || (ctx && ctx.org.id !== org.id)) throw new ContextSharingError("Sign in to read this workspace’s sharing.", 403, "forbidden");
+  const rows = await db`SELECT m.id, m.role, o.kind, o.policies FROM org_members m JOIN orgs o ON o.id = m.org_id
+    WHERE m.org_id = ${org.id} AND m.email = ${actor.email} AND m.role IN ('owner','member') FOR SHARE OF m, o`;
+  if (rows.length !== 1 || !["personal","team"].includes(rows[0].kind) || (rows[0].kind === "personal" && (actor.role !== "owner" || rows[0].role !== "owner"))) throw new ContextSharingError("This workspace membership is no longer available.", 403, "forbidden");
+  return { actor, memberId: Number(rows[0].id), source: { ...org, kind: rows[0].kind, policies: parsePolicies(rows[0].policies) } as Org };
+}
+function teamPage(params: URLSearchParams) {
+  const integer = (name: string, fallback: number, minimum: number, maximum: number) => {
+    const values = params.getAll(name);
+    if (!values.length) return fallback;
+    if (values.length !== 1 || !/^\d+$/.test(values[0])) throw new ContextSharingError("Use a valid sharing page.");
+    const value = Number(values[0]);
+    if (!Number.isSafeInteger(value) || value < minimum || value > maximum) throw new ContextSharingError("Use a valid sharing page.");
+    return value;
+  };
+  return { limit: integer("limit", 25, 1, 50), offset: integer("offset", 0, 0, 1_000_000) };
 }
 function personal(source: Org) {
   if (source.kind !== "personal") throw new ContextSharingError("Select your personal workspace to share a reviewed excerpt.", 403, "forbidden");
@@ -211,9 +231,13 @@ export async function commitContextShare(token: TokenRecord, org: Org, input: un
     return { share: viewShare({ ...inserted[0], target_name: recipient.name },items), ...(access ? { credential: access } : {}) };
   });
 }
-export async function getContextSharing(token: TokenRecord, org: Org, deps: ContextSharingDeps = {}) {
-  const d = dependencies(deps), authorization = await owner(token,org,d.db);
-  if (authorization.source.kind !== "personal") return {targets:[],shares:[],sourceKind:authorization.source.kind,modelAvailable:false};
+export async function getContextSharing(token: TokenRecord, org: Org, deps: ContextSharingDeps = {}, params = new URLSearchParams()) {
+  const d = dependencies(deps), authorization = await catalogReader(token,org,d.db);
+  if (authorization.source.kind === "team") {
+    const page = teamPage(params);
+    const rows = await listApprovedTeamItems(org.id, d.db, { ...page, limit: page.limit + 1, readerEmail: authorization.actor.email! });
+    return {targets:[],shares:[],sourceKind:"team" as const,modelAvailable:false,received:rows.slice(0,page.limit),more:rows.length > page.limit};
+  }
   const targets = await d.db`SELECT o.id, o.name FROM orgs o JOIN org_members m ON m.org_id = o.id WHERE m.email = ${authorization.actor.email} AND o.kind = 'team' AND coalesce((o.policies->>'acceptShares')::boolean,true) = true ORDER BY o.name LIMIT 100`;
   const rows = await d.db`SELECT s.*, o.name AS target_name,
     coalesce((SELECT jsonb_agg(jsonb_build_object('id',i.id,'title',i.title,'text',i.text) ORDER BY i.ordinal) FROM context_share_items i WHERE i.share_id = s.id),'[]'::jsonb) AS items
@@ -247,12 +271,13 @@ export async function handleContextSharingApi(req: Request, token: TokenRecord, 
   const headers = {"Cache-Control":"no-store","X-Content-Type-Options":"nosniff"};
   const json = (body:unknown,status=200) => Response.json(body,{status,headers});
   try {
-    if (token.kind !== "session" || token.role !== "owner" || !token.email || token.orgId !== org.id || req.headers.get("X-Engram-Console") !== "1") return json({error:"Sign in as the workspace owner to manage sharing.",code:"forbidden"},403);
+    const url = new URL(req.url), path = url.pathname;
+    const teamRead = req.method === "GET" && path === "/api/sharing" && org.kind === "team";
+    if (token.kind !== "session" || !(token.role === "owner" || (teamRead && token.role === "member")) || !token.email || token.orgId !== org.id || req.headers.get("X-Engram-Console") !== "1") return json({error:"Sign in as the workspace owner to manage sharing.",code:"forbidden"},403);
     const scope = req.headers.get("X-Engram-Workspace");
     if (!scope) return json({error:"Select a workspace before managing sharing.",code:"invalid_request"},400);
     if (scope !== String(org.id)) return json({error:"The selected workspace changed. Start again.",code:"workspace_changed"},409);
-    const path = new URL(req.url).pathname;
-    if (path === "/api/sharing" && req.method === "GET") return json(await getContextSharing(token,org,deps));
+    if (path === "/api/sharing" && req.method === "GET") return json(await getContextSharing(token,org,deps,url.searchParams));
     const revoke = path.match(/^\/api\/sharing\/([^/]+)$/), rotate = path.match(/^\/api\/sharing\/([^/]+)\/agent-token$/);
     if (revoke && req.method === "DELETE") return json(await revokeContextShare(token,org,revoke[1],deps));
     if (rotate && req.method === "POST") return json(await rotateContextShareToken(token,org,rotate[1],publicUrlFrom(req),deps));

@@ -189,6 +189,18 @@ and clearing, revoke confirmation, workspace save and invitation feedback,
 export pending counts, budget validation, and private profile saving.
 
 Sharing candidates start unchecked. Approved content remains an exact snapshot.
+
+Workspace-aware Sharing was reviewed at 1280px and 320px. Personal Sharing leads
+with its creation form and outgoing snapshots; optional explanations are
+disclosures. Automatic onboarding does not precede that form, while Getting
+started remains available explicitly. Team Sharing shows approved received
+excerpts to owners and members and retains personal-sharing and team-memory
+actions during loading, empty and error states. The direct workspace switch,
+failed-switch inline retry feedback, received-text disclosure and navigation to
+team Memory were checked. Shared controls remain 32px on desktop and 44px at
+mobile widths, with no horizontal overflow. Local review scenarios include
+`team-member` and `switch-error`; they affect only their own review document.
+
 Creating a key or copying instructions never counts as a connected agent or a
 successful setup check. Observed memory calls and agent-reported work remain
 distinct. Public avatars use a constant fallback seed and never derive from a

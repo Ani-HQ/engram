@@ -4,10 +4,13 @@ import { sha256 } from "./hash";
 
 export const SHARED_CONTEXT_TOKEN = /^egs_[A-Za-z0-9_-]{32}$/;
 export interface ApprovedContextItem { id: string; title: string; text: string; shareId: string }
+interface ApprovedTeamRead { limit: number; offset: number; readerEmail: string }
 
 /** Deliberately returns approved snapshots only, never source identifiers or text. */
-export async function listApprovedTeamItems(targetOrgId: number, db: postgres.Sql = sql): Promise<ApprovedContextItem[]> {
+export async function listApprovedTeamItems(targetOrgId: number, db: postgres.Sql = sql, read?: ApprovedTeamRead): Promise<ApprovedContextItem[]> {
   if (!Number.isSafeInteger(targetOrgId) || targetOrgId < 1) return [];
+  if (read && (!Number.isSafeInteger(read.limit) || read.limit < 1 || read.limit > 51 || !Number.isSafeInteger(read.offset) || read.offset < 0 || read.offset > 1_000_000 || !read.readerEmail)) return [];
+  const readerEmail = read?.readerEmail ?? null;
   const rows = await db`
     SELECT i.id, i.title, i.text, i.share_id FROM context_share_items i
     JOIN context_shares s ON s.id = i.share_id AND s.revoked_at IS NULL
@@ -17,7 +20,12 @@ export async function listApprovedTeamItems(targetOrgId: number, db: postgres.Sq
     JOIN org_members member ON member.id = s.target_member_id AND member.org_id = target.id AND member.email = owner.email
     WHERE s.recipient_kind = 'team' AND s.target_org = ${targetOrgId}
       AND coalesce((target.policies->>'acceptShares')::boolean, true) = true
-    ORDER BY s.created_at DESC, i.ordinal`;
+      AND (${readerEmail}::text IS NULL OR EXISTS (
+        SELECT 1 FROM org_members reader WHERE reader.org_id = target.id
+          AND reader.email = ${readerEmail} AND reader.role IN ('owner','member')
+      ))
+    ORDER BY s.created_at DESC, s.id DESC, i.ordinal, i.id
+    LIMIT ${read?.limit ?? null} OFFSET ${read?.offset ?? 0}`;
   return rows.map(row => ({ id: String(row.id), title: String(row.title), text: String(row.text), shareId: String(row.share_id) }));
 }
 

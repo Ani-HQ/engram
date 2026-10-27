@@ -8,7 +8,7 @@ import { DEFAULT_POLICIES, normalizeToken } from "../gateway/src/policies";
 import { upsertMemoryEntry } from "../gateway/src/memory-entries";
 import { authenticateStoredSecret } from "../gateway/src/auth";
 import { authenticateContextShareToken, listApprovedTeamItems } from "../gateway/src/context-sharing-access";
-import { commitContextShare, getContextSharing, previewContextShare, revokeContextShare, rotateContextShareToken } from "../gateway/src/context-sharing";
+import { commitContextShare, getContextSharing, handleContextSharingApi, previewContextShare, revokeContextShare, rotateContextShareToken } from "../gateway/src/context-sharing";
 import { handleSharedContextMcp } from "../gateway/src/shared-context-mcp";
 
 export async function checkContextSharing(db:postgres.Sql):Promise<number> {
@@ -25,8 +25,13 @@ export async function checkContextSharing(db:postgres.Sql):Promise<number> {
     for(const [id,kind]of [[sourceId,"personal"],[targetId,"team"],[otherId,"team"]]as const)await db`INSERT INTO orgs(id,name,slug,kind,brain_db,data_db,home_dir,policies,provisioning_status) VALUES (${id},${`Context fixture ${id}`},${`context-sharing-${id}`},${kind},${`brain_org_${id}`},${`brain_org_${id}`},${`org-${id}`},${db.json(DEFAULT_POLICIES)},'ready')`;
     const ownerMember=Number((await db`INSERT INTO org_members(org_id,email,role) VALUES (${sourceId},${email},'owner') RETURNING id`)[0].id);
     const targetMember=Number((await db`INSERT INTO org_members(org_id,email,role) VALUES (${targetId},${email},'member') RETURNING id`)[0].id);
+    const readerEmail="context-team-reader@example.test";
+    await db`INSERT INTO org_members(org_id,email,role) VALUES (${targetId},${readerEmail},'member')`;
     await db`INSERT INTO org_members(org_id,email,role) VALUES (${otherId},'different-person@example.test','owner')`;
     const source=(await getOrg(sourceId,db))!,actor=normalizeToken({orgId:sourceId,name:email,email,kind:"session",role:"owner"});
+    const team=(await getOrg(targetId,db))!,reader=normalizeToken({orgId:targetId,name:readerEmail,email:readerEmail,kind:"session",role:"member"});
+    const received=(params=new URLSearchParams())=>withOrg(team,reader,()=>getContextSharing(reader,team,deps,params));
+    const teamRequest=(path="/api/sharing",method="GET",token=reader)=>withOrg(team,token,()=>handleContextSharingApi(new Request("https://integration.example"+path,{method,headers:{"X-Engram-Console":"1","X-Engram-Workspace":String(targetId)}}),token,team,deps));
     await ensureDatabase(sourceDb);await migrateOrgDataTables(poolFor(sourceDb));
     await ensureDatabase(`brain_org_${targetId}`);await migrateOrgDataTables(poolFor(`brain_org_${targetId}`));
     await poolFor(sourceDb)`TRUNCATE memory_entries, trails, reflex_decisions, review_items, dream_runs RESTART IDENTITY CASCADE`;
@@ -55,13 +60,39 @@ export async function checkContextSharing(db:postgres.Sql):Promise<number> {
     equal(visible.map(item=>item.text),["Startup launches use staged rollouts."],"Source revisions cannot expose new personal text through a committed team snapshot");
     equal(JSON.stringify(visible).includes("source_id")||JSON.stringify(visible).includes("private-repository")||JSON.stringify(visible).includes("medical"),false,"Recipient projection has only approved text and synthetic identity");
     equal(await listApprovedTeamItems(otherId,db),[],"Other tenants receive none of the approved team snapshot");
+    const incoming=await received();
+    equal(incoming.received,visible,"A current team member receives exactly the same approved projection as Memory");
+    equal(incoming.more,false,"The complete first received page is identified without an invented total");
+    equal(Object.keys(incoming.received![0]).sort(),["id","shareId","text","title"],"Received sharing never includes source identities, instructions or credentials");
+    equal((await teamRequest()).status,200,"Team members can read the Sharing console endpoint");
+    equal((await teamRequest("/api/sharing/preview","POST")).status,403,"Team readers gain no source preview authority");
+    equal((await teamRequest(`/api/sharing/${approved.share.id}`,"DELETE")).status,403,"Team readers cannot revoke another workspace's share");
+    equal((await teamRequest("/api/sharing?limit=51")).status,400,"Team page size cannot exceed the reviewed bound");
+    await db`UPDATE org_members SET role = 'owner' WHERE org_id = ${targetId} AND email = ${readerEmail}`;
+    equal((await teamRequest("/api/sharing","GET",normalizeToken({...reader,role:"owner"}))).status,200,"Team owners can read the same incoming catalog");
+    await db`UPDATE org_members SET role = 'member' WHERE org_id = ${targetId} AND email = ${readerEmail}`;
+    const extraIds=[crypto.randomUUID(),crypto.randomUUID()];
+    for (let ordinal=1;ordinal<=extraIds.length;ordinal++) await db`INSERT INTO context_share_items(id,share_id,ordinal,title,text,source_kind,source_id,source_hash)
+      SELECT ${extraIds[ordinal-1]},share_id,${ordinal},title,${`Approved pagination excerpt ${ordinal}.`},source_kind,source_id,source_hash
+      FROM context_share_items WHERE share_id = ${approved.share.id} AND ordinal = 0`;
+    const firstPage=await received(new URLSearchParams({limit:"1"})),secondPage=await received(new URLSearchParams({limit:"1",offset:"1"})),lastPage=await received(new URLSearchParams({limit:"1",offset:"2"}));
+    equal([firstPage.more,secondPage.more,lastPage.more],[true,true,false],"Received pages fetch one extra row to identify their end");
+    equal([...firstPage.received!,...secondPage.received!,...lastPage.received!],await listApprovedTeamItems(targetId,db),"Stable SQL pages cover approved items exactly once and leave Memory unpaginated");
+    await db`DELETE FROM context_share_items WHERE id IN (${extraIds[0]},${extraIds[1]})`;
+    await db`DELETE FROM org_members WHERE org_id = ${targetId} AND email = ${readerEmail}`;
+    await reject(received,"forbidden");
+    await db`INSERT INTO org_members(org_id,email,role) VALUES (${targetId},${readerEmail},'member')`;
+    equal((await received()).received,visible,"A restored reader membership sees only currently authorized snapshots");
     await db`UPDATE orgs SET policies = ${db.json({...DEFAULT_POLICIES,acceptShares:false})} WHERE id = ${targetId}`;
     equal(await listApprovedTeamItems(targetId,db),[],"Disabling target acceptance stops already issued team reads");
+    equal((await received()).received,[],"The Sharing catalog also observes a disabled team acceptance policy");
     await db`UPDATE orgs SET policies = ${db.json(DEFAULT_POLICIES)} WHERE id = ${targetId}`;
     await db`DELETE FROM org_members WHERE id = ${targetMember}`;
     equal(await listApprovedTeamItems(targetId,db),[],"Removing the source owner's target membership revokes access");
+    equal((await received()).received,[],"Incoming Sharing rechecks the exact source owner's receiving membership");
     await db`INSERT INTO org_members(org_id,email,role) VALUES (${targetId},${email},'member')`;
     equal(await listApprovedTeamItems(targetId,db),[],"Rejoining cannot resurrect a grant from the removed membership");
+    equal((await received()).received,[],"Incoming Sharing does not resurrect shares after the source owner rejoins");
 
     const agentPreview=await withOrg(source,actor,()=>previewContextShare(actor,source,{instruction:"Share startup launch decisions, excluding personal details",recipient:{kind:"agent",name:"Startup helper"}},deps));
     const agentGrant=await withOrg(source,actor,()=>commitContextShare(actor,source,{previewId:agentPreview.previewId,selections:[{id:agentPreview.candidates[0].id,text:"Startup launches use staged rollouts."}],acknowledged:true},"https://integration.example",deps));

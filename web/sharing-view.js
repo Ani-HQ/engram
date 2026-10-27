@@ -1,5 +1,5 @@
 import { h } from "./profile.js";
-import { statusBadge } from "./design-system.js";
+import { loadingState, statusBadge } from "./design-system.js";
 import { icon } from "./icons.js";
 
 let instance = 0;
@@ -9,8 +9,97 @@ const date = value => {
   return Number.isFinite(parsed.getTime()) ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(parsed) + " UTC" : "Time unavailable";
 };
 
+function teamSharingView({ api, personalWorkspaces, onOpenPersonal, role, initialError, fail, isCurrent }) {
+  const prefix = "sharing-team-" + (++instance), pageSize = 25;
+  const personal = [...new Map(personalWorkspaces.filter(workspace => Number.isSafeInteger(workspace?.id) && workspace.id > 0 && typeof workspace.name === "string" && workspace.name.trim()).map(workspace => [workspace.id, workspace])).values()];
+  let active = true, version = 0, loading = false, switching = false, nextOffset = 0, more = false, items = [];
+  const current = () => active && isCurrent();
+  const sourceFeedback = h("p", { class: "sharing-feedback", role: initialError ? "alert" : "status", "aria-live": "polite", tabindex: -1 }, initialError);
+  const chooser = h("select", { id: prefix + "-personal", name: "personal-workspace", onchange: () => { openPersonal.disabled = switching || !selectedPersonal() || typeof onOpenPersonal !== "function"; } },
+    h("option", { value: "" }, "Choose your personal workspace"), personal.map(workspace => h("option", { value: workspace.id }, workspace.name)));
+  const selectedPersonal = () => personal.length === 1 ? personal[0] : personal.find(workspace => String(workspace.id) === chooser.value);
+  const openPersonal = button("Share from personal workspace", async () => {
+    const selected = selectedPersonal();
+    if (!current() || switching || !selected || typeof onOpenPersonal !== "function") return;
+    switching = true; openPersonal.disabled = true; chooser.disabled = true; openPersonal.setAttribute("aria-busy", "true");
+    openPersonal.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), "Opening personal workspace…");
+    sourceFeedback.setAttribute("role", "status"); sourceFeedback.textContent = "";
+    try {
+      const opened = await onOpenPersonal(selected.id);
+      if (opened === false && current()) throw new Error("Your personal workspace could not be opened. Try again.");
+    } catch (error) {
+      if (current()) { sourceFeedback.setAttribute("role", "alert"); sourceFeedback.textContent = error.message || "Your personal workspace could not be opened. Try again."; fail(error); }
+    } finally {
+      if (current()) { switching = false; chooser.disabled = false; openPersonal.disabled = !selectedPersonal(); openPersonal.setAttribute("aria-busy", "false"); openPersonal.textContent = "Share from personal workspace"; }
+    }
+  }, { class: "primary", disabled: personal.length !== 1 || typeof onOpenPersonal !== "function" });
+  const source = h("section", { class: "sharing-start ds-card", "aria-labelledby": prefix + "-source-title" },
+    h("div", { class: "ds-heading-group" }, h("h2", { id: prefix + "-source-title" }, "Share personal memory"),
+      h("p", {}, personal.length ? "Open your personal workspace to choose what this team can read." : "Your personal workspace is not available in this session. You can still read this team’s shared memory.")),
+    personal.length > 1 && h("label", { class: "field" }, "Personal workspace", chooser),
+    personal.length === 1 && h("p", { class: "field-hint" }, "From ", h("strong", {}, personal[0].name)),
+    h("div", { class: "form-actions" }, personal.length > 0 && openPersonal, h("a", { class: "ds-button", href: "#memory" }, "Open team memory"), role === "owner" && h("a", { class: "ds-button", "data-variant": "text", href: "#workspace" }, "Manage people")),
+    sourceFeedback);
+  const list = h("div", { class: "sharing-received-list" });
+  const loadState = h("div", { class: "sharing-load-state" });
+  const count = h("p", { class: "field-hint", role: "status", "aria-live": "polite" });
+  const refresh = button("Refresh shares", () => load(), { class: "small" });
+  const loadMore = button("Load more shares", () => load(true), { class: "small", hidden: true });
+  const received = h("section", { class: "sharing-manage", "aria-labelledby": prefix + "-received-title" },
+    h("div", { class: "sharing-section-heading" }, h("h2", { id: prefix + "-received-title" }, "Received shares"), refresh),
+    count, list, loadState, h("div", { class: "form-actions" }, loadMore));
+  const element = h("section", { class: "sharing-view sharing-team-view" }, source, received);
+
+  function excerpt(item) {
+    const truncated = item.text.length > 180;
+    return h("article", { class: "sharing-received ds-card" },
+      h("h3", { tabindex: -1 }, item.title || "Approved excerpt"),
+      h("p", { class: "sharing-received-preview" }, truncated ? item.text.slice(0, 179) + "…" : item.text),
+      truncated && h("details", { class: "ds-highlight-disclosure sharing-approved-text" }, h("summary", {}, "Read full excerpt"), h("section", {}, h("p", {}, item.text))));
+  }
+  async function load(append = false) {
+    if (!current() || loading || (append && !more)) return;
+    const request = ++version, offset = append ? nextOffset : 0;
+    const restoreFocus = [refresh, loadMore, ...loadState.querySelectorAll("button")].includes(document.activeElement);
+    loading = true; refresh.disabled = true; loadMore.disabled = true;
+    refresh.setAttribute("aria-busy", "true"); received.setAttribute("aria-busy", "true");
+    if (!append) { items = []; nextOffset = 0; more = false; list.replaceChildren(); count.textContent = ""; loadMore.hidden = true; }
+    loadState.replaceChildren(loadingState({ label: append ? "Loading more received shares…" : "Loading received shares…", compact: true }));
+    try {
+      const result = await api.receivedSharing({ limit: pageSize, offset });
+      if (!current() || request !== version) return;
+      if (result.sourceKind !== "team" || !Array.isArray(result.received) || typeof result.more !== "boolean" || result.received.length > 50 || (result.more && !result.received.length) || result.received.some(item => !item || typeof item.id !== "string" || !item.id || typeof item.shareId !== "string" || !item.shareId || typeof item.title !== "string" || typeof item.text !== "string")) throw new Error("Received shares could not be read. Try again.");
+      const known = new Set(items.map(item => item.id)), added = [];
+      for (const item of result.received) if (!known.has(item.id)) { known.add(item.id); items.push(item); added.push(excerpt(item)); }
+      list.append(...added); nextOffset = offset + result.received.length; more = result.more;
+      loadState.replaceChildren();
+      if (!items.length) list.replaceChildren(h("div", { class: "ds-empty" }, h("h3", {}, "No received shares available"), h("p", {}, "Approved excerpts available to this team will appear here.")));
+      count.textContent = items.length ? "Showing " + items.length + " approved excerpt" + (items.length === 1 ? "." : "s.") : "";
+      loadMore.hidden = !more;
+      if (restoreFocus) (append ? added[0]?.querySelector("h3") || refresh : refresh).focus();
+    } catch (error) {
+      if (!current() || request !== version) return;
+      loadState.replaceChildren(h("div", { class: "ds-notice", "data-tone": "danger", role: "alert" },
+        h("p", {}, error.message || "Received shares could not be loaded. Try again."), button("Try again", () => load(append), { class: "small" })));
+      if (restoreFocus) loadState.querySelector("button")?.focus();
+      fail(error);
+    } finally {
+      if (current() && request === version) { loading = false; refresh.disabled = false; loadMore.disabled = false; refresh.setAttribute("aria-busy", "false"); received.setAttribute("aria-busy", "false"); }
+    }
+  }
+  function clear() {
+    ++version; items = []; nextOffset = 0; more = false; loading = false;
+    list.replaceChildren(); count.textContent = ""; loadMore.hidden = true; refresh.disabled = false;
+    refresh.setAttribute("aria-busy", "false"); received.setAttribute("aria-busy", "false");
+    loadState.replaceChildren(h("p", { class: "field-hint" }, "Refresh shares to reload received excerpts."));
+  }
+  load();
+  return { element, clearSecrets: clear, dispose() { active = false; clear(); sourceFeedback.textContent = ""; } };
+}
+
 // No source text or credential is written to storage, markup, URLs or attributes.
-export function sharingView({ api, fail = () => {}, isCurrent = () => true, copy = value => navigator.clipboard.writeText(value), now = () => Date.now() }) {
+export function sharingView({ api, workspaceKind = "personal", personalWorkspaces = [], onOpenPersonal, role, initialError = "", fail = () => {}, isCurrent = () => true, copy = value => navigator.clipboard.writeText(value), now = () => Date.now() }) {
+  if (workspaceKind === "team") return teamSharingView({ api, personalWorkspaces, onOpenPersonal, role, initialError, fail, isCurrent });
   const prefix = "sharing-" + (++instance);
   let active = true, scope = 0, loadVersion = 0, previewVersion = 0, draftVersion = 0;
   let catalog = null, preview = null, candidates = [], previewTimer, previewBusy = false, commitBusy = false, loadBusy = false;
@@ -19,10 +108,6 @@ export function sharingView({ api, fail = () => {}, isCurrent = () => true, copy
   const feedback = h("p", { id: prefix + "-feedback", class: "sharing-feedback", tabindex: -1, role: "status", "aria-live": "polite", "aria-atomic": "true" });
   const notice = (text, tone = "neutral", alert = false) => h("div", { class: "ds-notice", "data-tone": tone, role: alert ? "alert" : "status" }, text);
   const report = (text, error = false) => { feedback.setAttribute("role", error ? "alert" : "status"); feedback.textContent = text; };
-  const intro = h("div", { class: "ds-heading-group" }, statusBadge("Review before sharing", { tone: "lilac" }),
-    h("h2", {}, "Share the useful slice."),
-    h("p", {}, "Describe what belongs in a share and what to leave out. Review the proposed excerpts, remove private details, then approve the exact text."),
-    h("p", { class: "sharing-boundary" }, "New or changed memories are never added automatically. Each share is a fixed snapshot of the text you approve."));
   const loadState = h("div", { class: "sharing-load-state" });
   const instruction = h("textarea", { id: prefix + "-instruction", name: "instruction", rows: 4, minlength: 5, maxlength: 1000, required: true, autocomplete: "off", placeholder: "Share architecture decisions for the project. Exclude personal notes and contact details.", "aria-describedby": prefix + "-instruction-hint", oninput: () => invalidateReview("Instructions changed. Preview again before sharing.") });
   const recipientKind = h("select", { id: prefix + "-kind", name: "recipient-kind", required: true, onchange: () => { updateRecipient(); invalidateReview("Recipient changed. Preview again before sharing."); } },
@@ -35,18 +120,19 @@ export function sharingView({ api, fail = () => {}, isCurrent = () => true, copy
   const previewButton = h("button", { type: "submit", class: "primary" }, "Preview matching text");
   const cancelPreview = button("Cancel preview", () => { ++previewVersion; previewBusy = false; discardReview(); lockForm(); report("Preview canceled. Nothing was shared."); previewButton.focus(); }, { class: "text", hidden: true });
   const form = h("form", { class: "sharing-form ds-card", hidden: true, onsubmit: event => { event.preventDefault(); requestPreview(); } },
-    h("div", { class: "ds-heading-group" }, h("span", { class: "ds-eyebrow" }, "01 / DESCRIBE THE BOUNDARY"), h("h3", {}, "What should cross over?")),
+    h("h2", {}, "Create a share"),
     h("label", { class: "field" }, "Include and exclude", instruction),
-    h("p", { class: "field-hint", id: prefix + "-instruction-hint" }, "Use 5–1,000 characters. Instructions help find candidates; they never authorize a share on their own."),
+    h("p", { class: "field-hint", id: prefix + "-instruction-hint" }, "Describe topics to include and anything to leave out. Use 5–1,000 characters."),
     h("div", { class: "sharing-recipient-fields" }, h("label", { class: "field" }, "Recipient", recipientKind), teamField, agentField),
-    recipientNote, h("div", { class: "form-actions" }, previewButton, cancelPreview));
+    recipientNote, h("div", { class: "form-actions" }, previewButton, cancelPreview),
+    h("p", { class: "field-hint" }, "Nothing is shared until you review and approve the exact text."));
   const review = h("div", { class: "sharing-review", "aria-label": "Review proposed shared text" });
   const credentials = h("div", { class: "sharing-credentials" });
   const grantsHeading = h("h2", { tabindex: "-1" }, "Approved snapshots");
   const refresh = button("Refresh shares", () => loadCatalog(), { class: "small" });
   const grantsList = h("div", { class: "sharing-grants" });
   const grants = h("section", { class: "sharing-manage" }, h("div", { class: "sharing-section-heading" }, grantsHeading, refresh), grantsList);
-  const element = h("section", { class: "sharing-view" }, intro, loadState, form, review, credentials, feedback, grants);
+  const element = h("section", { class: "sharing-view" }, form, loadState, review, credentials, feedback, grants);
 
   function recipient() {
     if (recipientKind.value === "team") {
@@ -83,8 +169,11 @@ export function sharingView({ api, fail = () => {}, isCurrent = () => true, copy
     if (!previewBusy) previewButton.textContent = "Preview matching text";
   }
   function renderSourceState() {
-    loadState.replaceChildren(...(!catalog ? [] : catalog.sourceKind === "personal" ? [notice(catalog.modelAvailable ? "Optional model-assisted matching is available under this workspace’s existing processing settings. You still review every excerpt." : "Text matching and manual review are available. Optional model-assisted matching is currently unavailable.")] : [notice("Sharing starts from a personal workspace. Choose your personal workspace in the workspace picker to prepare a reviewed snapshot.")]));
-    if (catalog?.sourceKind === "personal" && !catalog.modelAvailable) loadState.append(h("p", { class: "field-hint" }, "Matching by meaning needs optional Jev processing with applicable access and budget. ", h("a", { href: "#workspace" }, "Review processing settings"), "."));
+    loadState.replaceChildren(...(!catalog ? [] : catalog.sourceKind === "personal" ? [h("details", { class: "ds-highlight-disclosure sharing-help" },
+      h("summary", {}, "How matching and sharing work"),
+      h("p", { class: "field-hint" }, catalog.modelAvailable ? "Optional Jev processing can help propose excerpts. You still review every word." : "Text matching proposes excerpts. It does not understand intent or exclusions; review every word."),
+      h("p", { class: "field-hint" }, "Each share is a fixed snapshot. New or edited memory needs another review."),
+      !catalog.modelAvailable && h("a", { class: "ds-touch-target", href: "#workspace" }, "Review processing settings"))] : [notice("This workspace receives approved excerpts. Open team memory to read them."), h("a", { class: "ds-button", href: "#memory" }, "Open team memory")]));
   }
   function invalidateCatalogLoad() {
     ++loadVersion;
