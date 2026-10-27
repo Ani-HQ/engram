@@ -6,6 +6,7 @@ import { DEFAULT_CONTEXT_BYTES, mcpResultBytes } from "./mcp-context";
 import { canDelete, canUseTool, DEFAULT_POLICIES, hasOauthScope, isHuman, normalizeToken, type TokenRecord } from "./policies";
 import { redactSecrets } from "./redact";
 import { parseReportedSource } from "./agent-source";
+import { judgeFreshness, judgeTaskMatches, type StaleDecision } from "./continuation-jev";
 
 // Continuation keeps one compact, attributed task record that another agent can
 // load. The checkpoint is the authoritative task snapshot; memory pages stay the
@@ -22,7 +23,9 @@ const DEFAULT_LINEAGE = "main";
 // Every confirmed checkpoint must be resumable in one default-sized MCP read.
 // The gate measures the actual resume envelope, escaping included, and keeps a
 // reserve for transport metadata added after the tool returns.
-export const RESUME_ENVELOPE_BYTES = DEFAULT_CONTEXT_BYTES - 256;
+// 512 bytes stay free for transport metadata and the optional freshness note.
+export const RESUME_ENVELOPE_BYTES = DEFAULT_CONTEXT_BYTES - 512;
+const RESUME_WITH_NOTES_BYTES = DEFAULT_CONTEXT_BYTES - 256;
 const MAX_REFS = 8;
 const MAX_HISTORY = 50;
 
@@ -476,41 +479,66 @@ function clip(value: string, max: number): string {
   return chars.length <= max ? value : `${chars.slice(0, max - 1).join("")}…`;
 }
 
-export async function findTasks(token: TokenRecord, raw: unknown = {}, db: postgres.Sql = dataSql(), maxLimit = 5): Promise<{ tasks: TaskCandidate[]; more: boolean; ambiguous: boolean }> {
+export interface FindOptions { judge?: typeof judgeTaskMatches }
+
+export async function findTasks(token: TokenRecord, raw: unknown = {}, db: postgres.Sql = dataSql(), maxLimit = 5, options: FindOptions = {}): Promise<{ tasks: TaskCandidate[]; more: boolean; ambiguous: boolean; ranking: "recent" | "text" | "jev" }> {
   const actor = continuationActor(token, false);
   const query = parseFindQuery(raw, maxLimit);
   return guarded(async () => {
-    const rows = await db`
+    const load = (text: string | null, limit: number) => db`
       SELECT t.* FROM continuation_tasks t
       WHERE t.org_id = ${actor.orgId} AND t.deleted_at IS NULL
         AND (${query.includeClosed} OR t.closed_at IS NULL)
         AND (${query.project ?? null}::text IS NULL OR lower(t.project) = lower(${query.project ?? null}))
-        AND (${query.query ?? null}::text IS NULL OR EXISTS (
+        AND (${text}::text IS NULL OR EXISTS (
           SELECT 1 FROM continuation_heads h JOIN continuation_checkpoints c ON c.id = h.checkpoint_id AND c.org_id = h.org_id
           WHERE h.org_id = t.org_id AND h.task_id = t.id
-            AND strpos(lower(concat_ws(' ', t.title, t.project, c.record->>'objective', c.record->>'next')), lower(${query.query ?? null})) > 0))
+            AND strpos(lower(concat_ws(' ', t.title, t.project, c.record->>'objective', c.record->>'next')), lower(${text})) > 0))
       ORDER BY t.updated_at DESC, t.id DESC
-      LIMIT ${query.limit + 1}`;
-    const tasks = rows.slice(0, query.limit);
-    const heads = tasks.length ? await db`
+      LIMIT ${limit}`;
+    const headsFor = async (tasks: any[]) => tasks.length ? db`
       SELECT h.task_id, c.* FROM continuation_heads h JOIN continuation_checkpoints c ON c.id = h.checkpoint_id AND c.org_id = h.org_id
       WHERE h.org_id = ${actor.orgId} AND h.task_id IN ${db(tasks.map(task => task.id))}
       ORDER BY c.created_at DESC` : [];
-    const candidates = tasks.map(task => ({
+    const shape = (tasks: any[], heads: any[]) => tasks.map(task => ({
       id: task.id, title: task.title, ...(task.project ? { project: task.project } : {}), status: task.closed_at ? "closed" as const : "open" as const,
       lineages: heads.filter(head => head.task_id === task.id).slice(0, 3).map(head => ({
         lineage: head.lineage, checkpointId: head.id, revision: Number(head.revision), savedAt: iso(head.created_at), savedBy: head.author,
         trigger: head.trigger, ...(head.harness ? { reportedSource: head.harness } : {}), next: clip(String(head.record?.next ?? ""), 160),
       })),
     }));
-    const choices = candidates.reduce((sum, task) => sum + Math.max(1, task.lineages.length), 0);
-    return { tasks: candidates, more: rows.length > query.limit, ambiguous: choices > 1 || rows.length > query.limit };
+    const choicesOf = (candidates: TaskCandidate[]) => candidates.reduce((sum, task) => sum + Math.max(1, task.lineages.length), 0);
+
+    // With Jev consent, judge meaning over recent candidates instead of exact words.
+    if (query.query) {
+      const pool = await load(null, 12), heads = await headsFor(pool);
+      const latest = (id: string) => heads.find(head => head.task_id === id);
+      const scores = await (options.judge ?? judgeTaskMatches)(query.query, pool.map(task => ({
+        id: task.id, title: task.title, project: task.project, objective: String(latest(task.id)?.record?.objective ?? ""), next: String(latest(task.id)?.record?.next ?? ""),
+      })));
+      if (scores) {
+        const matched = pool.filter(task => (scores.get(task.id) ?? 0) >= 2)
+          .sort((a, b) => (scores.get(b.id)! - scores.get(a.id)!) || (new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()));
+        if (matched.length) {
+          const top = scores.get(matched[0].id)!, tied = matched.filter(task => scores.get(task.id) === top).length;
+          const kept = matched.slice(0, query.limit), candidates = shape(kept, heads);
+          // One clear best match is unambiguous even if weaker ones exist.
+          const ambiguous = tied > 1 || top < 3 && matched.length > 1 || choicesOf(candidates.slice(0, 1)) > 1;
+          return { tasks: candidates, more: matched.length > query.limit, ambiguous, ranking: "jev" as const };
+        }
+      }
+    }
+    const rows = await load(query.query ?? null, query.limit + 1);
+    const tasks = rows.slice(0, query.limit), candidates = shape(tasks, await headsFor(tasks));
+    return { tasks: candidates, more: rows.length > query.limit, ambiguous: choicesOf(candidates) > 1 || rows.length > query.limit, ranking: query.query ? "text" as const : "recent" as const };
   });
 }
 
 // ----- resume_task --------------------------------------------------------
 
-export async function resumeTask(token: TokenRecord, raw: unknown, db: postgres.Sql = dataSql()) {
+export interface ResumeOptions { judge?: typeof judgeFreshness }
+
+export async function resumeTask(token: TokenRecord, raw: unknown, db: postgres.Sql = dataSql(), options: ResumeOptions = {}) {
   const actor = continuationActor(token, false);
   const input = object(raw, "resume_task arguments");
   only(input, ["taskId", "checkpointId", "lineage"], "resume_task");
@@ -537,8 +565,29 @@ export async function resumeTask(token: TokenRecord, raw: unknown, db: postgres.
     if (!row) throw new ContinuationError("Checkpoint not found for this task.", 404, "checkpoint_not_found");
     const meta = mapCheckpoint(row);
     const head = heads.find(item => item.lineage === meta.lineage);
-    const payload = resumePayload(mapTask(task), meta, row.record as TaskRecord, heads.length);
-    return { ...payload, ...(head && head.checkpoint_id !== meta.id ? { newerCheckpointId: head.checkpoint_id } : {}) };
+    const record = row.record as TaskRecord;
+    const payload: Record<string, unknown> = { ...resumePayload(mapTask(task), meta, record, heads.length), ...(head && head.checkpoint_id !== meta.id ? { newerCheckpointId: head.checkpoint_id } : {}) };
+    // Memory saved after this checkpoint may change the plan. A count needs no
+    // model; with Jev consent, a typed judgment flags decisions that may be stale.
+    const newer = await db`
+      SELECT slug, raw_text FROM memory_entries
+      WHERE status = 'active' AND coalesce(recorded_at, created_at) > ${meta.savedAt}
+      ORDER BY coalesce(recorded_at, created_at) DESC LIMIT 8`.catch(() => [] as any[]);
+    if (newer.length) {
+      payload.newerMemories = newer.length;
+      const decisions = (record.decisions ?? []).map(item => item.text);
+      const stale = decisions.length ? await (options.judge ?? judgeFreshness)(decisions, newer.map(item => ({ slug: String(item.slug), text: String(item.raw_text) }))) : null;
+      if (stale) {
+        payload.freshness = "checked";
+        if (stale.length) payload.staleDecisions = stale.slice(0, 3).map((item: StaleDecision) => ({ decision: item.decision, relation: item.relation, ...(item.memory.length <= 120 ? { memory: item.memory } : {}) }));
+      }
+      payload.boundary = `${payload.boundary} ${stale?.length ? "Some saved decisions may be out of date; recall the newer memory before acting on them." : "Memory was saved after this checkpoint; recall it if relevant."}`;
+      // Notes are optional. Drop them before ever exceeding one default read.
+      const bytes = () => resumeEnvelopeBytes(payload as any);
+      while (Array.isArray(payload.staleDecisions) && payload.staleDecisions.length && bytes() > RESUME_WITH_NOTES_BYTES) (payload.staleDecisions as unknown[]).pop();
+      if (bytes() > RESUME_WITH_NOTES_BYTES) { delete payload.staleDecisions; delete payload.freshness; }
+    }
+    return payload;
   });
 }
 

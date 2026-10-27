@@ -711,7 +711,7 @@ async function claudeHook(input, dependencies = {}) {
   if (input.hook_event_name !== 'UserPromptSubmit') return {};
   const prompt = typeof input.prompt === 'string' ? input.prompt.trim() : '';
   const explicit = /^(?:Engram task:|\/engram-task)\s*(.{3,200})/i.exec(prompt);
-  if (!explicit && (prompt.length < 40 || !/\b(?:build|fix|implement|investigate|design|review|update|change|create|add|remove|debug|refactor|test|ship|write|research|plan|deploy|migrate|audit)\b/i.test(prompt))) return {};
+  if (!explicit && (prompt.length < 40 || !/\b(?:build|fix|implement|investigat|design|review|updat|chang|creat|add|remov|debug|refactor|test|ship|writ|research|plan|deploy|migrat|audit|continu|resum|finish|complet|hand ?off)\w*\b/i.test(prompt))) return {};
   const taskKey = explicit ? hash(explicit[1].toLowerCase()) : 'bound-project-task';
   const tasks = active.tasks || {};
   let previous = tasks[taskKey];
@@ -741,7 +741,13 @@ async function claudeHook(input, dependencies = {}) {
     writePrivate(file, { runId: result.runId, tasks: retained, sequence: Math.max(sequence, generation + 1) });
     require('./runtime-adapters').publishActiveRun(binding, result.runId, runtime, session);
   }
-  return result.context ? { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: result.context } } : {};
+  if (result.context) return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: result.context } };
+  // Nothing to recall still leaves the agent needing its run ID for checkpoints.
+  if (result.runId && !dependencies.reportingOnly && !['already-retrieved', 'already-attempted', 'ended', 'duplicate-context', 'busy'].includes(result.status)) {
+    const runState = readPrivate(path.join(stateRoot(), binding.scope, `${result.runId}.json`), null);
+    return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: `Engram lifecycle run for this task: ${result.runId}. ${continuationGuidance(runState)}` } };
+  }
+  return {};
 }
 
 async function inputJson(stream = process.stdin) {
