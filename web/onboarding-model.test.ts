@@ -35,6 +35,10 @@ describe("getting started evidence", () => {
     expect(JSON.parse(accessKeyConfiguration("vscode", "https://example.test/mcp")).servers.engram.type).toBe("http");
     expect(JSON.parse(accessKeyConfiguration("cursor", "https://example.test/mcp", "fixture-key")).mcpServers.engram.headers.Authorization).toBe("Bearer fixture-key");
     expect(accessKeyConfiguration("cursor", "https://example.test/mcp")).toContain("<access-token>");
+    expect(JSON.parse(accessKeyConfiguration("gemini-cli", "https://example.test/mcp")).mcpServers.engram).toEqual({ httpUrl: "https://example.test/mcp", headers: { Authorization: "Bearer <access-token>" } });
+    expect(JSON.parse(accessKeyConfiguration("opencode", "https://example.test/mcp")).mcp.engram.type).toBe("remote");
+    expect(JSON.parse(accessKeyConfiguration("openclaw", "https://example.test/mcp")).mcp.servers.engram.transport).toBe("streamable-http");
+    for (const id of ["claude-code", "github-copilot"]) expect(JSON.parse(accessKeyConfiguration(id, "https://example.test/mcp")).mcpServers.engram.type).toBe("http");
   });
   test("prompts require meaningful user work and honest error handling", () => {
     expect(connectionCheckPrompt).toContain("Do not read or write memory");

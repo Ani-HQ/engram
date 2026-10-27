@@ -242,15 +242,19 @@ describe("local activity demo", () => {
     const memory = own.filter((row: any) => row.evidence === "observed" && !["whoami", "list_actions", "record_action"].includes(row.tool));
     const reports = own.filter((row: any) => row.evidence === "reported");
     expect(codex).toMatchObject({ kind: "token", name: "codex", displayName: "Codex", harness: "codex", status: "authorized", canWrite: true, memoryCalls: memory.length, taskReports: reports.length });
+    expect(codex.client).toEqual({ state: "identified", label: "Codex", harness: "codex" });
+    // This shared-key fixture stays ambiguous despite its chosen source label.
+    expect(data.connections.find((row: any) => row.name === "mac-claude")).toMatchObject({ harness: "claude-code", client: { state: "multiple", label: null, harness: null } });
     expect(codex.lastContactAt).toBe(own.map((row: any) => row.recordedAt).sort().at(-1));
     expect(codex.lastMemoryAt).toBe(memory.map((row: any) => row.recordedAt).sort().at(-1) || null);
     expect(codex.lastTaskReportAt).toBe(reports.map((row: any) => row.recordedAt).sort().at(-1));
     expect(codex.lastAuthenticatedAt).toBe("2026-10-21T09:42:00.000Z");
     const oauth = data.connections.find((row: any) => row.kind === "oauth");
     expect(oauth).toMatchObject({ name: "ChatGPT", displayName: "ChatGPT", harness: "chatgpt", status: "authorized", lastAuthenticatedAt: null, lastContactAt: null, lastMemoryAt: null, lastTaskReportAt: null, memoryCalls: 0, taskReports: 0 });
+    expect(oauth.client).toEqual({ state: "identified", label: "ChatGPT", harness: "chatgpt" });
     expect(oauth.id).toMatch(/^oauth:[a-f0-9]{64}$/);
     expect(oauth.agent).toBe("oauth:ada%40example.com:demo-chatgpt");
-    expect(data.connections.find((row: any) => row.name === "old-laptop")).toMatchObject({ status: "revoked", canWrite: false, lastContactAt: null, memoryCalls: 0, taskReports: 0 });
+    expect(data.connections.find((row: any) => row.name === "old-laptop")).toMatchObject({ status: "revoked", canWrite: false, lastContactAt: null, memoryCalls: 0, taskReports: 0, client: { state: "unknown", label: null, harness: null } });
     for (const row of data.connections) for (const field of ["token", "sha256_hash", "refresh_token", "clientId", "email", "running", "workingActions"]) expect(row).not.toHaveProperty(field);
     expect(data.connections.map((row: any) => row.createdAt)).toEqual(data.connections.map((row: any) => row.createdAt).sort().reverse());
     expect((await request("/api/connections", { headers: { Cookie: "engram_dev=0" } })).status).toBe(401);
@@ -667,15 +671,20 @@ describe("local activity demo", () => {
       for (const path of ["/api/tokens", "/api/tokens/source", "/api/tokens/write", "/api/tokens/revoke"]) expect((await mutate(path, { name: "codex" }, "1")).status).toBe(409);
       for (const path of ["/api/tokens/source", "/api/tokens/write", "/api/tokens/revoke"]) expect((await mutate(path, { name: "mac-claude", harness: "hermes" })).status).toBe(404);
       expect((await mutate("/api/tokens", { name: "no-source", sourceLabel: "A label without a harness" })).status).toBe(400);
-      const minted = await mutate("/api/tokens", { name: "codex", orgId: 1, harness: "hermes", sourceLabel: "Personal helper" });
+      // Generic keys need no product choice. A same-named key in another
+      // workspace must not inherit the Codex fixture's client or contact.
+      const minted = await mutate("/api/tokens", { name: "codex", orgId: 1 });
       expect(minted.status).toBe(200);
-      expect((await minted.json()).token).toBe("eng_demo_token_not_valid_in_production");
+      expect(await minted.json()).toMatchObject({ token: "eng_demo_token_not_valid_in_production", harness: null, sourceLabel: null });
+      const generic = (await (await request("/api/connections")).json()).connections;
+      expect(generic).toHaveLength(1);
+      expect(generic[0]).toMatchObject({ name: "codex", harness: null, sourceLabel: null, client: { state: "unknown", label: null, harness: null }, memoryCalls: 0, taskReports: 0, lastContactAt: null, lastAuthenticatedAt: null });
       expect((await mutate("/api/tokens", { name: "codex" })).status).toBe(400);
       expect((await mutate("/api/tokens/write", { name: "codex", canWrite: false })).status).toBe(200);
       expect((await mutate("/api/tokens/source", { name: "codex", harness: "openclaw", sourceLabel: "Personal helper" })).status).toBe(200);
       const own = (await (await request("/api/connections")).json()).connections;
       expect(own).toHaveLength(1);
-      expect(own[0]).toMatchObject({ agent: "codex", displayName: "Personal helper", harness: "openclaw", status: "authorized", canWrite: false, memoryCalls: 0, taskReports: 0, lastContactAt: null, lastAuthenticatedAt: null });
+      expect(own[0]).toMatchObject({ agent: "codex", displayName: "Personal helper", harness: "openclaw", status: "authorized", canWrite: false, memoryCalls: 0, taskReports: 0, lastContactAt: null, lastAuthenticatedAt: null, client: { state: "unknown", label: null, harness: null } });
       expect((await mutate("/api/tokens/revoke", { name: "codex" })).status).toBe(200);
       const revoked = (await (await request("/api/tokens")).json()).tokens;
       expect(revoked).toHaveLength(1);

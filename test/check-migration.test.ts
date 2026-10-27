@@ -4,10 +4,11 @@ import { PROFILE_PHOTO_SCHEMA_VERSION, PROFILE_PRESENTATION_SCHEMA_VERSION, SHOW
 import { CONTEXT_SHARING_SCHEMA_VERSION } from "../gateway/src/context-sharing-schema";
 import { CONNECTIONS_SCHEMA_VERSION } from "../gateway/src/connections-schema";
 import { MEMORY_USAGE_SCHEMA_VERSION } from "../gateway/src/memory-usage-schema";
+import { CONNECTION_CLIENT_SCHEMA_VERSION } from "../gateway/src/connection-client-schema";
 
 function fixture() {
   const state = {
-    mode: "on", schema: [{ version: 2026102202, activity_version: 2026102301, billing_version: 2026102401, showcase_version: SHOWCASE_SCHEMA_VERSION, profile_presentation_version: PROFILE_PRESENTATION_SCHEMA_VERSION as number | null | undefined, profile_photo_version: PROFILE_PHOTO_SCHEMA_VERSION as number | null | undefined, context_sharing_version: CONTEXT_SHARING_SCHEMA_VERSION, connections_version: CONNECTIONS_SCHEMA_VERSION, memory_usage_version: MEMORY_USAGE_SCHEMA_VERSION as number | null | undefined }], owner: [{ owners: 1, selected_owner: 1 }],
+    mode: "on", schema: [{ version: 2026102202, activity_version: 2026102301, billing_version: 2026102401, showcase_version: SHOWCASE_SCHEMA_VERSION, profile_presentation_version: PROFILE_PRESENTATION_SCHEMA_VERSION as number | null | undefined, profile_photo_version: PROFILE_PHOTO_SCHEMA_VERSION as number | null | undefined, context_sharing_version: CONTEXT_SHARING_SCHEMA_VERSION, connections_version: CONNECTIONS_SCHEMA_VERSION, memory_usage_version: MEMORY_USAGE_SCHEMA_VERSION as number | null | undefined, client_identity_version: CONNECTION_CLIENT_SCHEMA_VERSION as number | null | undefined }], owner: [{ owners: 1, selected_owner: 1 }],
     orgs: [{ total: 1, ready: 1, legacy_binding: 1, invalid_bindings: 0 }], legacy: [{ active: 0 }],
     roles: ["engram_gateway_runtime", "engram_tenant_1"].map(rolname => ({ rolname, rolcanlogin: true, rolsuper: false, rolcreatedb: false, rolcreaterole: false, rolreplication: false, rolbypassrls: false, rolinherit: false, rolconnlimit: rolname === "engram_tenant_1" ? 12 : -1, memberships: 0 })),
     privileges: [{ runtime_gateway: true, runtime_database_create: false, engine_gateway: false, runtime_memory: false, engine_own: true, engine_database_create: false, runtime_schema_usage: true, runtime_schema_create: false, runtime_version_update: false, runtime_grant_read: true, runtime_grant_write: false, runtime_grant_audit_write: false }],
@@ -85,6 +86,11 @@ describe("read-only migration cutover checks", () => {
       expect((await inspectMigration(f.db, "verified@example.com")).checks.schema).toBe(false);
     }
     f.state.schema[0].memory_usage_version = MEMORY_USAGE_SCHEMA_VERSION;
+    for (const marker of [undefined, null, CONNECTION_CLIENT_SCHEMA_VERSION-1, CONNECTION_CLIENT_SCHEMA_VERSION+1]) {
+      f.state.schema[0].client_identity_version = marker;
+      expect((await inspectMigration(f.db, "verified@example.com")).checks.schema).toBe(false);
+    }
+    f.state.schema[0].client_identity_version = CONNECTION_CLIENT_SCHEMA_VERSION;
     f.state.schema[0].showcase_version--;
     expect((await inspectMigration(f.db, "verified@example.com")).checks.schema).toBe(false);
     f.state.schema[0].showcase_version = SHOWCASE_SCHEMA_VERSION;

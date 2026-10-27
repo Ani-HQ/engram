@@ -77,6 +77,7 @@ try {
   await denied(() => sql`SET ROLE engram_test`, "Gateway cannot assume provisioner authority");
   await denied(() => sql`SELECT rolpassword FROM pg_authid`, "Gateway cannot read PostgreSQL password verifiers");
   await denied(() => sql`UPDATE engram_schema_state SET version = 1`, "Runtime cannot forge the provisioner's schema readiness version");
+  await denied(() => sql`UPDATE engram_schema_state SET client_identity_version = 1`, "Runtime cannot forge additive client-identification readiness");
   equal((await sql`SELECT count(*)::int AS n FROM workspace_complimentary_access`)[0].n >= 0, true, "Restricted runtime can read complimentary entitlement state");
   await denied(() => sql`INSERT INTO workspace_complimentary_access (id,org_id,owner_member_id) VALUES (gen_random_uuid(),1,0)`, "Runtime cannot grant complimentary access");
   await denied(() => sql`UPDATE workspace_complimentary_access SET revoked_at=now() WHERE org_id=1`, "Runtime cannot revoke complimentary access");
@@ -172,6 +173,11 @@ try {
   equal(await oauthMemberForClaims(originalClaims, sql), null, "Signed OAuth membership loses access immediately on removal");
   check(await authenticateStoredSecret(linkedB), "Same person's credential in a different workspace remains usable");
   check(await authenticateStoredSecret(operatorA), "Explicit operator service credentials have their own revocation lifecycle");
+  const { observeConnectionClient } = await import("../gateway/src/connection-client");
+  const { sha256 } = await import("../gateway/src/hash");
+  const operatorActor = (await authenticateStoredSecret(operatorA))!;
+  await observeConnectionClient(operatorActor, sha256(operatorA), "initialize", { clientInfo:{ name:"Codex" } }, sql);
+  equal((await sql`SELECT client_names FROM tokens WHERE org_id=${a.id} AND name='operator-agent'`)[0].client_names, ["Codex"], "Restricted runtime can record only bounded credential-scoped display metadata without new DDL or role grants");
   const rejoined = await addMember(a.id, memberEmail, "member");
   check(rejoined.id !== memberA.id, "Rejoining creates a new membership identity");
   equal(await oauthMemberForClaims(originalClaims, sql), null, "Rejoining the same email cannot resurrect a previous OAuth access grant");

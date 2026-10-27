@@ -101,6 +101,18 @@ const oauthConnections = [{ orgId: 1, email: session.email, clientId: "demo-chat
 const demoHarnessLabels: Record<string, string> = { codex: "Codex", claude: "Claude", "claude-code": "Claude Code", chatgpt: "ChatGPT", cursor: "Cursor", grok: "Grok", "grok-bot": "GrokBot", openclaw: "OpenClaw", hermes: "Hermes" };
 const connectionLifecycle = new Map<string, { archivedAt: string | null; deletedAt: string | null }>();
 const demoOauthConnectionId = (connection: typeof oauthConnections[number]) => `oauth:${createHash("sha256").update(JSON.stringify([connection.orgId, connection.email, connection.clientId])).digest("hex")}`;
+// Fixed, explicitly simulated client metadata for visual review. These entries
+// are independent of manually chosen sources and recorded activity receipts.
+// Keying by workspace and credential ID keeps a new same-named key unidentified.
+type DemoConnectionClient = { state: "identified" | "multiple" | "unknown"; label: string | null; harness: string | null };
+const demoClientFixtures = new Map<string, DemoConnectionClient>([
+  ["1:token:1", { state: "identified", label: "Codex", harness: "codex" }],
+  ["1:token:2", { state: "multiple", label: null, harness: null }],
+  ["1:token:3", { state: "unknown", label: null, harness: null }],
+  ["1:oauth:demo-chatgpt", { state: "identified", label: "ChatGPT", harness: "chatgpt" }],
+]);
+const demoConnectionClient = (workspaceId: number, kind: "token" | "oauth", credentialId: number | string): DemoConnectionClient =>
+  ({ ...(demoClientFixtures.get(`${workspaceId}:${kind}:${credentialId}`) || { state: "unknown", label: null, harness: null }) });
 
 if (import.meta.main) {
   Bun.serve({ port: PORT, hostname: "127.0.0.1", idleTimeout: 120, fetch: devFetch });
@@ -355,8 +367,8 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   if (route === "POST /api/tokens") {
     const body = await bodyObject(req);
     const name = string(body?.name);
-    if (!name) return json({ error: "An agent name is required." }, 400);
-    if (workspaceTokens(workspaceId).some(token => token.name === name)) return json({ error: "That agent name already exists." }, 400);
+    if (!name) return json({ error: "A connection name is required." }, 400);
+    if (workspaceTokens(workspaceId).some(token => token.name === name)) return json({ error: "That connection name already exists." }, 400);
     let source;
     try {
       source = parseReportedSource(body?.harness, body?.sourceLabel);
@@ -607,6 +619,7 @@ function demoConnections(workspaceId: number, now = new Date()) {
       id: `token:${token.id}`, kind: "token", name: token.name,
       displayName: token.sourceLabel || (token.harness && Object.hasOwn(demoHarnessLabels, token.harness) ? demoHarnessLabels[token.harness] : token.name),
       agent: token.name, harness: token.harness, sourceLabel: token.sourceLabel,
+      client: demoConnectionClient(workspaceId, "token", token.id),
       status: token.revokedAt ? "revoked" : "authorized", canWrite: token.canWrite,
       createdAt: token.createdAt, lastAuthenticatedAt: token.lastUsedAt,
     })),
@@ -615,6 +628,7 @@ function demoConnections(workspaceId: number, now = new Date()) {
       kind: "oauth", name: connection.name, displayName: "ChatGPT",
       agent: oauthActorName({ sub: connection.email, client_id: connection.clientId }),
       harness: connection.harness, sourceLabel: connection.sourceLabel, status: connection.status,
+      client: demoConnectionClient(workspaceId, "oauth", connection.clientId),
       canWrite: connection.canWrite, createdAt: connection.createdAt, lastAuthenticatedAt: null,
     })),
   ].filter(connection => !connectionLifecycle.get(`${workspaceId}:${connection.id}`)?.deletedAt)

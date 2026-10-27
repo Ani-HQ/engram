@@ -8,9 +8,10 @@ import { watchPublicActivity } from "./live-activity.js";
 import { activityFeed, activityFilters, activitySkeleton, activityDetail, activityDetailHeader, refreshActivityTimes } from "./activity-view.js";
 import { activityDestination, activityHref, activitySections } from "./activity-navigation.js";
 import { agentVisual, visualIcon, agentSources, toolVisual } from "./tooling.js";
-import { activityKind as normalizeActivityKind, connectionIdentity, withConnectionIdentity } from "./connection-model.js";
+import { activityKind as normalizeActivityKind, connectionClient, connectionIdentity, withConnectionIdentity } from "./connection-model.js";
 import { agentOverview, connectionInventory } from "./connection-view.js";
 import { connectionAgents, connectionSetupView } from "./connection-setup-view.js";
+import { connectionKeyPayload, genericConnectionDraft } from "./connection-setup-state.js";
 import { memoryLoading, setMemoryLoadingDelayed } from "./memory-loading.js";
 import { memoryDocumentView } from "./memory-document-view.js";
 import { taskReportingSetup, taskReportingInstructions } from "./task-reporting-view.js";
@@ -938,10 +939,10 @@ function connectView() {
 
 function beginConnection({ agentId, draft } = {}) {
   if (sessionMutation || !["owner", "member"].includes(state.session?.role)) return;
-  if (draft) connectionDraft = { ...draft };
-  else if (agentId !== undefined) connectionDraft = { name: "", harness: agentId, canWrite: true };
-  connectionDraft ||= { name: "", harness: "", canWrite: true };
-  if (connectionDraft.harness && !connectionAgents.some(agent => agent.id === connectionDraft.harness)) connectionDraft.harness = "other";
+  if (draft) connectionDraft = { ...draft, keyExpanded: true };
+  else if (agentId !== undefined) connectionDraft = { name: "", canWrite: true, helpAgentId: agentId, helpExpanded: true, keyExpanded: true };
+  else connectionDraft = genericConnectionDraft(connectionDraft || {});
+  if (!connectionAgents.some(agent => agent.id === connectionDraft.helpAgentId)) connectionDraft.helpAgentId = "";
   const workspaceId = state.session.org.id;
   if (state.view !== "connect") {
     connectionFocusPending = { workspaceId, afterLoad: true };
@@ -961,27 +962,29 @@ function openConnectionDialog() {
   editor.isCurrent = () => currentWorkspace() && connectionEditor === editor && dialog.open && editor.generation === detailGeneration;
   editor.render = focusKey => {
     if (!currentWorkspace()) return;
-    const content = connectionSetupView({ agentId: editor.draft.harness, keyOnly: editor.draft.keyOnly === true, endpoint: state.mcp || `${location.origin}/mcp`, draft: editor.draft,
+    const content = connectionSetupView({ helpAgentId: editor.draft.helpAgentId, keyExpanded: editor.draft.keyExpanded, helpExpanded: editor.draft.helpExpanded, endpoint: state.mcp || `${location.origin}/mcp`, draft: editor.draft,
       busy: connectionKeyRequests.has(requestKey), error: editor.error, copyControl: copyButton,
-      onChoose: harness => {
+      onHelpChoose: helpAgentId => {
         if (!editor.isCurrent() || connectionKeyRequests.has(requestKey)) return;
-        editor.draft = { ...editor.draft, harness, keyOnly: false }; connectionDraft = { ...editor.draft }; editor.error = ""; editor.render("agent");
+        editor.draft = { ...editor.draft, helpAgentId, helpExpanded: true }; connectionDraft = { ...editor.draft }; editor.render("help");
       },
-      onDraft: draft => { if (editor.isCurrent()) { editor.draft = { ...draft, keyOnly: editor.draft.keyOnly }; connectionDraft = { ...editor.draft }; } },
+      onKeyToggle: keyExpanded => { if (editor.isCurrent() && dialog.contains(content)) { editor.draft.keyExpanded = keyExpanded; connectionDraft = { ...editor.draft }; } },
+      onHelpToggle: helpExpanded => { if (editor.isCurrent() && dialog.contains(content)) { editor.draft.helpExpanded = helpExpanded; connectionDraft = { ...editor.draft }; } },
+      onDraft: draft => { if (editor.isCurrent()) { editor.draft = { ...editor.draft, name: draft.name, canWrite: draft.canWrite }; connectionDraft = { ...editor.draft }; } },
       onDone: () => { if (editor.isCurrent()) { closeDetail(); loadConnections(); } },
       onSubmit: async input => {
         if (!editor.isCurrent() || connectionKeyRequests.has(requestKey)) return;
-        editor.draft = { ...input, keyOnly: editor.draft.keyOnly }; connectionDraft = { ...editor.draft }; editor.error = "";
+        editor.draft = { ...editor.draft, name: input.name, canWrite: input.canWrite, keyExpanded: true }; connectionDraft = { ...editor.draft }; editor.error = "";
         const request = {}; connectionKeyRequests.set(requestKey, request);
         editor.render();
         try {
-          const data = await scopedApi.mintToken(input);
+          const data = await scopedApi.mintToken(connectionKeyPayload(editor.draft, input));
           if (!currentWorkspace()) return;
           state.connectionFetchedAt = 0;
           // A dismissed/replaced dialog never reopens or exposes a late key.
           if (!editor.isCurrent()) { loadConnections(); return; }
           connectionDraft = null; connectionEditor = null;
-          tokenDetail(data);
+          tokenDetail(data, editor.draft.helpAgentId);
           loadConnections();
         } catch (error) {
           if (!currentWorkspace()) return;
@@ -1004,7 +1007,7 @@ function openConnectionDialog() {
     selectControls.update();
     if (focusKey) content.querySelector(`[data-connection-focus="${focusKey}"]`)?.focus({ preventScroll: true });
   };
-  editor.render("agent");
+  editor.render(editor.draft.keyExpanded ? "name" : "endpoint");
 }
 
 function taskReportingHelp() {
@@ -1024,8 +1027,9 @@ function connectionHelp(connection) {
   const pending = connectionMutations.has(`${epoch}:${workspaceId}:${connection.id}`);
   const endpoint = state.mcp || `${location.origin}/mcp`;
   showDetail(owner ? "Manage connection" : archived ? "Archived connection" : reconnect ? "Reconnect agent" : "Connection details", [
-    el("div", { class: "detail-tool-icon" }, visualIcon(agentVisual(connection.agent, { ...connection, harness: connection.harness || (connection.kind === "oauth" ? "other" : null) }), { size: 26 })),
+    el("div", { class: "detail-tool-icon" }, visualIcon(agentVisual(connection.agent, { ...connection, harness: connection.harness || connectionClient(connection).harness || "other" }), { size: 26 })),
     el("h2", { id: "detail-title" }, connection.displayName || connection.name || "Agent connection"),
+    el("p", { class: "detail-note", title: connectionClient(connection).detail }, `Client: ${connectionClient(connection).label}`),
     el("p", { class: "detail-note" }, archived ? "This connection is archived and disconnected. Its memory and activity stay available. Restore it to the current list, then reconnect separately when you need it." : reconnect ? "This authorization no longer grants access. Reconnect in the agent, or replace its access key." : connection.status === "authorized" ? "This authorization can access Engram. Activity appears when the agent makes memory calls or reports its work." : "This connection's access could not be verified. Refresh Connections to check its current status."),
     owner && el("section", { class: "connection-management stack", "aria-label": "Manage connection" },
       el("h3", {}, "Connection actions"),
@@ -1050,7 +1054,7 @@ function connectionHelp(connection) {
       el("p", { class: "detail-note" }, "For access keys, replace the bearer token in the agent’s MCP settings with a fresh key. Give each agent or computer its own connection."),
     owner && connection.kind === "token" && button("Create a fresh key", () => {
       if (workspaceId !== state.session?.org.id) return;
-      beginConnection({ draft: { name: `${connection.name.slice(0, 96)}-new`, harness: connection.harness || "other", canWrite: connection.canWrite, keyOnly: true } });
+      beginConnection({ draft: { name: `${connection.name.slice(0, 96)}-new`, harness: connection.harness, sourceLabel: connection.sourceLabel, canWrite: connection.canWrite, helpAgentId: connection.harness || "", keyExpanded: true } });
     }, { class: "small", disabled: pending })),
 
   ]);
@@ -1138,7 +1142,7 @@ function connectionSource(token) {
       if (workspaceId !== state.session?.org.id || requestId !== detailGeneration) return;
       if (error instanceof AuthError) return expired(); feedback.textContent = errorMessage(error);
     } finally { busy(save, "Save source", false); }
-  } }, el("h2", { id: "detail-title" }, token.name), el("p", { class: "detail-note" }, "Choose the product this agent runs in. Its name and access stay the same."), field("Source", source), field("Display label", sourceLabel), feedback, save));
+  } }, el("h2", { id: "detail-title" }, token.name), el("p", { class: "detail-note" }, "This is a source label you set. Client names received from a connection are shown separately."), field("Source", source), field("Display label", sourceLabel), feedback, save));
 }
 async function loadConnections() {
   const requestId = ++generation, workspaceId = state.session.org.id; state.loading = true; state.error = "";
@@ -1155,18 +1159,24 @@ async function loadConnections() {
   finally {
     if (requestId === generation) {
       const focusLabel = !dialog.open && state.view === "connect" ? document.activeElement?.getAttribute("aria-label") : null;
+      const focusConnect = !dialog.open && state.view === "connect" && document.activeElement?.hasAttribute("data-connect-action");
       state.loading = false; render();
       if (["Refresh connections", "Connection list"].includes(focusLabel)) {
         selectControls.update();
         document.querySelector(`[aria-label="${focusLabel}"]`)?.focus({ preventScroll: true });
       }
+      if (focusConnect) document.querySelector("[data-connect-action]")?.focus({ preventScroll: true });
       focusConnectionKey(true);
     }
   }
 }
-function tokenDetail(data) {
+function tokenDetail(data, helpAgentId = "") {
   const secret = el("input", { type: "password", class: "connection-secret", value: data.token, readonly: true, autocomplete: "off", spellcheck: "false", "aria-label": "New access key" });
   const reveal = button("Show key", () => { const shown = secret.type === "text"; secret.type = shown ? "password" : "text"; reveal.textContent = shown ? "Show key" : "Hide key"; reveal.setAttribute("aria-pressed", String(!shown)); }, { "aria-pressed": "false" });
+  const formats = [["other", "MCP JSON"], ["codex", "Codex · TOML"], ["vscode", "VS Code · JSON"], ["claude-code", "Claude Code · JSON"], ["github-copilot", "GitHub Copilot · JSON"], ["gemini-cli", "Gemini CLI · JSON"], ["opencode", "OpenCode · JSON"], ["openclaw", "OpenClaw · JSON"]];
+  const selected = formats.some(([id]) => id === helpAgentId) ? helpAgentId : "other";
+  const preview = el("pre", { tabindex: "0" }, accessKeyConfiguration(selected, data.mcp));
+  const format = select("Configuration format", selected, formats, () => { preview.textContent = accessKeyConfiguration(format.value, data.mcp); });
   showDetail("Connect an agent", el("div", { class: "connection-result ds-stack" },
     el("div", { class: "ds-heading-group" }, el("h2", { id: "detail-title" }, data.name),
       el("p", { class: "ds-hint" }, `Copy this key now. It is only shown once. Its permission is ${data.canWrite === false ? "read only" : "read and write"}; workspace policy and hosted plan access also apply.`)),
@@ -1177,13 +1187,14 @@ function tokenDetail(data) {
     el("code", { class: "ds-code-scroll", tabindex: "0", role: "region", "aria-label": "MCP endpoint. Scroll horizontally to read." }, data.mcp),
     el("div", { class: "ds-row" }, copyButton("Copy endpoint", data.mcp)),
     el("details", { class: "connection-install" }, el("summary", {}, "MCP configuration"),
-      el("p", { class: "ds-hint" }, "For clients that accept a configuration file. The copy button includes the key; store the configuration securely."),
-      el("pre", { tabindex: "0" }, accessKeyConfiguration(data.harness, data.mcp)),
-      copyButton("Copy configuration with key", () => accessKeyConfiguration(data.harness, data.mcp, secret.value))),
-    el("p", { class: "ds-hint" }, "Reload the agent after updating its settings, then refresh Connections to check for contact."),
+      el("p", { class: "ds-hint" }, "Optional examples for clients that accept a configuration file. Changing the format does not label the connection. The copy button includes the key."),
+      field("Configuration format", format), preview,
+      copyButton("Copy configuration with key", () => accessKeyConfiguration(format.value, data.mcp, secret.value))),
+    el("p", { class: "ds-hint" }, "Reload the agent after updating its settings, then refresh Connections. Its client name appears when the app supplies one."),
     el("div", { class: "ds-row" }, button("Done", () => { closeDetail(); loadConnections(); })),
   ), { returnTo: '[data-connect-action]' });
   returnFocusSelector = '[data-connect-action]';
+  selectControls.update();
   // Keep credentials only in this open dialog, never in browser storage.
   state.token = null;
 }
@@ -1607,10 +1618,14 @@ document.addEventListener("keydown", event => {
   }
 });
 setInterval(() => { if (!document.hidden && state.session && !workspacePending(state.session) && !sessionMutation && activityHistoryActive() && !state.loading && !dialog.open) loadActivity({ quiet: true }); }, 5000);
+function refreshReturnedConnections() {
+  if (!document.hidden && state.view === "connect" && ["owner", "member"].includes(state.session?.role) && !sessionMutation && !state.loading && !connectionKeyRequests.size && Date.now() - state.connectionFetchedAt > 3000) loadConnections();
+}
+window.addEventListener("focus", refreshReturnedConnections);
 document.addEventListener("visibilitychange", () => {
   document.documentElement.dataset.pageHidden = String(document.hidden);
   if (document.hidden) { previewWatcher?.pause(); clearTimeout(activityRefreshTimer); clearTimeout(insightTimer); clearTimeout(provisioningTimer); clearTimeout(accessRefreshTimer); }
-  else { if (workspacePending(state.session)) { scheduleProvisioning(0); return; } if (friendAccessPresentation(state.session?.access)) refreshFriendAccess(); previewWatcher?.resume(); if (currentActivity && dialog.open) fetchActivityDetail({ quiet: true }); if (activityChecksActive() && ["queued", "running"].includes(state.insights?.job?.status)) loadInsights({ jobId: state.insights.job.id, quiet: true }); }
+  else { if (workspacePending(state.session)) { scheduleProvisioning(0); return; } if (friendAccessPresentation(state.session?.access)) refreshFriendAccess(); previewWatcher?.resume(); refreshReturnedConnections(); if (currentActivity && dialog.open) fetchActivityDetail({ quiet: true }); if (activityChecksActive() && ["queued", "running"].includes(state.insights?.job?.status)) loadInsights({ jobId: state.insights.job.id, quiet: true }); }
 });
 window.addEventListener("pagehide", () => { pendingInviteEntry = null; authPanel?.clearSecrets(); signupAdmin?.clearSecrets(); sharingPanel?.clearSecrets(); profilePhotoEditor?.dispose(); profilePhotoEditor = null; previewWatcher?.pause(); clearTimeout(activityRefreshTimer); clearTimeout(insightTimer); clearTimeout(provisioningTimer); clearTimeout(accessRefreshTimer); });
 window.addEventListener("pageshow", event => {
@@ -1621,6 +1636,7 @@ window.addEventListener("pageshow", event => {
   if (currentActivity && dialog.open) fetchActivityDetail({ quiet: true });
   else if (state.session && activityHistoryActive() && !sessionMutation) loadActivity({ quiet: true });
   else if (state.session && activityChecksActive()) loadInsights({ jobId: state.insights?.job?.id, quiet: true });
+  else if (state.session && state.view === "connect") refreshReturnedConnections();
   else if (state.session && state.view === "showcase" && !sessionMutation) render();
 });
 async function boot() {

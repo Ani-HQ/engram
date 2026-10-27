@@ -18,6 +18,7 @@ import { renderAsync } from "@resvg/resvg-js";
 import { fileURLToPath } from "node:url";
 import { PROFILE_PHOTO_SCHEMA_VERSION, PROFILE_PRESENTATION_SCHEMA_VERSION } from "../gateway/src/showcase-schema";
 import { MEMORY_USAGE_SCHEMA_VERSION } from "../gateway/src/memory-usage-schema";
+import { CONNECTION_CLIENT_SCHEMA_VERSION } from "../gateway/src/connection-client-schema";
 
 const template = process.env.ENGRAM_TEST_DB_URL_TEMPLATE;
 if (!template) throw new Error("Set ENGRAM_TEST_DB_URL_TEMPLATE to a disposable local PostgreSQL test cluster");
@@ -113,6 +114,17 @@ try {
   equal((await sql`SELECT version, activity_version, billing_version, signup_version, signup_access_version, mail_series_version, jev_version, showcase_version, profile_presentation_version, profile_photo_version, context_sharing_version, connections_version FROM engram_schema_state WHERE id = true`)[0], beforeUsageMarkers, "Memory usage migration preserves every prior feature and authority marker");
   await migrate();
   equal((await sql`SELECT memory_usage_version FROM engram_schema_state WHERE id = true`)[0].memory_usage_version, MEMORY_USAGE_SCHEMA_VERSION, "Memory usage migration is repeatable");
+  const beforeClientMarkers = (await sql`SELECT to_jsonb(s) - 'client_identity_version' AS markers FROM engram_schema_state s WHERE id=true`)[0].markers;
+  await issueToken(1, "client-upgrade-fixture", false, null, sql, { harness: "codex", label: "Existing laptop" });
+  await sql`ALTER TABLE tokens DROP CONSTRAINT tokens_client_names_valid, DROP COLUMN client_names`;
+  await sql`ALTER TABLE engram_schema_state DROP COLUMN client_identity_version`;
+  await migrate();
+  equal((await sql`SELECT client_identity_version FROM engram_schema_state WHERE id=true`)[0].client_identity_version, CONNECTION_CLIENT_SCHEMA_VERSION, "Client identification gets a separate additive readiness marker");
+  equal((await sql`SELECT to_jsonb(s) - 'client_identity_version' AS markers FROM engram_schema_state s WHERE id=true`)[0].markers, beforeClientMarkers, "Client metadata migration preserves every predecessor readiness contract");
+  equal((await sql`SELECT harness, source_label, can_write, client_names FROM tokens WHERE name='client-upgrade-fixture'`)[0], { harness:"codex", source_label:"Existing laptop", can_write:false, client_names:[] }, "Client metadata upgrade preserves existing source and authority while defaulting identity to unknown");
+  await migrate();
+  equal((await sql`SELECT client_identity_version FROM engram_schema_state WHERE id=true`)[0].client_identity_version, CONNECTION_CLIENT_SCHEMA_VERSION, "Client metadata migration is idempotent");
+  await sql`DELETE FROM tokens WHERE name='client-upgrade-fixture'`;
   await sql`DELETE FROM action_profiles WHERE org_id = 1 AND slug = 'legacy-presentation-row'`;
   equal(Number((await sql`SELECT count(*) AS n FROM orgs`)[0].n), 1, "Central migrations are repeatable without duplicating the legacy workspace");
   equal(Number((await sql`SELECT count(*) AS n FROM pg_indexes WHERE schemaname = 'public' AND indexname IN ('tokens_org_name_idx', 'action_events_org_time_idx')`)[0].n), 2, "Tenant identity and action indexes exist on PostgreSQL");
@@ -473,6 +485,8 @@ try {
 
   const { checkConnections } = await import("./integration-connections");
   checks += await checkConnections(sql);
+  const { checkConnectionClients } = await import("./integration-connection-clients");
+  checks += await checkConnectionClients(sql);
   const { checkMemoryUsage } = await import("./integration-memory-usage");
   checks += await checkMemoryUsage(sql);
   const { checkConnectionLifecycle } = await import("./integration-connection-lifecycle");
