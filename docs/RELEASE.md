@@ -227,6 +227,14 @@ sent.
 
 ## Release procedure
 
+Reconcile the release source before building. Inspect other active checkouts and
+any approved changes already deployed from an uncommitted working tree. A clean
+checkout alone does not establish that it contains the complete live product.
+Preserve those changes in version control before the next clean release; compare
+the affected public pages and assets so a deployment cannot silently restore an
+older design. Record the source commit/tree with the reviewed image in the
+private release verification artifact.
+
 The release automation does not create credentials, change IAM or grant the
 runtime administrative database access. Complete the separately approved
 database/IAM setup first. The web runtime receives a restricted database URL and

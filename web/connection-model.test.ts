@@ -1,9 +1,21 @@
 import { describe, expect, test } from "bun:test";
-import { activityKind, connectionState, connectionSummary, currentConnections, withConnectionIdentity } from "./connection-model.js";
+import { activityKind, connectionClient, connectionState, connectionSummary, currentConnections, withConnectionIdentity } from "./connection-model.js";
 import { agentVisual } from "./tooling.js";
 
 const now=Date.parse("2026-10-24T10:00:00Z");
 describe("connection evidence and activity defaults",()=>{
+ test("client labels require received metadata and never derive from a chosen source or key name",()=>{
+  for(const connection of [{},{name:"codex",harness:"codex",sourceLabel:"Codex"},{client:{state:"identified",label:""}},{client:{state:"identified",label:"bad\nname"}}]) expect(connectionClient(connection)).toMatchObject({label:"Unknown client",harness:null});
+  expect(connectionClient({client:{state:"identified",label:"Codex",harness:"codex"}})).toMatchObject({label:"Codex",harness:"codex"});
+  expect(connectionClient({client:{state:"identified",label:"My MCP client",harness:null}})).toMatchObject({label:"My MCP client",harness:null});
+  expect(connectionClient({client:{state:"multiple",label:"Last client",harness:"cursor"}})).toMatchObject({label:"Multiple clients",harness:null});
+ });
+ test("newly received client metadata does not rewrite historical activity source or actor identity",()=>{
+  const activity={agents:[{name:"work-laptop"}],actions:[{agent:"work-laptop",harness:"cursor",sourceLabel:"Previously reported"}]};
+  const result=withConnectionIdentity(activity,[{agent:"work-laptop",name:"work-laptop",kind:"token",client:{state:"identified",label:"Codex",harness:"codex"}}]);
+  expect(result.agents[0]).toMatchObject({name:"work-laptop",harness:null});
+  expect(result.actions[0]).toMatchObject({agent:"work-laptop",harness:"cursor",sourceLabel:"Previously reported"});
+ });
  test("unknown OAuth clients cannot acquire a known mark through client-name inference",()=>{
   for (const name of ["oauth:private:Claude%20custom%20connector", "oauth:private:https%3A%2F%2Fclaude.ai.example.test"]) {
    const result=withConnectionIdentity({agents:[{name}]},[{agent:name,kind:"oauth",harness:null,sourceLabel:"Claude custom connector",displayName:"OAuth connection"}]);

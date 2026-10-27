@@ -23,6 +23,17 @@ const archived = { ...current, id: "oauth:2", name: "archived-client", agent: "a
 const data = { connections: [current, archived], recentWindowSeconds: 900 };
 
 describe("connection lifecycle presentation", () => {
+  test("client declarations stay separate from connection names and access status", () => {
+    for (const [client, label] of [[{ state: "identified", label: "Codex", harness: "codex" }, "Codex"], [{ state: "multiple", label: null, harness: null }, "Multiple clients"], [{ state: "unknown", label: null, harness: null }, "Unknown client"]] as const) {
+      const view = render(() => connectionInventory({ connections: [{ ...current, client }] }) as Element);
+      expect(view.textContent).toContain("Current laptop");
+      expect(view.textContent).toContain(`Client: ${label}`);
+      expect(view.textContent).toContain("Key issued");
+      expect(view.textContent).not.toContain("Verified client");
+      expect(view.textContent).not.toContain("Currently working");
+    }
+    expect(render(() => connectionInventory({ connections: [{ ...current, name: "codex", harness: "codex" }] }) as Element).textContent).toContain("Client: Unknown client");
+  });
   test("current and archived inventories remain separate and archived rows do not ask for reconnect", () => {
     const currentView = render(() => connectionInventory(data) as Element);
     expect(currentView.textContent).toContain("Current laptop"); expect(currentView.textContent).not.toContain("Old agent");

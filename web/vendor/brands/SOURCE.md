@@ -1,5 +1,25 @@
 # Agent product marks
 
+## Hero source credits
+
+Retrieved on 26 October 2026. These unchanged public originals credit the
+project's building blocks; they do not claim a partnership or endorsement.
+Copyright and trademark ownership remain with their respective owners. Both
+files are served locally, with no external image request at runtime.
+
+- **TypeSafe AI** (`typesafe.png`): the 400×400 PNG linked as the favicon by
+  https://typesafe.ai/ at
+  https://framerusercontent.com/images/aNFzSFxM4fjICmnibw7npfZjcQ.png .
+  The original pink mark accompanies the Jev credit. SHA-256:
+  `fcb8f554778c45ff62b97ca05df643588b39c8c66913736b7fe3485cedd96180`.
+- **Garry Tan** (`garry-tan.jpg`): the 96×96 public GitHub author avatar at
+  https://avatars.githubusercontent.com/u/19957?s=96&v=4 , associated with
+  https://github.com/garrytan/gbrain . The original JPEG is cropped to a circle
+  by CSS only. SHA-256:
+  `6bdeb4d7c3395b5e2b54ca0f1d8ec0fef3c132081ecfe81070aba114de309cb2`.
+
+## Agent catalog sources
+
 The monochrome SVG subset is from `@lobehub/icons-static-svg` **1.98.0**,
 Git commit `86b3f06ad9a4cc57011a56e5a7d3a5d4f1e8d835`:
 https://github.com/lobehub/lobe-icons

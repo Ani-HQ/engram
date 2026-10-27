@@ -44,10 +44,13 @@ leaving an older authentication path reachable beside the new production URL.
 ## Console connection flow
 
 The Connections page owns the current/archived inventory and connection access.
-Its primary **Connect an agent** action opens an agent picker followed by the
-selected client's sign-in instructions or a named access-key form. Endpoint,
-permission and one-time configuration controls belong to that dialog. Existing
-rows open their own management actions and reconnect details.
+Its primary **Connect an agent** action immediately shows the shared MCP
+endpoint. Clients start their own OAuth sign-in where supported. A named
+access-key form and agent-specific setup help are optional disclosures. Viewing
+help or choosing a configuration format never labels a new credential or changes
+its permission. Replacing an existing key can preserve its explicit manual
+source; leaving that flow for the generic Connect action clears that source
+context. Existing rows open their own management actions and reconnect details.
 
 Getting started, save/recall checks and memory-workflow installation are separate
 from this flow. The workspace onboarding panel is not shown on Connections.
@@ -55,3 +58,30 @@ Key requests stay pinned to the current workspace and dialog. Closing or
 replacing a dialog does not reopen it when a key request finishes; secret fields
 are cleared when the result closes, and a later connection refresh shows any
 successfully issued authorization without recovering its one-time key.
+
+## Client names received after connection
+
+OAuth connections use their registered client name. For access keys, the MCP
+gateway accepts a bounded client name from legacy `initialize.clientInfo` or
+per-request `io.modelcontextprotocol/clientInfo` metadata after authentication
+and workspace checks. Observation matches the authenticated bearer digest and
+workspace, checks revocation and current membership again, and stores at most
+four distinct normalized names on that exact token row. Reissuing a key starts
+with an empty list even if its human-readable name is reused. Optional metadata
+uses a short transaction-local lock/statement timeout and cannot fail the MCP
+operation. No model, client version, capability payload or credential is copied
+into the name list.
+
+The inventory exposes `client: {state, label, harness}` separately from manual
+source labels and credential identity. A useful single declaration identifies
+the reported client; absent, generic bridge or unsafe names produce **Unknown
+client**. Distinct client names on a shared key produce **Multiple clients**,
+rather than replacing the displayed identity on every request. These names do
+not authenticate an application, identify an individual bot/model, change
+authorization, or rewrite historical activity. Connections refreshes when the
+page returns to the foreground and retains its explicit Refresh action.
+
+The additive migration adds bounded `tokens.client_names` and the separate
+`client_identity_version` readiness marker. Existing schema-version contracts
+and credential source fields remain intact. The provisioner applies this schema
+before the new restricted runtime can start.

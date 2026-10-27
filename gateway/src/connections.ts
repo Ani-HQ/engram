@@ -7,6 +7,7 @@ import { oauthActorName, parseScopes } from "./oauth";
 import { hasOauthScope, isHuman, normalizeToken, type TokenRecord } from "./policies";
 import { redactSecrets } from "./redact";
 import { mapMemoryUse, type MemoryUse } from "./memory-usage";
+import { connectionClient, type ConnectionClient } from "./connection-client";
 
 export type ConnectionStatus = "authorized" | "expired" | "revoked" | "membership_removed";
 export interface Connection {
@@ -17,6 +18,7 @@ export interface Connection {
   agent: string;
   harness: string | null;
   sourceLabel: string | null;
+  client: ConnectionClient;
   status: ConnectionStatus;
   canWrite: boolean;
   createdAt: string;
@@ -80,6 +82,7 @@ function mapConnection(row: any, orgId: number): Connection {
     id, kind: oauth ? "oauth" : "token", name,
     displayName: oauth ? source?.label ?? "OAuth connection" : sourceLabel ?? (harness && Object.hasOwn(HARNESS_LABELS, harness) ? HARNESS_LABELS[harness] : null) ?? name,
     agent, harness, sourceLabel, status, canWrite,
+    client: connectionClient(oauth ? [row.client_name] : row.client_names),
     createdAt: date(row.created_at)!, archivedAt: date(row.archived_at), lastAuthenticatedAt: oauth ? null : date(row.last_authenticated_at),
     lastContactAt: date(row.last_contact_at), lastMemoryAt: date(row.last_memory_at), lastTaskReportAt: date(row.last_task_report_at),
     lastSuccessfulContactAt: date(row.last_successful_contact_at), lastSuccessfulMemoryAt: date(row.last_successful_memory_at),
@@ -97,7 +100,7 @@ export async function listConnections(token: TokenRecord, db: postgres.Sql = sql
     WITH token_connections AS (
       SELECT t.id::text AS id, 'token'::text AS kind, t.name,
         NULL::text AS email, NULL::text AS client_id, NULL::text AS client_name, NULL::text AS scope,
-        t.harness, t.source_label, t.can_write, t.created_at, t.last_used_at AS last_authenticated_at, l.archived_at,
+        t.harness, t.source_label, t.client_names, t.can_write, t.created_at, t.last_used_at AS last_authenticated_at, l.archived_at,
         CASE WHEN t.issuer_kind = 'member' AND (m.id IS NULL OR m.role NOT IN ('owner', 'member')) THEN 'membership_removed'
           WHEN t.revoked_at IS NOT NULL THEN 'revoked' ELSE 'authorized' END AS status
       FROM tokens t LEFT JOIN org_members m ON m.id = t.issued_by_member_id
@@ -106,7 +109,7 @@ export async function listConnections(token: TokenRecord, db: postgres.Sql = sql
       WHERE t.org_id = ${actor.orgId} AND left(t.name, 25) <> 'operator-candidate-smoke-' AND l.deleted_at IS NULL
     ), oauth_grants AS (
       SELECT r.id::text AS id, 'oauth'::text AS kind, NULL::text AS name,
-        r.email, r.client_id, c.client_name, r.scope, NULL::text AS harness, NULL::text AS source_label,
+        r.email, r.client_id, c.client_name, r.scope, NULL::text AS harness, NULL::text AS source_label, NULL::jsonb AS client_names,
         true AS can_write, r.created_at, NULL::timestamptz AS last_authenticated_at, l.archived_at,
         CASE WHEN m.id IS NULL OR m.role NOT IN ('owner', 'member') THEN 'membership_removed'
           WHEN r.membership_id IS NULL THEN 'expired'
@@ -123,7 +126,7 @@ export async function listConnections(token: TokenRecord, db: postgres.Sql = sql
       FROM oauth_grants
     ), inventory AS (
       SELECT * FROM token_connections
-      UNION ALL SELECT id, kind, name, email, client_id, client_name, scope, harness, source_label, can_write, created_at, last_authenticated_at, archived_at, status
+      UNION ALL SELECT id, kind, name, email, client_id, client_name, scope, harness, source_label, client_names, can_write, created_at, last_authenticated_at, archived_at, status
       FROM oauth_ranked WHERE grant_rank = 1
     )
     SELECT * FROM inventory ORDER BY (archived_at IS NOT NULL), created_at DESC, kind, id DESC LIMIT ${CONNECTION_LIMIT + 1}`;

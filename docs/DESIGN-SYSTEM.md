@@ -85,6 +85,7 @@ these same label-first actions without reserving a trailing icon slot.
 | Human profile image | `profileAvatar({src,label,size})`; `.ds-profile-avatar` | Sizes `sm/md/lg` are 56/80/112px. One accessible image label; static local memory-bloom fallback while missing, loading or unavailable. Only the versioned local public PNG endpoint or bounded PNG data drafts are accepted |
 | Recorded evidence | `evidenceList(rows,{label})`; `.ds-evidence-list` | A labeled native definition list of text-only `{label,value,note}` records. Unknown values stay explicit. Two flexible columns wrap within narrow containers; values use tabular numbers. Keep access, individual memory receipts, explicit workflow checks and automatic-use claims separate. Client declarations never prove behavior. Gallery: `/design-system#memory-evidence` |
 | Product logo | `img.ds-product-logo`, optional `data-size="28"` | 24px default or 28px; `object-fit: contain`, local source, no distortion or recoloring |
+| Attribution | `.ds-attribution`, `.ds-attribution-label`, `.ds-attribution-links`, `.ds-attribution-link.ds-touch-target`, optional `.ds-attribution-avatar` | Compact source credits with visible names, original local product marks and 24px circular author photos. Native links keep shared focus and mobile targets; groups wrap without shrinking images. Participates in heading rhythm; static with or without JS. Gallery: `/design-system#attribution` |
 | Logo ticker | `observeLogoTicker(root, options)`; `.ds-logo-ticker`, viewport/track/list | One accessible original list; inert hidden visual copies only. No visible playback controls; hover/focus/background/offscreen pause; reduced/no-JS static list wraps in full |
 | Logo backplate | `.ds-product-logo-frame`, optional `data-tone="inverse"`; `.ds-logo-backplate` for an existing local-mark frame | Optional 44px light neutral backplate for unchanged source marks; keep adjacent visible product name |
 | Fields | `.ds-field` or `.field` wrapping native controls | Visible label, associated hint/error, correct autocomplete, retain drafts after failure |
@@ -214,6 +215,16 @@ The `#profile-patterns` gallery includes both layout choices, a disabled-choice 
 Wrap a label/badge, heading, and optional description in `.ds-heading-group`. The label-to-title and title-to-body gaps are 12px; actions begin 20px after the preceding content. Hero groups may choose 20px or 24px shared spacing steps. Apply these values consistently instead of adding local ad hoc spacing. Cards and dialogs also apply the shared adjacent label/heading/body rhythm when no wrapper is needed. The gallery uses this pattern on every section heading and the dialog so a badge never touches its title.
 
 When the top row contains a badge plus a Back action, wrap that row in `.ds-heading-label`. It is a layout container, not an HTML `label`. It participates in the same label-to-title spacing. Keep the heading reset low-specificity with `:where(...)`; a reset must never outrank the adjacent heading/body spacing rules. Verify computed margins as well as appearance, especially on narrow screens.
+
+For source credits above a heading, use `.ds-attribution` with a quiet label and
+`.ds-attribution-links` holding named native links. Use `.ds-product-logo` for an
+unchanged mark and `.ds-attribution-avatar` for a fixed, bundled public author
+photo; these credits do not use the user-upload profile helper or its allowlist.
+Keep names visible if images are unavailable, and give each link an accessible
+name identifying the credited product and author/provider. The hero credits Jev
+by TypeSafe AI and gbrain by Garry Tan; this is source attribution, not customer
+proof or a claim of endorsement. The gallery includes the full row and a narrow
+text-only fallback. This static pattern has no pending or success state.
 
 ```html
 <div class="ds-heading-group">

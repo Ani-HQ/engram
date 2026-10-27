@@ -1,5 +1,39 @@
 # Responsive and interaction review
 
+## Endpoint-first connections and client labels — 27 October 2026
+
+The connection dialog shows the shared endpoint immediately. Key creation and
+agent-specific help use independent optional disclosures. Help and configuration
+choices are presentation state; they cannot assign a source to a new credential.
+Explicit key replacement retains its existing manual source, while returning to
+the generic Connect action drops that replacement context. Client-reported
+identity appears separately as a name, Unknown client or Multiple clients.
+
+Local browser review covered 1280px, 390px and 320px layouts, generic and read-only
+key creation, optional Codex help with an unassigned resulting client, preserved
+drafts after help changes and failed issuance, replacement cancellation, pending
+issuance dismissal/reopening, one-time-key masking/cleanup, and keyboard focus.
+The 320px view stays within its 305px content width; mobile controls retain 44px
+targets. The generic entry opens with both disclosures closed and no required
+agent choice. Client fixtures are explicitly simulated, separately from manual
+sources and recorded activity. These checks do not certify external agent apps.
+
+The source also retains the Jev/TypeSafe AI and gbrain/Garry Tan hero credits,
+their original bundled images, JPEG content type and attribution gallery. Both
+images load locally at desktop and mobile widths. Connection actions use the
+existing compact button primitive: 32px on desktop, with aligned endpoint
+actions and the shared 44px minimum on mobile.
+
+Validation: **893 tests passed, 1 Cloud Run-only skip, 0 failures, and 9687
+assertions**. Actual PostgreSQL checks passed **858 baseline, 80 authority, and
+36 managed-provisioner cases**, including exact-credential scoping, concurrent
+observations, revocation, name reuse and lock-timeout recovery. The authenticated
+MCP HTTP regression covers both metadata formats and failure isolation. All
+**68** offline Python checks, the **72-file** runtime asset gate, six retrieval
+fixtures, browser bundle and diff check passed.
+Verification test receipts use a single clock sample per response; frozen and
+advancing-clock cases retain the production validator's strict 15-minute bound.
+
 ## Connections and Activity Checks — 26 October 2026
 
 Connections now focuses on connecting an agent and managing existing access.

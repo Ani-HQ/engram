@@ -38,6 +38,7 @@ import { handleSharedContextMcp } from "./shared-context-mcp";
 import { isSharedContextSlug } from "./shared-context-read";
 import { parseMcpMemoryContext } from "./mcp-request-context";
 import { sha256 } from "./hash";
+import { observeConnectionClient } from "./connection-client";
 
 if (config.deploymentMode === "hosted" && databaseSecurity.authority !== "runtime") {
   throw new Error("Hosted HTTP requires the restricted runtime database identity");
@@ -94,6 +95,8 @@ async function handleMcp(req: Request): Promise<Response> {
 
   return withOrg(org, actor, async () => {
     try {
+      // Display metadata is best-effort and never changes credential authority.
+      await observeConnectionClient(actor, memoryContext.credentialKey!, method, msg.params).catch(() => {});
       const snapshotRead = name === "get_page" && isSharedContextSlug(msg.params?.arguments?.slug);
       if (method === "tools/list" || (method === "tools/call" && !snapshotRead && !["record_action", "list_actions", "whoami"].includes(name ?? ""))) await ensureBrain(org);
       switch (method) {

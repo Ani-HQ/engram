@@ -3,6 +3,20 @@ const timestamp = value => { if (!value) return null; const n = Date.parse(value
 
 export function activityKind(value) { return value === "tasks" || value === "memory" ? value : "all"; }
 
+// Client declarations describe this connection, not historical activity or a
+// verified app/model identity. Never infer them from a chosen source or name.
+export function connectionClient(connection = {}) {
+  const client = connection.client;
+  if (client?.state === "multiple") return { label: "Multiple clients", harness: null,
+    detail: "More than one client name has been received for this connection." };
+  if (client?.state === "identified" && typeof client.label === "string" && client.label.trim() && client.label.length <= 100 && !/[\u0000-\u001f\u007f]/.test(client.label)) return {
+    label: client.label.trim(), harness: typeof client.harness === "string" && /^[a-z0-9][a-z0-9._-]{0,79}$/.test(client.harness) ? client.harness : null,
+    detail: "Name supplied by the connecting client. This does not identify its model or individual bot.",
+  };
+  return { label: "Unknown client", harness: null,
+    detail: "The client name appears here when the connecting app supplies one. Refresh Connections after connecting." };
+}
+
 export function currentConnections(connections = []) {
   return connections.filter(connection => !connection?.archivedAt && !connection?.deletedAt);
 }

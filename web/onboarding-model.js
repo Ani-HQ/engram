@@ -76,6 +76,10 @@ export const recallMemoryPrompt = "Use Engram's recall tool to find the decision
 export function accessKeyConfiguration(agentId, mcp, token = "<access-token>") {
   if (agentId === "codex") return `[mcp_servers.engram]\nurl = ${JSON.stringify(mcp)}\nhttp_headers = { Authorization = ${JSON.stringify(`Bearer ${token}`)} }`;
   const connection = { url: mcp, headers: { Authorization: `Bearer ${token}` } };
+  if (agentId === "gemini-cli") return JSON.stringify({ mcpServers: { engram: { httpUrl: mcp, headers: connection.headers } } }, null, 2);
+  if (agentId === "opencode") return JSON.stringify({ mcp: { engram: { type: "remote", ...connection } } }, null, 2);
+  if (agentId === "openclaw") return JSON.stringify({ mcp: { servers: { engram: { transport: "streamable-http", ...connection } } } }, null, 2);
+  if (["claude-code", "github-copilot"].includes(agentId)) return JSON.stringify({ mcpServers: { engram: { type: "http", ...connection } } }, null, 2);
   return JSON.stringify(agentId === "vscode" ? { servers: { engram: { type: "http", ...connection } } } : { mcpServers: { engram: connection } }, null, 2);
 }
 

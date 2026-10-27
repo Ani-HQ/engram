@@ -19,11 +19,13 @@ afterEach(() => {
   for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
   rmSync(root, { recursive: true, force: true });
 });
-function gateway(options: { readOnly?: boolean; mcpWriteDenied?: boolean } = {}) {
+function gateway(options: { readOnly?: boolean; mcpWriteDenied?: boolean; now?: () => number } = {}) {
   const calls: any[] = [];
   const checks = new Map<string, any>();
+  const clock = options.now || Date.now;
   const service = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
     const body = await request.json() as any; body.fixtureAuth = request.headers.get("Authorization"); calls.push(body);
+    const now = clock();
     if (body.method === "tools/list") return Response.json({ jsonrpc: "2.0", id: body.id, result: { tools: [{ name: "whoami" }, { name: "recall" }, { name: "remember" }, { name: "record_action" }] } });
     const name = body.params.name;
     if (options.readOnly && ["remember", "record_action"].includes(name)) return new Response("read only", { status: 403 });
@@ -32,15 +34,15 @@ function gateway(options: { readOnly?: boolean; mcpWriteDenied?: boolean } = {})
     let check = context && checks.get(context.runId);
     let data: any = name === "whoami" ? { token: "Fixture identity" } : name === "record_action" ? { ok: true, id: body.params.arguments.eventId, status: body.params.arguments.status } : name === "remember" ? { ok: true, slug: "project-decisions" } : { results: [{ slug: "notes/project", title: "Project decisions", snippet: "Keep request IDs stable across retries." }], full: null };
     if (name === "whoami" && context?.verification === "begin") {
-      check = { probeId: `emp_${"n".repeat(32)}`, status: "pending", startedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 900000).toISOString(), checkedAt: null, recallVerified: false, saveVerified: false, automaticWorkflowVerified: null };
+      check = { probeId: `emp_${"n".repeat(32)}`, status: "pending", startedAt: new Date(now).toISOString(), expiresAt: new Date(now + 900000).toISOString(), checkedAt: null, recallVerified: false, saveVerified: false, automaticWorkflowVerified: null };
       checks.set(context.runId, check);
       data.verification = { ...check };
     } else if (check && context?.probeId === check.probeId) {
-      if (Date.parse(check.expiresAt) <= Date.now()) check.status = "expired";
+      if (Date.parse(check.expiresAt) <= now) check.status = "expired";
       else {
         if (name === "recall") check.recallVerified = true;
         if (name === "remember") check.saveVerified = true;
-        if (check.recallVerified && check.saveVerified) { check.status = "passed"; check.checkedAt = new Date().toISOString(); }
+        if (check.recallVerified && check.saveVerified) { check.status = "passed"; check.checkedAt = new Date(now).toISOString(); }
       }
       if (name === "whoami" && context.verification === "status") data.verification = { ...check };
     }
@@ -50,7 +52,7 @@ function gateway(options: { readOnly?: boolean; mcpWriteDenied?: boolean } = {})
   const project = path.join(root, "project"); mkdirSync(project, { recursive: true });
   const host = service.url.origin, token = "fixture-native-never-real";
   const binding = { project, host, endpoint: `${host}/mcp`, token, topic: "Project architecture", budget: 4096, scope: createHash("sha256").update(`${host}/mcp\n${token}\n${project}`).digest("hex") };
-  return { calls, project, host, token, binding, expire(runId: string) { Object.assign(checks.get(runId), { startedAt: new Date(Date.now() - 960000).toISOString(), expiresAt: new Date(Date.now() - 60000).toISOString() }); }, reports: () => calls.filter(call => call.params?.name === "record_action").map(call => call.params.arguments) };
+  return { calls, project, host, token, binding, expire(runId: string) { const now = clock(); Object.assign(checks.get(runId), { startedAt: new Date(now - 960000).toISOString(), expiresAt: new Date(now - 60000).toISOString() }); }, reports: () => calls.filter(call => call.params?.name === "record_action").map(call => call.params.arguments) };
 }
 
 describe("native runtime contracts", () => {
@@ -353,6 +355,29 @@ describe("native plugin wrappers and stdio task propagation", () => {
     expect(adapters.proxyContext(options).probeId).toBeUndefined();
     const current = await memory.lifecycle("status", { project: fixture.project, runId });
     expect(current.ok).toBe(true); expect(current.contextBudgetBytes).toBe(4096);
+  });
+  for (const mode of ["frozen", "advancing"] as const) test(`verification receipts remain valid when the millisecond clock is ${mode}`, async () => {
+    const epoch = Date.now(); let ticks = 0;
+    const fixture = gateway({ now: () => epoch + (mode === "advancing" ? ticks++ : 0) });
+    await memory.install("generic", { project: fixture.project, topic: fixture.binding.topic, host: fixture.host, token: fixture.token });
+    const start = await memory.lifecycle("task-start", { runtime: "codex", sessionId: `clock-${mode}`, taskId: "clock-receipts", query: "retry handling" }, { binding: fixture.binding });
+    expect(start.status).toBe("retrieved");
+    const begun = await memory.verify("begin", { project: fixture.project, runId: start.runId });
+    expect(begun).toMatchObject({ ok: true, status: "pending" });
+    expect(Date.parse(begun.verification.expiresAt) - Date.parse(begun.verification.startedAt)).toBe(15 * 60000);
+    expect((await memory.verify("status", { project: fixture.project, runId: start.runId })).status).toBe("pending");
+    fixture.expire(start.runId);
+    const expired = await memory.verify("status", { project: fixture.project, runId: start.runId });
+    expect(expired).toMatchObject({ ok: false, status: "expired" });
+    expect(Date.parse(expired.verification.expiresAt) - Date.parse(expired.verification.startedAt)).toBe(15 * 60000);
+    // Sampling expiry one millisecond later recreates the old fixture defect.
+    // The real SDK must keep rejecting that oversized receipt.
+    const oversized = { ...expired.verification, expiresAt: new Date(Date.parse(expired.verification.expiresAt) + 1).toISOString() };
+    const rejected = await memory.verify("status", { project: fixture.project, runId: start.runId }, { fetchImpl: async (_url: string, request: any) => {
+      const body = JSON.parse(request.body);
+      return Response.json({ jsonrpc: "2.0", id: body.id, result: { content: [{ type: "text", text: JSON.stringify({ verification: oversized }) }] } });
+    } });
+    expect(rejected.status).toBe("invalid_response");
   });
   test("OpenCode plugin appends context to the actual user text and ignores idle as completion", async () => {
     const fixture = gateway();

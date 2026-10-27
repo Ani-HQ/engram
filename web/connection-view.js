@@ -2,13 +2,13 @@ import { h } from "./profile.js";
 import { icon } from "./icons.js";
 import { agentVisual, visualIcon } from "./tooling.js";
 import { relativeTime } from "./activity-view.js";
-import { connectionState, connectionSummary, currentConnections, lastConnectionContact } from "./connection-model.js";
+import { connectionClient, connectionState, connectionSummary, currentConnections, lastConnectionContact } from "./connection-model.js";
 import { taskReportingStatus } from "./task-reporting-model.js";
 
 const button = (children, action, attrs = {}) => h("button", { type: "button", onclick: action, ...attrs }, children);
 const count = value => new Intl.NumberFormat().format(Number(value) || 0);
 const name = connection => connection.displayName || connection.name || "Agent";
-const avatar = connection => h("span", { class: "connection-avatar", "aria-hidden": "true" }, visualIcon(agentVisual(connection.name, { ...connection, harness: connection.harness || (connection.kind === "oauth" ? "other" : null) }), { size: 18 }));
+const avatar = connection => h("span", { class: "connection-avatar", "aria-hidden": "true" }, visualIcon(agentVisual(connection.name, { ...connection, harness: connection.harness || connectionClient(connection).harness || "other" }), { size: 18 }));
 const time = value => h("time", { datetime: value, "data-relative-time": value, title: new Date(value).toLocaleString() }, relativeTime(value));
 
 export function agentOverview(data, { onManage, onFilter, selectedAgent = "", error = "", now = Date.now() } = {}) {
@@ -39,6 +39,7 @@ export function connectionInventory(data, { actions, onInspect, list = "current"
     return h("article", { class: `connection-row ds-card ${state.state}`, "data-connection-id": connection.id }, avatar(connection),
       h("div", { class: "connection-copy" }, h("div", { class: "connection-name" }, h("strong", {}, name(connection)), h("span", { class: "connection-auth-kind" }, connection.kind === "oauth" ? "Sign-in" : "Access key")),
         connection.kind === "token" && connection.name !== name(connection) && h("p", { class: "connection-installation" }, connection.name),
+        h("p", { title: connectionClient(connection).detail }, `Client: ${connectionClient(connection).label}`),
         h("p", {}, state.lastContactAt ? ["Last contact ", time(state.lastContactAt)] : "No agent calls recorded yet"),
         h("p", { class: "connection-counts" }, `${count(connection.memoryCalls)} memory ${Number(connection.memoryCalls) === 1 ? "call" : "calls"}`, h("span", { "aria-hidden": "true" }, "·"), `${count(connection.taskReports)} task ${Number(connection.taskReports) === 1 ? "report" : "reports"}`),
         connection.archivedAt && h("p", {}, "Archived ", time(connection.archivedAt)),

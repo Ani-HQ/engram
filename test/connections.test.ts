@@ -33,6 +33,8 @@ describe("workspace connection inventory",()=>{
     expect(result).toMatchObject({more:false,limit:200,checkedAt:now.toISOString(),recentWindowSeconds:900});
     expect(result.connections[0]).toMatchObject({kind:"token",name:"mac-codex",displayName:"Laptop",agent:"mac-codex",harness:"codex",status:"revoked",lastAuthenticatedAt:"2026-10-23T10:00:00.000Z",lastContactAt:"2026-10-24T11:30:00.000Z",lastMemoryAt:"2026-10-23T10:10:00.000Z",lastTaskReportAt:"2026-10-24T11:30:00.000Z",memoryCalls:3,taskReports:2});
     expect(result.connections[1]).toMatchObject({kind:"oauth",displayName:"Codex",agent:store.oauthAgent,harness:"codex",status:"authorized",canWrite:false,lastAuthenticatedAt:null,lastContactAt:"2026-10-24T11:59:00.000Z",lastMemoryAt:null,memoryCalls:0,taskReports:0});
+    expect(result.connections[0].client).toEqual({state:"unknown",label:null,harness:null});
+    expect(result.connections[1].client).toEqual({state:"identified",label:"Codex",harness:"codex"});
     expect(result.connections[1].id).toMatch(/^oauth:[a-f0-9]{64}$/);
     expect(result.connections[0]).toMatchObject({ successfulMemoryCalls:1,lastSuccessfulMemoryAt:"2026-10-23T10:05:00.000Z",lastSuccessfulContactAt:"2026-10-24T11:30:00.000Z" });
     expect(result.connections[1]).toMatchObject({ successfulMemoryCalls:0,lastSuccessfulMemoryAt:null,lastSuccessfulContactAt:"2026-10-24T11:59:00.000Z" });
@@ -70,6 +72,14 @@ describe("workspace connection inventory",()=>{
     expect(result.connections[1]).toMatchObject({displayName:"OAuth connection",harness:null});
     expect(result.connections[0].displayName).toBe("mac-codex");
     expect(store.calls[1].values[1]).toHaveLength(200);
+  });
+  test("client detection stays separate from manual credential source and stable identity",async()=>{
+    const store=database();
+    store.rows[0].client_names=["Cursor", "Codex"];
+    store.rows[1].client_name="connector";
+    const result=await listConnections(owner,store.db,now);
+    expect(result.connections[0]).toMatchObject({id:"token:1",agent:"mac-codex",displayName:"Laptop",harness:"codex",sourceLabel:"Laptop",client:{state:"multiple",label:"Multiple clients",harness:null}});
+    expect(result.connections[1].client).toEqual({state:"unknown",label:null,harness:null});
   });
   test("denies non-human delegated and mismatched workspace access before querying",async()=>{
     const store=database();
