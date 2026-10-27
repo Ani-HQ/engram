@@ -454,3 +454,32 @@ Deviations and open work:
   was nothing to recall; substantive-work detection missed "implementing" and
   "continue"; a project with one binding rejected calls without `--run`.
 
+### Live transfer matrix, 27–28 October 2026
+
+Run with the real CLIs against the production Docker image built from this
+branch (gateway plus pinned gbrain), a disposable PostgreSQL, scratch repos and
+test-only tokens. Agents: Claude Code 2.1.311 (`claude -p`, sonnet), Codex CLI
+0.155.1 (`codex exec`, gpt-6-sol), Cursor Agent CLI 2026.10.14. Each scenario
+asked the outgoing agent to plan and start a three-function task, then either
+hand off deliberately or be killed after its second confirmed checkpoint. The
+incoming agent was told only the Engram project name. A pass requires: outgoing
+checkpoints saved; a handoff trigger or a real kill; the incoming agent called
+`resume_task`; its saves continued the same task from the outgoing head with no
+fork or new task; a final `completed` checkpoint; and `node --test` passing.
+
+| Scenario | Result |
+| --- | --- |
+| Claude Code → Codex, handoff | Pass |
+| Claude Code → Codex, interrupted | Pass (killed after 2 checkpoints, mid-task) |
+| Codex → Claude Code, handoff | Pass |
+| Codex → Claude Code, interrupted | Pass, but Codex finished before the kill landed |
+| Claude Code restart | Pass |
+| Codex restart | Pass, Codex finished before the kill landed |
+| All nine Cursor scenarios | Not run: Cursor Agent CLI rejected every prompt with "Authentication required" on this machine, including outside the lab |
+
+Lab setup facts, not product claims: Codex needed
+`default_tools_approval_mode = "approve"` for the Engram server under
+`codex exec`; Claude Code loads remote MCP tools through ToolSearch; agents used
+the MCP tools directly rather than the bridge `checkpoint` command. These are
+CLI runs, not the desktop apps. Desktop behaviour and Cursor remain unverified.
+
