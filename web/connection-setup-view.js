@@ -1,5 +1,5 @@
 import { h } from "./profile.js";
-import { onboardingAgents, agentConnectionGuide, accessKeyConfiguration } from "./onboarding-model.js";
+import { onboardingAgents, agentConnectionGuide, accessKeyConfiguration, connectionSetupPrompt } from "./onboarding-model.js";
 import { agentSources } from "./tooling.js";
 
 const catalog = new Map(onboardingAgents.map(agent => [agent.id, agent]));
@@ -8,24 +8,28 @@ export const connectionAgents = Object.freeze([...catalog.values()].filter(agent
 
 // Setup help is optional display state. It never supplies the credential's
 // source; the owner pins API work to the workspace and handles one-time keys.
-export function connectionSetupView({ endpoint, draft = {}, helpAgentId = "", keyExpanded = false, helpExpanded = false, busy = false, error = "", onHelpChoose, onKeyToggle, onHelpToggle, onDraft, onSubmit, onDone, copyControl } = {}) {
+export function connectionSetupView({ endpoint, workspace, draft = {}, helpAgentId = "", keyExpanded = false, helpExpanded = false, busy = false, error = "", onHelpChoose, onKeyToggle, onHelpToggle, onDraft, onSubmit, onDone, copyControl } = {}) {
   const view = h("div", { class: "connection-setup ds-stack", "aria-busy": String(busy) },
     h("div", { class: "ds-heading-group" }, h("h2", { id: "detail-title" }, "Connect an agent"),
-      h("p", { class: "ds-hint" }, "Add this endpoint in your agent’s MCP settings. Sign in to Engram when prompted.")));
+      h("p", { class: "ds-hint" }, "Copy this setup prompt into your agent to connect it to Engram.")));
   // Reuse endpoint validation without selecting a product or generating an
   // installer command. Invalid endpoints cannot be copied or receive a key.
   const connection = agentConnectionGuide("other", endpoint);
-  if (!connection) {
+  const prompt = connectionSetupPrompt(endpoint, workspace);
+  if (!connection || !prompt) {
     view.append(h("p", { class: "ds-notice", "data-tone": "warning", role: "status" }, "Connection instructions are unavailable. Refresh Connections to check the workspace endpoint."));
     return view;
   }
   view.append(h("div", { class: "connection-setup-endpoint ds-stack" },
     h("code", { class: "ds-code-scroll", tabindex: "0", role: "region", "aria-label": "MCP endpoint. Scroll horizontally to read." }, connection.endpoint),
     h("div", { class: "ds-row" },
-      copyControl?.("Copy endpoint", connection.endpoint, { class: "primary small", "data-connection-focus": "endpoint" }),
-      onDone && h("button", { type: "button", class: "small", onclick: () => { if (!busy) onDone(); }, disabled: busy, "data-connection-focus": "refresh" }, "Refresh connections")),
-    h("p", { class: "ds-hint" }, "After your agent connects, refresh Connections to see its client name when available."),
-    h("p", { class: "ds-hint" }, "Sign-in is available when your client and this Engram installation support OAuth. If your client asks for a bearer token, create an access key below.")));
+      copyControl?.("Copy setup prompt", prompt, { class: "primary small", "data-connection-focus": "prompt" }),
+      copyControl?.("Copy endpoint", connection.endpoint, { class: "small", "data-connection-focus": "endpoint" })),
+    h("details", { class: "connection-setup-disclosure" },
+      h("summary", { "data-connection-focus": "prompt-toggle" }, "Review setup prompt"),
+      h("div", { class: "ds-stack" }, h("pre", { tabindex: "0", role: "region", "aria-label": "Connection setup prompt" }, prompt))),
+    h("p", { class: "ds-hint" }, "Sign-in is available when your client and this Engram installation support OAuth."),
+    h("p", { class: "ds-notice" }, h("strong", {}, "If your client asks for a bearer token, create an access key below."))));
 
   const name = h("input", {
     type: "text", name: "agent-name", required: true, maxlength: 100, autocomplete: "off", spellcheck: "false", autocapitalize: "none",
@@ -78,5 +82,8 @@ export function connectionSetupView({ endpoint, draft = {}, helpAgentId = "", ke
     if (event.currentTarget.isConnected !== false) onHelpToggle?.(event.currentTarget.open);
   } },
     h("summary", { "data-connection-focus": "help-toggle" }, "Agent-specific setup help"), help));
+  view.append(h("div", { class: "ds-stack" },
+    h("p", { class: "ds-hint" }, "After your agent connects, refresh Connections to see its client name when available."),
+    onDone && h("div", { class: "ds-row" }, h("button", { type: "button", class: "small", onclick: () => { if (!busy) onDone(); }, disabled: busy, "data-connection-focus": "refresh" }, "Refresh connections"))));
   return view;
 }

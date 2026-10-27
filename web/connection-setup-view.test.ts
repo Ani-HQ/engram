@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { connectionAgents, connectionSetupView } from "./connection-setup-view.js";
 import { agentSources } from "./tooling.js";
+import { connectionSetupPrompt } from "./onboarding-model.js";
 
 class Element {
   tag: string; attrs: Record<string, string> = {}; children: Element[] = []; events: Record<string, Function> = {};
@@ -15,7 +16,7 @@ class Element {
 const nodes = (node: Element): Element[] => [node, ...node.children.flatMap(nodes)];
 const find = (node: Element, predicate: (item: Element) => boolean) => nodes(node).find(predicate)!;
 const focus = (node: Element, key: string) => find(node, item => item.attrs["data-connection-focus"] === key);
-const disclosure = (node: Element, key: "key" | "help") => focus(node, `${key}-toggle`).parentNode!;
+const disclosure = (node: Element, key: "key" | "help" | "prompt") => focus(node, `${key}-toggle`).parentNode!;
 const original = { Node: globalThis.Node, document: globalThis.document };
 beforeEach(() => Object.assign(globalThis, { Node: Element, document: { createElement: (tag: string) => new Element(tag), createTextNode: (text: string) => new Element("#text", text) } }));
 afterEach(() => Object.assign(globalThis, original));
@@ -23,19 +24,40 @@ const endpoint = "https://engram.example/custom/mcp";
 const render = (options: Record<string, unknown> = {}) => connectionSetupView({ endpoint, ...options }) as Element;
 
 describe("generic connection composer", () => {
-  test("starts with the shared endpoint and refresh, with optional sections closed", () => {
+  test("starts with the setup prompt and secondary endpoint copy, with optional sections closed", () => {
     let refreshes = 0;
     const copied: unknown[] = [];
     const view = render({ onDone: () => { refreshes++; }, copyControl: (label: string, value: string, attrs: unknown) => { copied.push({ label, value, attrs }); return new Element("button", label); } });
     expect(find(view, node => node.attrs.id === "detail-title").textContent).toBe("Connect an agent");
     expect(find(view, node => node.tag === "code").textContent).toBe(endpoint);
-    expect(copied).toEqual([{ label: "Copy endpoint", value: endpoint, attrs: { class: "primary small", "data-connection-focus": "endpoint" } }]);
+    expect(copied).toEqual([
+      { label: "Copy setup prompt", value: connectionSetupPrompt(endpoint), attrs: { class: "primary small", "data-connection-focus": "prompt" } },
+      { label: "Copy endpoint", value: endpoint, attrs: { class: "small", "data-connection-focus": "endpoint" } },
+    ]);
     expect(view.children[1].attrs.class).toContain("connection-setup-endpoint");
-    expect(disclosure(view, "key").open).toBe(false); expect(disclosure(view, "help").open).toBe(false);
+    expect(disclosure(view, "key").open).toBe(false); expect(disclosure(view, "help").open).toBe(false); expect(disclosure(view, "prompt").open).toBe(false);
     expect(focus(view, "help").attrs.required).toBeUndefined(); expect(focus(view, "help").value).toBe("");
-    expect(view.textContent).toContain("Sign in to Engram when prompted");
+    expect(view.textContent).toContain("Copy this setup prompt into your agent");
     expect(view.textContent).toContain("refresh Connections to see its client name when available");
     focus(view, "refresh").fire("click"); expect(refreshes).toBe(1);
+  });
+
+  test("the review preview matches the copied workspace-pinned prompt and excludes unrelated dialog state", () => {
+    const workspace = { id: 42, name: 'Project "A"', token: "eng_NOT_WORKSPACE_DATA" };
+    const copies = (options: Record<string, unknown>) => {
+      const copied: { label: string; value: string }[] = [];
+      const view = render({ workspace, ...options, copyControl: (label: string, value: string) => { copied.push({ label, value }); return new Element("button", label); } });
+      return { view, prompt: copied.find(item => item.label === "Copy setup prompt")!.value };
+    };
+    const plain = copies({});
+    const withHelp = copies({ helpAgentId: "codex", helpExpanded: true, draft: { name: "Do not copy this name", harness: "cursor", sourceLabel: "Do not copy this source", token: "eng_NOT_A_PROMPT" } });
+    expect(withHelp.prompt).toBe(plain.prompt); expect(plain.prompt).toBe(connectionSetupPrompt(endpoint, workspace));
+    const preview = find(withHelp.view, node => node.tag === "pre" && node.attrs["aria-label"] === "Connection setup prompt");
+    expect(preview.textContent).toBe(withHelp.prompt); expect(preview.attrs).toMatchObject({ tabindex: "0", role: "region" });
+    expect(disclosure(withHelp.view, "prompt").open).toBe(false);
+    for (const privateValue of ["eng_NOT_WORKSPACE_DATA", "eng_NOT_A_PROMPT", "Do not copy this name", "Do not copy this source", "codex", "cursor"]) expect(withHelp.prompt).not.toContain(privateValue);
+    const data = JSON.parse(withHelp.prompt.split("Connection data (JSON):\n")[1].split("\n\n")[0]);
+    expect(data).toEqual({ endpoint, workspace: { id: 42, name: 'Project "A"' } });
   });
 
   test("creates a key without choosing an agent and submits no display-source metadata", () => {
@@ -64,7 +86,7 @@ describe("generic connection composer", () => {
       expect(view.textContent).toContain("sign in to your Engram workspace");
       expect(view.textContent).toContain("this Engram installation support OAuth");
       expect(nodes(view).filter(node => node.tag === "form")).toHaveLength(1);
-      expect(nodes(view).some(node => node.tag === "pre")).toBe(false);
+      expect(nodes(view).some(node => node.tag === "pre" && node.attrs["aria-label"]?.includes("MCP configuration example"))).toBe(false);
       expect(disclosure(view, "key").open).toBe(false);
       expect(focus(view, "help").value).toBe(helpAgentId);
     }
@@ -73,7 +95,7 @@ describe("generic connection composer", () => {
   test("key-client help uses configuration examples with placeholders, never draft credentials", () => {
     for (const helpAgentId of ["codex", "vscode", "cline", "grok-bot", "other"]) {
       const view = render({ helpAgentId, helpExpanded: true, draft: { name: "Office", token: "eng_NEVER_RENDER_THIS" } });
-      const example = find(view, node => node.tag === "pre");
+      const example = find(view, node => node.tag === "pre" && node.attrs["aria-label"]?.includes("MCP configuration example"));
       expect(example.textContent).toContain(endpoint); expect(example.textContent).toContain("<access-token>");
       expect(view.textContent).not.toContain("eng_NEVER_RENDER_THIS");
       expect(example.attrs.tabindex).toBe("0"); expect(example.attrs["aria-label"]).toContain("MCP configuration example");
