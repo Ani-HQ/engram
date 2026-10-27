@@ -60,7 +60,7 @@ let connectionDraft = null, connectionFocusPending = null, connectionEditor = nu
 const connectionKeyRequests = new Map();
 const connectionMutations = new Map();
 let signupPolicy = null, signupPolicyRequest = null, authPanel = null, signupAdmin = null, jevSettingsPanel = null, pendingInviteEntry = null;
-let sharingPanel = null;
+let sharingPanel = null, sharingSwitchError = null;
 let workspaceNameEpoch = 0;
 let accessSnapshot = null, accessClock = () => null, accessRefreshTimer, accessRequest = 0, accessError = "", accessRefreshing = false;
 const setupByWorkspace = new Map();
@@ -252,7 +252,7 @@ function setupState() {
 function invalidateWorkspaceNames() { ++workspaceNameEpoch; for (const setup of setupByWorkspace.values()) setup.nameEditor?.invalidate(); }
 function setupPanel() {
   const setup = setupState();
-  if (!setup?.visible || state.view === "connect") return null;
+  if (!setup?.visible || state.view === "connect" || (state.view === "sharing" && !setup.sharingOpened)) return null;
   return onboardingGuide({ ...setup, session: state.session, mcp: state.mcp || `${location.origin}/mcp`, policies: state.session.org.policies, inventory: state.connections, demo: state.demo,
     onChoose: agentId => { setup.agentId = agentId; renderSetup(); },
     onDisclosureChange: (key, open) => { (setup.disclosures ||= {})[key] = open; },
@@ -270,6 +270,7 @@ function renderSetup(focusTitle = false) {
 function openSetup({ agentSetup = false } = {}) {
   const setup = setupState(); if (!setup) return;
   setup.visible = true;
+  setup.sharingOpened = state.view === "sharing";
   if (agentSetup) setup.disclosures = { ...setup.disclosures, completedAgent: true, agentHelp: true };
   try { sessionStorage.removeItem(`engram-setup-dismissed:${state.session.org.id}`); } catch {}
   if (state.view === "connect") { location.hash = "activity"; return; }
@@ -280,6 +281,7 @@ function openSetup({ agentSetup = false } = {}) {
 function dismissSetup() {
   const setup = setupState(); if (!setup) return;
   setup.visible = false;
+  setup.sharingOpened = false;
   try { sessionStorage.setItem(`engram-setup-dismissed:${state.session.org.id}`, "1"); } catch {}
   renderSetup(); document.querySelector(".setup-resume")?.focus({ preventScroll: true });
 }
@@ -324,6 +326,9 @@ function render() {
   const navigationLink = ([key, label, name]) => el("a", { href: `#${key}`, "aria-current": state.view === key ? "page" : null, onclick: () => { if (navigationOpen) { setNavigationOpen(false); document.querySelector('#main')?.focus({ preventScroll: true }); } } }, icon(name, { size: 16 }), el("span", {}, label));
   const workspaceNavigation = navigation.filter(([key]) => !["showcase", "workspace", "billing"].includes(key));
   const manageNavigation = navigation.filter(([key]) => ["showcase", "workspace", "billing"].includes(key));
+  const content = state.view === "activity" ? activityView() : state.view === "memory" ? memoryView() : state.view === "sharing" ? selectiveSharingView() : state.view === "showcase" ? showcaseView() : ["workspace", "billing"].includes(state.view) ? accountView() : connectView();
+  const accessSlot = el("div", { id: "friend-access-slot" }), setupSlot = el("div", { id: "setup-slot" }, setupPanel());
+  const mainContent = state.view === "sharing" ? [setupSlot, content, accessSlot] : [accessSlot, setupSlot, content];
   root.replaceChildren(
     el("a", { class: "ds-button ds-skip-link", href: "#main", onclick: event => { event.preventDefault(); const main = document.querySelector("#main"); main?.focus(); main?.scrollIntoView(); } }, "Skip to content"),
     ...(state.demo ? [el("div", { class: "demo" }, "LOCAL PREVIEW", el("span", {}, "Sample data · No connected accounts are being monitored"))] : []),
@@ -344,7 +349,7 @@ function render() {
       el("div", { class: "main-column" },
         el("div", { class: "app-topbar" }, el("div", { class: "breadcrumbs" }, el("span", {}, state.session.org.name), statusBadge(workspaceKind, { tone: "neutral", className: "workspace-kind-badge" }), icon("chevron-right", { size: 13 }), el("span", {}, titles[state.view])),
           el("div", { class: "topbar-actions" }, state.view !== "connect" && setupState() && button("Getting started", openSetup, { class: "text small setup-resume", "aria-label": "Open getting started guide", "aria-controls": "setup-slot" }), state.session.role === "owner" && state.view !== "showcase" && button([icon("share-2", { size: 14 }), "Share activity"], () => { location.hash = "showcase"; }, { class: "small" }), iconButton("log-out", "Sign out", signOut, { class: "icon-button mobile-signout" }))),
-        el("main", { class: "workspace", id: "main", tabindex: -1 }, el("div", { id: "friend-access-slot" }), el("div", { id: "setup-slot" }, setupPanel()), state.view === "activity" ? activityView() : state.view === "memory" ? memoryView() : state.view === "sharing" ? selectiveSharingView() : state.view === "showcase" ? showcaseView() : ["workspace", "billing"].includes(state.view) ? accountView() : connectView()))));
+        el("main", { class: "workspace", id: "main", tabindex: -1 }, mainContent))));
   renderFriendAccess();
   if (state.view === "showcase" && state.showcase?.preview) watchPreview();
   setSessionControlsBusy(sessionMutation);
@@ -1427,7 +1432,8 @@ function setSessionControlsBusy(pending) {
   document.querySelectorAll('.sidebar-bottom button, .mobile-signout').forEach(control => { control.disabled = Boolean(pending); });
 }
 async function switchOrg(orgId) {
-  if (sessionMutation || !state.session) return;
+  if (sessionMutation || !state.session) return false;
+  sharingSwitchError = null;
   announcements.textContent = "";
   accountFocusTarget = null;
   sessionMutation = true; setSessionControlsBusy(true);
@@ -1443,11 +1449,14 @@ async function switchOrg(orgId) {
   clearTimeout(searchTimer); clearTimeout(insightTimer); ++generation; closeDetail(); state.error = "";
   try {
     const session = await api.switchOrg(Number(orgId));
-    if (epoch !== authEpoch) return;
+    if (epoch !== authEpoch) return false;
     state.session = session; state.activities = []; state.activityStats = {}; state.freshIds = new Set(); state.memories = []; state.tokens = []; state.connections = null; state.connectionError = ""; state.connectionFetchedAt = 0; state.connectionList = "current"; connectionDraft = null; connectionFocusPending = null; state.agents = []; state.tools = []; state.showcase = null; state.showcaseDraft = null; state.insights = null; state.insightsQuery = ""; state.insightsActivityId = ""; state.insightBusy = false; state.insightError = ""; state.reviews = []; state.reviewMore = false; pendingInsightRun = false; Object.keys(state.filters).forEach(key => state.filters[key] = ""); writeRoute(); render(); await loadView();
+    return true;
   } catch (error) {
-    if (epoch !== authEpoch) return;
-    if (error instanceof AuthError) return expired("Your session expired. Please sign in again."); toast(errorMessage(error)); render();
+    if (epoch !== authEpoch) return false;
+    if (error instanceof AuthError) { expired("Your session expired. Please sign in again."); return false; }
+    if (state.view === "sharing") sharingSwitchError = { workspaceId: state.session.org.id, epoch, message: errorMessage(error) };
+    toast(errorMessage(error)); render(); return false;
   } finally {
     sessionMutation = false; setSessionControlsBusy(false);
     // Sharing's controller starts requests only after the workspace switch ends.
@@ -1457,13 +1466,24 @@ async function switchOrg(orgId) {
 }
 
 function selectiveSharingView() {
-  const title = heading("Sharing", "Describe what belongs with your team or another agent. Review the exact excerpts before granting access.");
+  const team = state.session.org.kind === "team";
+  const title = heading("Sharing", team ? "Context shared with this team, ready to use." : "Share selected memory with a team or another agent.");
   if (!["owner", "member"].includes(state.session.role)) return [title, empty("Managed by your workspace owner", "Use your human account to review and share context.")];
-  if (state.session.role === "member") return [title, empty("Start from your personal workspace", "Choose your personal workspace in the workspace picker to review and share excerpts. Approved team snapshots are available in Memory.")];
+  if (!team && state.session.role !== "owner") return [title, empty("Managed by your workspace owner", "Only the personal workspace owner can share its memory.")];
   const workspaceId = state.session.org.id, epoch = authEpoch;
+  const current = () => !sessionMutation && authEpoch === epoch && state.view === "sharing" && state.session?.org.id === workspaceId;
   sharingPanel = sharingView({ api: workspaceApi(workspaceId), copy: value => navigator.clipboard.writeText(value),
+    workspaceKind: state.session.org.kind, role: state.session.role,
+    initialError: sharingSwitchError?.workspaceId === workspaceId && sharingSwitchError.epoch === epoch ? sharingSwitchError.message : "",
+    personalWorkspaces: (state.session.orgs || []).filter(org => org.kind === "personal" && org.role === "owner"),
+    onOpenPersonal: id => {
+      if (!current()) return false;
+      const target = state.session.orgs?.find(org => org.id === Number(id) && org.kind === "personal" && org.role === "owner");
+      if (!target) throw new Error("That personal workspace is no longer available. Refresh the page and try again.");
+      return switchOrg(target.id);
+    },
     fail: error => { if (error instanceof AuthError) expired(); },
-    isCurrent: () => !sessionMutation && authEpoch === epoch && state.view === "sharing" && state.session?.org.id === workspaceId });
+    isCurrent: current });
   return [title, sharingPanel.element];
 }
 

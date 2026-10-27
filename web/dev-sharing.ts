@@ -25,6 +25,12 @@ shares.set("28dc8327-da36-49f0-a941-914e7f3fc4ae", {
   itemCount: 1, items: [{ id: "ffbc36b6-60c7-45f0-b12d-e4c672b02785", title: "Memory excerpt", text: "Require explicit approval before production deployment." }],
   createdAt: new Date(Date.now() - 172_800_000).toISOString(), revokedAt: new Date(Date.now() - 86_400_000).toISOString(),
 });
+shares.set("1f4385ee-ff57-47b2-8ea0-9ac9239c6d62", {
+  id: "1f4385ee-ff57-47b2-8ea0-9ac9239c6d62", sourceOrgId: 2,
+  instruction: "Share the agreed retry convention.", recipient: { kind: "team", orgId: 1, name: "Fixture Org" },
+  itemCount: 1, items: [{ id: "6c3f58f1-a3e4-4496-989b-86654095f14d", title: "Memory excerpt", text: "Use stable request IDs for background jobs. A retry must not create a second job." }],
+  createdAt: new Date(Date.now() - 43_200_000).toISOString(), revokedAt: null,
+});
 const headers = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers });
 const error = (message: string, status = 400, code = "invalid_request") => json({ error: message, code }, status);
@@ -66,8 +72,21 @@ export async function devSharing(req: Request, session: any): Promise<Response |
   const pin = req.headers.get("x-engram-workspace");
   if (!pin) return error("Select a workspace and try again.", 400);
   if (pin !== String(session.org.id)) return error("The selected workspace changed.", 409, "preview_changed");
-  if (req.headers.get("x-engram-console") !== "1" || session.role !== "owner") return error("Only the signed-in owner can manage sharing.", 403, "forbidden");
-  if (req.method === "GET" && url.pathname === "/api/sharing") return json({ targets: session.orgs.filter((org: any) => org.kind === "team").map(({ id, name }: any) => ({ id, name })), shares: [...shares.values()].filter(share => share.sourceOrgId === session.org.id).map(({ sourceOrgId, ...share }) => share), sourceKind: session.org.kind, modelAvailable: false });
+  const teamRead = req.method === "GET" && url.pathname === "/api/sharing" && session.org.kind === "team" && ["owner", "member"].includes(session.role);
+  if (req.headers.get("x-engram-console") !== "1" || (session.role !== "owner" && !teamRead)) return error("Only the signed-in owner can manage sharing.", 403, "forbidden");
+  if (req.method === "GET" && url.pathname === "/api/sharing") {
+    if (teamRead) {
+      const rawLimit = url.searchParams.get("limit") ?? "25", rawOffset = url.searchParams.get("offset") ?? "0";
+      if (!/^\d+$/.test(rawLimit) || !/^\d+$/.test(rawOffset)) return error("Choose a valid page of received shares.");
+      const limit = Number(rawLimit), offset = Number(rawOffset);
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50 || !Number.isSafeInteger(offset) || offset > 1_000_000) return error("Choose a valid page of received shares.");
+      const received = [...shares.values()].filter(share => !share.revokedAt && share.recipient.kind === "team" && share.recipient.orgId === session.org.id)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id))
+        .flatMap(share => share.items.map(({ id, title, text }: any) => ({ id, shareId: share.id, title, text })));
+      return json({ sourceKind: "team", received: received.slice(offset, offset + limit), more: received.length > offset + limit });
+    }
+    return json({ targets: session.orgs.filter((org: any) => org.kind === "team").map(({ id, name }: any) => ({ id, name })), shares: [...shares.values()].filter(share => share.sourceOrgId === session.org.id).map(({ sourceOrgId, ...share }) => share), sourceKind: session.org.kind, modelAvailable: false });
+  }
   if (session.org.kind !== "personal") return error("Choose a personal workspace to prepare a shared snapshot.", 403, "forbidden");
   if (req.method === "POST" && url.pathname === "/api/sharing/preview") {
     const input = await body(req), recipient = eligibleRecipient(input?.recipient, session);

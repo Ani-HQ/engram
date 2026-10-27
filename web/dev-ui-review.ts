@@ -1,6 +1,6 @@
 // Local fixture review only. Production never imports this module. A scenario
 // is scoped to its document's same-origin referrer, not a shared cookie/global.
-const scenarios = new Set(['ready', 'loading', 'empty', 'error', 'mutation-error', 'read-only', 'slow-memory', 'long-content', 'signed-out', 'auth-error', 'auth-loading']);
+const scenarios = new Set(['ready', 'loading', 'empty', 'error', 'mutation-error', 'read-only', 'slow-memory', 'long-content', 'signed-out', 'auth-error', 'auth-loading', 'team-member', 'switch-error']);
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const contentPaths = new Set(['/api/activities', '/api/pages', '/api/connections', '/api/review', '/api/billing', '/api/members', '/api/policies', '/api/sharing', '/api/showcase', '/api/jev', '/api/insights']);
@@ -18,6 +18,7 @@ export async function reviewApi(req: Request, next: () => Promise<Response>): Pr
   const scenario = uiReviewScenario(req), path = new URL(req.url).pathname;
   if (!scenario || scenario === 'ready') return next();
   const read = req.method === 'GET', content = contentPaths.has(path) || path === '/api/page' || path.startsWith('/api/activities/');
+  if (scenario === 'switch-error' && path === '/api/session/switch') return Response.json({ error: 'This local workspace switch failed. Try again.' }, { status: 503 });
   if (['signed-out', 'auth-error', 'auth-loading'].includes(scenario) && path === '/api/me') return Response.json({ error: 'Sign in to continue.' }, { status: 401 });
   if (scenario === 'auth-loading' && ['/api/login/email', '/api/orgs'].includes(path)) await Bun.sleep(2500);
   if (scenario === 'auth-error' && ['/api/login/email', '/api/orgs'].includes(path)) return Response.json({ error: 'This local sign-in request failed. Check your address and try again.' }, { status: 503 });
@@ -27,8 +28,13 @@ export async function reviewApi(req: Request, next: () => Promise<Response>): Pr
     return Response.json({ error: 'This local review request failed. Your changes were not saved. Try again.' }, { status: 503 });
   }
   const response = await next();
-  if (!read || !response.ok || !['empty', 'read-only', 'long-content'].includes(scenario)) return response;
+  if (!read || !response.ok || !['empty', 'read-only', 'long-content', 'team-member'].includes(scenario)) return response;
   const data = await response.json();
+  if (scenario === 'team-member' && path === '/api/me' && data.org.kind === 'team') {
+    data.role = 'member';
+    data.orgs = data.orgs.map((org: { id: number }) => org.id === data.org.id ? { ...org, role: 'member' } : org);
+  }
+  if (scenario === 'empty' && path === '/api/sharing') { data.received = []; data.shares = []; data.more = false; }
   if (scenario === 'empty' && ['/api/activities', '/api/pages', '/api/connections', '/api/review'].includes(path)) {
     for (const key of ['activities', 'pages', 'connections', 'items', 'reviews', 'agents', 'tools']) if (Array.isArray(data[key])) data[key] = [];
     if (data.stats) data.stats = Object.fromEntries(Object.keys(data.stats).map(key => [key, 0]));
@@ -42,6 +48,10 @@ export async function reviewApi(req: Request, next: () => Promise<Response>): Pr
       data.orgs = data.orgs.map((org: { id: number }) => org.id === data.org.id ? { ...org, name } : org);
     }
     if (path === '/api/pages' && data.pages?.[0]) data.pages[0].title = 'A deliberately long memory title about decisions, implementation constraints, and everything the next agent needs to understand';
+    if (path === '/api/sharing' && data.received?.[0]) {
+      data.received[0].title = 'An approved excerpt about decisions, implementation constraints, and what the next agent needs to understand';
+      data.received[0].text = 'A deliberately long approved excerpt. '.repeat(30);
+    }
     if (path === '/api/activities' && data.activities?.[0]) {
       data.activities[0].taskTitle = 'Review a deliberately long cross-agent task with detailed implementation constraints and a narrow-screen layout';
     }

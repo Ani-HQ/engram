@@ -4,6 +4,14 @@ Connect capture and personal agents to your personal workspace. A team workspace
 
 ## Describe, review, approve
 
+Sharing adapts to the selected workspace. In a **personal workspace**, the form
+and outgoing approved snapshots lead the page. In a **team workspace**, the page
+shows received approved excerpts to current owners and members. Open an excerpt
+to read its approved text, refresh the list, or open the team's Memory. The
+**Share from personal workspace** action switches to an owned personal workspace
+and keeps Sharing open; if several are available, choose one explicitly. This
+navigation does not move memory or change an agent's connection.
+
 Open **Sharing** in your personal workspace. Describe the topics and exclusions in ordinary language, for example: “Share our API architecture decisions and deployment discussions; exclude customer details and my personal plans.” Choose an authorized team or name an isolated agent connection.
 
 Engram proposes up to 12 bounded excerpts from a bounded scan of saved memory entries and captured trails. When Jev is configured, separately consented and available under the workspace's applicable access/budget rules, it can judge which candidate excerpts fit the instruction. Otherwise the screen labels its text-match fallback explicitly. Text matching does not understand exclusions or intent. Model judgments can also be wrong; neither mode is a privacy filter or an access grant.
@@ -31,6 +39,14 @@ Revocation stops future service reads through that share. It cannot recall text 
 ### Authenticated API
 
 The console uses `GET /api/sharing`, `POST /api/sharing/preview`, `POST /api/sharing/commit`, `DELETE /api/sharing/:id`, and `POST /api/sharing/:id/agent-token`. These require an authenticated owner email session, `X-Engram-Console: 1`, and the pinned personal workspace. Preview accepts `{instruction, recipient: {kind: "team", orgId}}` or `{instruction, recipient: {kind: "agent", name}}`; commit accepts `{previewId, selections: [{id, text}], acknowledged: true}`. Creation and extension require applicable hosted access; reading and revocation remain available.
+
+The team form of `GET /api/sharing?limit=25&offset=0` also accepts current human
+members, with the same console header and pinned team workspace. It returns
+`{sourceKind: "team", received: [{id, shareId, title, text}], more}`. Pagination
+is bounded to 50 excerpts per request. This read exposes approved text only;
+source identifiers, source titles, instructions, credentials and source-owner
+details are excluded. Current membership, share revocation and team acceptance
+still apply. This read permission grants no sharing mutations to team members.
 
 ## Personal brain
 

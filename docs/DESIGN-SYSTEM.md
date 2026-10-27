@@ -364,7 +364,13 @@ Heading groups explicitly preserve the shared h2/h3 type scale above legacy gene
 ## Reviewed sharing composition
 
 The Sharing view composes existing cards, heading groups, fields, option rows,
-notices and buttons. Keep the natural-language instruction, recipient choice and
+notices and buttons. Use one page introduction. Personal workspaces lead with the
+creation form and outgoing snapshots; supporting explanations use a native
+disclosure. Team workspaces lead with actions to open personal sharing or team
+memory, followed by received approved excerpts. Empty and error states retain
+those actions. Use the same cards and disclosures for approved text, and ordinary
+compact buttons for refresh, pagination and workspace switching. No badge should
+stand in for an action. Keep the natural-language instruction, recipient choice and
 exact excerpt approval as separate steps with visible explanatory copy. Candidates
 start unchecked. Label semantic suggestions and text fallback distinctly; neither
 is an access grant. Excerpt edits can shorten source text, with errors beside the

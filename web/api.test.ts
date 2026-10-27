@@ -10,6 +10,20 @@ beforeEach(() => {
 afterEach(() => { globalThis.fetch = originalFetch; });
 
 describe("private workspace API requests", () => {
+  test("pins received-share pagination to its originating team and never caches approved text", async () => {
+    const team = workspaceApi(7);
+    await team.receivedSharing({ limit: 25, offset: 25 });
+    await workspaceApi(11).sharing();
+    await team.receivedSharing({ limit: 25, offset: 50 });
+    expect(calls.map(call => call.url)).toEqual(["/api/sharing?limit=25&offset=25", "/api/sharing", "/api/sharing?limit=25&offset=50"]);
+    expect(calls.map(call => new Headers(call.options.headers).get("X-Engram-Workspace"))).toEqual(["7", "11", "7"]);
+    for (const call of calls) {
+      expect(call.options.cache).toBe("no-store");
+      expect(new Headers(call.options.headers).get("X-Engram-Console")).toBe("1");
+      expect(call.options.credentials).toBe("same-origin");
+      expect(call.options.body).toBeUndefined();
+    }
+  });
   test("refreshes finite access metadata without caching and with the originating workspace", async () => {
     await api.me(7);
     expect(calls[0].url).toBe("/api/me"); expect(calls[0].options.cache).toBe("no-store");

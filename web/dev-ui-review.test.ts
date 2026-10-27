@@ -22,4 +22,16 @@ describe('local interaction review boundaries', () => {
     expect((await reviewApi(request('mutation-error', '/api/session/switch', 'POST'), next)).status).toBe(200);
     expect(calls).toBe(1);
   });
+  test('switch-error is scoped to its review document and cannot mutate the fixture session', async () => {
+    let calls = 0;
+    const next = async () => { calls++; return Response.json({ ok: true }); };
+    expect((await reviewApi(request('switch-error', '/api/session/switch', 'POST'), next)).status).toBe(503);
+    expect(calls).toBe(0);
+    expect((await reviewApi(new Request('http://localhost:8107/api/session/switch', { method: 'POST' }), next)).status).toBe(200);
+    expect(calls).toBe(1);
+  });
+  test('empty Sharing clears received and outgoing content without changing workspace kind', async () => {
+    const next = async () => Response.json({ sourceKind: 'team', received: [{ text: 'Approved fixture' }], shares: [{ id: 'fixture' }], more: true });
+    expect(await (await reviewApi(request('empty', '/api/sharing'), next)).json()).toEqual({ sourceKind: 'team', received: [], shares: [], more: false });
+  });
 });

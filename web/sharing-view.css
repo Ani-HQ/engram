@@ -2,15 +2,16 @@
 .sharing-view { display: grid; gap: var(--ds-space-6); max-width: 1040px; min-width: 0; }
 .sharing-view > *, .sharing-view .field, .sharing-view textarea, .sharing-view input, .sharing-view select { min-width: 0; max-width: 100%; }
 .sharing-view .ds-heading-group > p { max-width: 760px; color: var(--ds-muted); font-size: var(--ds-text-sm); line-height: 1.8; }
-.sharing-view .sharing-boundary { padding-top: var(--ds-space-3); }
-.sharing-form, .sharing-review-card, .sharing-credential, .sharing-grant { display: grid; gap: var(--ds-space-5); }
+.sharing-form, .sharing-review-card, .sharing-credential, .sharing-grant, .sharing-start, .sharing-received { display: grid; gap: var(--ds-space-5); }
+.sharing-form > h2, .sharing-start h2 { margin: 0; font-size: var(--ds-text-lg); line-height: 1.5; }
+.sharing-help > p, .sharing-help > a { margin-block: var(--ds-space-3); }
 .sharing-form > .ds-heading-group, .sharing-review-card > .ds-heading-group, .sharing-credential > .ds-heading-group { margin-bottom: var(--ds-space-1); }
 .sharing-recipient-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ds-space-4); align-items: start; }
 .sharing-view textarea { resize: vertical; min-height: 130px; }
 .sharing-view .form-actions { display: flex; flex-wrap: wrap; gap: var(--ds-space-3); align-items: center; margin: 0; }
 .sharing-view .field-hint { margin: 0; line-height: 1.8; color: var(--ds-muted); font-size: var(--ds-text-xs); }
 .sharing-view .ds-option { align-items: flex-start; }
-.sharing-review:empty, .sharing-credentials:empty, .sharing-feedback:empty, .sharing-load-state:empty { display: none; }
+.sharing-review:empty, .sharing-credentials:empty, .sharing-feedback:empty, .sharing-load-state:empty, .sharing-manage > .field-hint:empty { display: none; }
 .sharing-load-state { display: grid; gap: var(--ds-space-4); }
 .sharing-candidates { display: grid; gap: var(--ds-space-8); }
 .sharing-candidate { display: grid; gap: var(--ds-space-3); min-width: 0; }
@@ -20,7 +21,11 @@
 .sharing-manage { display: grid; gap: var(--ds-space-5); margin-top: var(--ds-space-4); }
 .sharing-section-heading, .sharing-grant-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--ds-space-4); }
 .sharing-section-heading h2, .sharing-grant-heading h3 { margin: 0; font-size: var(--ds-text-lg); line-height: 1.5; overflow-wrap: anywhere; }
-.sharing-grants { display: grid; gap: var(--ds-space-4); }
+.sharing-grants, .sharing-received-list { display: grid; gap: var(--ds-space-4); }
+.sharing-received h3 { margin: 0; font-size: var(--ds-text-base); overflow-wrap: anywhere; }
+.sharing-received-preview { margin: 0; color: var(--ds-muted); font-size: var(--ds-text-sm); line-height: 1.8; overflow-wrap: anywhere; white-space: pre-wrap; }
+.sharing-start .field { max-width: 480px; }
+.sharing-team-view .sharing-manage { margin-top: 0; }
 .sharing-view .sharing-policy { margin: 0; color: var(--ds-ink); font-size: var(--ds-text-sm); line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
 .sharing-approved-text { border-top: 1px solid var(--ds-line); border-bottom: 1px solid var(--ds-line); }
 .sharing-approved-text > summary { min-height: 44px; padding-block: var(--ds-space-3); cursor: pointer; font-size: var(--ds-text-sm); }
@@ -30,7 +35,7 @@
 .sharing-approved-text p { margin: 0; font-size: var(--ds-text-sm); line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 600px) {
   .sharing-recipient-fields { grid-template-columns: minmax(0, 1fr); }
-  .sharing-form, .sharing-review-card, .sharing-credential, .sharing-grant { padding: var(--ds-space-4); }
+  .sharing-form, .sharing-review-card, .sharing-credential, .sharing-grant, .sharing-start, .sharing-received { padding: var(--ds-space-4); }
   .sharing-view { gap: var(--ds-space-5); }
   .sharing-candidates { gap: var(--ds-space-6); }
 }

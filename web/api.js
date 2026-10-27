@@ -28,6 +28,7 @@ const post = (path, body, workspaceId) => request(path, { ...scoped(workspaceId)
 
 export const api = {
   sharing: workspaceId => request("/api/sharing", { ...scoped(workspaceId), cache: "no-store" }),
+  receivedSharing: (params, workspaceId) => request(query("/api/sharing", params), { ...scoped(workspaceId), cache: "no-store", signal: AbortSignal.timeout(10000) }),
   sharingPreview: (payload, workspaceId) => post("/api/sharing/preview", payload, workspaceId),
   sharingCommit: (payload, workspaceId) => post("/api/sharing/commit", payload, workspaceId),
   revokeSharing: (id, workspaceId) => request(`/api/sharing/${encodeURIComponent(id)}`, { ...scoped(workspaceId), method: "DELETE" }),
@@ -85,5 +86,5 @@ export const api = {
 // changes before a request reaches the server. The server verifies this header.
 export function workspaceApi(workspaceId) {
   const methods = ["sharing", "sharingPreview", "sharingCommit", "revokeSharing", "rotateSharingToken", "jev", "saveJev", "renameWorkspace", "signupInvites", "issueSignupInvite", "signupInviteLink", "revokeSignupInvite", "provisioning", "onboarding", "billing", "checkout", "billingPortal", "members", "invite", "removeMember", "savePolicies", "setTokenWrite", "setTokenSource", "showcase", "saveShowcase", "actions", "activities", "activity", "pages", "search", "page", "capture", "tokens", "connections", "wiring", "mintToken", "revokeToken", "insights", "runInsights", "reviews", "review", "resolveReview"];
-  return Object.fromEntries([...methods, "manageConnection"].map(name => [name, (...args) => api[name](...args, workspaceId)]));
+  return Object.fromEntries([...methods, "manageConnection", "receivedSharing"].map(name => [name, (...args) => api[name](...args, workspaceId)]));
 }
