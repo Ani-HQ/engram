@@ -1,4 +1,5 @@
 import { failureCode } from "./diagnostics";
+import { parseAttribution, recordSiteEvent } from "./site-analytics";
 import { config } from "./config";
 import type postgres from "postgres";
 import { agentOnboardingChecks, handleConnectionsApi } from "./connections";
@@ -264,6 +265,8 @@ async function postOrg(req: Request): Promise<Response> {
       ...renderEmail({ template: inviteCode || !existing ? "verify-signup" : "login", url: invite.url, orgName: name }),
     });
     const result = loginLinkResponse(delivery, invite.url);
+    // Count a new sign-up and its first-touch campaign; never the email.
+    if (!existing && result.status < 300) await recordSiteEvent({ name: "signup_submitted", path: "/app", ...parseAttribution(body?.attribution) }, req);
     return Response.json(result.body, { status: result.status });
   } catch (e) {
     if (e instanceof SignupInviteError) return Response.json({ error: e.message, code: e.code }, { status: e.status });

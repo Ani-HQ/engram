@@ -35,9 +35,11 @@ export function emailLinkRecovery(raw) {
     : { hash: "#signin", message: "This email link could not be opened. It may have expired or already been used. Request a new sign-in link below. For a workspace membership invitation, ask the owner for a new invitation." };
 }
 
-export function signupRequest(policy, { email, name, inviteCode }) {
+export function signupRequest(policy, { email, name, inviteCode, attribution }) {
   if (!policy) throw new Error("Signup availability could not be checked. Please try again.");
   const payload = { email: String(email || "").trim() };
+  // First-touch campaign tags only; the server keeps none of it with the email.
+  if (attribution && typeof attribution === "object" && Object.values(attribution).some(Boolean)) payload.attribution = attribution;
   if (!policy.inviteCodeRequired && String(name || "").trim()) payload.name = String(name).trim();
   if (policy.inviteCodeRequired) {
     const code = String(inviteCode || "").trim();

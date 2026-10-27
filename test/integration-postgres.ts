@@ -505,6 +505,21 @@ try {
   checks += await checkJev(sql);
   const { checkContextSharing } = await import("./integration-context-sharing");
   checks += await checkContextSharing(sql);
+  {
+    const { handleSiteEvent, recordSiteEvent, siteReport } = await import("../gateway/src/site-analytics");
+    await sql`TRUNCATE site_events`;
+    const beacon = (body: unknown, ip: string) => handleSiteEvent(new Request("https://integration.example/api/e", { method: "POST", body: JSON.stringify(body), headers: { origin: "https://integration.example", "user-agent": "Mozilla/5.0", "cf-connecting-ip": ip } }));
+    await beacon({ name: "pageview", path: "/", utmSource: "x", utmCampaign: "launch", referrerHost: "x.com" }, "203.0.113.1");
+    await beacon({ name: "pageview", path: "/pricing", utmSource: "x", utmCampaign: "launch" }, "203.0.113.1");
+    await beacon({ name: "cta", path: "/", cta: "ask-invite", utmSource: "x", utmCampaign: "launch" }, "203.0.113.1");
+    await beacon({ name: "pageview", path: "/" }, "203.0.113.2");
+    await recordSiteEvent({ name: "signup_submitted", path: "/app", utmSource: "x", utmCampaign: "launch" }, new Request("https://integration.example/api/orgs", { headers: { "user-agent": "Mozilla/5.0", "cf-connecting-ip": "203.0.113.1" } }));
+    const report = await siteReport(7, sql);
+    equal([report.traffic.pageviews, report.traffic.visitor_days, report.traffic.signups_submitted], [3, 2, 1], "Site analytics counts views, daily visitors and sign-ups");
+    equal(report.campaigns[0], { source: "x", medium: "-", campaign: "launch", visitor_days: 1, invite_requests: 1, signups_submitted: 1 }, "Campaigns attribute invite requests and sign-ups");
+    check(typeof report.funnel.workspaces_created === "number" && typeof report.funnel.paying === "number", "The product funnel query runs against real tables");
+    check(!JSON.stringify(await sql`SELECT * FROM site_events`).includes("203.0.113"), "No IP address is stored");
+  }
 
   process.stdout.write(JSON.stringify({ ok: true, checks, postgres: "real", coverage: ["repeatable migrations", "physical tenant databases", "token and live session isolation", "action union and filters", "trial persistence", "public aggregate privacy and unpublishing", "CLI workspace creation and owner login", "concurrent action lifecycle and delivery idempotency", "fresh and stale public activity", "private grouped activity and contributor methods", "durable insight queue and provider budget"] }) + "\n");
 } finally {

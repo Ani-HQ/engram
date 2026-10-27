@@ -1,4 +1,5 @@
 import { h } from "./profile.js";
+import { attribution } from "./analytics.js";
 import { signupAuthMode, signupRequest } from "./signup-model.js";
 import { memoryOrbit, sticker } from "./design-system.js";
 
@@ -30,7 +31,7 @@ export function signupView({ mode = "email", policy, message = "", api, changeMo
         token.value = ""; if (active) signedIn(session);
       } else {
         const address = email.value.trim();
-        const result = create ? await api.createOrg(signupRequest(policy, { email: address, name: name?.value, inviteCode: code.value })) : await api.loginEmail(address);
+        const result = create ? await api.createOrg(signupRequest(policy, { email: address, name: name?.value, inviteCode: code.value, attribution: attribution() })) : await api.loginEmail(address);
         if (!active) return;
         // A linked code remains masked in this form so the recipient can fix
         // their email or request another proof before anyone verifies it.
