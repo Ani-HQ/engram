@@ -44,8 +44,16 @@ leaving an older authentication path reachable beside the new production URL.
 ## Console connection flow
 
 The Connections page owns the current/archived inventory and connection access.
-Its primary **Connect an agent** action immediately shows the shared MCP
-endpoint. Clients start their own OAuth sign-in where supported. A named
+Its primary **Connect an agent** action shows the shared MCP endpoint and a
+**Copy setup prompt** action. The prompt includes the endpoint and intended
+workspace as JSON data, uses the client's native setup, preserves other
+connections, and asks for a successful `whoami` access check. Workspace matching
+uses authoritative workspace information or user confirmation; `whoami` may only
+identify the credential.
+It guides the user when the agent cannot configure itself or needs secure
+credential entry. A collapsed preview and endpoint-only copy remain available.
+Bearer-token guidance is highlighted with the existing neutral notice.
+Clients start their own OAuth sign-in where supported. A named
 access-key form and agent-specific setup help are optional disclosures. Viewing
 help or choosing a configuration format never labels a new credential or changes
 its permission. Replacing an existing key can preserve its explicit manual
@@ -80,6 +88,13 @@ rather than replacing the displayed identity on every request. These names do
 not authenticate an application, identify an individual bot/model, change
 authorization, or rewrite historical activity. Connections refreshes when the
 page returns to the foreground and retains its explicit Refresh action.
+
+Existing keys remain valid and do not need replacement. Clients that send names
+on requests are detected on their next authenticated request. Clients that only
+identify during initialization need a fresh handshake if they connected before
+the update; restart the agent or reconnect with the same key. Existing OAuth
+connections use the stored registration immediately. Refresh reveals recorded
+names; it does not probe clients or infer missing identities.
 
 The additive migration adds bounded `tokens.client_names` and the separate
 `client_identity_version` readiness marker. Existing schema-version contracts

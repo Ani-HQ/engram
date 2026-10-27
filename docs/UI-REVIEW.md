@@ -410,3 +410,28 @@ artifacts: `desktop-hero.jpg`, `mobile-hero.jpg`, `desktop-gallery.jpg`, and
 Validation: the shared context-flow, logo-ticker and design-system suites passed
 **36 tests, 351 assertions, zero failures**. Marketing/gallery browser bundles
 and `git diff --check` passed. This review covers local changes only.
+
+## Connection setup prompt — 27 October 2026
+
+The connection panel makes **Copy setup prompt** its primary action, retaining
+endpoint-only copy and a separate refresh step. The agent-neutral prompt includes
+the validated endpoint and current workspace as JSON data, preserves other
+connections, supports native setup or explicit guidance, and requires a successful
+`whoami` access check. It explicitly handles responses that only name a credential:
+workspace matching needs authoritative information or user confirmation. It contains no draft credentials or
+memory-workflow installation. The full prompt is available in a collapsed native
+disclosure. Bearer-token instructions use the existing neutral notice with strong
+text; there are no new shared components or visual tokens.
+
+Browser review at 1280×900 and 320×760 confirmed equal 32px desktop copy buttons,
+44px mobile targets, no document/panel overflow, a wrapping expanded prompt, and
+immediate keyboard disclosure behavior. Initial focus targets the primary copy
+action. The clipboard payload exactly matched the preview and
+included the fixture endpoint and workspace; endpoint-only copy remained exact.
+No keys were issued or external agents configured. Captures:
+`/private/tmp/engram-setup-prompt-desktop.png` and
+`/private/tmp/engram-setup-prompt-mobile.png`.
+
+Focused model/view checks passed **30 tests, 274 assertions**. The 42-module browser
+bundle and whitespace checks passed. Browser checks used local fixture data;
+the prompt guides clients that cannot configure their own MCP settings.

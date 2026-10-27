@@ -962,7 +962,7 @@ function openConnectionDialog() {
   editor.isCurrent = () => currentWorkspace() && connectionEditor === editor && dialog.open && editor.generation === detailGeneration;
   editor.render = focusKey => {
     if (!currentWorkspace()) return;
-    const content = connectionSetupView({ helpAgentId: editor.draft.helpAgentId, keyExpanded: editor.draft.keyExpanded, helpExpanded: editor.draft.helpExpanded, endpoint: state.mcp || `${location.origin}/mcp`, draft: editor.draft,
+    const content = connectionSetupView({ helpAgentId: editor.draft.helpAgentId, keyExpanded: editor.draft.keyExpanded, helpExpanded: editor.draft.helpExpanded, endpoint: state.mcp || `${location.origin}/mcp`, workspace: state.session.org, draft: editor.draft,
       busy: connectionKeyRequests.has(requestKey), error: editor.error, copyControl: copyButton,
       onHelpChoose: helpAgentId => {
         if (!editor.isCurrent() || connectionKeyRequests.has(requestKey)) return;
@@ -1007,7 +1007,7 @@ function openConnectionDialog() {
     selectControls.update();
     if (focusKey) content.querySelector(`[data-connection-focus="${focusKey}"]`)?.focus({ preventScroll: true });
   };
-  editor.render(editor.draft.keyExpanded ? "name" : "endpoint");
+  editor.render(editor.draft.keyExpanded ? "name" : "prompt");
 }
 
 function taskReportingHelp() {
