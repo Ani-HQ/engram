@@ -64,6 +64,7 @@ const WRITE_TOOLS = new Set([
   "add_timeline_entry",
   "remember",
   "record_action",
+  "checkpoint_task",
 ]);
 
 const DELETE_TOOLS = new Set(["delete_page", "restore_page"]);

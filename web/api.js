@@ -80,11 +80,18 @@ export const api = {
   reviews: (params, workspaceId) => request(query("/api/review", params), scoped(workspaceId)),
   review: (id, workspaceId) => request(query("/api/review/item", { id }), scoped(workspaceId)),
   resolveReview: (id, action, workspaceId) => post(`/api/review/${action}`, { id }, workspaceId),
+  tasks: (params, workspaceId) => request(query("/api/tasks", params), { ...scoped(workspaceId), cache: "no-store" }),
+  task: (id, workspaceId) => request(`/api/tasks/${encodeURIComponent(id)}`, { ...scoped(workspaceId), cache: "no-store" }),
+  exportTasks: (params, workspaceId) => request(query("/api/tasks/export", params), { ...scoped(workspaceId), cache: "no-store" }),
+  closeTask: (id, workspaceId) => post(`/api/tasks/${encodeURIComponent(id)}/close`, {}, workspaceId),
+  reopenTask: (id, workspaceId) => post(`/api/tasks/${encodeURIComponent(id)}/reopen`, {}, workspaceId),
+  deleteTask: (id, workspaceId) => request(`/api/tasks/${encodeURIComponent(id)}`, { ...scoped(workspaceId), method: "DELETE" }),
+  restoreTask: (id, workspaceId) => post(`/api/tasks/${encodeURIComponent(id)}/restore`, {}, workspaceId),
 };
 
 // Callbacks retain the workspace that created them, even if the session cookie
 // changes before a request reaches the server. The server verifies this header.
 export function workspaceApi(workspaceId) {
-  const methods = ["sharing", "sharingPreview", "sharingCommit", "revokeSharing", "rotateSharingToken", "jev", "saveJev", "renameWorkspace", "signupInvites", "issueSignupInvite", "signupInviteLink", "revokeSignupInvite", "provisioning", "onboarding", "billing", "checkout", "billingPortal", "members", "invite", "removeMember", "savePolicies", "setTokenWrite", "setTokenSource", "showcase", "saveShowcase", "actions", "activities", "activity", "pages", "search", "page", "capture", "tokens", "connections", "wiring", "mintToken", "revokeToken", "insights", "runInsights", "reviews", "review", "resolveReview"];
+  const methods = ["sharing", "sharingPreview", "sharingCommit", "revokeSharing", "rotateSharingToken", "jev", "saveJev", "renameWorkspace", "signupInvites", "issueSignupInvite", "signupInviteLink", "revokeSignupInvite", "provisioning", "onboarding", "billing", "checkout", "billingPortal", "members", "invite", "removeMember", "savePolicies", "setTokenWrite", "setTokenSource", "showcase", "saveShowcase", "actions", "activities", "activity", "pages", "search", "page", "capture", "tokens", "connections", "wiring", "mintToken", "revokeToken", "insights", "runInsights", "reviews", "review", "resolveReview", "tasks", "task", "exportTasks", "closeTask", "reopenTask", "deleteTask", "restoreTask"];
   return Object.fromEntries([...methods, "manageConnection", "receivedSharing"].map(name => [name, (...args) => api[name](...args, workspaceId)]));
 }

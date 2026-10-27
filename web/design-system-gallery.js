@@ -1,4 +1,4 @@
-import { memoryOrbit, memoryStream, resourceChip, loadingState, progressBar, setProgress, observeLoadingMotion, observeContextFlow, contextFlowArt, observeLogoTicker, observeSelects, statusBadge, statusText, profileAvatar, highlightArt, profileLayoutPreview, evidenceList } from './design-system.js';
+import { memoryOrbit, memoryStream, resourceChip, loadingState, progressBar, setProgress, observeLoadingMotion, observeContextFlow, contextFlowArt, observeLogoTicker, observeSelects, statusBadge, statusText, profileAvatar, highlightArt, profileLayoutPreview, evidenceList, taskRecord } from './design-system.js';
 import { publicAgentCatalog } from './public-agent-catalog.js';
 import { icon } from './icons.js';
 import { agentVisual, toolVisual, visualIcon } from './tooling.js';
@@ -13,6 +13,9 @@ if (document.querySelector('meta[name="engram-demo"]')) {
 }
 
 document.querySelector('#orbit-example').append(memoryOrbit());
+document.getElementById('task-record-full')?.append(taskRecord({ objective: 'Illustrative: let another agent continue a coding task.', next: 'Write the storage migration and its retry tests.', plan: [{ id: 's1', step: 'Agree the record shape', status: 'done' }, { id: 's2', step: 'Storage and receipts', status: 'doing' }, { id: 's3', step: 'Console view', status: 'todo' }, { id: 's4', step: 'Timer-based saves', status: 'dropped' }], decisions: [{ text: 'Checkpoints are the authoritative snapshot.', why: 'Memory indexing is best effort.' }], blockers: ['Waiting on a design review.'], refs: [{ kind: 'path', path: 'docs/EXAMPLE.md' }, { kind: 'commit', sha: '0a1b2c3' }] }));
+document.getElementById('task-record-minimal')?.append(taskRecord({ objective: 'Illustrative minimal record.', next: 'Ask the user which lineage to continue.' }));
+document.getElementById('task-record-long')?.append(taskRecord({ objective: 'Illustrative long identifier: ' + 'a'.repeat(120), next: 'Keep long values wrapping inside the card.', questions: ['Does https://example.com/' + 'b'.repeat(80) + ' wrap?'] }));
 document.getElementById('memory-evidence-ready').append(evidenceList([{ label: 'Recall', value: 'Received', note: 'Illustrative successful call' }, { label: 'Context returned', value: '3.2 KB', note: 'About 800 tokens · estimate' }, { label: 'Task budget', value: '4 KB', note: 'Requires a task-aware adapter' }]));
 document.getElementById('memory-evidence-empty').append(evidenceList([{ label: 'Recall', value: 'No receipt yet' }, { label: 'Context returned', value: 'Not measured' }]));
 document.getElementById('memory-evidence-error').append(evidenceList([{ label: 'Memory use', value: 'Unavailable', note: 'Refresh the connection to try again.' }, { label: 'Token usage', value: 'Unknown' }]));

@@ -98,7 +98,7 @@ async function handleMcp(req: Request): Promise<Response> {
       // Display metadata is best-effort and never changes credential authority.
       await observeConnectionClient(actor, memoryContext.credentialKey!, method, msg.params).catch(() => {});
       const snapshotRead = name === "get_page" && isSharedContextSlug(msg.params?.arguments?.slug);
-      if (method === "tools/list" || (method === "tools/call" && !snapshotRead && !["record_action", "list_actions", "whoami"].includes(name ?? ""))) await ensureBrain(org);
+      if (method === "tools/list" || (method === "tools/call" && !snapshotRead && !["record_action", "list_actions", "whoami", "checkpoint_task", "find_tasks", "resume_task"].includes(name ?? ""))) await ensureBrain(org);
       switch (method) {
         case "initialize": {
           const requested = msg.params?.protocolVersion;

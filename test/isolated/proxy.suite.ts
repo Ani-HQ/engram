@@ -121,6 +121,9 @@ describe("proxy tool surface", () => {
       "recall",
       "record_action",
       "list_actions",
+      "checkpoint_task",
+      "find_tasks",
+      "resume_task",
     ]);
   });
 
