@@ -919,8 +919,8 @@ function connectView() {
   return el("div", { class: "connect-layout" },
     heading("Connections", "Connect an agent and manage its access to this workspace.",
       el("div", { class: "ds-row connection-page-actions" },
-        iconButton("refresh-cw", "Refresh connections", loadConnections, { disabled: state.loading }),
-        canConnect && button("Connect an agent", () => beginConnection(), { class: "primary large", "data-connect-action": "true" }))),
+        button("Refresh", loadConnections, { class: "small", "aria-label": "Refresh connections", disabled: state.loading }),
+        canConnect && button("Connect an agent", () => beginConnection(), { class: "primary small", "data-connect-action": "true" }))),
     state.error && notice(state.error, loadConnections),
     state.connectionError && notice("Connection status could not load. Refresh to try again.", loadConnections),
     canConnect && state.connections && el("div", { class: "connection-list-filter" }, field("Connection list", select("Connection list", state.connectionList, [
@@ -1172,7 +1172,7 @@ async function loadConnections() {
 }
 function tokenDetail(data, helpAgentId = "") {
   const secret = el("input", { type: "password", class: "connection-secret", value: data.token, readonly: true, autocomplete: "off", spellcheck: "false", "aria-label": "New access key" });
-  const reveal = button("Show key", () => { const shown = secret.type === "text"; secret.type = shown ? "password" : "text"; reveal.textContent = shown ? "Show key" : "Hide key"; reveal.setAttribute("aria-pressed", String(!shown)); }, { "aria-pressed": "false" });
+  const reveal = button("Show key", () => { const shown = secret.type === "text"; secret.type = shown ? "password" : "text"; reveal.textContent = shown ? "Show key" : "Hide key"; reveal.setAttribute("aria-pressed", String(!shown)); }, { class: "small", "aria-pressed": "false" });
   const formats = [["other", "MCP JSON"], ["codex", "Codex · TOML"], ["vscode", "VS Code · JSON"], ["claude-code", "Claude Code · JSON"], ["github-copilot", "GitHub Copilot · JSON"], ["gemini-cli", "Gemini CLI · JSON"], ["opencode", "OpenCode · JSON"], ["openclaw", "OpenClaw · JSON"]];
   const selected = formats.some(([id]) => id === helpAgentId) ? helpAgentId : "other";
   const preview = el("pre", { tabindex: "0" }, accessKeyConfiguration(selected, data.mcp));
@@ -1181,17 +1181,17 @@ function tokenDetail(data, helpAgentId = "") {
     el("div", { class: "ds-heading-group" }, el("h2", { id: "detail-title" }, data.name),
       el("p", { class: "ds-hint" }, `Copy this key now. It is only shown once. Its permission is ${data.canWrite === false ? "read only" : "read and write"}; workspace policy and hosted plan access also apply.`)),
     el("div", { class: "connection-secret-row" }, secret, reveal),
-    el("div", { class: "ds-row" }, copyButton("Copy access key", data.token, { class: "primary" })),
+    el("div", { class: "ds-row" }, copyButton("Copy access key", data.token, { class: "primary small" })),
     el("h3", {}, "Add Engram in your agent’s MCP settings"),
     el("p", { class: "ds-hint" }, "Use this endpoint and the key above as the bearer token. Creating a key grants access; contact is recorded after the agent calls Engram."),
     el("code", { class: "ds-code-scroll", tabindex: "0", role: "region", "aria-label": "MCP endpoint. Scroll horizontally to read." }, data.mcp),
-    el("div", { class: "ds-row" }, copyButton("Copy endpoint", data.mcp)),
+    el("div", { class: "ds-row" }, copyButton("Copy endpoint", data.mcp, { class: "small" })),
     el("details", { class: "connection-install" }, el("summary", {}, "MCP configuration"),
       el("p", { class: "ds-hint" }, "Optional examples for clients that accept a configuration file. Changing the format does not label the connection. The copy button includes the key."),
       field("Configuration format", format), preview,
-      copyButton("Copy configuration with key", () => accessKeyConfiguration(format.value, data.mcp, secret.value))),
+      copyButton("Copy configuration with key", () => accessKeyConfiguration(format.value, data.mcp, secret.value), { class: "small" })),
     el("p", { class: "ds-hint" }, "Reload the agent after updating its settings, then refresh Connections. Its client name appears when the app supplies one."),
-    el("div", { class: "ds-row" }, button("Done", () => { closeDetail(); loadConnections(); })),
+    el("div", { class: "ds-row" }, button("Done", () => { closeDetail(); loadConnections(); }, { class: "small" })),
   ), { returnTo: '[data-connect-action]' });
   returnFocusSelector = '[data-connect-action]';
   selectControls.update();

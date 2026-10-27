@@ -22,8 +22,8 @@ export function connectionSetupView({ endpoint, draft = {}, helpAgentId = "", ke
   view.append(h("div", { class: "connection-setup-endpoint ds-stack" },
     h("code", { class: "ds-code-scroll", tabindex: "0", role: "region", "aria-label": "MCP endpoint. Scroll horizontally to read." }, connection.endpoint),
     h("div", { class: "ds-row" },
-      copyControl?.("Copy endpoint", connection.endpoint, { class: "primary", "data-connection-focus": "endpoint" }),
-      onDone && h("button", { type: "button", onclick: () => { if (!busy) onDone(); }, disabled: busy, "data-connection-focus": "refresh" }, "Refresh connections")),
+      copyControl?.("Copy endpoint", connection.endpoint, { class: "primary small", "data-connection-focus": "endpoint" }),
+      onDone && h("button", { type: "button", class: "small", onclick: () => { if (!busy) onDone(); }, disabled: busy, "data-connection-focus": "refresh" }, "Refresh connections")),
     h("p", { class: "ds-hint" }, "After your agent connects, refresh Connections to see its client name when available."),
     h("p", { class: "ds-hint" }, "Sign-in is available when your client and this Engram installation support OAuth. If your client asks for a bearer token, create an access key below.")));
 
@@ -48,7 +48,7 @@ export function connectionSetupView({ endpoint, draft = {}, helpAgentId = "", ke
   h("p", { id: "connection-key-note", class: "ds-hint" }, "Use a name that helps you recognize this connection or computer."),
   h("label", { class: "field" }, "Permission", permission),
   h("p", { id: "connection-permission-note", class: "ds-hint" }, "Read and write allows this connection to save memory and report work. Workspace policy and hosted plan access also apply."),
-  h("div", { class: "ds-row" }, h("button", { type: "submit", class: "primary", disabled: busy, "data-connection-focus": "submit" }, busy ? "Creating access key…" : "Create access key")));
+  h("div", { class: "ds-row" }, h("button", { type: "submit", class: "primary small", disabled: busy, "data-connection-focus": "submit" }, busy ? "Creating access key…" : "Create access key")));
   view.append(h("details", { class: "connection-setup-disclosure", open: Boolean(keyExpanded || busy || error), ontoggle: event => {
     if (event.currentTarget.isConnected !== false) onKeyToggle?.(event.currentTarget.open);
   } },

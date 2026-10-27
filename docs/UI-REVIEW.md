@@ -18,6 +18,12 @@ targets. The generic entry opens with both disclosures closed and no required
 agent choice. Client fixtures are explicitly simulated, separately from manual
 sources and recorded activity. These checks do not certify external agent apps.
 
+The source also retains the Jev/TypeSafe AI and gbrain/Garry Tan hero credits,
+their original bundled images, JPEG content type and attribution gallery. Both
+images load locally at desktop and mobile widths. Connection actions use the
+existing compact button primitive: 32px on desktop, with aligned endpoint
+actions and the shared 44px minimum on mobile.
+
 Validation: **891 tests passed, 1 Cloud Run-only skip, 0 failures, and 9673
 assertions**. Actual PostgreSQL checks passed **858 baseline, 80 authority, and
 36 managed-provisioner cases**, including exact-credential scoping, concurrent

@@ -29,7 +29,7 @@ describe("generic connection composer", () => {
     const view = render({ onDone: () => { refreshes++; }, copyControl: (label: string, value: string, attrs: unknown) => { copied.push({ label, value, attrs }); return new Element("button", label); } });
     expect(find(view, node => node.attrs.id === "detail-title").textContent).toBe("Connect an agent");
     expect(find(view, node => node.tag === "code").textContent).toBe(endpoint);
-    expect(copied).toEqual([{ label: "Copy endpoint", value: endpoint, attrs: { class: "primary", "data-connection-focus": "endpoint" } }]);
+    expect(copied).toEqual([{ label: "Copy endpoint", value: endpoint, attrs: { class: "primary small", "data-connection-focus": "endpoint" } }]);
     expect(view.children[1].attrs.class).toContain("connection-setup-endpoint");
     expect(disclosure(view, "key").open).toBe(false); expect(disclosure(view, "help").open).toBe(false);
     expect(focus(view, "help").attrs.required).toBeUndefined(); expect(focus(view, "help").value).toBe("");
