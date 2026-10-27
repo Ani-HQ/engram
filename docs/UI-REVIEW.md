@@ -435,3 +435,28 @@ No keys were issued or external agents configured. Captures:
 Focused model/view checks passed **30 tests, 274 assertions**. The 42-module browser
 bundle and whitespace checks passed. Browser checks used local fixture data;
 the prompt guides clients that cannot configure their own MCP settings.
+
+
+## Compact actions across surfaces — 27 October 2026
+
+Default, small and legacy large action buttons share 32px desktop sizing,
+5px/10px padding, 12px text and 450 weight. Icon controls, including drawer close
+and Activity refresh, are 32px squares with existing 16px glyphs. Touch targets
+remain 44px at narrow/coarse-pointer breakpoints. Shared tokens own the sizes;
+legacy feature styles no longer enlarge sign-in, checks, naming, toolbar or tab
+actions. Rich content controls, charts and form fields retain their own layout.
+The gallery includes normal, size-alias, labeled-icon, close and disabled examples.
+
+Browser checks at desktop widths (800px and 1280px) and 320px confirmed compact
+variants, drawer close/open focus restoration, Activity refresh/filter actions,
+Run checks, sign-in actions and public CTAs. The 320px drawer, gallery and sign-in
+views retained 44px controls with no horizontal overflow. The gallery's close
+preview updated local feedback; disabled controls remained disabled and chart
+controls retained their content height. Public hero credits remained present.
+Captures: `/private/tmp/engram-compact-buttons-desktop.png` and
+`/private/tmp/engram-compact-buttons-mobile.png`.
+
+Existing shared-element/select checks passed 20 tests and 231 assertions; the
+12-module gallery bundle, 72-file runtime asset gate and whitespace checks passed.
+Independent cascade/interaction review found no material regressions. No CSS
+snapshot tests were added for the sizing change.

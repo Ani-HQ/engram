@@ -1,7 +1,7 @@
 .insight-toolbar { display: flex; gap: 9px; align-items: start; margin-bottom: 17px; }
 .insight-toolbar .search-field { max-width: none; }
 .insight-toolbar .search { min-height: 37px; }
-.insight-toolbar button { white-space: nowrap; min-height: 37px; }
+.insight-toolbar button { white-space: nowrap; }
 .insight-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; color: var(--ds-muted); font-size: 11px; }
 .insight-job { padding: 14px; border: 1px solid var(--line); border-radius: var(--ds-radius-control); display: flex; gap: 9px; align-items: center; color: var(--ds-muted); font-size: 11px; margin-bottom: 18px; }
 .insight-job p { margin-top: 4px; font-size: var(--ds-text-xs); color: var(--ds-muted); }
@@ -49,7 +49,7 @@
 .insight-config dd { margin: 0; color: var(--ds-ink); }
 .insight-settings-link { display: inline-flex; align-items: center; gap: 4px; font-size: var(--ds-text-xs); margin-top: 12px; }
 .memory-tabs { display: flex; flex-wrap: wrap; gap: 20px; border-bottom: 1px solid var(--line); margin: -10px 0 24px; }
-.memory-tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 12px 0; background: transparent; color: var(--ds-muted); font-size: 11px; }
+.memory-tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--ds-muted); }
 .memory-tabs button[aria-pressed="true"] { color: var(--ds-ink); border-bottom-color: var(--ds-line); }
 .review-row { display: flex; width: 100%; text-align: left; justify-content: space-between; gap: 18px; padding: 17px 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
 .review-row > span:first-child { display: grid; gap: 5px; min-width: 0; }

@@ -64,6 +64,9 @@ const friendExample = { serverNow: '2026-10-25T09:00:00.000Z', canWrite: true, e
 document.querySelector('#friend-access-example').append(friendAccessCard(friendExample));
 document.querySelector('#friend-expired-example').append(friendAccessCard({ ...friendExample, serverNow: '2026-12-12T09:00:00.000Z', canWrite: false, entitlementSource: 'none', complimentary: { ...friendExample.complimentary, active: false, unlimitedKnowledgeTransfers: false } }));
 const motionOrbit = document.querySelector('#motion-orbit');
+document.getElementById('compact-copy').prepend(icon('copy', { size: 14 }));
+for (const id of ['compact-close', 'compact-close-disabled']) document.getElementById(id).append(icon('x', { size: 16 }));
+for (const id of ['compact-default', 'compact-small', 'compact-large', 'compact-copy', 'compact-close']) document.getElementById(id).addEventListener('click', () => { document.getElementById('compact-button-feedback').textContent = 'Compact control preview selected.'; });
 for (const id of ['long-action-example', 'icon-action-example']) document.getElementById(id).addEventListener('click', () => { document.getElementById('fit-feedback').textContent = 'Preview received. The control keeps its full label and focus.'; });
 motionOrbit.append(memoryOrbit());
 
