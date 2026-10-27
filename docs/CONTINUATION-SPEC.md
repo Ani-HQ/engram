@@ -433,9 +433,24 @@ Deviations and open work:
 
 | Item | Status |
 | --- | --- |
-| Memory references are stored but not resolved at resume, so missing or changed pages are not flagged yet. | OPEN, stage 2 |
-| Local pending checkpoint queue and unsent/unconfirmed states in the bridge. | OPEN, stage 2 |
-| Claude Code, Codex desktop and Cursor desktop adapters, including Cursor startup delivery. | OPEN, stage 3 |
+| Memory references are stored but not resolved at resume. Resume now counts memory saved after the checkpoint and, with Jev, flags decisions it may supersede; per-reference version checks remain open. | Partly done |
+| Local pending checkpoint queue (`memory checkpoint`): durable, bounded to four, exact-payload retries on later lifecycle events, unsent saves collapse, conflicts stop the queue, status separates unsent, unconfirmed and saved. | Done on `feat/continuation-runtime` |
+| Claude Code, Codex and Cursor hooks: shared continuation guidance, run ID announced on task start, current task named after a context reset, Claude Stop asks for a checkpoint, Cursor/Copilot session-start context repeated once on the first tool result. | Done; live CLI results below |
 | Activity shows checkpoint calls only as observed audit rows (IDs and trigger). No outbox projection. | Accepted for now |
 | Live twelve-scenario transfer matrix. | Not run; required before claiming runtime support |
+
+### Stage 2–3 and Jev, `feat/continuation-runtime`
+
+- **Jev task matching.** `find_tasks` with a query asks Jev, with consent, to
+  score recent tasks against the request; one clear best match is unambiguous.
+  The response says `ranking: "jev"`, `"text"` or `"recent"`.
+- **Jev freshness.** `resume_task` reports `newerMemories` (no model) and, with
+  Jev, `staleDecisions` for confident supersede/contradict judgments. The save
+  gate dropped to 3,584 bytes so these notes still fit one default read.
+- **Engine-independent tools.** If the memory engine cannot start, `tools/list`
+  still serves `whoami`, action and task tools instead of failing. Found by the
+  live lab, where a missing engine hid every tool from agents.
+- **Live lab findings fixed in code:** the run ID was not announced when there
+  was nothing to recall; substantive-work detection missed "implementing" and
+  "continue"; a project with one binding rejected calls without `--run`.
 
