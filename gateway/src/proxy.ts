@@ -363,11 +363,21 @@ function continuationToolDefs(): any[] {
   ];
 }
 
-export async function listTools(_token: TokenRecord): Promise<any[]> {
+// Tools served entirely by the gateway: available even when the engine is not.
+const ENGINE_FREE = new Set(["whoami", "record_action", "list_actions", ...CONTINUATION_TOOLS]);
+let engineFreeDefs: any[] | null = null;
+export function ENGINE_FREE_TOOLS(): any[] {
+  return engineFreeDefs ??= syntheticToolDefs().filter(tool => ENGINE_FREE.has(tool.name));
+}
+
+export async function listTools(_token: TokenRecord, options: { engineAvailable?: boolean } = {}): Promise<any[]> {
   const ctx = currentContext();
   if (!ctx || ctx.org.id !== _token.orgId) throw new Error("A matching workspace context is required");
   if (!cachedToolDefs) {
-    const all = await brainClient().listTools();
+    if (options.engineAvailable === false) return ENGINE_FREE_TOOLS();
+    let all;
+    try { all = await brainClient().listTools(); }
+    catch { return ENGINE_FREE_TOOLS(); }
     const byName = new Map(all.tools
       .filter(t => ALLOWED_TOOLS.has(t.name))
       .map(t => [t.name, t]));

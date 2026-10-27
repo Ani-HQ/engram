@@ -25,6 +25,7 @@ import { mcpMethodNotAllowed } from "./mcp-http";
 import { hasOauthScope, normalizeToken } from "./policies";
 import {
   listTools,
+  ENGINE_FREE_TOOLS,
   callTool,
   negotiateProtocolVersion,
   resolveMcpRouting,
@@ -98,7 +99,10 @@ async function handleMcp(req: Request): Promise<Response> {
       // Display metadata is best-effort and never changes credential authority.
       await observeConnectionClient(actor, memoryContext.credentialKey!, method, msg.params).catch(() => {});
       const snapshotRead = name === "get_page" && isSharedContextSlug(msg.params?.arguments?.slug);
-      if (method === "tools/list" || (method === "tools/call" && !snapshotRead && !["record_action", "list_actions", "whoami", "checkpoint_task", "find_tasks", "resume_task"].includes(name ?? ""))) await ensureBrain(org);
+      // An unavailable memory engine must not hide the tools that never use it.
+      let engineAvailable = true;
+      if (method === "tools/list") { try { await ensureBrain(org); } catch { engineAvailable = false; } }
+      else if (method === "tools/call" && !snapshotRead && !["record_action", "list_actions", "whoami", "checkpoint_task", "find_tasks", "resume_task"].includes(name ?? "")) await ensureBrain(org);
       switch (method) {
         case "initialize": {
           const requested = msg.params?.protocolVersion;
@@ -116,8 +120,11 @@ async function handleMcp(req: Request): Promise<Response> {
           return rpcResult(msg.id, {});
         case "tools/list":
           return rpcResult(msg.id, {
-            tools: await listTools(actor),
-            ...toolsListCacheHints(actor, clientMeta.protocolVersion),
+            ...await (async () => {
+              const tools = await listTools(actor, { engineAvailable });
+              // A degraded list must not be cached as the full surface.
+              return { tools, ...(tools.length && engineAvailable && tools !== ENGINE_FREE_TOOLS() ? toolsListCacheHints(actor, clientMeta.protocolVersion) : {}) };
+            })(),
           });
         case "tools/call": {
           const args = msg.params?.arguments ?? {};

@@ -94,8 +94,9 @@ checkpoint workflow. Allowlisted artifact references must exclude credentials
 and unrelated absolute local paths; omission is preferred to regex-only cleanup.
 
 Implemented bound: a save is measured as the exact `resume_task` envelope it
-would produce (escaping, Unicode and metadata included) and must fit 3,840 bytes,
-leaving 256 bytes of the default 4,096-byte response for transport metadata. A
+would produce (escaping, Unicode and metadata included) and must fit 3,584 bytes,
+leaving 512 bytes of the default 4,096-byte response for transport metadata and
+the optional freshness notes added at resume time. A
 record at the old proposed 4,096-byte cap could never be read back in one default
 response, so the gate measures delivery instead of raw JSON. Field and list limits
 also apply (objective 500, next 400, 12 plan steps, 10 decisions, 8 references).

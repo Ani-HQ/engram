@@ -145,6 +145,12 @@ function bindingFor(project, runtime) {
 }
 
 function bindingForInput(input) {
+  if (!input.runtime && !input.runId) {
+    // One binding for this project is unambiguous whatever runtime it names.
+    const candidates = bindingCandidates(input.project);
+    const closest = candidates.filter(item => item.project.length === candidates[0]?.project.length);
+    if (closest.length === 1) return closest[0];
+  }
   if (input.runtime || !input.runId) return bindingFor(input.project, input.runtime || 'generic');
   if (!/^em_[a-f0-9]{64}$/.test(input.runId)) throw new Error('Invalid memory run ID.');
   const canonical = require('./runtime-contracts').runtimeId;
