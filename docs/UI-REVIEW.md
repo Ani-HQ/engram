@@ -24,13 +24,15 @@ images load locally at desktop and mobile widths. Connection actions use the
 existing compact button primitive: 32px on desktop, with aligned endpoint
 actions and the shared 44px minimum on mobile.
 
-Validation: **891 tests passed, 1 Cloud Run-only skip, 0 failures, and 9673
+Validation: **893 tests passed, 1 Cloud Run-only skip, 0 failures, and 9687
 assertions**. Actual PostgreSQL checks passed **858 baseline, 80 authority, and
 36 managed-provisioner cases**, including exact-credential scoping, concurrent
 observations, revocation, name reuse and lock-timeout recovery. The authenticated
 MCP HTTP regression covers both metadata formats and failure isolation. All
 **68** offline Python checks, the **72-file** runtime asset gate, six retrieval
 fixtures, browser bundle and diff check passed.
+Verification test receipts use a single clock sample per response; frozen and
+advancing-clock cases retain the production validator's strict 15-minute bound.
 
 ## Connections and Activity Checks — 26 October 2026
 
