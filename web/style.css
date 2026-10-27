@@ -5,11 +5,10 @@ body { margin: 0; font-size: 13px; line-height: 1.5; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 button, select { cursor: pointer; }
-button, .button-link { display: inline-flex; align-items: center; justify-content: center; gap: 7px; background: var(--ds-surface); border: 1px solid var(--ds-line); border-radius: var(--radius-control); padding: 9px 13px; text-decoration: none; line-height: 1.4; font-size: var(--ds-text-xs); font-weight: 450; transition: background var(--ds-duration-fast) var(--ds-ease-out), border-color var(--ds-duration-fast) var(--ds-ease-out), box-shadow var(--ds-duration-fast) var(--ds-ease-out); }
+button, .button-link { display: inline-flex; align-items: center; justify-content: center; gap: 7px; background: var(--ds-surface); border: 1px solid var(--ds-line); border-radius: var(--radius-control); text-decoration: none; transition: background var(--ds-duration-fast) var(--ds-ease-out), border-color var(--ds-duration-fast) var(--ds-ease-out), box-shadow var(--ds-duration-fast) var(--ds-ease-out); }
 button:disabled { cursor: default; opacity: .5; }
 button.primary { color: var(--ds-inverse-ink); background: var(--ds-inverse); border-color: var(--ds-line-strong); box-shadow: 0 1px 2px rgb(0 0 0 / .1); }
 button.text { border-color: transparent; background: transparent; color: var(--muted); box-shadow: none; }
-button.small, .button-link { padding: 7px 10px; font-size: var(--ds-text-xs); }
 .icon-button { width: 32px; height: 32px; flex-shrink: 0; padding: 0; background: var(--ds-surface); color: var(--ds-muted); }
 button:active:not(:disabled), .button-link:active { background: var(--ds-surface-soft); }
 button.primary:active:not(:disabled) { background: var(--ds-inverse); }
@@ -50,7 +49,7 @@ img.brand-mark { display: block; flex-shrink: 0; background: transparent; border
 .nav a[aria-current="page"] { color: var(--ds-ink); background: var(--ds-surface-soft); font-weight: 520; }
 .nav a[href="#showcase"] { margin-top: 18px; }
 .sidebar-bottom { margin-top: auto; padding: 80px 5px 0; display: grid; gap: 12px; }
-.sidebar-bottom button { justify-content: flex-start; width: 100%; font-size: var(--ds-text-xs); padding: 8px 5px; }
+.sidebar-bottom button { justify-content: flex-start; width: 100%; }
 .workspace-note { display: flex; gap: 7px; align-items: center; color: var(--ds-muted); font-size: var(--ds-text-xs); padding-left: 5px; }
 .demo + .app-shell .sidebar { height: calc(100dvh - 29px); }
 .topbar-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
@@ -144,11 +143,11 @@ summary { cursor: pointer; font-size: var(--ds-text-xs); color: var(--muted); pa
 .auth .field { font-size: var(--ds-text-xs); }
 .auth .field > input { width: 100%; min-height: 44px; padding: 11px 13px; font-size: 14px; }
 .auth input::placeholder { color: var(--ds-muted); }
-.auth .primary { width: 100%; min-height: 44px; margin-top: 4px; padding: 11px 14px; font-size: var(--ds-text-xs); }
+.auth .primary { width: 100%; margin-top: 4px; }
 .auth .detail-note { margin: 0; font-size: var(--ds-text-xs); line-height: 1.75; }
 .auth .detail-note:empty { display: none; }
 .auth-switch { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 10px; margin-top: 20px; text-align: left; font-size: var(--ds-text-xs); color: var(--ds-muted); }
-.auth-switch button.text { justify-content: flex-start; min-height: 36px; padding: 0; border: 0; border-radius: 0; font-size: var(--ds-text-xs); color: var(--ds-muted); text-decoration: underline; text-underline-offset: 3px; }
+.auth-switch button.text { justify-content: flex-start; padding: 0; border: 0; border-radius: 0; font-size: var(--ds-text-xs); color: var(--ds-muted); text-decoration: underline; text-underline-offset: 3px; }
 .auth-switch button.text:hover { background: transparent; color: var(--ds-ink); }
 .auth .auth-links { justify-content: flex-start; flex-wrap: wrap; gap: 22px; margin-top: 22px; font-size: var(--ds-text-xs); color: var(--muted); }
 .auth .auth-links a { display: inline-flex; align-items: center; min-height: 32px; }

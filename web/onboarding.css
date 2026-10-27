@@ -33,7 +33,6 @@
 .setup-name-fields > .field { flex: 1; min-width: 0; margin: 0; }
 .setup-name-fields > button { align-self: flex-end; flex-shrink: 0; }
 .setup-name-fields input { min-height: 44px; }
-.setup-name-fields button { min-height: 44px; }
 .setup-workspace-name #setup-name-feedback:empty { display: none; }
 .connection-secret { width: 100%; min-width: 0; font: 12px ui-monospace, monospace; }
 .connection-secret-row { display: flex; align-items: center; gap: 8px; margin: 14px 0; }
