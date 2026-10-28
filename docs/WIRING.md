@@ -21,14 +21,14 @@ Connect every Claude Code, Codex and Cursor install on a computer, command line
 and desktop apps, in one step:
 
 ```bash
-npx @ani-hq/engram-mcp@latest
+npx -y @ani-hq/engram-mcp@latest
 ```
 
 The command opens the browser; a signed-in workspace member checks the code
 and approves. Each agent receives its own access key, attributed to that
 member, and Engram applies in every repository with the project taken from the
 git repository. Nothing is written into project folders. Self-hosted:
-`npx @ani-hq/engram-mcp@latest setup --host http://localhost:8080`.
+`npx -y @ani-hq/engram-mcp@latest setup --host http://localhost:8080`.
 
 To set up a single agent or project folder with a pasted token instead:
 

@@ -495,3 +495,31 @@ connection to Cursor's API before any tool call, or, in headless mode, refused
 MCP tool calls that were not pre-approved. The lab now passes `--approve-mcps`
 and allows only `Mcp(engramlab:*)`, never `--force`.
 
+### Desktop apps, guided session, 28 October 2026
+
+Run by the owner on macOS against production Engram (revision
+`engram-r-1793163046`, bridge 0.7.0), after a first-time computer connection:
+`npx @ani-hq/engram-mcp@latest`, one browser approval, then a restart of each
+app. Apps: Claude desktop 2.37337.1 (Code tab, bundled Claude Code 2.1.295),
+Codex desktop (ChatGPT.app 26.1021.31345, bundled codex 0.164.0-alpha),
+Cursor 3.27.14. No config or Markdown file was edited by hand. Each app was
+given only "Plan the inventory task in this repo and implement only addItem
+with a test. Then stop and hand the rest off to another agent through Engram."
+and then "Pick up the task another agent handed off in this repo and finish
+it."
+
+| Handoff | Result |
+| --- | --- |
+| Codex desktop → Claude desktop | Pass: one task, closed at revision 4 by Claude Code; 3 tests pass |
+| Claude desktop → Cursor | Pass: one task, closed at revision 3 by Cursor; 8 tests pass |
+| Cursor → Codex desktop | Pass: one task, closed at revision 5 by Codex; 13 tests pass |
+
+Each save was attributed to the key the browser approval created (for example
+"Codex on MacBook-Pro-456"). Friction found and fixed in the follow-up: npx's
+own install prompt (the command now uses `npx -y`), Codex's per-tool approval
+setting being dropped on reconnect, unnamed Codex hooks (they now carry
+`statusMessage` labels), and earlier per-folder setups silently taking
+priority (the installer now offers to switch them). One Codex turn produced no
+output for nine minutes after every Engram call in it had returned within 16
+seconds; the stall was in the model turn, not Engram, and a retry completed.
+

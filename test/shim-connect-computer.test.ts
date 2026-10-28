@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
@@ -52,10 +52,11 @@ function fakeEngram(decision: "approved" | "denied" | "expired" | "pending", opt
   return { host: `http://127.0.0.1:${server.port}`, seen };
 }
 
-async function run(host: string, agents = computer.AGENTS) {
+async function run(host: string, agents = computer.AGENTS, ask?: (label: string) => Promise<string>) {
   let text = "";
   const opened: string[] = [];
   const code = await computer.connectComputer(["--host", host], {
+    ...(ask ? { ask } : {}),
     output: { write: (chunk: string) => { text += chunk; } },
     env: { ENGRAM_DEVICE_NAME: "lab" },
     detect: () => agents,
@@ -123,4 +124,63 @@ test("detection finds agents by command, config folder or desktop app", () => {
   expect(found(["/Applications/Claude.app", "/Applications/ChatGPT.app/Contents/Resources/codex-cli"])).toEqual(["claude", "codex"]);
   expect(computer.listNames(["A", "B", "C"])).toBe("A, B and C");
   expect(computer.computerName({ ENGRAM_DEVICE_NAME: "Ani’s MacBook.local" })).toBe("Anis MacBook");
+});
+
+test("reconnecting Codex keeps per-tool preferences and replaces connection details", () => {
+  const { mkdirSync, writeFileSync } = require("node:fs");
+  mkdirSync(path.join(root, ".codex"), { recursive: true });
+  writeFileSync(path.join(root, ".codex", "config.toml"), [
+    'model = "gpt"', "", "[mcp_servers.other]", 'url = "https://other.example/mcp"', "",
+    "[mcp_servers.engram]", 'url = "https://old.example/mcp"', "",
+    "[mcp_servers.engram.http_headers]", 'Authorization = "Bearer eng_old"', "",
+    "[mcp_servers.engram.tools.remember]", 'approval_mode = "approve"', "",
+  ].join("\n"));
+  const plan = shim.planHarnessConnection("codex", "https://engram.example/mcp", "eng_new");
+  const toml: string = plan.value;
+  expect(toml).toContain('url = "https://engram.example/mcp"');
+  expect(toml).toContain("eng_new");
+  expect(toml).not.toContain("eng_old");
+  expect(toml).not.toContain("[mcp_servers.engram.http_headers]");
+  expect(toml).toContain('[mcp_servers.engram.tools.remember]\napproval_mode = "approve"');
+  expect(toml).toContain('[mcp_servers.other]\nurl = "https://other.example/mcp"');
+  expect(toml.match(/^\[mcp_servers\.engram\]$/gm)).toHaveLength(1);
+});
+
+test("Codex hooks carry readable Engram labels", async () => {
+  const engram = fakeEngram("approved");
+  await run(engram.host, computer.AGENTS.filter((agent: any) => agent.harness === "codex"));
+  const hooks = JSON.parse(readFileSync(path.join(root, ".codex", "hooks.json"), "utf8")).hooks;
+  expect(hooks.SessionStart[0].hooks[0].statusMessage).toBe("Engram: loading project context");
+  expect(Object.values(hooks).every((entries: any) => entries[0].hooks[0].statusMessage.startsWith("Engram: "))).toBe(true);
+});
+
+describe("earlier per-folder setups", () => {
+  const seed = async () => {
+    const memory = require("../shim/memory.js");
+    const { mkdirSync } = require("node:fs");
+    for (const name of ["a", "b"]) {
+      const dir = path.join(root, "code", name); mkdirSync(dir, { recursive: true });
+      await memory.install("claude", { project: dir, topic: name, host: "http://127.0.0.1:1", token: `eng_old_${name}` }, { checks: { tools: [{ name: "whoami" }, { name: "remember" }] } });
+    }
+    return memory;
+  };
+  const projects = (memory: any) => JSON.parse(readFileSync(memory.configFile(), "utf8")).bindings.map((item: any) => `${item.runtime}:${item.project === "*" ? "*" : path.basename(item.project)}`).sort();
+
+  test("are switched to the new connection when the person agrees", async () => {
+    const memory = await seed();
+    const asked: string[] = [];
+    const result = await run(fakeEngram("approved").host, computer.AGENTS.filter((agent: any) => agent.harness === "claude"), async label => { asked.push(label); return ""; });
+    expect(asked[0]).toContain("2 project folders have an earlier Engram setup");
+    expect(result.text).toContain("Switched 2 project folders to this connection.");
+    expect(projects(memory)).toEqual(["claude:*"]);
+  });
+
+  test("are kept when the person declines or there is no terminal", async () => {
+    const memory = await seed();
+    const declined = await run(fakeEngram("approved").host, computer.AGENTS.filter((agent: any) => agent.harness === "claude"), async () => "n");
+    expect(declined.text).toContain("still applies there. Run this again to switch them.");
+    expect(projects(memory)).toEqual(["claude:*", "claude:a", "claude:b"]);
+    const silent = await run(fakeEngram("approved").host, computer.AGENTS.filter((agent: any) => agent.harness === "claude"));
+    expect(silent.text).toContain("still applies there");
+  });
 });

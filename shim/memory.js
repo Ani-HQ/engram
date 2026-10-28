@@ -137,6 +137,24 @@ function repoTopic(root) {
   return path.basename(root).slice(0, 160) || 'General';
 }
 
+/** Earlier bindings for specific project folders, for the given runtimes. */
+function projectBindings(runtimes) {
+  const canonical = require('./runtime-contracts').runtimeId;
+  const config = readPrivate(configFile(), { version: 1, bindings: [] });
+  return (config.bindings || []).filter(item => item.project !== EVERYWHERE && runtimes.includes(canonical(item.runtime || 'claude')));
+}
+
+/** Removes those bindings so the computer-wide connection applies there too. */
+function removeProjectBindings(runtimes) {
+  const canonical = require('./runtime-contracts').runtimeId;
+  const file = configFile();
+  const config = readPrivate(file, { version: 1, bindings: [] });
+  const before = (config.bindings || []).length;
+  config.bindings = (config.bindings || []).filter(item => item.project === EVERYWHERE || !runtimes.includes(canonical(item.runtime || 'claude')));
+  if (config.bindings.length !== before) writePrivate(file, config, true);
+  return before - config.bindings.length;
+}
+
 function bindingCandidates(project, config = readPrivate(configFile(), { version: 1, bindings: [] })) {
   const cwd = projectPath(project);
   const rank = item => item.project === EVERYWHERE ? -1 : item.project.length;
@@ -699,7 +717,7 @@ async function prepareInstall(runtime, options, dependencies = {}) {
       const existing = settings.hooks[event] || [];
       if (!Array.isArray(existing)) throw new Error(`Claude ${event} hooks must be an array.`);
       const retained = existing.filter(entry => !entry.hooks?.some(hook => typeof hook.command === 'string' && hook.command.includes(' memory hook claude')));
-      settings.hooks[event] = [...retained, { ...(event === 'SessionStart' ? { matcher: 'startup|resume|compact|clear' } : {}), hooks: [{ type: 'command', command, timeout: 6 }] }];
+      settings.hooks[event] = [...retained, { ...(event === 'SessionStart' ? { matcher: 'startup|resume|compact|clear' } : {}), hooks: [{ type: 'command', command, timeout: 6, statusMessage: require('./runtime-install').hookLabel(event) }] }];
     }
   }
   const nativeOptions = { project, home: home(), skillScope: options.skillScope, configHome: process.env.XDG_CONFIG_HOME, entrypoint: payload?.entrypoint, pluginModule: payload?.pluginModule };
@@ -901,4 +919,4 @@ async function inputJsonToken() {
   } finally { clearTimeout(timer); }
 }
 
-module.exports = { DEFAULT_BUDGET, MAX_BUDGET, continuationGuidance, lifecycle, verify, claudeHook, install, prepareInstall, bindingFor, configFile, stateRoot, runMemoryCli, inputJson, truncate, internals: { hash, noLinks, readPrivate, writePrivate, readTextPrivate, writeTextPrivate, privateDirectory, sessionFile, projectPath, runContext, rpc, budget, shellQuote, bindingCandidates } };
+module.exports = { DEFAULT_BUDGET, MAX_BUDGET, continuationGuidance, lifecycle, verify, claudeHook, install, prepareInstall, bindingFor, configFile, stateRoot, runMemoryCli, inputJson, truncate, projectBindings, removeProjectBindings, internals: { hash, noLinks, readPrivate, writePrivate, readTextPrivate, writeTextPrivate, privateDirectory, sessionFile, projectPath, runContext, rpc, budget, shellQuote, bindingCandidates } };

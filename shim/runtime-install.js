@@ -12,6 +12,14 @@ function managedCommand(entry, runtime) {
   return [entry?.command, entry?.bash, ...(entry?.hooks || []).map(hook => hook.command)].some(command => typeof command === 'string' && command.includes(` memory hook ${runtime}`));
 }
 
+// Shown by runtimes that display a hook's status, so a person reviewing or
+// watching hooks can tell what each Engram hook does.
+const HOOK_LABELS = {
+  SessionStart: 'Engram: loading project context', UserPromptSubmit: 'Engram: checking shared memory',
+  Stop: 'Engram: checking for a handoff save', SessionEnd: 'Engram: closing the session record',
+};
+function hookLabel(event) { return HOOK_LABELS[event] || 'Engram'; }
+
 function planInstall(runtime, options, helpers) {
   const contract = runtimeCapabilities(runtime);
   if (!contract?.installable || contract.kind === 'guidance') throw new Error('This runtime uses portable guidance or the generic bridge; no native installer is certified.');
@@ -31,7 +39,7 @@ function planInstall(runtime, options, helpers) {
       if (!Array.isArray(existing)) throw new Error('Runtime event hooks must be arrays. Existing settings were preserved.');
       const retained = existing.filter(entry => !managedCommand(entry, runtime));
       let entry;
-      if (style === 'nested') entry = { hooks: [{ type: 'command', command: command(event), timeout: runtime === 'gemini' ? 6000 : 6, ...(runtime === 'codex' ? { additionalContextLimit: 1400 } : {}) }] };
+      if (style === 'nested') entry = { hooks: [{ type: 'command', command: command(event), timeout: runtime === 'gemini' ? 6000 : 6, ...(runtime === 'codex' ? { additionalContextLimit: 1400, statusMessage: hookLabel(event) } : {}) }] };
       else if (style === 'copilot') entry = { type: 'command', bash: command(event), timeoutSec: 6 };
       else entry = { command: command(event), ...(runtime === 'cursor' ? { timeout: 6 } : {}) };
       value.hooks[event] = [...retained, entry];
@@ -101,4 +109,4 @@ function planSkill(runtime, options, helpers) {
   return { settings: file, writes: [{ file, kind: 'text', value: content + '\n' + marker + '\n' }] };
 }
 
-module.exports = { planInstall, planSkill };
+module.exports = { planInstall, planSkill, hookLabel };

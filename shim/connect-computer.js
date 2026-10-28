@@ -90,6 +90,29 @@ async function connectAgent(agent, grant, token, dependencies) {
   return committed;
 }
 
+/** Offers to retire per-folder setups made before this computer was connected. */
+async function replaceEarlierSetups(connected, dependencies) {
+  const { output = process.stdout, input = process.stdin } = dependencies;
+  const memory = require('./memory');
+  const runtimes = connected.map(agent => agent.harness);
+  const earlier = memory.projectBindings(runtimes);
+  if (!earlier.length) return;
+  const folders = new Set(earlier.map(item => item.project)).size;
+  const noun = folders === 1 ? 'folder has' : 'folders have';
+  const ask = dependencies.ask || (input.isTTY ? label => require('./onboarding').askLine(label, input, output) : null);
+  let answer = 'n';
+  if (ask) {
+    try { answer = (await ask(`\n${folders} project ${noun} an earlier Engram setup that would take priority there. Switch them to this connection? [Y/n] `)).toLowerCase(); }
+    catch { answer = 'n'; }
+  }
+  if (ask && (answer === '' || answer === 'y' || answer === 'yes')) {
+    memory.removeProjectBindings(runtimes);
+    output.write(`Switched ${folders} project ${folders === 1 ? 'folder' : 'folders'} to this connection.\n`);
+  } else {
+    output.write(`\n${folders} project ${noun} an earlier Engram setup that still applies there. Run this again to switch ${folders === 1 ? 'it' : 'them'}.\n`);
+  }
+}
+
 async function connectComputer(args, dependencies) {
   const { output = process.stdout, env = process.env, fetchImpl = fetch, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now, open = openBrowser } = dependencies;
   let host = env.ENGRAM_HOST || require('./onboarding').HOSTED_URL;
@@ -135,6 +158,7 @@ async function connectComputer(args, dependencies) {
     output.write('\nNo agent was connected. Run this again, or ask for help at https://engram.ani.computer/support.\n');
     return 1;
   }
+  await replaceEarlierSetups(connected, dependencies);
   output.write(`\nDone. Engram now works in every repo on this computer, in the command line and desktop apps.\n`);
   output.write('Restart any agent that is already open so it picks up Engram.\n');
   if (connected.some(agent => agent.harness === 'codex')) output.write('Codex asks once before running new hooks: open Codex, run /hooks, and approve Engram.\n');

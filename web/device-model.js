@@ -10,7 +10,7 @@ const PENDING_TTL_MS = 15 * 60_000;
 export function installCommand(origin = HOSTED_ORIGIN) {
   let host = "";
   try { const url = new URL(origin); host = `${url.protocol}//${url.host}`; } catch {}
-  return host && host !== HOSTED_ORIGIN ? `npx ${INSTALL_PACKAGE} --host ${host}` : `npx ${INSTALL_PACKAGE}`;
+  return host && host !== HOSTED_ORIGIN ? `npx -y ${INSTALL_PACKAGE} --host ${host}` : `npx -y ${INSTALL_PACKAGE}`;
 }
 
 /** Case-insensitive and hyphen/space-optional; returns the stored 8-letter form. */
