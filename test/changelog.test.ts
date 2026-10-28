@@ -35,4 +35,14 @@ test("entries render newest first and escape their text", () => {
   expect(body).toContain("<code>tool</code>");
   expect(body).toContain('datetime="2026-10-02T03:04:00Z">2 Oct 2026<span>03:04 UTC</span>');
   expect(body).toContain('href="https://example.com/r/pull/9"');
+  expect(body).toContain('href="https://example.com/r/commit/bbbbbbb">Commit bbbbbbb</a>');
+});
+
+test("entry kinds are plain text, never tags", () => {
+  const { body } = renderChangelog({ repository: "https://example.com/r", entries: [
+    { sha: "ccccccc", at: "2026-10-03T00:00:00Z", kind: "fixed", title: "A fix", summary: "Fixed it" },
+  ] });
+  expect(body).toContain('<p class="ds-release-kind">Fixed</p>');
+  expect(body).not.toMatch(/ds-badge|data-tone/);
+  expect(page()).not.toMatch(/ds-badge|data-tone/);
 });

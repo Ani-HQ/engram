@@ -8,12 +8,13 @@
 //                                      skipping commits that only update the changelog
 import { readFileSync, writeFileSync } from "node:fs";
 
+// Each entry states its kind as plain text beside the title; no tags or colors.
 export const KINDS = {
-  "new": { label: "New", tone: "accent" },
-  "improved": { label: "Improved", tone: "lilac" },
-  "fixed": { label: "Fixed", tone: "apricot" },
-  "security": { label: "Security", tone: "info" },
-  "under-the-hood": { label: "Under the hood", tone: "neutral" },
+  "new": { label: "New" },
+  "improved": { label: "Improved" },
+  "fixed": { label: "Fixed" },
+  "security": { label: "Security" },
+  "under-the-hood": { label: "Under the hood" },
 } as const;
 
 export interface ChangelogEntry { sha: string; at: string; kind: keyof typeof KINDS; title: string; summary: string; pr?: number }
@@ -39,10 +40,10 @@ function entryHtml(entry: ChangelogEntry, repository: string): string {
   const kind = KINDS[entry.kind];
   const refs = [
     entry.pr ? `<a href="${repository}/pull/${entry.pr}">PR #${entry.pr}</a>` : "",
-    `<a href="${repository}/commit/${entry.sha}"><code>${entry.sha}</code></a>`,
+    `<a href="${repository}/commit/${entry.sha}">Commit ${entry.sha}</a>`,
   ].filter(Boolean).join("");
   return `<li class="ds-release-entry" id="change-${entry.sha}"><time class="ds-release-time" datetime="${entry.at}">${date}<span>${time}</span></time>`
-    + `<div class="ds-release-content"><span class="ds-badge" data-tone="${kind.tone}">${kind.label}</span>`
+    + `<div class="ds-release-content"><p class="ds-release-kind">${kind.label}</p>`
     + `<h3 class="ds-release-title">${inline(entry.title)}</h3><p class="ds-release-summary">${inline(entry.summary)}</p>`
     + `<p class="ds-release-refs">${refs}</p></div></li>`;
 }

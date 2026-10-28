@@ -39,3 +39,30 @@ test("every public invitation request names the supplied X destination", () => {
     }
   }
 });
+
+// The owner's plain-design rules (docs/DESIGN-SYSTEM.md "Do not use").
+test("public pages use no tags, kickers, highlighted words, dividers, diagrams or section numbering", () => {
+  const pages = [...new Set([...INDEXABLE_PAGE_PATHS.map(path => PUBLIC_PAGE_FILES[path]), "not-found.html", "changelog.html"])];
+  for (const file of pages) {
+    const html = read(file);
+    expect(html).not.toMatch(/class="[^"]*\b(?:ds-badge|ds-sticker|ds-eyebrow|ds-editorial|m-editorial|ds-divider|ds-card|ds-panel|ds-context-flow|ds-logo-ticker|ds-product-logo-frame)(?![\w-])/);
+    expect(html).not.toMatch(/<hr\b|<(?:em|i)>|data-marketing-stream|data-context-flow|data-logo-ticker|marketing\.js/);
+    expect(html).not.toMatch(/>\s*0\d\s*(?:\/|—)/);
+    expect(html).not.toMatch(/serif/i);
+  }
+});
+
+test("shared and public stylesheets never tighten letter-spacing, italicize or load a serif", () => {
+  for (const file of ["design-system.css", "marketing.css"]) {
+    const css = read(file);
+    expect(css).not.toMatch(/letter-spacing:\s*-/);
+    expect(css).not.toMatch(/font-style:\s*italic/);
+    expect(css).not.toMatch(/Instrument|font-family:[^;]*\bserif\b(?![-])/i);
+  }
+});
+
+test("the homepage keeps every agent logo as a plain list item", () => {
+  const html = read("home.html");
+  const items = [...html.matchAll(/<li data-agent-product="([^"]+)"><img class="ds-product-logo"[^>]*alt=""[^>]*><span>([^<]+)<\/span><\/li>/g)];
+  expect(items.length).toBe(21);
+});

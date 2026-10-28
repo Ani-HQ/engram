@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { loadingState, memoryStream, observeLoadingMotion, profileAvatar, progressBar, setProgress, statusText } from './design-system.js';
+import { loadingState, observeLoadingMotion, profileAvatar, progressBar, setProgress, statusText } from './design-system.js';
 
 class Element {
   attrs: Record<string, string> = {};
@@ -121,26 +121,6 @@ describe('shared pending and measured progress', () => {
     expect(lines.every(node => !node.textContent)).toBe(true);
     expect(all(loadingState({ label: 'Checking…', compact: true }) as Element).some(node => node.attrs.role === 'progressbar')).toBe(false);
   });
-});
-
-test('responsive memory sequence shares exact step copy and keeps labels as safe DOM text', () => {
-  const label = '<img src=x onerror=alert(1)> Illustration only.';
-  const wrapper = memoryStream({ label }) as Element;
-  expect(wrapper.tag).toBe('div');
-  const [wide, narrow] = wrapper.children;
-  expect(wide.tag).toBe('svg'); expect(narrow.tag).toBe('ol');
-  expect(wide.attrs['aria-label']).toBe(label); expect(narrow.attrs['aria-label']).toBe(label);
-  expect(narrow.children).toHaveLength(3);
-  expect(narrow.children.map(step => step.children.map(child => child.textContent))).toEqual([
-    ['01 / CURRENT TASK', 'Agreed context', 'Save agreed context'],
-    ['02 / SHARED MEMORY', 'Shared memory', 'Keep the source'],
-    ['03 / YOUR NEXT TASK', 'Relevant context', 'Ask for it again'],
-  ]);
-  for (const step of narrow.children) for (const text of step.children) expect(wide.textContent).toContain(text.textContent);
-  expect(all(wrapper).some(node => ['img', 'script', 'iframe'].includes(node.tag))).toBe(false);
-  expect(wide.attrs.class).not.toContain('ds-motif-intro');
-  const decorative = memoryStream() as Element;
-  expect(decorative.children.every(node => node.attrs['aria-hidden'] === 'true')).toBe(true);
 });
 
 describe('quiet activity text', () => {
