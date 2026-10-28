@@ -7,6 +7,7 @@ export const publicAgentCatalog = Object.freeze([
   ['chatgpt', 'ChatGPT', '/vendor/brands/openai.svg'],
   ['grok-bot', 'Grok Bot', '/vendor/brands/grok-bot.png'],
   ['muse', 'Muse', '/vendor/brands/muse.svg'],
+  ['instinct', 'Instinct', '/vendor/brands/instinct.png'],
   ['windsurf', 'Windsurf', '/vendor/brands/windsurf.svg'],
   ['devin', 'Devin', '/vendor/brands/devin.svg'],
   ['openclaw', 'OpenClaw', '/vendor/brands/openclaw.svg'],
@@ -18,6 +19,7 @@ export const publicAgentCatalog = Object.freeze([
   ['amp', 'Amp', '/vendor/brands/amp.svg'],
   ['github-copilot', 'GitHub Copilot', '/vendor/brands/githubcopilot.svg'],
   ['vscode', 'Visual Studio Code', '/vendor/brands/vscode.png'],
+  ['aider', 'Aider', '/vendor/brands/aider.png'],
   ['grok', 'Grok', '/vendor/brands/grok.svg'],
   ['claude', 'Claude', '/vendor/simple-icons/claude.svg'],
 ].map(([id, label, logo]) => Object.freeze({ id, label, logo })));
