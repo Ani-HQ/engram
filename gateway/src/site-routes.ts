@@ -8,7 +8,8 @@ export const PUBLIC_PAGE_FILES: Record<string, string> = {
   "/self-host": "/self-host.html",
   "/how-it-works": "/how-it-works.html",
   "/support": "/support.html",
+  "/changelog": "/changelog.html",
   "/design-system": "/design-system.html",
 };
 
-export const INDEXABLE_PAGE_PATHS = ["/", "/how-it-works", "/pricing", "/self-host", "/privacy", "/support"] as const;
+export const INDEXABLE_PAGE_PATHS = ["/", "/how-it-works", "/pricing", "/self-host", "/privacy", "/support", "/changelog"] as const;
