@@ -2,32 +2,39 @@
 
 One-command MCP harness connector and stdio-to-HTTP proxy for engram.
 
-## Install
-
-```bash
-npm install -g @ani-hq/engram-mcp
-```
-
-## Guided setup
+## Connect this computer
 
 Run this in your terminal:
 
 ```bash
-engram-mcp setup
+npx @ani-hq/engram-mcp@latest
 ```
 
-Choose your agent, an existing project folder, a short memory topic, and Engram
-hosted or your self-hosted server. The current folder and its name are offered as
-defaults. Hosted setup uses
-`https://engram.ani.computer`. Create an access token in the workspace’s
-**Connections** screen, then paste it at the hidden prompt. The token is not echoed
-or included in your command history. You can choose the agent directly:
+It finds Claude Code, Codex and Cursor on this computer, including their
+desktop apps, and opens your browser. Check that the code matches, click
+Approve, and each agent is connected with its own access key. Engram then works
+in every repository on this computer: the project is taken from the git
+repository the agent is working in, and nothing is written into project
+folders. Restart any agent that was already open. Codex asks once before it
+runs new hooks; run `/hooks` in Codex and approve Engram.
+
+For a self-hosted server, add `--host https://your-engram.example`.
+
+## Per-agent setup
+
+To set up one agent or one project folder instead, name the agent:
 
 ```bash
 engram-mcp setup claude
 engram-mcp setup codex
 engram-mcp setup cursor --host https://engram.ani.computer
 ```
+
+Choose an existing project folder, a short memory topic, and Engram hosted or
+your self-hosted server, then paste an access token from the workspace's
+**Connections** screen at the hidden prompt. The token is not echoed or included
+in your command history. A binding for a specific project folder takes priority
+over the computer-wide one.
 
 Setup checks live token identity and tool discovery before installing the MCP
 connection and the project memory workflow together. You do not edit Markdown or
