@@ -7,7 +7,7 @@ for (const slot of document.querySelectorAll('[data-marketing-stream]')) {
 
 // Fixed, vetted local examples. Rotating identities are illustrative, never live.
 const heroAgents = new Map(publicAgentCatalog.map(product => [product.id, product]));
-const heroSlots = { 'source-one': ['claude-code', 'windsurf', 'openclaw'], 'source-two': ['cursor', 'muse', 'hermes'], 'recipient-one': ['codex', 'devin', 'chatgpt'], 'recipient-two': ['chatgpt', 'grok-bot', 'codex'] };
+const heroSlots = { 'source-one': ['claude-code', 'windsurf', 'openclaw'], 'source-two': ['cursor', 'muse', 'instinct'], 'recipient-one': ['codex', 'devin', 'chatgpt'], 'recipient-two': ['chatgpt', 'grok-bot', 'codex'] };
 for (const slot of document.querySelectorAll('[data-agent-slot]')) {
   const agents = heroSlots[slot.getAttribute('data-agent-slot')]; if (!agents) continue;
   const description = slot.querySelector('small')?.textContent || '';

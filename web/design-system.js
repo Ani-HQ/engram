@@ -22,7 +22,7 @@ const orbitAgents = [
   { name: 'OpenClaw', src: '/vendor/brands/openclaw.svg', x: 430, y: 40, width: 174 },
   { name: 'Grok Bot', src: '/vendor/brands/grok-bot.png', x: 546, y: 245, width: 164 },
   { name: 'Muse', src: '/vendor/brands/muse.svg', x: 278, y: 430, width: 130 },
-  { name: 'Hermes Agent', src: '/vendor/brands/hermesagent.svg', x: 56, y: 383, width: 188 },
+  { name: 'Instinct', src: '/vendor/brands/instinct.png', x: 72, y: 383, width: 152 },
 ];
 
 export function memoryOrbit({ label, className = '', compact = false, motion = 'none', agents = false } = {}) {
