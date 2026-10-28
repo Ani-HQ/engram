@@ -127,6 +127,16 @@ code, pre, kbd, .mono { font-family: var(--ds-font-mono); }
 code, pre { overflow-wrap: anywhere; }
 pre { padding: var(--ds-space-4); background: var(--ds-surface-soft); border: 1px solid var(--ds-line); border-radius: var(--ds-radius-control); font-size: var(--ds-text-sm); white-space: pre-wrap; line-height: 1.7; }
 .ds-code-scroll { display: block; min-width: 0; max-width: 100%; min-height: 44px; padding-block: var(--ds-space-3); overflow-x: auto; overflow-y: hidden; white-space: nowrap; overflow-wrap: normal; word-break: normal; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: var(--ds-line-strong) transparent; border-radius: var(--ds-radius-control); line-height: 1.6; }
+/* A command or value with an adjacent Copy action. The value scrolls; the action stays put and stacks below on narrow screens. */
+.ds-command { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--ds-space-2); min-width: 0; }
+.ds-command > .ds-code-scroll { padding-inline: var(--ds-space-3); border: 1px solid var(--ds-line-strong); background: var(--ds-surface-soft); color: var(--ds-ink); font-size: var(--ds-text-sm); }
+@media (max-width: 420px) { .ds-command { grid-template-columns: minmax(0, 1fr); } .ds-command > :not(.ds-code-scroll) { width: 100%; } }
+/* A short code a person compares against another screen before acting. */
+.ds-confirm-code { display: grid; gap: var(--ds-space-2); justify-items: start; min-width: 0; padding: var(--ds-space-4); border: 1px solid var(--ds-accent); border-radius: var(--ds-radius-control); background: var(--ds-accent-muted); }
+.ds-confirm-code-label { margin: 0; color: var(--ds-ink); font-size: var(--ds-text-sm); line-height: 1.5; }
+.ds-confirm-code-value { color: var(--ds-ink); font-family: var(--ds-font-mono); font-size: var(--ds-text-2xl); font-weight: 600; letter-spacing: .12em; line-height: 1.2; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+@media (max-width: 360px) { .ds-confirm-code-value { font-size: var(--ds-text-xl); } }
+@media (forced-colors: active) { .ds-confirm-code { border-color: CanvasText; } }
 .ds-eyebrow { font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); line-height: 1.5; letter-spacing: .1em; text-transform: uppercase; font-weight: 500; }
 .ds-editorial { color: var(--ds-accent); font-family: var(--ds-font-sans); font-style: normal; font-weight: inherit; letter-spacing: inherit; }
 .ds-muted { color: var(--ds-muted); }

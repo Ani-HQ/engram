@@ -1,0 +1,23 @@
+/* Computer approval (#device). Layout only; components come from the design system. */
+.device-view { max-width: 640px; gap: var(--ds-space-5); min-width: 0; }
+.device-view :is(h1, p) { margin: 0; }
+.device-view .device-heading h1 { font-family: var(--ds-font-sans); font-size: 28px; font-weight: 550; letter-spacing: -.045em; line-height: 1.25; }
+.device-view .device-heading h1:focus { outline: none; }
+.device-view .device-heading p { max-width: 560px; color: var(--ds-muted); font-size: var(--ds-text-sm); line-height: 1.7; }
+.device-view .device-heading > .ds-badge { justify-self: start; }
+.device-entry { max-width: 360px; gap: var(--ds-space-3); }
+.device-entry input { font-family: var(--ds-font-mono); letter-spacing: .08em; text-transform: uppercase; }
+.device-entry input::placeholder { text-transform: none; letter-spacing: .08em; }
+.device-details { border-block: 1px solid var(--ds-line); }
+.device-agents { display: flex; flex-wrap: wrap; gap: var(--ds-space-2) var(--ds-space-4); margin: 0; padding: 0; list-style: none; }
+.device-agents li { display: inline-flex; align-items: center; gap: var(--ds-space-2); min-width: 0; }
+.device-agent-mark { display: inline-flex; flex-shrink: 0; }
+.device-workspace { gap: var(--ds-space-2); min-width: 0; }
+.device-workspace select { width: 100%; max-width: 320px; }
+@media (max-width: 600px) {
+  .device-view .device-heading h1 { font-size: 24px; }
+  .device-details .ds-evidence-row { grid-template-columns: minmax(0, 1fr); gap: var(--ds-space-1); }
+  .device-workspace select { max-width: none; }
+  .device-actions > button, .device-entry .ds-row > button { flex: 1 1 100%; }
+  .device-entry { max-width: none; }
+}

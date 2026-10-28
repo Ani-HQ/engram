@@ -81,6 +81,23 @@ const demoStreams = createShowcaseStreamManager({
   },
 });
 const invitations = new Map<number, any[]>();
+// Simulated computer sign-in requests. Fixed review codes cover each state;
+// POST /api/device/start adds more. Issued keys are fake and never authenticate.
+type DemoDevice = { userCode: string; deviceCode?: string; device: string; agents: { harness: string; label: string }[]; createdAt: string; expiresAt: string; status: string; workspaceId?: number };
+const demoAgents = [{ harness: "claude-code", label: "Claude Code" }, { harness: "codex", label: "Codex" }, { harness: "cursor", label: "Cursor" }];
+const demoDevices = new Map<string, DemoDevice>();
+function seedDemoDevice(userCode: string, status: string, device: string, minutesAgo: number) {
+  const created = Date.now() - minutesAgo * 60_000;
+  demoDevices.set(userCode, { userCode, device, agents: demoAgents, createdAt: new Date(created).toISOString(), expiresAt: new Date(created + 600_000).toISOString(), status });
+}
+seedDemoDevice("BCDFGHJK", "pending", "Ada’s MacBook Pro", 1);
+seedDemoDevice("XPRDCDTM", "pending", "Old laptop", 30);
+seedDemoDevice("DNLDRQST", "denied", "Shared desktop", 3);
+seedDemoDevice("PPRVDKTS", "approved", "Studio iMac", 2);
+seedDemoDevice("CNSMDKTS", "consumed", "Work laptop", 4);
+const demoDeviceCode = (value: unknown) => typeof value === "string" && value.length <= 32 && /^[BCDFGHJKLMNPQRSTVWXZ]{8}$/.test(value.toUpperCase().replace(/[\s-]/g, "")) ? value.toUpperCase().replace(/[\s-]/g, "") : null;
+function demoDeviceStatus(entry: DemoDevice) { return ["pending", "approved"].includes(entry.status) && Date.parse(entry.expiresAt) <= Date.now() ? "expired" : entry.status; }
+function demoDevicePublic(entry: DemoDevice) { return { userCode: `${entry.userCode.slice(0, 4)}-${entry.userCode.slice(4)}`, device: entry.device, agents: entry.agents, createdAt: entry.createdAt, expiresAt: entry.expiresAt, status: demoDeviceStatus(entry), demo: true }; }
 const signupInvitations = new Map<string, any>();
 const signupCodes = new Map<string, string>();
 const signupCopyAliases = new Map<string, string>();
@@ -147,6 +164,26 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   const signupLinkHeaders = signupLink ? { "Cache-Control": "no-store" } : {};
   if (route === "GET /api/plans") return json({ mode: demoSelfHosted ? "self-hosted" : "hosted", trialDays: 14, currency: "usd", checkoutAvailable: false, plans: PLANS, addons: { jev: demoJevPricing }, demo: true });
   if (route === "GET /api/signup-policy") return json({ mode: demoSelfHosted ? "open" : "invite-only", complimentary: true, verificationRequired: true, inviteCodeRequired: !demoSelfHosted, tokenSignInAllowed: demoSelfHosted, demo: true });
+  if (route === "POST /api/device/start") {
+    const body = await bodyObject(req);
+    if (typeof body?.device !== "string" || !body.device.trim() || !Array.isArray(body?.agents) || !body.agents.length) return json({ error: "bad_request" }, 400);
+    const alphabet = "BCDFGHJKLMNPQRSTVWXZ", userCode = Array.from(crypto.getRandomValues(new Uint8Array(8)), byte => alphabet[byte % 20]).join("");
+    const deviceCode = randomBytes(32).toString("base64url"), now = Date.now();
+    const labels: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex", cursor: "Cursor" };
+    demoDevices.set(userCode, { userCode, deviceCode, device: body.device.trim().slice(0, 80), agents: body.agents.filter((agent: any) => labels[agent?.harness]).map((agent: any) => ({ harness: agent.harness, label: string(agent.label) || labels[agent.harness] })), createdAt: new Date(now).toISOString(), expiresAt: new Date(now + 600_000).toISOString(), status: "pending" });
+    const shown = `${userCode.slice(0, 4)}-${userCode.slice(4)}`;
+    return json({ deviceCode, userCode: shown, verificationUri: `${url.origin}/app#device`, verificationUriComplete: `${url.origin}/app#device=${shown}`, expiresIn: 600, interval: 3 });
+  }
+  if (route === "POST /api/device/poll") {
+    const body = await bodyObject(req);
+    const entry = [...demoDevices.values()].find(item => item.deviceCode && item.deviceCode === body?.deviceCode);
+    if (!entry) return json({ status: "expired" });
+    const status = demoDeviceStatus(entry);
+    if (status !== "approved") return json({ status });
+    entry.status = "consumed";
+    const workspace = session.orgs.find((org: any) => org.id === entry.workspaceId) || session.org;
+    return json({ status: "approved", host: url.origin, mcp: `${url.origin}/mcp`, workspace: { id: workspace.id, name: workspace.name }, tokens: entry.agents.map(agent => ({ harness: agent.harness, name: `${agent.label} on ${entry.device}`, token: `eng_demo_${randomBytes(8).toString("hex")}` })), demo: true });
+  }
   if (route === "POST /api/session" && !demoSelfHosted) return json({ error: "Sign in with an email link. Access tokens connect agents only.", code: "token_sign_in_disabled" }, 403);
   if (route === "POST /api/session" || route === "POST /api/invites/accept") {
     const body = await bodyObject(req);
@@ -192,6 +229,20 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   const expectedWorkspace = req.headers.get("x-engram-workspace");
   if (expectedWorkspace && expectedWorkspace !== String(session.org.id)) return json({ error: "The selected workspace changed. Please start the export again." }, 409, signupLinkHeaders);
   const workspaceId = session.org.id;
+  if (["GET /api/device", "POST /api/device/approve", "POST /api/device/deny"].includes(route)) {
+    const headers = { "Cache-Control": "no-store" };
+    if (req.headers.get("x-engram-console") !== "1") return json({ error: "forbidden" }, 403, headers);
+    const code = demoDeviceCode(req.method === "GET" ? url.searchParams.get("code") : (await bodyObject(req))?.userCode);
+    if (!code) return json({ error: "Enter the 8-letter code shown in your terminal.", code: "invalid_code" }, 400, headers);
+    const entry = demoDevices.get(code);
+    if (!entry) return json({ error: "This code was not found. Check the code in your terminal and try again.", code: "not_found" }, 404, headers);
+    if (req.method === "GET") return json(demoDevicePublic(entry), 200, headers);
+    if (route === "POST /api/device/approve" && !expectedWorkspace) return json({ error: "Select a workspace and try again.", code: "workspace_required" }, 400, headers);
+    const status = demoDeviceStatus(entry);
+    if (status !== "pending") return json({ error: status === "expired" ? "This code has expired. Run the command again in your terminal for a new code." : "This request can no longer be changed.", code: status }, 409, headers);
+    entry.status = route === "POST /api/device/approve" ? "approved" : "denied"; entry.workspaceId = workspaceId;
+    return json(route === "POST /api/device/approve" ? { ok: true, workspace: { id: session.org.id, name: session.org.name } } : { ok: true }, 200, headers);
+  }
   const sharing = await devSharing(req, session);
   if (sharing) return sharing;
   if (url.pathname === "/api/jev") {
