@@ -18,6 +18,7 @@ import { handleOrgApi, handlePublicOrgApi, ingestTrailRequest, onboardingState, 
 import { resolveOrg, withOrg } from "./orgs";
 import { signupPolicy } from "./signup-invites";
 import { canDelete, isHuman, normalizeToken } from "./policies";
+import { handleSiteEvent } from "./site-analytics";
 import { handleTasksApi, isTasksPath } from "./continuation";
 import { callTool } from "./proxy";
 import { resolveReview } from "./review/apply";
@@ -187,6 +188,7 @@ async function routeWeb(req: Request): Promise<Response> {
   if (url.pathname === "/source" && req.method === "GET") return Response.redirect("https://github.com/Ani-HQ/engram", 302);
   if (url.pathname === "/hosted" && req.method === "GET") return Response.redirect("https://engram.ani.computer/pricing", 302);
   if (url.pathname === "/api/billing/webhook") return handleBillingWebhook(req);
+  if (url.pathname === "/api/e") return handleSiteEvent(req);
   if (url.pathname === "/api/plans" && ["GET", "HEAD"].includes(req.method)) {
     return new Response(req.method === "HEAD" ? null : JSON.stringify(publicPlans()), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
   }

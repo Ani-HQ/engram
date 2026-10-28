@@ -106,13 +106,31 @@ try {
       UPDATE tokens SET revoked_at = now()
       WHERE name = ${name} AND org_id = ${org} AND revoked_at IS NULL`;
     console.log(r.count > 0 ? `token '${name}' revoked` : `no active token named '${name}' in org ${org}`);
+  } else if (cmd === "analytics" && sub === "report") {
+    rejectArgsExcept(new Set(["--days", "--json"]));
+    const days = Number(arg("--days") ?? 7);
+    if (!Number.isInteger(days) || days < 1 || days > 400) throw new Error("--days must be an integer from 1 to 400");
+    const { siteReport } = await import("../gateway/src/site-analytics");
+    const report = await siteReport(days, sql);
+    if (process.argv.includes("--json")) console.log(JSON.stringify(report, null, 2));
+    else {
+      const t = report.traffic, f = report.funnel;
+      console.log(`Last ${days} days`);
+      console.log(`Traffic: ${t.pageviews} page views, ${t.visitor_days} visitor-days, ${t.signups_submitted} sign-ups submitted`);
+      console.log(`Funnel (workspaces created in window): ${f.workspaces_created} created → ${f.with_agent_call} agent connected → ${f.saved_memory} saved memory → ${f.recalled_memory} recalled → ${f.saved_handoff} saved a handoff → ${f.resumed_handoff} resumed one → ${f.started_checkout} started checkout → ${f.paying} paying`);
+      console.log("\nCalls to action:"); for (const row of report.ctas) console.log(`  ${row.cta}: ${row.clicks}`);
+      console.log("\nReferrers (visitor-days):"); for (const row of report.referrers) console.log(`  ${row.referrer}: ${row.visitor_days}`);
+      console.log("\nCampaigns:"); for (const row of report.campaigns) console.log(`  ${row.source}/${row.medium}/${row.campaign}: ${row.visitor_days} visitor-days, ${row.invite_requests} invite requests, ${row.signups_submitted} sign-ups`);
+      console.log("\nPages:"); for (const row of report.pages) console.log(`  ${row.path}: ${row.views} views, ${row.visitor_days} visitor-days`);
+      console.log(""); for (const note of report.notes) console.log(`Note: ${note}`);
+    }
   } else if (cmd === "dream" && sub === "run") {
     rejectArgsExcept(new Set());
     await sql.end({ timeout: 1 }).catch(() => {});
     const { main } = await import("../gateway/src/jobs/dream");
     await main();
   } else {
-    console.log("usage: engram-admin workspace create --name N --email E | workspace login --org ID --email E | token issue --name N [--org ID] [--write false] | token list [--org ID] | token revoke --name N [--org ID] | dream run");
+    console.log("usage: engram-admin workspace create --name N --email E | workspace login --org ID --email E | token issue --name N [--org ID] [--write false] | token list [--org ID] | token revoke --name N [--org ID] | analytics report [--days 7] [--json] | dream run");
     process.exitCode = 1;
   }
 } finally {

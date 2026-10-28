@@ -66,7 +66,14 @@ arrangement without verifying it. See the provider's
 [data-handling notice](https://help.typesafe.ai/articles/5974925716-how-is-submitted-data-used-or-retained)
 and [Jev integration details](REFLEX.md).
 
-Disabling a provider prevents future optional processing. It does not delete information already sent to a provider; provider retention and terms must be reviewed by the operator. The app makes no claim about training or retention by third parties. Browser scripts, fonts, and icons are self-hosted; there are no ad pixels or third-party analytics in the web app.
+Disabling a provider prevents future optional processing. It does not delete information already sent to a provider; provider retention and terms must be reviewed by the operator. The app makes no claim about training or retention by third parties. Browser scripts, fonts, and icons are self-hosted; there are no ad pixels or third-party analytics in the web app. First-party
+site analytics (`web/analytics.js`, `POST /api/e`, `site_events`) counts page
+views, named calls to action and sign-up submissions with path, referring host
+and UTM tags. It sets no cookie; first-touch tags live in the tab's
+sessionStorage. The server stores a keyed visitor hash that rotates each UTC
+day, never the IP address, user agent, email or account. Do Not Track, Global
+Privacy Control and common bots are not counted. Rows older than 395 days are
+pruned. `bun cli/engram-admin.ts analytics report --days 7` prints the funnel.
 
 The operator verified host-scoped Cloudflare RUM disabled, email obfuscation off,
 and the scoped Browser Integrity Check rule on 24 October 2026. Deployment

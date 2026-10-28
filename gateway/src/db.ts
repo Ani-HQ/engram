@@ -11,6 +11,7 @@ import { ensureContextSharingSchema } from "./context-sharing-schema";
 import { ensureConnectionsSchema } from "./connections-schema";
 import { ensureMemoryUsageSchema } from "./memory-usage-schema";
 import { ensureConnectionClientSchema } from "./connection-client-schema";
+import { ensureSiteAnalyticsSchema } from "./site-analytics-schema";
 import { assertRuntimeSchema, ensureProvisioningSchema, markSchemaReady } from "./provisioning-schema";
 import { migrateContinuationTables } from "./continuation-schema";
 
@@ -549,6 +550,7 @@ export async function migrate() {
   await ensureMailSeriesSchema(sql);
   await ensureJevSchema(sql);
   await ensureContextSharingSchema(sql);
+  await ensureSiteAnalyticsSchema(sql);
   await protectGatewayMetadata(sql);
   await markSchemaReady(sql);
   if (databaseSecurity.authority === "inline") {
