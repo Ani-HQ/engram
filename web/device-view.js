@@ -33,7 +33,7 @@ function codeEntry({ input = "", error = "", busy = false, onSubmit }) {
 function agentsValue(agents = []) {
   return h("ul", { class: "device-agents", role: "list" }, agents.map(agent => {
     const visual = agentVisual(agent.label, { harness: agent.harness });
-    return h("li", {}, h("span", { class: "device-agent-mark", "aria-hidden": "true" }, visualIcon(visual, { size: 18 })), h("span", {}, agent.label));
+    return h("li", {}, h("span", { class: "device-agent-mark ds-logo-backplate", "aria-hidden": "true" }, visualIcon(visual, { size: 18 })), h("span", {}, agent.label));
   }));
 }
 

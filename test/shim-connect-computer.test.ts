@@ -11,12 +11,21 @@ const servers: any[] = [];
 
 beforeEach(() => {
   root = realpathSync(mkdtempSync(path.join(tmpdir(), "engram-computer-test-")));
-  previous = Object.fromEntries(["HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "CODEX_HOME"].map(key => [key, process.env[key]]));
+  previous = Object.fromEntries(["HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "CODEX_HOME", "DEVIN_PROJECT_DIR"].map(key => [key, process.env[key]]));
   process.env.HOME = root;
   for (const key of ["XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"]) process.env[key] = path.join(root, key.toLowerCase());
   delete process.env.CODEX_HOME;
-  // Never run against a real home: every config path must be inside the temp root.
-  for (const harness of ["claude", "codex", "cursor"]) if (!shim.configPathForList(harness).startsWith(root)) throw new Error(`Refusing to run: ${harness} config is outside the test home`);
+  delete process.env.DEVIN_PROJECT_DIR;
+  // Never run against a real home: every config, hook and plugin path setup
+  // writes or reads must be inside the temp root.
+  const written = [
+    ...computer.KEY_HOLDERS.map((harness: string) => shim.configPathForList(harness)),
+    require("../shim/memory.js").configFile(),
+    path.join(process.env.HOME!, ".claude", "settings.json"), path.join(process.env.HOME!, ".codex", "hooks.json"), path.join(process.env.HOME!, ".cursor", "hooks.json"),
+    path.join(process.env.HOME!, ".hermes", "config.yaml"), path.join(process.env.HOME!, ".config", "devin", "config.json"),
+    path.join(process.env.XDG_CONFIG_HOME!, "amp", "plugins"), path.join(process.env.XDG_CONFIG_HOME!, "engram"), path.join(process.env.XDG_DATA_HOME!, "engram-mcp"),
+  ];
+  for (const file of written) if (!file || !file.startsWith(root)) throw new Error(`Refusing to run: ${file || "a config path"} is outside the test home`);
 });
 afterEach(() => {
   for (const server of servers.splice(0)) server.stop(true);
@@ -25,7 +34,7 @@ afterEach(() => {
 });
 
 /** A fake Engram: device approval plus the identity and catalog the installer verifies. */
-function fakeEngram(decision: "approved" | "denied" | "expired" | "pending", options: { omit?: string } = {}) {
+function fakeEngram(decision: "approved" | "denied" | "expired" | "pending", options: { omit?: string; legacy?: boolean } = {}) {
   const seen: any = { starts: [], polls: 0, bearer: new Set<string>(), retired: [] as string[] };
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(req) {
     const url = new URL(req.url);
@@ -34,7 +43,10 @@ function fakeEngram(decision: "approved" | "denied" | "expired" | "pending", opt
       return Response.json({ ok: true });
     }
     if (url.pathname === "/api/device/start") {
-      seen.starts.push(await req.json());
+      const body = await req.json() as any;
+      // A server from before 0.8.0 rejects any agent it does not know.
+      if (options.legacy && body.agents.some((agent: any) => !["claude-code", "codex", "cursor"].includes(agent.harness))) { seen.rejected = (seen.rejected || 0) + 1; return Response.json({ error: "bad_request" }, { status: 400 }); }
+      seen.starts.push(body);
       return Response.json({ deviceCode: "device-secret", userCode: "BCDF-GHJK", verificationUri: `${url.origin}/app#device`, verificationUriComplete: `${url.origin}/app#device=BCDF-GHJK`, expiresIn: 600, interval: 1 });
     }
     if (url.pathname === "/api/device/poll") {
@@ -71,9 +83,13 @@ async function run(host: string, agents = computer.AGENTS, ask?: (label: string)
   return { code, text, opened };
 }
 
+const original = () => computer.AGENTS.filter((agent: any) => ["claude", "codex", "cursor"].includes(agent.harness));
+const added = () => computer.AGENTS.filter((agent: any) => ["openclaw", "hermes", "amp", "devin"].includes(agent.harness));
+const write = (file: string, text: string) => { const { mkdirSync, writeFileSync } = require("node:fs"); mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, text); };
+
 test("one approval connects every detected agent for every repository", async () => {
   const engram = fakeEngram("approved");
-  const result = await run(engram.host);
+  const result = await run(engram.host, original());
   expect(result.code).toBe(0);
   expect(engram.seen.starts[0]).toEqual({ device: "lab", agents: [{ harness: "claude-code", label: "Claude Code" }, { harness: "codex", label: "Codex" }, { harness: "cursor", label: "Cursor" }] });
   expect(result.opened).toEqual([`${engram.host}/app#device=BCDF-GHJK`]);
@@ -93,6 +109,112 @@ test("one approval connects every detected agent for every repository", async ()
   const bindings = JSON.parse(readFileSync(require("../shim/memory.js").configFile(), "utf8")).bindings;
   expect(bindings.map((item: any) => `${item.runtime}:${item.project}`).sort()).toEqual(["claude:*", "codex:*", "cursor:*"]);
   expect([...engram.seen.bearer].sort()).toEqual(["Bearer eng_claude-code_key", "Bearer eng_codex_key", "Bearer eng_cursor_key"]);
+});
+
+const hermesBefore = [
+  "# My Hermes settings",
+  "model:",
+  "  default: anthropic/claude-opus",
+  "",
+  "mcp_servers:",
+  "  github:",
+  "    command: npx",
+  "",
+  "hooks:",
+  "  pre_llm_call:",
+  "    - command: ~/bin/notify.sh",
+  "      timeout: 5",
+  "",
+].join("\n");
+
+test("OpenClaw, Hermes Agent, Amp and Devin CLI connect with their own keys and keep existing settings", async () => {
+  write(path.join(root, ".hermes", "config.yaml"), hermesBefore);
+  write(path.join(root, ".config", "amp", "settings.json"), JSON.stringify({ "amp.notifications.enabled": false, "amp.mcpServers": { other: { url: "https://other.example/mcp" } } }));
+  write(path.join(root, ".config", "devin", "config.json"), JSON.stringify({ read_config_from: { cursor: false }, hooks: { PreToolUse: [{ matcher: "exec", hooks: [{ type: "command", command: "./check.sh" }] }] } }));
+  write(path.join(root, ".openclaw", "openclaw.json"), JSON.stringify({ model: "keep-me" }));
+  const engram = fakeEngram("approved");
+  const result = await run(engram.host, added());
+  expect(result.code).toBe(0);
+  expect(engram.seen.starts[0].agents).toEqual([{ harness: "openclaw", label: "OpenClaw" }, { harness: "hermes", label: "Hermes Agent" }, { harness: "amp", label: "Amp" }, { harness: "devin", label: "Devin CLI" }]);
+  expect(result.text).toContain("✓ OpenClaw\n✓ Hermes Agent\n✓ Amp\n✓ Devin CLI");
+  expect(result.text).toContain("Hermes asks once before running a new hook");
+  expect(result.text).toContain("Restart the OpenClaw gateway");
+  expect(result.text).not.toContain("_key");
+
+  // Hermes: one YAML file holds the MCP server and the hook; nothing else changes.
+  const hermes = readFileSync(path.join(root, ".hermes", "config.yaml"), "utf8");
+  expect(hermes.startsWith("# My Hermes settings\nmodel:\n  default: anthropic/claude-opus\n\nmcp_servers:\n  github:\n    command: npx\n  engram:\n")).toBe(true);
+  expect(hermes).toContain(`    url: "${engram.host}/mcp"\n    headers:\n      Authorization: "Bearer eng_hermes_key"\n`);
+  expect(hermes).toContain("  pre_llm_call:\n    - command: ~/bin/notify.sh\n      timeout: 5\n    - command: ");
+  expect(hermes).toMatch(/memory hook hermes pre_llm_call"\n      timeout: 10\n$/);
+  expect(shim.readHarnessConnection("hermes")).toEqual({ host: `${engram.host}/mcp`, token: "eng_hermes_key", authentication: "bearer" });
+
+  // Amp: user settings key plus a system plugin.
+  const amp = JSON.parse(readFileSync(path.join(root, ".config", "amp", "settings.json"), "utf8"));
+  expect(amp["amp.notifications.enabled"]).toBe(false);
+  expect(amp["amp.mcpServers"]).toEqual({ other: { url: "https://other.example/mcp" }, engram: { url: `${engram.host}/mcp`, headers: { Authorization: "Bearer eng_amp_key" } } });
+  const plugin = readFileSync(path.join(process.env.XDG_CONFIG_HOME!, "amp", "plugins", "engram-memory.js"), "utf8");
+  expect(plugin).toContain("Engram managed native adapter");
+  expect(plugin).toContain("amp.on('agent.start'");
+  expect(plugin).not.toContain("eng_");
+
+  // Devin CLI: MCP in mcp_config.json, hooks in config.json beside existing settings.
+  expect(JSON.parse(readFileSync(path.join(root, ".config", "devin", "mcp_config.json"), "utf8")).mcpServers.engram).toEqual({ url: `${engram.host}/mcp`, transport: "http", headers: { Authorization: "Bearer eng_devin_key" } });
+  const devin = JSON.parse(readFileSync(path.join(root, ".config", "devin", "config.json"), "utf8"));
+  expect(devin.read_config_from).toEqual({ cursor: false });
+  expect(devin.hooks.PreToolUse).toEqual([{ matcher: "exec", hooks: [{ type: "command", command: "./check.sh" }] }]);
+  expect(Object.keys(devin.hooks).sort()).toEqual(["PreToolUse", "SessionEnd", "SessionStart", "Stop", "UserPromptSubmit"]);
+  expect(devin.hooks.UserPromptSubmit[0].hooks[0].command).toContain(" memory hook devin UserPromptSubmit");
+
+  // OpenClaw: MCP and plugin in one file, existing settings kept.
+  const openclaw = JSON.parse(readFileSync(path.join(root, ".openclaw", "openclaw.json"), "utf8"));
+  expect(openclaw.model).toBe("keep-me");
+  expect(openclaw.mcp.servers.engram).toEqual({ url: `${engram.host}/mcp`, transport: "streamable-http", headers: { Authorization: "Bearer eng_openclaw_key" } });
+  expect(openclaw.plugins.entries["engram-memory"]).toMatchObject({ enabled: true, hooks: { allowPromptInjection: true, allowConversationAccess: true } });
+
+  const bindings = JSON.parse(readFileSync(require("../shim/memory.js").configFile(), "utf8")).bindings;
+  expect(bindings.map((item: any) => `${item.runtime}:${item.project}`).sort()).toEqual(["amp:*", "devin:*", "hermes:*", "openclaw:*"]);
+  expect([...engram.seen.bearer].sort()).toEqual(["Bearer eng_amp_key", "Bearer eng_devin_key", "Bearer eng_hermes_key", "Bearer eng_openclaw_key"]);
+
+  // Running again changes nothing but the keys: one entry and one hook each.
+  const again = await run(fakeEngram("approved").host, added());
+  expect(again.code).toBe(0);
+  const hermesAgain = readFileSync(path.join(root, ".hermes", "config.yaml"), "utf8");
+  expect(hermesAgain.match(/^  engram:$/gm)).toHaveLength(1);
+  expect(hermesAgain.match(/memory hook hermes/g)).toHaveLength(1);
+  expect(hermesAgain).toContain("~/bin/notify.sh");
+  expect(JSON.parse(readFileSync(path.join(root, ".config", "devin", "config.json"), "utf8")).hooks.SessionStart).toHaveLength(1);
+});
+
+test("an older key held by a new agent is turned off on reconnect", async () => {
+  const engram = fakeEngram("approved");
+  write(path.join(root, ".hermes", "config.yaml"), `mcp_servers:\n  engram:\n    url: ${engram.host}/mcp\n    headers:\n      Authorization: 'Bearer eng_old_hermes'\n`);
+  write(path.join(root, ".config", "devin", "mcp_config.json"), JSON.stringify({ mcpServers: { engram: { url: `${engram.host}/mcp`, headers: { Authorization: "Bearer eng_old_devin" } } } }));
+  const result = await run(engram.host, added().filter((agent: any) => ["hermes", "devin"].includes(agent.harness)));
+  expect(result.code).toBe(0);
+  expect(engram.seen.retired.sort()).toEqual(["Bearer eng_old_devin", "Bearer eng_old_hermes"]);
+});
+
+test("a Hermes config setup cannot edit safely fails only Hermes and stays untouched", async () => {
+  const flow = "mcp_servers: {github: {command: npx}}\n";
+  write(path.join(root, ".hermes", "config.yaml"), flow);
+  const result = await run(fakeEngram("approved").host, added().filter((agent: any) => ["hermes", "amp"].includes(agent.harness)));
+  expect(result.code).toBe(1);
+  expect(result.text).toContain("✗ Hermes Agent: ");
+  expect(result.text).toContain("Setup preserved the file");
+  expect(result.text).toContain("✓ Amp");
+  expect(readFileSync(path.join(root, ".hermes", "config.yaml"), "utf8")).toBe(flow);
+});
+
+test("an older Engram server still connects the agents it knows", async () => {
+  const engram = fakeEngram("approved", { legacy: true });
+  const result = await run(engram.host, computer.AGENTS.filter((agent: any) => ["claude", "hermes", "devin"].includes(agent.harness)));
+  expect(result.code).toBe(0);
+  expect(engram.seen.rejected).toBe(1);
+  expect(result.text).toContain("This Engram server can't connect Hermes Agent and Devin CLI yet. Connecting the others.");
+  expect(engram.seen.starts[0].agents).toEqual([{ harness: "claude-code", label: "Claude Code" }]);
+  expect(result.text).toContain("✓ Claude Code");
+  expect(existsSync(path.join(root, ".hermes"))).toBe(false);
 });
 
 test("a denied or expired request changes nothing", async () => {
@@ -126,6 +248,14 @@ test("detection finds agents by command, config folder or desktop app", () => {
   expect(found([])).toEqual([]);
   expect(found(["/h/.cursor"])).toEqual(["cursor"]);
   expect(found(["/Applications/Claude.app", "/Applications/ChatGPT.app/Contents/Resources/codex-cli"])).toEqual(["claude", "codex"]);
+  expect(found(["/h/.openclaw", "/h/.hermes", "/h/.config/amp", "/h/.config/devin"])).toEqual(["openclaw", "hermes", "amp", "devin"]);
+  // "hermes" and "amp" are common program names, so a command alone is not enough.
+  const bin = realpathSync(mkdtempSync(path.join(tmpdir(), "engram-bin-")));
+  try {
+    const { writeFileSync } = require("node:fs");
+    for (const name of ["hermes", "amp", "devin", "openclaw"]) writeFileSync(path.join(bin, name), "#!/bin/sh\n", { mode: 0o755 });
+    expect(found([], bin)).toEqual(["openclaw", "devin"]);
+  } finally { rmSync(bin, { recursive: true, force: true }); }
   expect(computer.listNames(["A", "B", "C"])).toBe("A, B and C");
   expect(computer.computerName({ ENGRAM_DEVICE_NAME: "Ani’s MacBook.local" })).toBe("Anis MacBook");
 });

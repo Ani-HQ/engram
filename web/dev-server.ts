@@ -169,7 +169,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     if (typeof body?.device !== "string" || !body.device.trim() || !Array.isArray(body?.agents) || !body.agents.length) return json({ error: "bad_request" }, 400);
     const alphabet = "BCDFGHJKLMNPQRSTVWXZ", userCode = Array.from(crypto.getRandomValues(new Uint8Array(8)), byte => alphabet[byte % 20]).join("");
     const deviceCode = randomBytes(32).toString("base64url"), now = Date.now();
-    const labels: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex", cursor: "Cursor" };
+    const labels: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex", cursor: "Cursor", openclaw: "OpenClaw", hermes: "Hermes Agent", amp: "Amp", devin: "Devin CLI" };
     demoDevices.set(userCode, { userCode, deviceCode, device: body.device.trim().slice(0, 80), agents: body.agents.filter((agent: any) => labels[agent?.harness]).map((agent: any) => ({ harness: agent.harness, label: string(agent.label) || labels[agent.harness] })), createdAt: new Date(now).toISOString(), expiresAt: new Date(now + 600_000).toISOString(), status: "pending" });
     const shown = `${userCode.slice(0, 4)}-${userCode.slice(4)}`;
     return json({ deviceCode, userCode: shown, verificationUri: `${url.origin}/app#device`, verificationUriComplete: `${url.origin}/app#device=${shown}`, expiresIn: 600, interval: 3 });

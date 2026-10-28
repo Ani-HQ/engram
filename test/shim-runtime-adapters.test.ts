@@ -436,3 +436,89 @@ describe("native plugin wrappers and stdio task propagation", () => {
     expect(adapters.proxyContext(options).runId).toBeUndefined();
   });
 });
+
+describe("Hermes Agent, Amp and Devin CLI", () => {
+  const work = "Please implement idempotent retries in the background queue and validate them.";
+
+  test("Hermes injects the startup guide and memory once per turn and reads only the current message", async () => {
+    const fixture = gateway();
+    const turn = (turnId: string, first: boolean, message = work) => adapters.nativeHook("hermes", { hook_event_name: "pre_llm_call", session_id: "hermes-session", cwd: fixture.project, profile: "default", extra: { user_message: message, is_first_turn: first, turn_id: turnId, conversation_history: [{ role: "user", content: "PRIVATE_HISTORY" }] } }, "pre_llm_call", { binding: fixture.binding });
+    const first = await turn("t1", true);
+    expect(Object.keys(first)).toEqual(["context"]);
+    expect(first.context).toContain("Engram memory lifecycle is enabled");
+    expect(first.context).toContain("Keep request IDs stable");
+    expect(await turn("t1", true)).toEqual({});
+    const later = await turn("t2", false, "Engram task: review queue metrics");
+    expect(later.context || "").not.toContain("Engram memory lifecycle is enabled");
+    expect(JSON.stringify(fixture.calls)).not.toContain("PRIVATE_HISTORY");
+    expect(fixture.reports().every(report => report.status === "running")).toBe(true);
+    expect(registry.normalizeRuntimeEvent("hermes", { session_id: "s", cwd: "/p", extra: { user_message: "x" } }, "on_session_end")).toBeNull();
+  });
+
+  test("Devin CLI uses its documented events, project directory and output shape", async () => {
+    const fixture = gateway();
+    const prior = process.env.DEVIN_PROJECT_DIR;
+    process.env.DEVIN_PROJECT_DIR = fixture.project;
+    try {
+      const start = await adapters.nativeHook("devin", { hook_event_name: "SessionStart", session_id: "devin-session", source: "startup" }, "SessionStart", { binding: fixture.binding });
+      expect(start.hookSpecificOutput).toMatchObject({ hookEventName: "SessionStart" });
+      expect(start.hookSpecificOutput.additionalContext).toContain("Engram memory lifecycle is enabled");
+      const prompt = await adapters.nativeHook("devin", { hook_event_name: "UserPromptSubmit", session_id: "devin-session", prompt_id: "p1", prompt: work }, "UserPromptSubmit", { binding: fixture.binding });
+      expect(prompt.hookSpecificOutput.additionalContext).toContain("Keep request IDs stable");
+      expect(await adapters.nativeHook("devin", { hook_event_name: "UserPromptSubmit", session_id: "devin-session", prompt_id: "p1", prompt: work }, "UserPromptSubmit", { binding: fixture.binding })).toEqual({});
+      const before = fixture.calls.length;
+      expect(await adapters.nativeHook("devin", { hook_event_name: "Stop", session_id: "devin-session", stop_hook_active: false }, "Stop", { binding: fixture.binding })).toEqual({});
+      expect(fixture.calls.length).toBe(before);
+    } finally { if (prior === undefined) delete process.env.DEVIN_PROJECT_DIR; else process.env.DEVIN_PROJECT_DIR = prior; }
+  });
+
+  test("inside Devin, the Claude Code hook always stands aside", async () => {
+    const fixture = gateway();
+    const options = { project: fixture.project, topic: fixture.binding.topic, host: fixture.host, token: fixture.token };
+    await memory.install("claude", options);
+    // Devin's work is never credited to Claude Code, even before Devin is connected.
+    expect(memory.devinRunsOwnHooks({ cwd: fixture.project }, { DEVIN_PROJECT_DIR: fixture.project })).toBe(true);
+    await memory.install("devin", options);
+    expect(memory.devinRunsOwnHooks({ cwd: fixture.project }, { DEVIN_PROJECT_DIR: fixture.project })).toBe(true);
+    expect(memory.devinRunsOwnHooks({}, { DEVIN_PROJECT_DIR: fixture.project })).toBe(true);
+    expect(memory.devinRunsOwnHooks({ cwd: fixture.project }, {})).toBe(false);
+    const hooks = JSON.parse(readFileSync(path.join(root, ".config", "devin", "config.json"), "utf8")).hooks;
+    expect(Object.keys(hooks)).toEqual(["SessionStart", "UserPromptSubmit", "Stop", "SessionEnd"]);
+    expect(hooks.SessionStart[0].hooks[0]).toMatchObject({ type: "command", timeout: 6 });
+
+    // The installed Claude hook command, run the way Claude Code and Devin run it.
+    const claudeHook = async (devinProjectDir: string) => {
+      const child = Bun.spawn([process.execPath, path.join(import.meta.dir, "..", "shim", "index.js"), "memory", "hook", "claude"], { cwd: fixture.project, env: { ...process.env, DEVIN_PROJECT_DIR: devinProjectDir }, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+      child.stdin.write(JSON.stringify({ hook_event_name: "SessionStart", session_id: "shared-session", cwd: fixture.project }));
+      child.stdin.end();
+      const [exit, stdout] = await Promise.all([child.exited, new Response(child.stdout).text()]);
+      expect(exit).toBe(0);
+      return JSON.parse(stdout);
+    };
+    expect((await claudeHook("")).hookSpecificOutput.additionalContext).toContain("Engram memory lifecycle is enabled");
+    expect(await claudeHook(fixture.project)).toEqual({});
+  });
+
+  test("the Amp plugin sends only the current prompt through the installed bridge and returns a hidden message", async () => {
+    const fixture = gateway();
+    const result = await memory.install("amp", { project: fixture.project, topic: fixture.binding.topic, host: fixture.host, token: fixture.token });
+    expect(result.settings).toBe(path.join(root, "config", "amp", "plugins", "engram-memory.js"));
+    const source = readFileSync(result.settings, "utf8");
+    expect(source).not.toContain(fixture.token);
+    const module = path.join(root, "amp-plugin.mjs");
+    writeFileSync(module, source);
+    const handlers: Record<string, any> = {};
+    let workspaceRoot: any = { toString: () => `file://${fixture.project}` };
+    (await import(module)).default({ system: { get workspaceRoot() { return workspaceRoot; } }, helpers: { filePathFromURI: (uri: any) => new URL(uri.toString()).pathname }, on: (name: string, handler: any) => { handlers[name] = handler; } });
+    expect(Object.keys(handlers)).toEqual(["agent.start"]);
+    const first = await handlers["agent.start"]({ thread: { id: "T-amp-1" }, message: work, id: "m1" });
+    expect(first.message.display).toBe(false);
+    expect(first.message.content).toContain("Engram memory lifecycle is enabled");
+    expect(first.message.content).toContain("Keep request IDs stable");
+    const second = await handlers["agent.start"]({ thread: { id: "T-amp-1" }, message: "Engram task: review the retry metrics", id: "m2" });
+    expect(second.message?.content || "").not.toContain("Engram memory lifecycle is enabled");
+    workspaceRoot = null;
+    expect(await handlers["agent.start"]({ thread: { id: "T-amp-2" }, message: work, id: "m3" })).toEqual({});
+    expect(fixture.reports().every(report => report.status === "running")).toBe(true);
+  });
+});

@@ -1,25 +1,30 @@
 import { describe, expect, test } from "bun:test";
 import {
-  clientHash, deviceStatus, deviceTokenName, formatUserCode, generateUserCode, handleDeviceConsoleApi, handlePublicDeviceApi,
+  clientHash, DEVICE_AGENT_LABELS, DEVICE_AGENT_LIMIT, deviceStatus, deviceTokenName, formatUserCode, generateUserCode, handleDeviceConsoleApi, handlePublicDeviceApi,
   isDeviceConsolePath, normalizeUserCode, parseDeviceCode, parseDeviceStart, pollTooFast, publicDeviceRequest, USER_CODE_ALPHABET,
 } from "../gateway/src/device-auth";
 import { requiresHostedEntitlement } from "../gateway/src/billing";
 import { normalizeToken } from "../gateway/src/policies";
 
 describe("device sign-in input", () => {
-  test("accepts a computer name and one to six distinct supported agents", () => {
+  test("accepts a computer name and each supported agent once", () => {
     expect(parseDeviceStart({ device: "  Ada's   MacBook ", agents: [{ harness: "claude-code" }, { harness: "codex", label: " Codex desktop " }, { harness: "cursor", label: "" }] })).toEqual({
       device: "Ada's MacBook",
       agents: [{ harness: "claude-code", label: null }, { harness: "codex", label: "Codex desktop" }, { harness: "cursor", label: null }],
     });
     expect(parseDeviceStart({ device: "x".repeat(80), agents: [{ harness: "codex" }] })?.device).toHaveLength(80);
+    const every = Object.keys(DEVICE_AGENT_LABELS).map(harness => ({ harness }));
+    expect(every.map(agent => agent.harness)).toEqual(["claude-code", "codex", "cursor", "openclaw", "hermes", "amp", "devin"]);
+    expect(parseDeviceStart({ device: "Laptop", agents: every })?.agents).toHaveLength(DEVICE_AGENT_LIMIT);
+    expect(deviceTokenName("hermes", "Laptop")).toBe("Hermes Agent on Laptop");
+    expect(deviceTokenName("devin", "Laptop")).toBe("Devin CLI on Laptop");
   });
 
   test("rejects missing, oversized, unprintable, duplicate or unsupported input", () => {
     const agents = [{ harness: "codex" }];
     for (const body of [
       null, [], "text", {}, { device: "", agents }, { device: "   ", agents }, { device: "x".repeat(81), agents }, { device: "bad\nname", agents }, { device: 7, agents },
-      { device: "Laptop" }, { device: "Laptop", agents: [] }, { device: "Laptop", agents: Array(7).fill({ harness: "codex" }) },
+      { device: "Laptop" }, { device: "Laptop", agents: [] }, { device: "Laptop", agents: Array(DEVICE_AGENT_LIMIT + 1).fill({ harness: "codex" }) },
       { device: "Laptop", agents: [{ harness: "codex" }, { harness: "codex" }] }, { device: "Laptop", agents: [{ harness: "windsurf" }] },
       { device: "Laptop", agents: [{ harness: "toString" }] }, { device: "Laptop", agents: ["codex"] },
       { device: "Laptop", agents: [{ harness: "codex", label: "y".repeat(81) }] }, { device: "Laptop", agents: [{ harness: "codex", label: 4 }] },

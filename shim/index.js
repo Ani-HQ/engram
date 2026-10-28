@@ -273,6 +273,10 @@ function configPathForList(harness) {
   if (harness === 'copilot') return path.join(homeDir(), '.copilot', 'mcp-config.json');
   if (harness === 'opencode') return path.join(process.env.XDG_CONFIG_HOME || path.join(homeDir(), '.config'), 'opencode', 'opencode.json');
   if (harness === 'openclaw') return path.join(homeDir(), '.openclaw', 'openclaw.json');
+  if (harness === 'hermes') return path.join(homeDir(), '.hermes', 'config.yaml');
+  // Amp and Devin CLI document these literal user paths.
+  if (harness === 'amp') return path.join(homeDir(), '.config', 'amp', 'settings.json');
+  if (harness === 'devin') return path.join(homeDir(), '.config', 'devin', 'mcp_config.json');
   return '';
 }
 
@@ -303,6 +307,7 @@ function planHarnessConnection(harness, endpoint, token, priorWrites = []) {
   const prior = priorWrites.find(write => path.resolve(write.file) === path.resolve(file));
   const raw = readTextIfExists(file);
   if (harness === 'codex') return { file, kind: 'text', value: replaceTomlTable(raw, 'mcp_servers.engram', codexTomlEntry(endpoint, token)) };
+  if (harness === 'hermes') return { file, kind: 'text', value: hermesYamlEntry(prior?.kind === 'text' ? prior.value : raw, endpoint, token) };
   if (harness === 'opencode' && !raw && fs.existsSync(file + 'c')) throw new Error('OpenCode already uses a JSONC configuration. Setup preserved it; use the native OpenCode connection controls for this configuration format.');
   const config = prior?.kind === 'json' ? structuredClone(prior.value) : readJsonObject(file);
   const object = (value, label) => { if (!value || Array.isArray(value) || typeof value !== 'object') throw new Error(`${label} must be a JSON object. Existing configuration was preserved.`); return value; };
@@ -311,24 +316,52 @@ function planHarnessConnection(harness, endpoint, token, priorWrites = []) {
     config.mcp = object(config.mcp || {}, 'OpenClaw MCP settings');
     root = config.mcp;
   } else root = config;
-  const key = ['vscode', 'openclaw'].includes(harness) ? 'servers' : harness === 'opencode' ? 'mcp' : 'mcpServers';
+  const key = mcpServersKey(harness);
   root[key] = object(root[key] || {}, 'MCP servers');
   if (root[key].engram?.enabled === false || root[key].engram?.disabled === true) throw new Error('This Engram connection is explicitly disabled. Setup preserved that choice; enable it through the runtime controls before trying again.');
   if (harness === 'gemini' && (config.mcp?.enabled === false || (Array.isArray(config.mcp?.allowed) && !config.mcp.allowed.includes('engram')) || config.mcp?.excluded?.includes('engram'))) throw new Error('Gemini MCP policy does not allow Engram. Setup preserved that policy.');
   root[key].engram = harness === 'gemini' ? { httpUrl: endpoint, headers: { Authorization: `Bearer ${token}` } }
     : harness === 'opencode' ? { type: 'remote', url: endpoint, headers: { Authorization: `Bearer ${token}` } }
     : harness === 'openclaw' ? { url: endpoint, transport: 'streamable-http', headers: { Authorization: `Bearer ${token}` } }
+    : harness === 'devin' ? { url: endpoint, transport: 'http', headers: { Authorization: `Bearer ${token}` } }
     : ['claude', 'vscode', 'copilot'].includes(harness) ? vscodeServer(endpoint, token) : cursorServer(endpoint, token);
   return { file, kind: 'json', value: config };
+}
+
+function mcpServersKey(harness) {
+  if (['vscode', 'openclaw'].includes(harness)) return 'servers';
+  if (harness === 'opencode') return 'mcp';
+  if (harness === 'amp') return 'amp.mcpServers';
+  return 'mcpServers';
+}
+
+// Hermes keeps MCP servers in YAML. Only the engram entry is replaced; the rest
+// of config.yaml, comments included, is left as written (see yaml-block.js).
+function hermesYamlEntry(raw, endpoint, token) {
+  const yaml = require('./yaml-block');
+  const existing = yaml.readMappingChild(raw, 'mcp_servers', 'engram');
+  if (existing?.some(line => /^\s*enabled\s*:\s*(false|no|off)\s*(#.*)?$/i.test(line))) throw new Error('This Engram connection is explicitly disabled. Setup preserved that choice; enable it through the runtime controls before trying again.');
+  return yaml.setMappingChild(raw, 'mcp_servers', 'engram', [`url: ${yaml.quote(endpoint)}`, 'headers:', `  Authorization: ${yaml.quote(`Bearer ${token}`)}`]);
+}
+
+function readHermesConnection(file) {
+  const yaml = require('./yaml-block');
+  const lines = yaml.readMappingChild(readTextIfExists(file), 'mcp_servers', 'engram') || [];
+  const value = key => { const line = lines.find(item => new RegExp(`^\\s*${key}\\s*:\\s*\\S`).test(item)); return line === undefined ? undefined : yaml.scalar(line.slice(line.indexOf(':') + 1)); };
+  const host = value('url');
+  if (typeof host !== 'string') throw new Error(`No native Engram connection in ${file}. Run engram-mcp setup, or use doctor --host with ENGRAM_TOKEN.`);
+  const token = /^Bearer (.+)$/i.exec(value('Authorization') || '')?.[1];
+  return { host, token, authentication: token ? 'bearer' : 'runtime-managed' };
 }
 
 function readHarnessConnection(harness) {
   const file = configPathForList(harness);
   assertSafeConfigPath(file);
   if (!fs.existsSync(file)) throw new Error(`No ${harness} config at ${file}. Run engram-mcp setup ${harness}.`);
+  if (harness === 'hermes') return readHermesConnection(file);
   if (harness !== 'codex') {
     const config = readJsonObject(file);
-    const entry = harness === 'openclaw' ? config.mcp?.servers?.engram : config[harness === 'vscode' ? 'servers' : harness === 'opencode' ? 'mcp' : 'mcpServers']?.engram;
+    const entry = harness === 'openclaw' ? config.mcp?.servers?.engram : config[mcpServersKey(harness)]?.engram;
     const host = harness === 'gemini' ? entry?.httpUrl : entry?.url;
     if (!entry || typeof host !== 'string') throw new Error(`No native Engram connection in ${file}. Run engram-mcp setup ${harness}, or use doctor --host with ENGRAM_TOKEN.`);
     const token = /^Bearer (.+)$/i.exec(entry.headers?.Authorization || '')?.[1];

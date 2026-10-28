@@ -13,6 +13,9 @@ const PACKAGE_VERSION = require('./package.json').version;
 const DEFAULT_BUDGET = 4096;
 const MAX_BUDGET = 16384;
 const MAX_INPUT = 32768;
+// Hermes sends the whole conversation history with each turn's hook; only the
+// current message is read, but the payload must still parse.
+const MAX_HOOK_INPUT = { hermes: 4 * 1024 * 1024 };
 const MAX_RESPONSE = 65536;
 const TIMEOUT = 2000;
 // Explicit decision saves run as CLI actions outside a native hook's short
@@ -122,6 +125,8 @@ function projectPath(value) {
 // A binding saved with project "*" applies on this whole computer. It is the
 // least specific match: a binding for an exact project folder always wins.
 const EVERYWHERE = '*';
+// Runtimes with user-level hooks or plugins, so one install covers every repository.
+const EVERYWHERE_RUNTIMES = ['claude', 'codex', 'cursor', 'openclaw', 'hermes', 'amp', 'devin'];
 
 /** The git repository containing a folder, or the folder itself. */
 function repoRoot(dir) {
@@ -688,7 +693,7 @@ async function prepareInstall(runtime, options, dependencies = {}) {
   if (!contract?.installable) throw new Error('This runtime uses portable MCP instructions or an owned generic bridge. Export its skill instead of claiming a native install.');
   if (!options.portable && contract.kind !== 'guidance' && !contract.platforms.includes(process.platform)) throw new Error('Native installers currently support macOS and Linux; choose --portable on this platform.');
   const everywhere = options.everywhere === true;
-  if (everywhere && (options.portable || !['claude', 'codex', 'cursor'].includes(runtime))) throw new Error('Computer-wide setup supports Claude Code, Codex and Cursor. Use --project for other runtimes.');
+  if (everywhere && (options.portable || !EVERYWHERE_RUNTIMES.includes(runtime))) throw new Error('Computer-wide setup supports Claude Code, Codex, Cursor, OpenClaw, Hermes Agent, Amp and Devin CLI. Use --project for other runtimes.');
   if (!everywhere && (!options.project || !options.topic)) throw new Error('Installation requires --project <directory> and --topic <project or recurring topic>.');
   const project = everywhere ? EVERYWHERE : projectPath(options.project);
   const target = endpointForHost(options.host || process.env.ENGRAM_HOST || 'https://engram.ani.computer');
@@ -798,12 +803,13 @@ async function claudeHook(input, dependencies = {}) {
   return {};
 }
 
-async function inputJson(stream = process.stdin) {
+async function inputJson(stream = process.stdin, maximum = MAX_INPUT) {
   let raw = '';
   if (stream.isTTY) return {};
   const timer = setTimeout(() => stream.destroy(new Error('Lifecycle input timed out.')), TIMEOUT);
   try {
-    for await (const chunk of stream) { raw += chunk.toString('utf8'); if (bytes(raw) > MAX_INPUT) throw new Error('Lifecycle input exceeds 32 KB.'); }
+    let size = 0;
+    for await (const chunk of stream) { raw += chunk.toString('utf8'); size += chunk.length; if (size > maximum) throw new Error('Lifecycle input is too large.'); }
     let value;
     try { value = raw.trim() ? JSON.parse(raw) : {}; }
     catch { throw new Error('Lifecycle input must be valid JSON.'); }
@@ -833,7 +839,7 @@ async function runMemoryCli(args) {
     console.log(JSON.stringify(result, null, 2)); return 0;
   }
   if (!event || event === '--help') {
-    console.log('Usage: engram-mcp memory install <claude|codex|cursor|gemini|copilot|opencode|openclaw|windsurf|generic|grokbot> --project <directory> --topic <topic> [--budget 4096] [--host <url>] [--token-stdin]\n       engram-mcp memory <task-start|task-progress|decision|no-change|task-end|status> [--run <id>] [--runtime <name> --session <id> --task <id>]\n       engram-mcp memory doctor [--project <directory>]\n       engram-mcp memory verify begin|status --run <known-run-id> [--project <directory>]\n       engram-mcp memory capabilities [runtime]\n       engram-mcp memory instructions <client>\n       engram-mcp memory skill <client> --output <SKILL.md>\nStructured event fields use JSON on stdin. No transcript capture or background polling.');
+    console.log('Usage: engram-mcp memory install <claude|codex|cursor|gemini|copilot|opencode|openclaw|hermes|amp|devin|windsurf|generic|grokbot> --project <directory> --topic <topic> [--budget 4096] [--host <url>] [--token-stdin]\n       engram-mcp memory <task-start|task-progress|decision|no-change|task-end|status> [--run <id>] [--runtime <name> --session <id> --task <id>]\n       engram-mcp memory doctor [--project <directory>]\n       engram-mcp memory verify begin|status --run <known-run-id> [--project <directory>]\n       engram-mcp memory capabilities [runtime]\n       engram-mcp memory instructions <client>\n       engram-mcp memory skill <client> --output <SKILL.md>\nStructured event fields use JSON on stdin. No transcript capture or background polling.');
     return 0;
   }
   if (event === 'instructions' || event === 'skill') {
@@ -873,8 +879,8 @@ async function runMemoryCli(args) {
     // Harness hooks always fail open with a tiny result. Never print input,
     // token-bearing exceptions, server content, or implementation stack traces.
     try {
-      const input = await inputJson();
-      const output = rest[0] === 'claude' ? await claudeHook(input) : await require('./runtime-adapters').nativeHook(rest[0], input, rest[1]);
+      const input = await inputJson(process.stdin, MAX_HOOK_INPUT[rest[0]]);
+      const output = rest[0] === 'claude' ? (devinRunsOwnHooks(input) ? {} : await claudeHook(input)) : await require('./runtime-adapters').nativeHook(rest[0], input, rest[1]);
       console.log(JSON.stringify(output));
     }
     catch { console.log('{}'); }
@@ -909,6 +915,14 @@ async function runMemoryCli(args) {
   } catch (error) { console.error(error.message || 'Memory lifecycle event failed. Work can continue.'); return 1; }
 }
 
+// Devin CLI also runs the Claude Code hooks in ~/.claude by default
+// (read_config_from.claude). Inside Devin the Claude hook always stands aside:
+// Devin's own hooks handle it when Devin is connected, and Devin's work is never
+// credited to Claude Code. DEVIN_PROJECT_DIR is set by Devin, not Claude Code.
+function devinRunsOwnHooks(_input, env = process.env) {
+  return Boolean(env.DEVIN_PROJECT_DIR);
+}
+
 async function inputJsonToken() {
   if (process.stdin.isTTY) throw new Error('--token-stdin expects piped token input.');
   let raw = '';
@@ -919,4 +933,4 @@ async function inputJsonToken() {
   } finally { clearTimeout(timer); }
 }
 
-module.exports = { DEFAULT_BUDGET, MAX_BUDGET, continuationGuidance, lifecycle, verify, claudeHook, install, prepareInstall, bindingFor, configFile, stateRoot, runMemoryCli, inputJson, truncate, projectBindings, removeProjectBindings, internals: { hash, noLinks, readPrivate, writePrivate, readTextPrivate, writeTextPrivate, privateDirectory, sessionFile, projectPath, runContext, rpc, budget, shellQuote, bindingCandidates } };
+module.exports = { DEFAULT_BUDGET, MAX_BUDGET, continuationGuidance, lifecycle, verify, claudeHook, install, prepareInstall, bindingFor, configFile, stateRoot, runMemoryCli, inputJson, truncate, projectBindings, removeProjectBindings, devinRunsOwnHooks, EVERYWHERE_RUNTIMES, internals: { hash, noLinks, readPrivate, writePrivate, readTextPrivate, writeTextPrivate, privateDirectory, sessionFile, projectPath, runContext, rpc, budget, shellQuote, bindingCandidates } };

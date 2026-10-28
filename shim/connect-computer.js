@@ -13,7 +13,16 @@ const AGENTS = [
   { harness: 'claude', server: 'claude-code', label: 'Claude Code', commands: ['claude'], paths: ['.claude'], apps: ['/Applications/Claude.app'] },
   { harness: 'codex', server: 'codex', label: 'Codex', commands: ['codex'], paths: ['.codex'], apps: ['/Applications/ChatGPT.app/Contents/Resources/codex-cli', '/Applications/Codex.app'] },
   { harness: 'cursor', server: 'cursor', label: 'Cursor', commands: ['cursor-agent', 'cursor'], paths: ['.cursor'], apps: ['/Applications/Cursor.app'] },
+  { harness: 'openclaw', server: 'openclaw', label: 'OpenClaw', commands: ['openclaw'], paths: ['.openclaw'], apps: [] },
+  // "hermes" and "amp" are also names of unrelated programs, so these two are
+  // found by their own config folder, never by a command of the same name.
+  { harness: 'hermes', server: 'hermes', label: 'Hermes Agent', commands: [], paths: ['.hermes'], apps: [] },
+  { harness: 'amp', server: 'amp', label: 'Amp', commands: [], paths: ['.config/amp'], apps: [] },
+  { harness: 'devin', server: 'devin', label: 'Devin CLI', commands: ['devin'], paths: ['.config/devin'], apps: [] },
 ];
+// Servers released before 0.8.0 issue keys only for these. An older server
+// rejects the whole request when it sees another agent, so setup retries.
+const ORIGINAL_AGENTS = ['claude-code', 'codex', 'cursor'];
 
 function onPath(command, env) {
   return String(env.PATH || '').split(path.delimiter).filter(Boolean).some(dir => {
@@ -46,7 +55,7 @@ async function postJson(fetchImpl, url, body) {
   let data = null;
   try { data = await response.json(); } catch { /* Reported below. */ }
   if (response.status === 429) throw new Error('Too many connection attempts from this network. Wait a few minutes and try again.');
-  if (!response.ok || !data || typeof data !== 'object') throw new Error(`Engram did not accept the request (HTTP ${response.status}). Check the address and try again.`);
+  if (!response.ok || !data || typeof data !== 'object') throw Object.assign(new Error(`Engram did not accept the request (HTTP ${response.status}). Check the address and try again.`), { status: response.status });
   return data;
 }
 
@@ -91,7 +100,7 @@ async function connectAgent(agent, grant, token, dependencies) {
 }
 
 // Agents whose user-level config can hold an Engram key on this computer.
-const KEY_HOLDERS = ['claude', 'codex', 'cursor', 'vscode', 'windsurf', 'gemini', 'copilot', 'opencode', 'openclaw'];
+const KEY_HOLDERS = ['claude', 'codex', 'cursor', 'vscode', 'windsurf', 'gemini', 'copilot', 'opencode', 'openclaw', 'hermes', 'amp', 'devin'];
 
 /** Every Engram access key this computer still uses, mapped to its server. */
 function keysInUse(dependencies) {
@@ -165,15 +174,26 @@ async function connectComputer(args, dependencies) {
   }
   const base = require('./onboarding').endpointForHost(host).host;
   output.write('\nConnect this computer to Engram\n\n');
-  const agents = (dependencies.detect || detectAgents)({ env });
+  let agents = (dependencies.detect || detectAgents)({ env });
   const before = keysInUse(dependencies);
   if (!agents.length) {
-    output.write('No supported agents found. Install Claude Code, Codex or Cursor, then run this again.\n');
+    const names = AGENTS.map(agent => agent.label);
+    output.write(`No supported agents found. Install ${names.slice(0, -1).join(', ')} or ${names.at(-1)}, then run this again.\n`);
     return 1;
   }
   output.write(`Found ${listNames(agents.map(agent => agent.label))}.\n`);
   const device = computerName(env);
-  const start = await postJson(fetchImpl, `${base}/api/device/start`, { device, agents: agents.map(agent => ({ harness: agent.server, label: agent.label })) });
+  const begin = list => postJson(fetchImpl, `${base}/api/device/start`, { device, agents: list.map(agent => ({ harness: agent.server, label: agent.label })) });
+  let start;
+  try { start = await begin(agents); }
+  catch (error) {
+    const supported = agents.filter(agent => ORIGINAL_AGENTS.includes(agent.server));
+    if (error.status !== 400 || !supported.length || supported.length === agents.length) throw error;
+    const skipped = agents.filter(agent => !supported.includes(agent));
+    output.write(`This Engram server can't connect ${listNames(skipped.map(agent => agent.label))} yet. Connecting the others.\n`);
+    agents = supported;
+    start = await begin(agents);
+  }
   if (typeof start.deviceCode !== 'string' || typeof start.userCode !== 'string' || typeof start.verificationUri !== 'string') throw new Error('Engram returned an unexpected response. Update with npx @ani-hq/engram-mcp@latest.');
   output.write(`\nApprove it in your browser. Check the code matches: ${start.userCode}\n`);
   output.write(`If the page doesn't open, visit ${start.verificationUri} and enter the code.\n`);
@@ -206,8 +226,10 @@ async function connectComputer(args, dependencies) {
   output.write(`\nDone. Engram now works in every repo on this computer, in the command line and desktop apps.\n`);
   output.write('Restart any agent that is already open so it picks up Engram.\n');
   if (connected.some(agent => agent.harness === 'codex')) output.write('Codex asks once before running new hooks: open Codex, run /hooks, and approve Engram.\n');
+  if (connected.some(agent => agent.harness === 'hermes')) output.write('Hermes asks once before running a new hook: approve Engram when it asks.\n');
+  if (connected.some(agent => agent.harness === 'openclaw')) output.write('Restart the OpenClaw gateway so it loads the Engram plugin.\n');
   if (failed.length) output.write(`Run this again later to finish ${listNames(failed.map(agent => agent.label))}.\n`);
   return failed.length ? 1 : 0;
 }
 
-module.exports = { AGENTS, detectAgents, connectComputer, waitForApproval, computerName, listNames };
+module.exports = { AGENTS, KEY_HOLDERS, detectAgents, connectComputer, waitForApproval, computerName, listNames };

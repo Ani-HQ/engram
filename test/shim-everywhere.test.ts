@@ -69,6 +69,6 @@ test("each runtime gets its own computer-wide binding and reinstalling replaces 
 });
 
 test("computer-wide setup is limited to runtimes with user-level hooks", async () => {
-  await expect(install("copilot")).rejects.toThrow(/Claude Code, Codex and Cursor/);
-  await expect(install("claude", { portable: true })).rejects.toThrow(/Claude Code, Codex and Cursor/);
+  await expect(install("copilot")).rejects.toThrow(/Computer-wide setup supports Claude Code, Codex, Cursor, OpenClaw, Hermes Agent, Amp and Devin CLI/);
+  await expect(install("claude", { portable: true })).rejects.toThrow(/Computer-wide setup supports Claude Code, Codex, Cursor, OpenClaw, Hermes Agent, Amp and Devin CLI/);
 });

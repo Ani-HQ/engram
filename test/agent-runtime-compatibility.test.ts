@@ -10,6 +10,9 @@ const prompts = [
   ['opencode', { hook_event_name: 'chat.message', sessionID: 'fixture-session', cwd: '/fixture', prompt: 'Implement retries' }],
   ['openclaw', { hook_event_name: 'before_prompt_build', sessionKey: 'fixture-session', cwd: '/fixture', prompt: 'Implement retries' }],
   ['windsurf', { agent_action_name: 'pre_user_prompt', trajectory_id: 'fixture-session', cwd: '/fixture', tool_info: { user_prompt: 'Implement retries' } }],
+  ['hermes', { hook_event_name: 'pre_llm_call', session_id: 'fixture-session', cwd: '/fixture', extra: { user_message: 'Implement retries', conversation_history: [{ content: 'PRIVATE_HISTORY' }] } }, 'pre_llm_call'],
+  ['amp', { hook_event_name: 'agent.start', sessionId: 'fixture-session', cwd: '/fixture', prompt: 'Implement retries' }, 'agent.start'],
+  ['devin', { hook_event_name: 'UserPromptSubmit', session_id: 'fixture-session', cwd: '/fixture', prompt: 'Implement retries' }, 'UserPromptSubmit'],
 ] as const;
 
 test('every native setup option maps to an installable executable registry entry', () => {
@@ -34,10 +37,15 @@ test('runtime prompt fixtures agree on task entry without inventing context inje
 });
 
 test('turn, stop, idle and session-end events never normalize into successful task completion', () => {
-  for (const [runtime, hook] of [['codex', 'Stop'], ['gemini', 'AfterAgent'], ['cursor', 'stop'], ['copilot', 'agentStop'], ['opencode', 'session.idle'], ['openclaw', 'agent_end'], ['windsurf', 'post_cascade_response']]) {
+  for (const [runtime, hook] of [['codex', 'Stop'], ['gemini', 'AfterAgent'], ['cursor', 'stop'], ['copilot', 'agentStop'], ['opencode', 'session.idle'], ['openclaw', 'agent_end'], ['windsurf', 'post_cascade_response'], ['devin', 'Stop']]) {
     const normalized = normalizeRuntimeEvent(runtime, { session_id: 'fixture-session', cwd: '/fixture' }, hook);
     expect(normalized?.event).toBe('stop');
     expect(normalized).not.toHaveProperty('status', 'completed');
     expect(normalized).not.toHaveProperty('outcome');
   }
+});
+
+test('per-turn end events that are not task ends are not wired at all', () => {
+  expect(normalizeRuntimeEvent('hermes', { session_id: 'fixture-session', cwd: '/fixture' }, 'on_session_end')).toBeNull();
+  expect(normalizeRuntimeEvent('amp', { sessionId: 'fixture-session', cwd: '/fixture' }, 'agent.end')).toBeNull();
 });

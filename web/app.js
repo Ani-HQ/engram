@@ -1014,7 +1014,7 @@ function connectComputerPanel() {
   return el("section", { class: "ds-panel connect-computer", "aria-labelledby": "connect-computer-title" },
     el("div", { class: "ds-panel-body ds-stack" },
       el("div", { class: "ds-heading-group" }, el("h2", { id: "connect-computer-title" }, "Connect this computer"),
-        el("p", { class: "ds-hint" }, "Run this in a terminal. It sets up Claude Code, Codex and Cursor (command line and desktop apps) on this computer in one step, and you approve it in your browser.")),
+        el("p", { class: "ds-hint" }, "Run this in a terminal and approve in your browser. It connects Claude Code, Codex, Cursor, OpenClaw, Hermes Agent, Amp and Devin CLI on this computer in one step, desktop apps included.")),
       el("div", { class: "ds-command" },
         el("code", { class: "ds-code-scroll", tabindex: "0", role: "region", "aria-label": "Setup command. Scroll horizontally to read." }, command),
         copyButton("Copy", command, { "aria-label": "Copy setup command" })),

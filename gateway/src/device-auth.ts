@@ -13,7 +13,12 @@ import { clientAddress } from "./site-analytics";
 // checks the short user code and approves it for their selected workspace.
 // Access keys are issued only once, when the approved request is collected.
 
-export const DEVICE_AGENT_LABELS = Object.freeze({ "claude-code": "Claude Code", codex: "Codex", cursor: "Cursor" } as const);
+export const DEVICE_AGENT_LABELS = Object.freeze({
+  "claude-code": "Claude Code", codex: "Codex", cursor: "Cursor",
+  openclaw: "OpenClaw", hermes: "Hermes Agent", amp: "Amp", devin: "Devin CLI",
+} as const);
+// Each supported agent at most once per request.
+export const DEVICE_AGENT_LIMIT = Object.keys(DEVICE_AGENT_LABELS).length;
 export type DeviceHarness = keyof typeof DEVICE_AGENT_LABELS;
 export const DEVICE_CODE_TTL_SECONDS = 600;
 export const DEVICE_POLL_INTERVAL_SECONDS = 3;
@@ -51,7 +56,7 @@ export function parseDeviceStart(body: unknown): DeviceStart | null {
   if (!body || typeof body !== "object" || Array.isArray(body)) return null;
   const input = body as Record<string, unknown>;
   const device = printable(input.device, 80);
-  if (!device || !Array.isArray(input.agents) || input.agents.length < 1 || input.agents.length > 6) return null;
+  if (!device || !Array.isArray(input.agents) || input.agents.length < 1 || input.agents.length > DEVICE_AGENT_LIMIT) return null;
   const agents: DeviceAgent[] = [];
   for (const raw of input.agents) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;

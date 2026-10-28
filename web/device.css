@@ -11,7 +11,7 @@
 .device-details { border-block: 1px solid var(--ds-line); }
 .device-agents { display: flex; flex-wrap: wrap; gap: var(--ds-space-2) var(--ds-space-4); margin: 0; padding: 0; list-style: none; }
 .device-agents li { display: inline-flex; align-items: center; gap: var(--ds-space-2); min-width: 0; }
-.device-agent-mark { display: inline-flex; flex-shrink: 0; }
+.device-agent-mark { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 26px; height: 26px; border: 1px solid var(--ds-line-strong); border-radius: var(--ds-radius-control); }
 .device-workspace { gap: var(--ds-space-2); min-width: 0; }
 .device-workspace select { width: 100%; max-width: 320px; }
 @media (max-width: 600px) {

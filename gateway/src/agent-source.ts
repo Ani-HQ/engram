@@ -4,7 +4,8 @@ import { redactSecrets } from "./redact";
 // that Engram verified the program or model behind a credential.
 export const COMMON_HARNESSES = [
   "codex", "claude-code", "claude", "cursor", "chatgpt", "grok-bot", "grok",
-  "gemini-cli", "opencode", "cline", "windsurf", "aider", "goose", "amp", "github-copilot", "other",
+  "gemini-cli", "opencode", "cline", "windsurf", "aider", "goose", "amp", "github-copilot",
+  "openclaw", "hermes", "devin", "other",
 ] as const;
 
 export function parseReportedSource(harness: unknown, sourceLabel: unknown): { harness: string | null; sourceLabel: string | null } {
