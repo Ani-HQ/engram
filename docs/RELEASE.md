@@ -4,6 +4,35 @@ Private operator captures and verification records described in the historical
 release entries are retained outside the public source release. Their local
 paths and raw contents are not published here.
 
+## Task continuation, site analytics and bridge 0.6.0 — 28 October 2026
+
+Agents can save a task checkpoint and another agent, harness or machine can
+find and resume it (`checkpoint_task`, `find_tasks`, `resume_task`), with an
+Activity > Handoffs view and a copyable continue prompt. Public pages send
+cookieless first-party analytics: page views, named calls to action and sign-up
+attribution, with no IP address, user agent or email stored. Do Not Track and
+Global Privacy Control are honoured.
+
+Build `0a85d11a-c912-471a-a508-eea19706d856` passed all gates for source
+`e65dcbf6939faa3a8c847a3aab74d6ca6f9c8a3e`. Ready revision
+`engram-r-1793148026` serves 100% of production traffic using
+`gcr.io/ani-hq/engram@sha256:3c42e62cb3ce0d3da2de1d3831cf825db23d04241a03226e39862d3db3ed59b1`.
+Local regression passed 951 tests. Mail and Jev billing workers were prepared on
+the reviewed image and re-enabled at activation; Jev customer billing stays on
+with no markup. Candidate smoke passed and revoked its temporary read credential
+with no cleanup required. The candidate and canonical site served the new
+analytics and Handoffs assets, and the analytics endpoint answered 204.
+
+Fresh backup `1793147627567` preceded staging; rollback preserves
+`engram-r-1793107780`. The bridge was published as `@ani-hq/engram-mcp@0.6.0`
+and its downloaded `memory.js` matched the source. Source:
+[PR 51](https://github.com/Ani-HQ/engram/pull/51) (with
+[PR 53](https://github.com/Ani-HQ/engram/pull/53)),
+[PR 52](https://github.com/Ani-HQ/engram/pull/52) and
+[PR 54](https://github.com/Ani-HQ/engram/pull/54). Live CLI transfer results
+are in [the continuation spec](CONTINUATION-SPEC.md). The activated state was archived at
+`gs://ani-hq_cloudbuild/engram-releases/0a85d11a-c912-471a-a508-eea19706d856/release-state.json`.
+
 ## Interface system and public profile layouts — 25 October 2026
 
 The graphite/mint interface system is live across the app, public pages, email,
