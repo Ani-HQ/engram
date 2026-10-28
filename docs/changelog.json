@@ -2,6 +2,14 @@
   "repository": "https://github.com/Ani-HQ/engram",
   "entries": [
     {
+      "sha": "ab6313f",
+      "at": "2026-10-28T14:27:13Z",
+      "kind": "improved",
+      "title": "Old keys turn off when you reconnect",
+      "summary": "Running setup again now turns off the access keys this computer no longer uses, including those of folder setups you switch. Keys still in use are left alone, and turned-off keys stay listed as revoked under Connections.",
+      "pr": 62
+    },
+    {
       "sha": "87f3b32",
       "at": "2026-10-28T07:18:22Z",
       "kind": "improved",
