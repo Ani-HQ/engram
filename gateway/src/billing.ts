@@ -62,7 +62,7 @@ export function publicPlans(input: BillingDependencies = {}) {
 export function requiresHostedEntitlement(method: string, pathname: string): boolean {
   if (method === "PATCH") return /^\/api\/share\/rules\/\d+$/.test(pathname);
   if (method !== "POST") return false;
-  if (["/api/capture", "/api/page/restore", "/api/tokens", "/api/invites", "/api/trails", "/api/share", "/api/share/rules", "/api/review/approve"].includes(pathname)) return true;
+  if (["/api/capture", "/api/page/restore", "/api/tokens", "/api/invites", "/api/trails", "/api/share", "/api/share/rules", "/api/review/approve", "/api/device/approve"].includes(pathname)) return true;
   return /^\/api\/trails\/[^/]+\/share$/.test(pathname) || /^\/api\/share\/rules\/\d+\/resume$/.test(pathname);
 }
 

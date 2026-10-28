@@ -125,7 +125,12 @@ export async function issueToken(
   const raw = `eng_${randomBytes(32).toString("base64url")}`;
   const email = issuerEmail === null ? null : normalizeEmail(issuerEmail);
   if (issuerEmail !== null && !email) throw new Error("issuer email required");
-  await db.begin(async tx => {
+  // Inside a caller's transaction (which has savepoint but no begin), issue
+  // within a savepoint so the caller's transaction decides the final outcome.
+  const transaction = typeof (db as unknown as { savepoint?: unknown }).savepoint === "function"
+    ? (fn: (tx: postgres.Sql) => Promise<void>) => (db as unknown as postgres.TransactionSql).savepoint(tx => fn(tx as unknown as postgres.Sql))
+    : (fn: (tx: postgres.Sql) => Promise<void>) => db.begin(tx => fn(tx as unknown as postgres.Sql));
+  await transaction(async tx => {
     // Lock the membership against removal while issuing. Rejoining creates a
     // different member ID and cannot restore credentials from an earlier stay.
     const members = email ? await tx`
