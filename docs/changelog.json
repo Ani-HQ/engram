@@ -2,6 +2,14 @@
   "repository": "https://github.com/Ani-HQ/engram",
   "entries": [
     {
+      "sha": "325b979",
+      "at": "2026-10-28T04:32:02Z",
+      "kind": "new",
+      "title": "Connect a computer in one step",
+      "summary": "Run `npx @ani-hq/engram-mcp@latest`, approve in your browser, and Claude Code, Codex and Cursor, including their desktop apps, are connected with their own keys. Engram then works in every repo, with no config or Markdown files to edit.",
+      "pr": 58
+    },
+    {
       "sha": "ebfae9d",
       "at": "2026-10-28T01:48:22Z",
       "kind": "under-the-hood",
