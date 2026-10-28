@@ -17,8 +17,8 @@ workspace's policies. Access to memory does not automatically report tasks.
 
 ## Primary Path
 
-Connect every Claude Code, Codex and Cursor install on a computer, command line
-and desktop apps, in one step:
+Connect every Claude Code, Codex, Cursor, OpenClaw, Hermes Agent, Amp and Devin
+CLI install on a computer, command line and desktop apps, in one step:
 
 ```bash
 npx -y @ani-hq/engram-mcp@latest
@@ -29,6 +29,41 @@ and approves. Each agent receives its own access key, attributed to that
 member, and Engram applies in every repository with the project taken from the
 git repository. Nothing is written into project folders. Self-hosted:
 `npx -y @ani-hq/engram-mcp@latest setup --host http://localhost:8080`.
+
+What the one-step setup writes for each agent (user level only):
+
+| Agent | Found by | MCP connection | Lifecycle hooks or plugin |
+| - | - | - | - |
+| Claude Code | `claude`, `~/.claude`, Claude app | `~/.claude.json` | `~/.claude/settings.json`: `SessionStart`, `UserPromptSubmit`, `Stop` |
+| Codex | `codex`, `~/.codex`, Codex or ChatGPT app | `~/.codex/config.toml` | `~/.codex/hooks.json`. Approve once with `/hooks` |
+| Cursor | `cursor-agent`, `cursor`, `~/.cursor`, Cursor app | `~/.cursor/mcp.json` | `~/.cursor/hooks.json` |
+| OpenClaw | `openclaw`, `~/.openclaw` | `~/.openclaw/openclaw.json` `mcp.servers` | Engram plugin (`before_prompt_build`, `session_end`) loaded from `~/.config/engram/runtime-plugins/openclaw`. Restart the gateway |
+| Hermes Agent | `~/.hermes` | `~/.hermes/config.yaml` `mcp_servers` | Shell hook on `pre_llm_call` in the same file. Hermes asks once before it runs a new hook |
+| Amp | `~/.config/amp` | `~/.config/amp/settings.json` `amp.mcpServers` | System plugin `$XDG_CONFIG_HOME/amp/plugins/engram-memory.js` (or `~/.config/amp/plugins`) on `agent.start` |
+| Devin CLI | `devin`, `~/.config/devin` | `~/.config/devin/mcp_config.json` | `~/.config/devin/config.json`: `SessionStart`, `UserPromptSubmit`, `Stop`, `SessionEnd` |
+
+Hooks and plugins are best-effort context. A turn ending (`Stop`, Amp's
+`agent.end`, Hermes' `on_session_end`, OpenClaw's `agent_end`) is never treated
+as a finished task, so Amp's `agent.end` and Hermes' per-turn `on_session_end`
+are not used at all.
+
+Hermes `config.yaml` is edited without a YAML library: setup replaces only the
+`mcp_servers.engram` entry and its own `hooks.pre_llm_call` item, and keeps every
+other line, comments included. A layout it cannot edit safely (flow style such as
+`mcp_servers: {…}`, anchors, tabs, duplicate keys) fails for Hermes only and
+leaves the file unchanged; add the entry by hand in that case. Only the default
+profile (`~/.hermes`) is set up.
+
+Devin CLI also runs the Claude Code hooks in `~/.claude` by default
+(`read_config_from.claude`). When Devin has its own Engram connection, Engram's
+Claude hook detects Devin (`DEVIN_PROJECT_DIR`) and stands aside, so each event
+runs once and is attributed to Devin CLI. Devin also imports MCP servers from
+`~/.claude.json`, so it can see two servers named `engram`, one per key. Devin's
+documentation does not say which one it prefers.
+
+An older Engram server that only knows Claude Code, Codex and Cursor rejects the
+newer agents. Setup then connects the agents that server knows and says which it
+skipped.
 
 To set up a single agent or project folder with a pasted token instead:
 

@@ -55,7 +55,11 @@ the installer neither reads token caches nor replaces the connection. Other
 runtime user-scope destinations are rejected until supported explicitly.
 
 Local setup targets include Claude Code, Codex, Cursor, Gemini CLI, VS Code,
-Copilot CLI, OpenCode, OpenClaw Gateway and Windsurf. VS Code uses `setup vscode`;
+Copilot CLI, OpenCode, OpenClaw Gateway and Windsurf. The one-step computer setup
+(`npx -y @ani-hq/engram-mcp@latest`) covers Claude Code, Codex, Cursor, OpenClaw,
+Hermes Agent, Amp and Devin CLI; [WIRING.md](WIRING.md#primary-path) lists the
+files and events it uses for each. `memory install hermes|amp|devin --project`
+installs the same hooks for one project folder. VS Code uses `setup vscode`;
 Copilot CLI uses `setup copilot`, preserving their distinct MCP configuration
 files. Grok Bot is a separate cloud product with app-controlled skills; no
 filesystem installation API is assumed. Use its Connect apps and Private skills

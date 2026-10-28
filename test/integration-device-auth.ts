@@ -127,6 +127,15 @@ export async function checkDeviceAuth(db: postgres.Sql): Promise<number> {
   equal((await start({ device: "", agents: [{ harness: "codex" }] })).status, 400, "A computer name is required");
   equal((await start({ device: "Laptop", agents: [{ harness: "codex" }, { harness: "codex" }] })).status, 400, "Duplicate agents are rejected");
   equal((await start({ device: "Laptop", agents: [{ harness: "windsurf" }] })).status, 400, "Unsupported agents are rejected");
+  const everyAgent = ["claude-code", "codex", "cursor", "openclaw", "hermes", "amp", "devin"];
+  const labStart = await start({ device: "Agent lab", agents: everyAgent.map(harness => ({ harness })) });
+  equal(labStart.status, 200, "Every one-step agent can be connected in one request");
+  const lab = await labStart.json();
+  equal((await consoleRequest(`/api/device/approve`, sessionA, 2, { userCode: lab.userCode })).status, 200, "The whole set is approved at once");
+  await rewind(lab.deviceCode);
+  const labKeys = (await (await poll(lab.deviceCode)).json()).tokens;
+  equal(labKeys.map((token: any) => token.name), ["Claude Code", "Codex", "Cursor", "OpenClaw", "Hermes Agent", "Amp", "Devin CLI"].map(label => `${label} on Agent lab`), "Each agent gets its own readable key name");
+  for (const token of labKeys) equal((await authenticateStoredSecret(token.token))?.source?.harness, token.harness, "Each new agent key carries its agent source");
   const statuses = [];
   for (let i = 0; i < 11; i++) statuses.push((await start({ device: "Busy laptop", agents: [{ harness: "codex" }] }, "203.0.113.9")).status);
   equal([statuses.slice(0, 10).every(status => status === 200), statuses[10]], [true, 429], "Starts are limited per client address");

@@ -403,7 +403,7 @@ targets at narrow widths, and the view has no horizontal overflow at 320px.
 
 `#device` approves a terminal's sign-in request. `web/device-view.js` composes a
 heading group, the confirmation code, an evidence-list of the request (computer,
-agents with their local product marks, workspace and request time) and one
+agents with their local product marks on the shared `.ds-logo-backplate`, workspace and request time) and one
 primary **Approve** beside a secondary **Deny**; `web/device.css` owns only its
 layout. With no code it shows the setup command (`.ds-command`) and a labeled code
 field. Loading, not found, expired, denied, already approved, connected, error,

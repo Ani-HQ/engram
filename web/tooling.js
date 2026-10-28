@@ -20,7 +20,7 @@ const brandAssets = Object.freeze(Object.fromEntries([
   ...['codex', 'grok', 'openai', 'gemini', 'cline', 'windsurf', 'goose', 'amp', 'opencode', 'githubcopilot',
     'openclaw', 'hermesagent', 'slack', 'notion', 'linear', 'googledrive', 'googledocs', 'googlesheets',
     'googlechrome', 'playwright', 'puppeteer', 'microsoftedge', 'microsoftoutlook', 'dropbox', 'postgresql',
-    'supabase', 'vercel', 'safari'].map(name => [name, `${name}.svg`]),
+    'supabase', 'vercel', 'safari', 'devin'].map(name => [name, `${name}.svg`]),
 ]));
 export const agentSources = Object.freeze([
   ['grok-bot', 'Grok Bot'], ['grok', 'Grok'], ['codex', 'Codex'], ['claude-code', 'Claude Code'],
@@ -33,9 +33,9 @@ const sourceBrands = Object.freeze({
   'grok-bot': 'grok-bot', grok: 'grok', codex: 'codex', 'claude-code': 'claude', claude: 'claude',
   cursor: 'cursor', chatgpt: 'openai', 'gemini-cli': 'gemini', gemini: 'gemini', opencode: 'opencode',
   cline: 'cline', windsurf: 'windsurf', goose: 'goose', amp: 'amp', 'github-copilot': 'githubcopilot',
-  openclaw: 'openclaw', hermes: 'hermesagent', 'hermes-agent': 'hermesagent',
+  openclaw: 'openclaw', hermes: 'hermesagent', 'hermes-agent': 'hermesagent', devin: 'devin', 'devin-cli': 'devin',
 });
-const sourceLabels = Object.freeze({ 'hermes-agent': 'Hermes Agent' });
+const sourceLabels = Object.freeze({ 'hermes-agent': 'Hermes Agent', devin: 'Devin CLI', 'devin-cli': 'Devin CLI' });
 
 /** Safe, local catalog for known tool namespaces. Labels and marks are display hints. */
 export const toolCatalog = Object.freeze([

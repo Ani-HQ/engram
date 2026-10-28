@@ -91,6 +91,10 @@ async function nativeHook(runtime, input, eventName, dependencies = {}) {
     if (state?.started && !state.ended && !state.blocked) publishActiveRun(binding, current.runId, normalized.runtime, normalized.sessionId);
   }
   const context = result.hookSpecificOutput?.additionalContext;
+  if (normalized.canInject && normalized.firstTurn) {
+    const guide = await memory.claudeHook({ session_id: normalized.sessionId, cwd: normalized.cwd, hook_event_name: 'SessionStart' }, { ...dependencies, binding, runtime: normalized.runtime });
+    return outputFor(normalized, [guide.hookSpecificOutput?.additionalContext, context].filter(Boolean).join('\n\n'));
+  }
   if (normalized.canInject) return outputFor(normalized, context);
   if (current.runId && !contract.reportingOnly) writePrivate(pendingFile(binding, normalized.runtime, normalized.sessionId), { runId: current.runId, expiresAt: Date.now() + 120000 });
   return {};

@@ -10,13 +10,18 @@ Run this in your terminal:
 npx -y @ani-hq/engram-mcp@latest
 ```
 
-It finds Claude Code, Codex and Cursor on this computer, including their
-desktop apps, and opens your browser. Check that the code matches, click
-Approve, and each agent is connected with its own access key. Engram then works
-in every repository on this computer: the project is taken from the git
-repository the agent is working in, and nothing is written into project
-folders. Restart any agent that was already open. Codex asks once before it
-runs new hooks; run `/hooks` in Codex and approve Engram.
+It finds Claude Code, Codex, Cursor, OpenClaw, Hermes Agent, Amp and Devin CLI
+on this computer, including the Claude, Codex and Cursor desktop apps, and opens
+your browser. Check that the code matches, click Approve, and each agent is
+connected with its own access key. Engram then works in every repository on this
+computer: the project is taken from the git repository the agent is working in,
+and nothing is written into project folders. Restart any agent that was already
+open. Codex asks once before it runs new hooks; run `/hooks` in Codex and approve
+Engram. Hermes Agent also asks once before it runs a new hook. Restart the
+OpenClaw gateway so it loads the Engram plugin.
+
+The exact files written for each agent are listed in
+[docs/WIRING.md](https://github.com/Ani-HQ/engram/blob/main/docs/WIRING.md#primary-path).
 
 For a self-hosted server, add `--host https://your-engram.example`.
 
