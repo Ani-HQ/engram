@@ -26,9 +26,13 @@ afterEach(() => {
 
 /** A fake Engram: device approval plus the identity and catalog the installer verifies. */
 function fakeEngram(decision: "approved" | "denied" | "expired" | "pending", options: { omit?: string } = {}) {
-  const seen: any = { starts: [], polls: 0, bearer: new Set<string>() };
+  const seen: any = { starts: [], polls: 0, bearer: new Set<string>(), retired: [] as string[] };
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(req) {
     const url = new URL(req.url);
+    if (url.pathname === "/api/device/retire") {
+      seen.retired.push(req.headers.get("authorization"));
+      return Response.json({ ok: true });
+    }
     if (url.pathname === "/api/device/start") {
       seen.starts.push(await req.json());
       return Response.json({ deviceCode: "device-secret", userCode: "BCDF-GHJK", verificationUri: `${url.origin}/app#device`, verificationUriComplete: `${url.origin}/app#device=BCDF-GHJK`, expiresIn: 600, interval: 1 });
@@ -155,12 +159,12 @@ test("Codex hooks carry readable Engram labels", async () => {
 });
 
 describe("earlier per-folder setups", () => {
-  const seed = async () => {
+  const seed = async (host = "http://127.0.0.1:1") => {
     const memory = require("../shim/memory.js");
     const { mkdirSync } = require("node:fs");
     for (const name of ["a", "b"]) {
       const dir = path.join(root, "code", name); mkdirSync(dir, { recursive: true });
-      await memory.install("claude", { project: dir, topic: name, host: "http://127.0.0.1:1", token: `eng_old_${name}` }, { checks: { tools: [{ name: "whoami" }, { name: "remember" }] } });
+      await memory.install("claude", { project: dir, topic: name, host, token: `eng_old_${name}` }, { checks: { tools: [{ name: "whoami" }, { name: "remember" }] } });
     }
     return memory;
   };
@@ -182,5 +186,59 @@ describe("earlier per-folder setups", () => {
     expect(projects(memory)).toEqual(["claude:*", "claude:a", "claude:b"]);
     const silent = await run(fakeEngram("approved").host, computer.AGENTS.filter((agent: any) => agent.harness === "claude"));
     expect(silent.text).toContain("still applies there");
+  });
+});
+
+describe("older keys", () => {
+  const claudeOnly = () => computer.AGENTS.filter((agent: any) => agent.harness === "claude");
+  const writeJson = (file: string, value: unknown) => { const { mkdirSync, writeFileSync } = require("node:fs"); mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, JSON.stringify(value)); };
+  const seedProjects = async (host: string) => {
+    const memory = require("../shim/memory.js");
+    const { mkdirSync } = require("node:fs");
+    for (const name of ["a", "b"]) {
+      const dir = path.join(root, "code", name); mkdirSync(dir, { recursive: true });
+      await memory.install("claude", { project: dir, topic: name, host, token: `eng_old_${name}` }, { checks: { tools: [{ name: "whoami" }, { name: "remember" }] } });
+    }
+  };
+
+  test("reconnecting turns off the key each agent used before", async () => {
+    const engram = fakeEngram("approved");
+    writeJson(path.join(root, ".claude.json"), { mcpServers: { engram: { type: "http", url: `${engram.host}/mcp`, headers: { Authorization: "Bearer eng_old_claude" } } } });
+    const result = await run(engram.host, claudeOnly());
+    expect(result.code).toBe(0);
+    expect(engram.seen.retired).toEqual(["Bearer eng_old_claude"]);
+    expect(result.text).toContain("Turned off 1 older key this computer no longer uses.");
+    expect(result.text).not.toContain("eng_old");
+  });
+
+  test("keys of switched folders are turned off, kept folders keep theirs", async () => {
+    const switched = fakeEngram("approved");
+    await seedProjects(switched.host);
+    await run(switched.host, claudeOnly(), async () => "y");
+    expect(switched.seen.retired.sort()).toEqual(["Bearer eng_old_a", "Bearer eng_old_b"]);
+
+    rmSync(require("../shim/memory.js").configFile(), { force: true });
+    const kept = fakeEngram("approved");
+    await seedProjects(kept.host);
+    await run(kept.host, claudeOnly(), async () => "n");
+    expect(kept.seen.retired).toEqual([]);
+  });
+
+  test("a key another agent still uses is left on", async () => {
+    const engram = fakeEngram("approved");
+    const old = { url: `${engram.host}/mcp`, headers: { Authorization: "Bearer eng_shared" } };
+    writeJson(path.join(root, ".claude.json"), { mcpServers: { engram: { type: "http", ...old } } });
+    writeJson(path.join(root, ".gemini", "settings.json"), { mcpServers: { engram: { httpUrl: old.url, headers: old.headers } } });
+    const result = await run(engram.host, claudeOnly());
+    expect(engram.seen.retired).toEqual([]);
+    expect(result.text).not.toContain("older key");
+  });
+
+  test("an unreachable server is reported, not fatal", async () => {
+    const engram = fakeEngram("approved");
+    writeJson(path.join(root, ".claude.json"), { mcpServers: { engram: { type: "http", url: "http://127.0.0.1:1/mcp", headers: { Authorization: "Bearer eng_elsewhere" } } } });
+    const result = await run(engram.host, claudeOnly());
+    expect(result.code).toBe(0);
+    expect(result.text).toContain("Couldn't reach Engram to turn off 1 older key. Revoke it under Connections.");
   });
 });

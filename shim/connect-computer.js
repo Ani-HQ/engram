@@ -90,6 +90,48 @@ async function connectAgent(agent, grant, token, dependencies) {
   return committed;
 }
 
+// Agents whose user-level config can hold an Engram key on this computer.
+const KEY_HOLDERS = ['claude', 'codex', 'cursor', 'vscode', 'windsurf', 'gemini', 'copilot', 'opencode', 'openclaw'];
+
+/** Every Engram access key this computer still uses, mapped to its server. */
+function keysInUse(dependencies) {
+  const { endpointForHost } = require('./onboarding');
+  const read = dependencies.readConnection || (harness => require('./index').readHarnessConnection(harness));
+  const keys = new Map();
+  const add = (host, token) => {
+    if (typeof token !== 'string' || !token.startsWith('eng_')) return;
+    try { keys.set(token, endpointForHost(host).host); } catch { /* Not a usable server address. */ }
+  };
+  for (const harness of KEY_HOLDERS) {
+    try { const connection = read(harness); add(connection.host, connection.token); } catch { /* Not set up. */ }
+  }
+  try {
+    const memory = require('./memory');
+    const config = memory.internals.readPrivate(memory.configFile(), { bindings: [] });
+    for (const binding of config.bindings || []) add(binding.host, binding.token);
+  } catch { /* No memory setup yet. */ }
+  return keys;
+}
+
+/** Turns off keys this computer replaced, so old connections stop working. */
+async function retireReplacedKeys(before, newKeys, dependencies) {
+  const { output = process.stdout, fetchImpl = fetch } = dependencies;
+  const after = keysInUse(dependencies);
+  const replaced = [...before].filter(([token]) => !after.has(token) && !newKeys.has(token));
+  if (!replaced.length) return;
+  let retired = 0;
+  for (const [token, host] of replaced) {
+    try {
+      const response = await fetchImpl(`${host}/api/device/retire`, { method: 'POST', headers: { authorization: `Bearer ${token}`, accept: 'application/json' }, signal: AbortSignal.timeout(5000) });
+      if (response.ok) retired++;
+    } catch { /* Reported below. */ }
+  }
+  const plural = n => n === 1 ? 'key' : 'keys';
+  if (retired) output.write(`Turned off ${retired} older ${plural(retired)} this computer no longer uses. They stay listed as revoked under Connections.\n`);
+  const missed = replaced.length - retired;
+  if (missed) output.write(`Couldn't reach Engram to turn off ${missed} older ${plural(missed)}. Revoke ${missed === 1 ? 'it' : 'them'} under Connections.\n`);
+}
+
 /** Offers to retire per-folder setups made before this computer was connected. */
 async function replaceEarlierSetups(connected, dependencies) {
   const { output = process.stdout, input = process.stdin } = dependencies;
@@ -124,6 +166,7 @@ async function connectComputer(args, dependencies) {
   const base = require('./onboarding').endpointForHost(host).host;
   output.write('\nConnect this computer to Engram\n\n');
   const agents = (dependencies.detect || detectAgents)({ env });
+  const before = keysInUse(dependencies);
   if (!agents.length) {
     output.write('No supported agents found. Install Claude Code, Codex or Cursor, then run this again.\n');
     return 1;
@@ -159,6 +202,7 @@ async function connectComputer(args, dependencies) {
     return 1;
   }
   await replaceEarlierSetups(connected, dependencies);
+  await retireReplacedKeys(before, new Set(tokens.values()), dependencies);
   output.write(`\nDone. Engram now works in every repo on this computer, in the command line and desktop apps.\n`);
   output.write('Restart any agent that is already open so it picks up Engram.\n');
   if (connected.some(agent => agent.harness === 'codex')) output.write('Codex asks once before running new hooks: open Codex, run /hooks, and approve Engram.\n');

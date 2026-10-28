@@ -42,7 +42,7 @@ function dispatch() {
   const bare = !subcommand || subcommand === '--host' || subcommand.startsWith('--host=');
   const computerSetup = interactive && ((bare && !process.env.ENGRAM_TOKEN && hostOnly(process.argv.slice(2))) || (subcommand === 'setup' && hostOnly(args)));
   if (computerSetup) {
-    require('./connect-computer').connectComputer(subcommand === 'setup' ? args : process.argv.slice(2), { planConnection: planHarnessConnection, cacheTools: writeToolCache }).then(code => { process.exitCode = code; }).catch(error => {
+    require('./connect-computer').connectComputer(subcommand === 'setup' ? args : process.argv.slice(2), { planConnection: planHarnessConnection, readConnection: readHarnessConnection, cacheTools: writeToolCache }).then(code => { process.exitCode = code; }).catch(error => {
       console.error(error.message || 'Engram setup failed.');
       process.exitCode = 1;
     });

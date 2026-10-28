@@ -260,11 +260,30 @@ async function readJson(req: Request): Promise<unknown> {
   try { const text = await req.text(); return text.length > MAX_BODY ? null : JSON.parse(text); } catch { return null; }
 }
 
-/** POST /api/device/start and /api/device/poll. Unauthenticated; no cookies are read. */
+/**
+ * Revokes the access key presented as the bearer. Setup calls this for keys it
+ * replaced on this computer. Holding the key is the authority, so nothing is
+ * revealed about other keys and any outcome reads the same to the caller.
+ */
+export async function retirePresentedKey(authorization: string | null, deps: DeviceDeps = {}): Promise<boolean> {
+  const raw = /^Bearer\s+(eng_[A-Za-z0-9_-]{20,200})$/i.exec(authorization?.trim() ?? "")?.[1];
+  if (!raw) return false;
+  const db = deps.db ?? sql;
+  const rows = await db`UPDATE tokens SET revoked_at = now() WHERE sha256_hash = ${sha256(raw)} AND revoked_at IS NULL RETURNING name`;
+  return rows.length > 0;
+}
+
+/** POST /api/device/start, /api/device/poll and /api/device/retire. No cookies are read. */
 export async function handlePublicDeviceApi(req: Request, url: URL, deps: DeviceDeps = {}): Promise<Response | null> {
-  if (url.pathname !== "/api/device/start" && url.pathname !== "/api/device/poll") return null;
+  if (url.pathname !== "/api/device/start" && url.pathname !== "/api/device/poll" && url.pathname !== "/api/device/retire") return null;
   if (req.method !== "POST") return new Response(JSON.stringify({ error: "method not allowed" }), { status: 405, headers: { Allow: "POST", "Content-Type": "application/json", "Cache-Control": "no-store" } });
   try {
+    if (url.pathname === "/api/device/retire") {
+      const header = req.headers.get("authorization");
+      if (!header) return json({ error: "unauthorized" }, 401);
+      await retirePresentedKey(header, deps);
+      return json({ ok: true });
+    }
     if (url.pathname === "/api/device/start") {
       const input = parseDeviceStart(await readJson(req));
       if (!input) return json({ error: "bad_request", message: "Provide a computer name and one to six supported agents." }, 400);
