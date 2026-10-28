@@ -2,6 +2,22 @@
   "repository": "https://github.com/Ani-HQ/engram",
   "entries": [
     {
+      "sha": "8f34e39",
+      "at": "2026-10-28T17:14:50Z",
+      "kind": "improved",
+      "title": "A quieter app",
+      "summary": "Activity, connections, memory, sharing and account screens drop status pills, frames, dividers and decorative art. Status reads as plain words, and only failures are colored.",
+      "pr": 69
+    },
+    {
+      "sha": "21ee4ec",
+      "at": "2026-10-28T17:14:28Z",
+      "kind": "improved",
+      "title": "Plainer marketing pages",
+      "summary": "The public pages drop animations, mockups, tags and numbered labels for plain headings, short text and the full list of agent logos.",
+      "pr": 68
+    },
+    {
       "sha": "0499fc8",
       "at": "2026-10-28T15:44:20Z",
       "kind": "new",
