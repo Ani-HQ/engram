@@ -2,6 +2,30 @@
   "repository": "https://github.com/Ani-HQ/engram",
   "entries": [
     {
+      "sha": "0499fc8",
+      "at": "2026-10-28T15:44:20Z",
+      "kind": "new",
+      "title": "One-step setup for OpenClaw, Hermes Agent, Amp and Devin CLI",
+      "summary": "The setup command now finds and connects OpenClaw, Hermes Agent, Amp and Devin CLI alongside Claude Code, Codex and Cursor, each with its own key and one browser approval. Inside Devin, Claude Code's hooks stay quiet so Devin's work is credited to Devin.",
+      "pr": 65
+    },
+    {
+      "sha": "09ddd23",
+      "at": "2026-10-28T15:38:42Z",
+      "kind": "under-the-hood",
+      "title": "Instinct and Aider logos restored",
+      "summary": "Reverts the earlier removal, so the agent list on the homepage is unchanged.",
+      "pr": 66
+    },
+    {
+      "sha": "de0d851",
+      "at": "2026-10-28T15:35:22Z",
+      "kind": "under-the-hood",
+      "title": "Instinct and Aider logos removed",
+      "summary": "Briefly removed from the homepage agent list, then restored in #66 before any release.",
+      "pr": 64
+    },
+    {
       "sha": "ab6313f",
       "at": "2026-10-28T14:27:13Z",
       "kind": "improved",
