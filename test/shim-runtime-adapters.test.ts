@@ -472,11 +472,12 @@ describe("Hermes Agent, Amp and Devin CLI", () => {
     } finally { if (prior === undefined) delete process.env.DEVIN_PROJECT_DIR; else process.env.DEVIN_PROJECT_DIR = prior; }
   });
 
-  test("inside Devin, the Claude Code hook stands aside only when Devin has its own connection", async () => {
+  test("inside Devin, the Claude Code hook always stands aside", async () => {
     const fixture = gateway();
     const options = { project: fixture.project, topic: fixture.binding.topic, host: fixture.host, token: fixture.token };
     await memory.install("claude", options);
-    expect(memory.devinRunsOwnHooks({ cwd: fixture.project }, { DEVIN_PROJECT_DIR: fixture.project })).toBe(false);
+    // Devin's work is never credited to Claude Code, even before Devin is connected.
+    expect(memory.devinRunsOwnHooks({ cwd: fixture.project }, { DEVIN_PROJECT_DIR: fixture.project })).toBe(true);
     await memory.install("devin", options);
     expect(memory.devinRunsOwnHooks({ cwd: fixture.project }, { DEVIN_PROJECT_DIR: fixture.project })).toBe(true);
     expect(memory.devinRunsOwnHooks({}, { DEVIN_PROJECT_DIR: fixture.project })).toBe(true);

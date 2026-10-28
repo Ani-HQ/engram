@@ -916,16 +916,11 @@ async function runMemoryCli(args) {
 }
 
 // Devin CLI also runs the Claude Code hooks in ~/.claude by default
-// (read_config_from.claude). When Devin has its own Engram connection, its own
-// hooks handle the event, so the Claude hook stands aside instead of firing twice
-// and attributing Devin's work to Claude Code. DEVIN_PROJECT_DIR is set by Devin
-// for its hooks and not by Claude Code.
-function devinRunsOwnHooks(input, env = process.env) {
-  if (!env.DEVIN_PROJECT_DIR) return false;
-  try {
-    const binding = bindingFor(typeof input?.cwd === 'string' && input.cwd ? input.cwd : env.DEVIN_PROJECT_DIR, 'devin');
-    return require('./runtime-contracts').runtimeId(binding.runtime) === 'devin';
-  } catch { return false; }
+// (read_config_from.claude). Inside Devin the Claude hook always stands aside:
+// Devin's own hooks handle it when Devin is connected, and Devin's work is never
+// credited to Claude Code. DEVIN_PROJECT_DIR is set by Devin, not Claude Code.
+function devinRunsOwnHooks(_input, env = process.env) {
+  return Boolean(env.DEVIN_PROJECT_DIR);
 }
 
 async function inputJsonToken() {

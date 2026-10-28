@@ -55,9 +55,9 @@ leaves the file unchanged; add the entry by hand in that case. Only the default
 profile (`~/.hermes`) is set up.
 
 Devin CLI also runs the Claude Code hooks in `~/.claude` by default
-(`read_config_from.claude`). When Devin has its own Engram connection, Engram's
-Claude hook detects Devin (`DEVIN_PROJECT_DIR`) and stands aside, so each event
-runs once and is attributed to Devin CLI. Devin also imports MCP servers from
+(`read_config_from.claude`). Inside Devin, Engram's Claude hook detects Devin
+(`DEVIN_PROJECT_DIR`) and always stands aside, so Devin's work is never credited
+to Claude Code and each event runs once, through Devin's own hooks. Devin also imports MCP servers from
 `~/.claude.json`, so it can see two servers named `engram`, one per key. Devin's
 documentation does not say which one it prefers.
 
