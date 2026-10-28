@@ -83,6 +83,20 @@ export async function checkDeviceAuth(db: postgres.Sql): Promise<number> {
   equal(racing.filter(result => result.status === "approved").length, 1, "Concurrent polls deliver the keys exactly once");
   equal(racing.find(result => result.status === "approved").tokens[0].name, "Codex on Ada's MacBook (2)", "A repeated computer name gets a distinct key name");
 
+  // A key can retire itself; the response never says whether it existed.
+  const retire = (authorization?: string) => handleWeb(new Request(`${base}/api/device/retire`, { method: "POST", headers: authorization ? { Authorization: authorization } : {} }));
+  const retiring = collected.tokens.find((token: any) => token.harness === "cursor").token;
+  equal((await retire()).status, 401, "Retiring needs the key itself");
+  const retired = await retire(`Bearer ${retiring}`);
+  equal([retired.status, await retired.json()], [200, { ok: true }], "A presented key is retired");
+  equal(await authenticateStoredSecret(retiring), null, "A retired key no longer authenticates");
+  check((await db`SELECT revoked_at FROM tokens WHERE name = 'Cursor on Ada''s MacBook' AND org_id = 2`)[0].revoked_at, "The retired connection stays listed as revoked");
+  equal(await (await retire(`Bearer ${retiring}`)).json(), { ok: true }, "Retiring again is harmless");
+  equal(await (await retire(`Bearer eng_${"x".repeat(43)}`)).json(), { ok: true }, "An unknown key reads the same");
+  equal(await (await retire(`Bearer ${sessionA}`)).json(), { ok: true }, "A console session is not an access key");
+  check(await authenticateStoredSecret(sessionA), "Presenting a session cannot end it");
+  check(await authenticateStoredSecret(collected.tokens.find((token: any) => token.harness === "codex").token), "Other keys from the same computer stay active");
+
   // Denied.
   const denied = await (await start({ device: "Shared desktop", agents: [{ harness: "cursor" }] })).json();
   equal((await consoleRequest(`/api/device/deny`, sessionA, 2, { userCode: denied.userCode })).status, 200, "A signed-in person can deny a request");
