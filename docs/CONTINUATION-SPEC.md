@@ -481,17 +481,17 @@ fork or new task; a final `completed` checkpoint; and `node --test` passing.
 | Claude Code → Cursor, interrupted | Pass |
 | Claude Code → Cursor, handoff | Pass on re-run (first run: Cursor produced no output) |
 | Cursor → Claude Code, handoff | Pass on re-run (first run: `read ECONNRESET` before any tool call) |
-| Cursor → Claude Code, interrupted | Not established: in both runs Cursor lost its connection to its own API and retried until the time limit, with no tool call |
-| Cursor → Codex, interrupted | Not established: same Cursor connection failure in both runs |
-| Cursor restart | Not established: same Cursor connection failure in both runs |
+| Cursor → Claude Code, interrupted | Pass on the fourth run, after pre-approving the lab MCP tools for the headless CLI |
+| Cursor → Codex, interrupted | Pass on the third run |
+| Cursor restart | Pass on the fourth run, after pre-approving the lab MCP tools |
 
 Lab setup facts, not product claims: Codex needed
 `default_tools_approval_mode = "approve"` for the Engram server under
 `codex exec`; Claude Code loads remote MCP tools through ToolSearch; agents used
 the MCP tools directly rather than the bridge `checkpoint` command. These are
-CLI runs, not the desktop apps. Desktop behaviour remains unverified. Cursor passes 6 of 9 after
-one re-run (2026-10-28). The three remaining Cursor-first interrupt and restart
-runs failed twice the same way: Cursor's CLI lost its connection to Cursor's API
-before any tool call. That repeated pattern is unexplained, so Cursor-first
-interruption is unverified, not shown to work.
+CLI runs, not the desktop apps. Desktop behaviour remains unverified. All nine Cursor scenarios pass
+(2026-10-28). Earlier failures were not Engram faults: Cursor's CLI lost its
+connection to Cursor's API before any tool call, or, in headless mode, refused
+MCP tool calls that were not pre-approved. The lab now passes `--approve-mcps`
+and allows only `Mcp(engramlab:*)`, never `--force`.
 

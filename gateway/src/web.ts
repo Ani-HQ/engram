@@ -14,6 +14,7 @@ import {
 } from "./cookies";
 import { getMemoryEntry, upsertMemoryEntry } from "./memory-entries";
 import { authenticateRequest } from "./auth";
+import { handlePublicDeviceApi, isDeviceConsolePath } from "./device-auth";
 import { handleOrgApi, handlePublicOrgApi, ingestTrailRequest, onboardingState, sessionActor } from "./org-api";
 import { resolveOrg, withOrg } from "./orgs";
 import { signupPolicy } from "./signup-invites";
@@ -189,6 +190,9 @@ async function routeWeb(req: Request): Promise<Response> {
   if (url.pathname === "/hosted" && req.method === "GET") return Response.redirect("https://engram.ani.computer/pricing", 302);
   if (url.pathname === "/api/billing/webhook") return handleBillingWebhook(req);
   if (url.pathname === "/api/e") return handleSiteEvent(req);
+  // The installer starts and polls without cookies or the console header.
+  const deviceSignIn = await handlePublicDeviceApi(req, url);
+  if (deviceSignIn) return deviceSignIn;
   if (url.pathname === "/api/plans" && ["GET", "HEAD"].includes(req.method)) {
     return new Response(req.method === "HEAD" ? null : JSON.stringify(publicPlans()), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
   }
@@ -323,9 +327,10 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   else if (req.method === "POST" && url.pathname === "/api/review/defer") route = postReviewDefer;
   const adminSignup = url.pathname === "/api/admin/signup-invites" || url.pathname.startsWith("/api/admin/signup-invites/");
   const workspaceMetadata = url.pathname === "/api/workspace";
+  const deviceApproval = isDeviceConsolePath(url.pathname);
   const token = adminSignup && req.headers.get("authorization") ? await authenticateRequest(req) : await authenticateCookie(req);
   if (!token) {
-    if (!route && !workspaceMetadata) return Response.json({ error: "not found" }, { status: 404 });
+    if (!route && !workspaceMetadata && !deviceApproval) return Response.json({ error: "not found" }, { status: 404 });
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 
@@ -356,7 +361,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   // storage, the memory engine, or a paid content-write entitlement.
   if (workspaceMetadata) return await handleOrgApi(req, url, actor, storedOrg) ?? Response.json({ error: "not found" }, { status: 404 });
   const org = ["/api/search", "/api/page", "/api/pages", "/api/capture", "/api/insights"].includes(url.pathname) ? await processingOrg(storedOrg, actor) : storedOrg;
-  const lightweight = isTasksPath(url.pathname) || url.pathname === "/api/sharing" || url.pathname.startsWith("/api/sharing/") || url.pathname === "/api/activities" || url.pathname.startsWith("/api/activities/") || url.pathname === "/api/insights" || ["/api/jev", "/api/actions", "/api/showcase", "/api/billing", "/api/billing/checkout", "/api/billing/portal", "/api/policies", "/api/tokens", "/api/connections", "/api/tokens/write", "/api/tokens/source", "/api/tokens/revoke", "/api/members", "/api/invites", "/api/wiring", "/api/me", "/api/onboarding"].includes(url.pathname);
+  const lightweight = deviceApproval || isTasksPath(url.pathname) || url.pathname === "/api/sharing" || url.pathname.startsWith("/api/sharing/") || url.pathname === "/api/activities" || url.pathname.startsWith("/api/activities/") || url.pathname === "/api/insights" || ["/api/jev", "/api/actions", "/api/showcase", "/api/billing", "/api/billing/checkout", "/api/billing/portal", "/api/policies", "/api/tokens", "/api/connections", "/api/tokens/write", "/api/tokens/source", "/api/tokens/revoke", "/api/members", "/api/invites", "/api/wiring", "/api/me", "/api/onboarding"].includes(url.pathname);
   return withOrg(org, actor, async () => {
     if (url.pathname === "/api/billing" || url.pathname.startsWith("/api/billing/")) return handleBillingApi(req, actor);
     // Keep reads, billing recovery, revocation, privacy controls, deletion and

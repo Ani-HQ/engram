@@ -28,6 +28,8 @@ import { sharingView } from "./sharing-view.js";
 import { handoffsView } from "./handoffs-view.js";
 import { statusBadge, loadingState, observeLoadingMotion, observeSelects } from "./design-system.js";
 import { createJevSettingsPanel } from "./jev-settings.js";
+import { deviceView } from "./device-view.js";
+import { deviceHref, formatUserCode, installCommand, parseDeviceRoute, rememberPendingDevice, takePendingDevice } from "./device-model.js";
 import { createAccessClock, friendAccessCard, friendAccessPresentation } from "./access-view.js";
 import { applyWorkspaceName, createWorkspaceNameEditor, captureSetupFocus, restoreSetupFocus } from "./workspace-name.js";
 
@@ -39,6 +41,7 @@ const state = {
   account: null,
   insights: null, insightsQuery: "", insightsActivityId: "", insightBusy: false, insightError: "",
   memoryTab: "saved", reviews: [], reviewState: "pending", reviewMore: false,
+  device: freshDevice(),
   memoryQuery: "", more: false, loading: false, error: "", demo: Boolean(document.querySelector('meta[name="engram-demo"]')), mcp: "", token: null, showcase: null, showcaseDraft: null,
 };
 const activityHistoryActive = () => state.view === "activity" && state.activityTab === "history";
@@ -64,6 +67,7 @@ const connectionMutations = new Map();
 let signupPolicy = null, signupPolicyRequest = null, authPanel = null, signupAdmin = null, jevSettingsPanel = null, pendingInviteEntry = null;
 let sharingPanel = null, sharingSwitchError = null, handoffsPanel = null;
 let workspaceNameEpoch = 0;
+let deviceRequest = 0, deviceFocusPending = false;
 let accessSnapshot = null, accessClock = () => null, accessRefreshTimer, accessRequest = 0, accessError = "", accessRefreshing = false;
 const setupByWorkspace = new Map();
 const setupReader = createOnboardingReader(workspaceId => api.onboarding(workspaceId), () => state.session?.org.id);
@@ -199,7 +203,13 @@ function activitySectionHrefs() {
     handoffsHref: activityHref({ tab: "handoffs" }),
   };
 }
+function freshDevice(route = { code: "", input: "" }) {
+  return { code: route.code, input: route.input || route.code, request: null, loading: false, error: "", errorCode: "", busy: "", result: "",
+    entryError: route.input && !route.code ? "Enter the 8-letter code shown in your terminal, like BCDF-GHJK." : "" };
+}
+function deviceStorage() { try { return window.localStorage; } catch { return null; } }
 function writeRoute() {
+  if (state.view === "device") { history.replaceState(null, "", deviceHref(state.device.code)); return; }
   if (state.view === "activity") {
     const hrefs = activitySectionHrefs();
     history.replaceState(null, "", state.activityTab === "checks" ? hrefs.checksHref : state.activityTab === "handoffs" ? hrefs.handoffsHref : hrefs.historyHref);
@@ -212,6 +222,12 @@ function writeRoute() {
 }
 function readRoute() {
   const [rawView, query = ""] = location.hash.slice(1).split("?");
+  const deviceRoute = parseDeviceRoute(location.hash);
+  if (deviceRoute) {
+    if (state.view !== "device" || deviceRoute.code !== state.device.code || !deviceRoute.code) state.device = freshDevice(deviceRoute);
+    state.view = "device"; connectionFocusPending = null;
+    return;
+  }
   const params = new URLSearchParams(query), destination = activityDestination(rawView, params);
   state.view = ["activity", "memory", "connect", "sharing", "showcase", "workspace", "billing"].includes(destination.view) ? destination.view : "activity";
   state.activityTab = destination.activityTab;
@@ -255,7 +271,7 @@ function setupState() {
 function invalidateWorkspaceNames() { ++workspaceNameEpoch; for (const setup of setupByWorkspace.values()) setup.nameEditor?.invalidate(); }
 function setupPanel() {
   const setup = setupState();
-  if (!setup?.visible || state.view === "connect" || (state.view === "sharing" && !setup.sharingOpened)) return null;
+  if (!setup?.visible || state.view === "connect" || state.view === "device" || (state.view === "sharing" && !setup.sharingOpened)) return null;
   return onboardingGuide({ ...setup, session: state.session, mcp: state.mcp || `${location.origin}/mcp`, policies: state.session.org.policies, inventory: state.connections, demo: state.demo,
     onChoose: agentId => { setup.agentId = agentId; renderSetup(); },
     onDisclosureChange: (key, open) => { (setup.disclosures ||= {})[key] = open; },
@@ -320,7 +336,7 @@ function render() {
     return;
   }
   const orgs = state.session.orgs?.length ? state.session.orgs : [state.session.org];
-  const titles = { activity: "Activity", memory: "Memory", connect: "Connections", sharing: "Sharing", showcase: "Public profile", workspace: "Workspace", billing: "Plan & billing" };
+  const titles = { device: "Connect a computer", activity: "Activity", memory: "Memory", connect: "Connections", sharing: "Sharing", showcase: "Public profile", workspace: "Workspace", billing: "Plan & billing" };
   const navigation = [["activity", "Activity", "activity"], ["memory", "Memory", "brain"], ["connect", "Connections", "plug"]];
   if (["owner", "member"].includes(state.session.role)) navigation.push(["sharing", "Sharing", "share-2"]);
   if (state.session.role === "owner") navigation.push(["showcase", "Public profile", "globe"]);
@@ -330,7 +346,7 @@ function render() {
   const navigationLink = ([key, label, name]) => el("a", { href: `#${key}`, "aria-current": state.view === key ? "page" : null, onclick: () => { if (navigationOpen) { setNavigationOpen(false); document.querySelector('#main')?.focus({ preventScroll: true }); } } }, icon(name, { size: 16 }), el("span", {}, label));
   const workspaceNavigation = navigation.filter(([key]) => !["showcase", "workspace", "billing"].includes(key));
   const manageNavigation = navigation.filter(([key]) => ["showcase", "workspace", "billing"].includes(key));
-  const content = state.view === "activity" ? activityView() : state.view === "memory" ? memoryView() : state.view === "sharing" ? selectiveSharingView() : state.view === "showcase" ? showcaseView() : ["workspace", "billing"].includes(state.view) ? accountView() : connectView();
+  const content = state.view === "device" ? deviceScreen() : state.view === "activity" ? activityView() : state.view === "memory" ? memoryView() : state.view === "sharing" ? selectiveSharingView() : state.view === "showcase" ? showcaseView() : ["workspace", "billing"].includes(state.view) ? accountView() : connectView();
   const accessSlot = el("div", { id: "friend-access-slot" }), setupSlot = el("div", { id: "setup-slot" }, setupPanel());
   const mainContent = state.view === "sharing" ? [setupSlot, content, accessSlot] : [accessSlot, setupSlot, content];
   root.replaceChildren(
@@ -352,7 +368,7 @@ function render() {
           button([icon("log-out", { size: 15 }), "Sign out"], signOut, { class: "text" }))),
       el("div", { class: "main-column" },
         el("div", { class: "app-topbar" }, el("div", { class: "breadcrumbs" }, el("span", {}, state.session.org.name), statusBadge(workspaceKind, { tone: "neutral", className: "workspace-kind-badge" }), icon("chevron-right", { size: 13 }), el("span", {}, titles[state.view])),
-          el("div", { class: "topbar-actions" }, state.view !== "connect" && setupState() && button("Getting started", openSetup, { class: "text small setup-resume", "aria-label": "Open getting started guide", "aria-controls": "setup-slot" }), state.session.role === "owner" && state.view !== "showcase" && button([icon("share-2", { size: 14 }), "Share activity"], () => { location.hash = "showcase"; }, { class: "small" }), iconButton("log-out", "Sign out", signOut, { class: "icon-button mobile-signout" }))),
+          el("div", { class: "topbar-actions" }, !["connect", "device"].includes(state.view) && setupState() && button("Getting started", openSetup, { class: "text small setup-resume", "aria-label": "Open getting started guide", "aria-controls": "setup-slot" }), state.session.role === "owner" && state.view !== "showcase" && button([icon("share-2", { size: 14 }), "Share activity"], () => { location.hash = "showcase"; }, { class: "small" }), iconButton("log-out", "Sign out", signOut, { class: "icon-button mobile-signout" }))),
         el("main", { class: "workspace", id: "main", tabindex: -1 }, mainContent))));
   renderFriendAccess();
   if (state.view === "showcase" && state.showcase?.preview) watchPreview();
@@ -363,6 +379,7 @@ function render() {
     if (target) { target.focus({ preventScroll: true }); accountFocusTarget = null; }
   }
   requestAnimationFrame(revealCurrentNavigation);
+  if (deviceFocusPending && state.view === "device") { deviceFocusPending = false; document.querySelector("#device-title")?.focus({ preventScroll: true }); }
 }
 function setNavigationOpen(open, restoreFocus = false) {
   navigationOpen = Boolean(open);
@@ -930,6 +947,80 @@ async function reviewDetail(id) {
     showDetail("Memory review", [el("h2", { id: "detail-title" }, "Could not load proposal"), notice(errorMessage(error))]);
   }
 }
+function resumePendingDevice() {
+  const pending = takePendingDevice(deviceStorage());
+  if (pending && !parseDeviceRoute(location.hash)) history.replaceState(null, "", deviceHref(pending));
+}
+function deviceScreen() {
+  const device = state.device;
+  const orgs = state.session.orgs?.length ? state.session.orgs : [state.session.org];
+  return deviceView({ ...device, workspace: state.session.org, workspaces: orgs.filter(org => !org.role || ["owner", "member"].includes(org.role)),
+    role: state.session.role, switching: sessionMutation, origin: location.origin, copyControl: copyButton,
+    onSubmitCode: value => {
+      const code = formatUserCode(value);
+      if (!code) { state.device = { ...freshDevice(), input: String(value || "").slice(0, 12), entryError: "Enter the 8-letter code shown in your terminal, like BCDF-GHJK." }; render(); document.querySelector("#device-code")?.focus(); return; }
+      if (location.hash === deviceHref(code)) { state.device = freshDevice({ code, input: code }); loadDevice(); return; }
+      location.hash = deviceHref(code);
+    },
+    onRetry: () => loadDevice(),
+    onStartOver: () => { state.device = freshDevice(); deviceFocusPending = true; history.replaceState(null, "", "#device"); render(); },
+    onSwitchWorkspace: id => { if (Number(id) !== state.session.org.id) switchOrg(id); },
+    onApprove: () => decideDevice("approve"),
+    onDeny: () => decideDevice("deny"),
+  });
+}
+function deviceStale(device, workspaceId, epoch, request) {
+  return request !== deviceRequest || epoch !== authEpoch || state.view !== "device" || state.device !== device || state.session?.org.id !== workspaceId;
+}
+async function loadDevice() {
+  const device = state.device;
+  if (!device.code || device.result || !["owner", "member"].includes(state.session?.role)) return;
+  const workspaceId = state.session.org.id, epoch = authEpoch, request = ++deviceRequest;
+  device.loading = true; device.error = ""; device.errorCode = ""; render();
+  try {
+    const data = await api.device(device.code, workspaceId);
+    if (deviceStale(device, workspaceId, epoch, request)) return;
+    device.request = data;
+  } catch (error) {
+    if (deviceStale(device, workspaceId, epoch, request)) return;
+    if (error instanceof AuthError) { rememberPendingDevice(deviceStorage(), device.code); return expired("Sign in to approve connecting your computer."); }
+    device.request = null; device.error = errorMessage(error); device.errorCode = error.status === 404 ? "not_found" : error.code || "";
+  } finally {
+    if (!deviceStale(device, workspaceId, epoch, request)) { device.loading = false; deviceFocusPending = true; render(); }
+  }
+}
+async function decideDevice(action) {
+  const device = state.device;
+  if (device.busy || sessionMutation || !device.request || device.request.status !== "pending") return;
+  const workspaceId = state.session.org.id, epoch = authEpoch, request = ++deviceRequest;
+  device.busy = action; device.error = ""; render();
+  try {
+    if (action === "approve") await api.approveDevice(device.code, workspaceId);
+    else await api.denyDevice(device.code, workspaceId);
+    if (deviceStale(device, workspaceId, epoch, request)) return;
+    device.result = action === "approve" ? "approved" : "denied";
+    announcements.textContent = action === "approve" ? "Approved. Return to your terminal." : "Request denied. Nothing was connected.";
+  } catch (error) {
+    if (deviceStale(device, workspaceId, epoch, request)) return;
+    if (error instanceof AuthError) { rememberPendingDevice(deviceStorage(), device.code); return expired("Your session expired. Sign in again to approve connecting your computer."); }
+    if (["expired", "denied", "approved", "consumed"].includes(error.code)) device.request = { ...device.request, status: error.code };
+    else device.error = errorMessage(error);
+  } finally {
+    if (!deviceStale(device, workspaceId, epoch, request)) { device.busy = ""; deviceFocusPending = true; render(); }
+  }
+}
+function connectComputerPanel() {
+  const command = installCommand(location.origin);
+  return el("section", { class: "ds-panel connect-computer", "aria-labelledby": "connect-computer-title" },
+    el("div", { class: "ds-panel-body ds-stack" },
+      el("div", { class: "ds-heading-group" }, el("h2", { id: "connect-computer-title" }, "Connect this computer"),
+        el("p", { class: "ds-hint" }, "Run this in a terminal. It sets up Claude Code, Codex and Cursor (command line and desktop apps) on this computer in one step, and you approve it in your browser.")),
+      el("div", { class: "ds-command" },
+        el("code", { class: "ds-code-scroll", tabindex: "0", role: "region", "aria-label": "Setup command. Scroll horizontally to read." }, command),
+        copyButton("Copy", command, { "aria-label": "Copy setup command" })),
+      el("p", { class: "ds-hint" }, "Chat apps like Claude, ChatGPT and Grok use their own connector. Choose Connect an agent for those and other clients.")));
+}
+
 function connectView() {
   const workspaceId = state.session.org.id, epoch = authEpoch;
   const canConnect = ["owner", "member"].includes(state.session.role);
@@ -938,6 +1029,7 @@ function connectView() {
       el("div", { class: "ds-row connection-page-actions" },
         button("Refresh", loadConnections, { class: "small", "aria-label": "Refresh connections", disabled: state.loading }),
         canConnect && button("Connect an agent", () => beginConnection(), { class: "primary small", "data-connect-action": "true" }))),
+    canConnect && connectComputerPanel(),
     state.error && notice(state.error, loadConnections),
     state.connectionError && notice("Connection status could not load. Refresh to try again.", loadConnections),
     canConnect && state.connections && el("div", { class: "connection-list-filter" }, field("Connection list", select("Connection list", state.connectionList, [
@@ -1568,7 +1660,7 @@ function renderAuth(mode = "email", message = "") {
   jevSettingsPanel?.dispose(); jevSettingsPanel = null;
   authPanel = signupView({ mode, policy: signupPolicy, message, api, inviteEntry: pendingInviteEntry, inviteSubmitted: () => { pendingInviteEntry = null; },
     changeMode: next => { pendingInviteEntry = null; history.replaceState(null, "", next === "create" ? "#invite" : "#signin"); renderAuth(next); },
-    signedIn: session => { state.session = session; readRoute(); render(); loadView(); },
+    signedIn: session => { state.session = session; resumePendingDevice(); readRoute(); render(); loadView(); },
     retryPolicy: async () => { const epoch = authEpoch; try { await loadSignupPolicy(); } catch {} if (!state.session && epoch === authEpoch) renderAuth(mode, message); },
   });
   root.replaceChildren(...[state.demo && el("div", { class: "demo" }, "Preview · Sample data. Sign-in and connections are simulated."), authPanel.element].filter(Boolean));
@@ -1591,6 +1683,11 @@ async function loadSignupPolicy() {
 }
 async function openAuth(message = "") {
   const epoch = authEpoch;
+  // Keep a computer approval request across sign-in, including an email link
+  // that opens in a new tab. Only the short display code is kept.
+  const deviceRoute = parseDeviceRoute(location.hash);
+  if (deviceRoute?.code) rememberPendingDevice(deviceStorage(), deviceRoute.code);
+  if (deviceRoute && !message) message = "Sign in to approve connecting your computer.";
   try { await loadSignupPolicy(); } catch {}
   if (!state.session && epoch === authEpoch) renderAuth(signupEntryMode(signupPolicy, location.hash, location.pathname), message);
 }
@@ -1602,6 +1699,7 @@ async function loadView() {
   else if (state.view === "memory") { if (state.memoryTab === "review") await loadReviews(); else await loadMemories(); }
   else if (state.view === "showcase") await loadShowcase();
   else if (state.view === "sharing") return;
+  else if (state.view === "device") await loadDevice();
   else if (["workspace", "billing"].includes(state.view)) await loadAccount();
   else await loadConnections();
 }
@@ -1685,6 +1783,7 @@ async function boot() {
   try {
     state.session = joining ? await api.acceptInvite(hash.slice(5)) : await api.me();
     if (joining) history.replaceState(null, "", "#activity");
+    resumePendingDevice();
     state.demo = Boolean(state.session.demo); readRoute(); render(); await loadView();
   } catch (error) { await openAuth(recovery ? [error instanceof AuthError ? "" : errorMessage(error), recovery.message].filter(Boolean).join(" ") : error instanceof AuthError ? "" : errorMessage(error)); }
 }

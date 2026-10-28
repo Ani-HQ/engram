@@ -119,13 +119,35 @@ function projectPath(value) {
   return dir;
 }
 
+// A binding saved with project "*" applies on this whole computer. It is the
+// least specific match: a binding for an exact project folder always wins.
+const EVERYWHERE = '*';
+
+/** The git repository containing a folder, or the folder itself. */
+function repoRoot(dir) {
+  for (let current = dir; ; current = path.dirname(current)) {
+    if (fs.existsSync(path.join(current, '.git'))) return current;
+    if (path.dirname(current) === current) return dir;
+  }
+}
+
+/** A repo's memory topic is its folder name; a bare home folder is general context. */
+function repoTopic(root) {
+  if (root === fs.realpathSync(home())) return 'General';
+  return path.basename(root).slice(0, 160) || 'General';
+}
+
 function bindingCandidates(project, config = readPrivate(configFile(), { version: 1, bindings: [] })) {
   const cwd = projectPath(project);
-  const candidates = (config.bindings || []).filter(item => typeof item.project === 'string' && (cwd === item.project || cwd.startsWith(`${item.project}${path.sep}`))).sort((a, b) => b.project.length - a.project.length);
+  const rank = item => item.project === EVERYWHERE ? -1 : item.project.length;
+  const candidates = (config.bindings || []).filter(item => typeof item.project === 'string' && (item.project === EVERYWHERE || cwd === item.project || cwd.startsWith(`${item.project}${path.sep}`))).sort((a, b) => rank(b) - rank(a));
   return candidates.map(binding => {
     const target = endpointForHost(binding.host);
     if (typeof binding.token !== 'string' || !binding.token || binding.token.length > 4096 || /[^\x21-\x7e]/.test(binding.token)) throw new Error('Memory binding has no usable access token. Reinstall it with an active token.');
-    return { ...binding, ...target, scope: hash(`${target.endpoint}\n${binding.token}\n${binding.project}`) };
+    if (binding.project !== EVERYWHERE) return { ...binding, ...target, scope: hash(`${target.endpoint}\n${binding.token}\n${binding.project}`) };
+    // Each repository keeps its own topic and lifecycle state.
+    const root = repoRoot(cwd);
+    return { ...binding, ...target, project: '', everywhere: true, repoRoot: root, topic: repoTopic(root), scope: hash(`${target.endpoint}\n${binding.token}\n${EVERYWHERE}\n${root}`) };
   });
 }
 
@@ -647,12 +669,14 @@ async function prepareInstall(runtime, options, dependencies = {}) {
   const contract = registry.runtimeCapabilities(runtime);
   if (!contract?.installable) throw new Error('This runtime uses portable MCP instructions or an owned generic bridge. Export its skill instead of claiming a native install.');
   if (!options.portable && contract.kind !== 'guidance' && !contract.platforms.includes(process.platform)) throw new Error('Native installers currently support macOS and Linux; choose --portable on this platform.');
-  if (!options.project || !options.topic) throw new Error('Installation requires --project <directory> and --topic <project or recurring topic>.');
-  const project = projectPath(options.project);
+  const everywhere = options.everywhere === true;
+  if (everywhere && (options.portable || !['claude', 'codex', 'cursor'].includes(runtime))) throw new Error('Computer-wide setup supports Claude Code, Codex and Cursor. Use --project for other runtimes.');
+  if (!everywhere && (!options.project || !options.topic)) throw new Error('Installation requires --project <directory> and --topic <project or recurring topic>.');
+  const project = everywhere ? EVERYWHERE : projectPath(options.project);
   const target = endpointForHost(options.host || process.env.ENGRAM_HOST || 'https://engram.ani.computer');
   const token = String(options.token || process.env.ENGRAM_TOKEN || '').trim();
   if (!token || token.length > 4096 || /[^\x21-\x7e]/.test(token)) throw new Error('Provide an active token through ENGRAM_TOKEN, the hidden prompt, or --token-stdin.');
-  const topic = clean(options.topic, 160, 'topic');
+  const topic = everywhere ? null : clean(options.topic, 160, 'topic');
   const configuredBudget = budget(options.budget);
   // Verify before changing files. Identity/catalog only, never a fake task.
   const checks = dependencies.checks || await inspectConnection({ ...target, token }, dependencies.fetchImpl);
@@ -682,7 +706,7 @@ async function prepareInstall(runtime, options, dependencies = {}) {
   if (options.portable) nativePlan = require('./runtime-install').planSkill(runtime, nativeOptions, { readTextPrivate, noLinks });
   else if (!['claude', 'generic', 'grokbot'].includes(runtime)) nativePlan = require('./runtime-install').planInstall(runtime, nativeOptions, { readPrivate, readTextPrivate, noLinks, shellQuote });
   config.bindings = config.bindings.filter(item => item.project !== project || registry.runtimeId(item.runtime) !== runtime);
-  config.bindings.push({ project, runtime, host: target.host, token, topic, budget: configuredBudget, reportAvailable: checks.tools.some(tool => tool.name === 'record_action'), memoryWriteAvailable: checks.tools.some(tool => tool.name === 'remember') });
+  config.bindings.push({ project, runtime, host: target.host, token, ...(topic ? { topic } : {}), budget: configuredBudget, reportAvailable: checks.tools.some(tool => tool.name === 'record_action'), memoryWriteAvailable: checks.tools.some(tool => tool.name === 'remember') });
   const skillPlan = runtime === 'windsurf' && !options.portable ? require('./runtime-install').planSkill(runtime, nativeOptions, { readTextPrivate, noLinks }) : null;
   const writes = [...(payload?.writes || []), { file, kind: 'json', value: config }, ...(settingsFile ? [{ file: settingsFile, kind: 'json', value: settings }] : []), ...(nativePlan?.writes || []), ...(skillPlan?.writes || [])];
   return { writes, result: { config: file, settings: settingsFile || nativePlan?.settings || null, project, runtime, budget: configuredBudget, capabilities: contract, mode: options.portable ? 'portable' : contract.kind === 'guidance' ? 'binding' : 'native', runtimeRoot: payload?.root || null } };

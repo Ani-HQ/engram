@@ -72,8 +72,12 @@ function optedOut(req: Request): boolean {
 
 /** A keyed daily hash. The key never leaves the server and the day is part of
  * the input, so yesterday's visitor and today's cannot be linked. */
+export function clientAddress(req: Request): string {
+  return req.headers.get("cf-connecting-ip") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+}
+
 export function visitorFor(req: Request, secret: string, now = new Date()): string {
-  const address = req.headers.get("cf-connecting-ip") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const address = clientAddress(req);
   const day = now.toISOString().slice(0, 10);
   return createHmac("sha256", createHash("sha256").update(`engram-site-analytics\n${secret}`).digest())
     .update(`${day}\n${address}\n${req.headers.get("user-agent") ?? ""}`).digest("hex").slice(0, 24);

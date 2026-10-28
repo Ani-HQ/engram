@@ -52,6 +52,7 @@ import { serializeSessionCookie } from "./cookies";
 import { loginLinkResponse, sendMail } from "./mail";
 import { renderEmail } from "./mail-templates";
 import { handleJevApi } from "./jev";
+import { handleDeviceConsoleApi, isDeviceConsolePath } from "./device-auth";
 import { getWorkspaceAccessSummary } from "./billing";
 import { oauthEnabled } from "./oauth";
 import { canManageSignupInvites, createSignupVerification, issueSignupInvite, listSignupInvites, revokeSignupInvite, signupInviteLink, SignupInviteError } from "./signup-invites";
@@ -161,6 +162,7 @@ export async function handleOrgApi(
   if (token.orgId !== org.id) return Response.json({ error: "forbidden" }, { status: 403 });
   if (url.pathname === "/api/sharing" || url.pathname.startsWith("/api/sharing/")) return handleContextSharingApi(req, token, org);
   if (url.pathname === "/api/jev") return handleJevApi(req, token);
+  if (isDeviceConsolePath(url.pathname)) return handleDeviceConsoleApi(req, url, token, org);
   if (url.pathname === "/api/workspace") {
     return req.method === "PUT" ? putWorkspace(req, token, org) : Response.json({ error: "method not allowed" }, { status: 405, headers: { Allow: "PUT" } });
   }

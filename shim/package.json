@@ -1,6 +1,6 @@
 {
   "name": "@ani-hq/engram-mcp",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "One-command MCP harness connector and stdio proxy for engram",
   "license": "MIT",
   "bin": {
@@ -9,6 +9,7 @@
   "files": [
     "index.js",
     "onboarding.js",
+    "connect-computer.js",
     "setup-files.js",
     "instructions.js",
     "branding.js",
