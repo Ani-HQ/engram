@@ -209,17 +209,15 @@ export function renderShowcaseCard(activity: PublicActivity): string {
     const units = Array.from(text).reduce((width, char) => width + (/[^\u0000-\u00ff]/.test(char) ? 1.15 : /[MW@%]/.test(char) ? 1 : /[il.,' ]/.test(char) ? 0.32 : /[A-Z0-9]/.test(char) ? 0.7 : 0.6), 0);
     return Math.min(maximum, 500 / Math.max(1, units));
   };
-  const peak = Math.max(1, ...daily.map(day => day.count));
-  const paper = designColor("paper"), ink = designColor("ink"), surface = designColor("surface"), line = designColor("line"), muted = designColor("muted"), accent = designColor("accent");
-  const chart = [0, 1, 2, 3, 4].map(level => designColor(`chart-${level}`));
-  const cells = daily.map((day, i) => `<rect x="${650 + Math.floor(i / 7) * 34}" y="${202 + (i % 7) * 34}" width="26" height="26" rx="4" fill="${chart[day.count ? Math.max(1, Math.ceil(day.count / peak * 4)) : 0]}"/>`).join("");
+  const paper = designColor("paper"), ink = designColor("ink"), surface = designColor("surface"), muted = designColor("muted"), accent = designColor("accent");
+  // One color: a day with activity is accent, an empty day is the surface. Counts stay in the text.
+  const cells = daily.map((day, i) => `<rect x="${650 + Math.floor(i / 7) * 34}" y="${202 + (i % 7) * 34}" width="26" height="26" rx="4" fill="${day.count ? accent : surface}"/>`).join("");
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="${escape(name)} agent activity">
-<rect width="1200" height="630" fill="${paper}"/><rect x="32" y="32" width="1136" height="566" rx="12" fill="${surface}" stroke="${line}"/>
-<path d="M78 139h1044M78 512h1044" stroke="${line}"/>
-<g font-family="Inter, Arial, sans-serif" fill="${ink}"><text x="78" y="109" font-size="26" font-weight="600" letter-spacing="-1">engram</text><circle cx="1110" cy="100" r="5" fill="${accent}"/>
-<text x="78" y="201" font-size="15" letter-spacing="1" fill="${muted}">AGENT ACTIVITY</text><text x="78" y="254" font-size="${fittedSize(shortName, 39)}" font-weight="600" letter-spacing="-1">${escape(shortName)}</text>
-<text x="78" y="363" font-size="${fittedSize(actions, 76)}" font-weight="500" letter-spacing="-2">${actions}</text><text x="81" y="398" font-size="20" fill="${muted}">actions across ${stats.activeAgents.toLocaleString("en-US")} agents</text>
-<text x="78" y="554" font-size="17" fill="${muted}">engram / ${escape(profile.slug)}</text><text x="650" y="492" font-size="16" fill="${muted}">The last 12 weeks</text></g>${cells}</svg>`;
+<rect width="1200" height="630" fill="${paper}"/>
+<g font-family="Inter, Arial, sans-serif" fill="${ink}"><text x="78" y="109" font-size="26" font-weight="600">engram</text>
+<text x="78" y="201" font-size="17" fill="${muted}">Agent activity</text><text x="78" y="254" font-size="${fittedSize(shortName, 39)}" font-weight="600">${escape(shortName)}</text>
+<text x="78" y="363" font-size="${fittedSize(actions, 76)}" font-weight="600">${actions}</text><text x="81" y="398" font-size="20" fill="${muted}">actions across ${stats.activeAgents.toLocaleString("en-US")} agents</text>
+<text x="78" y="554" font-size="17" fill="${muted}">${escape(profile.slug)}</text><text x="650" y="492" font-size="16" fill="${muted}">The last 12 weeks</text></g>${cells}</svg>`;
 }
 
 export async function renderShowcasePng(activity: PublicActivity): Promise<Buffer> {

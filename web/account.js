@@ -17,7 +17,7 @@ export function provisioningPanel({ session, checking, error, retry, signOut, sw
   const choices = (session.orgs || []).filter(org => org.id !== session.org.id);
   return h("main", { class: "auth provisioning", "aria-labelledby": "provisioning-title" },
     h("a", { class: "wordmark", href: "/" }, h("img", { class: "brand-mark", src: "/brand/engram-mark.svg", width: 32, height: 32, alt: "" }), "engram"),
-    h("div", { role: "status", "aria-live": "polite" }, failed ? icon("circle-x", { size: 22 }) : h("span", { class: "ds-spinner", "aria-hidden": "true" }),
+    h("div", { role: "status", "aria-live": "polite" }, !failed && h("span", { class: "ds-spinner", "aria-hidden": "true" }),
       h("h1", { id: "provisioning-title" }, failed ? "Setup needs another try." : "Making room for your ideas."),
       h("p", {}, failed ? "We couldn’t finish setting up this workspace. Check again in a moment." : `Your account is ready. We’re setting up ${session.org.name} so your agents have a place to work.`)),
     error && h("p", { class: "notice", role: "alert" }, error),
@@ -61,7 +61,7 @@ export function billingPanel({ billing, catalog, jev, jevError, api, notify, fai
   return h("div", { class: "account-content" },
     returnState === "success" && h("div", { class: "notice", role: "status" }, "Checkout returned successfully. Your plan updates after payment confirmation.", action("Refresh plan", refresh, { class: "text small" })),
     returnState === "canceled" && h("div", { class: "notice", role: "status" }, "Checkout was canceled. Your plan has not changed."),
-    h("section", { class: "billing-summary ds-card" }, h("div", { class: "ds-heading-group" }, h("span", { class: "eyebrow ds-eyebrow" }, "CURRENT PLAN"), h("h2", {}, plan.title), h("p", { class: "detail-note" }, plan.description)), h("span", { class: "plan-status ds-badge", "data-tone": needsAttention ? "warning" : trial ? "info" : "success" }, icon(needsAttention ? "info" : trial ? "clock" : "circle-check", { size: 14 }), plan.label),
+    h("section", { class: "billing-summary" }, h("div", { class: "ds-heading-group" }, h("p", { class: "eyebrow" }, "Current plan"), h("h2", {}, plan.title), h("p", { class: "detail-note" }, plan.description)), h("p", { class: "plan-status status-label", "data-tone": needsAttention ? "danger" : "neutral" }, plan.label),
       hosted && h("dl", { class: "billing-dates" }, h("dt", {}, plan.dateLabel), h("dd", {}, plan.noExpiry ? "No expiry" : date(plan.dateValue))),
       plan.subscriptionLabel && h("p", { class: "detail-note" }, `Existing Stripe subscription: ${plan.subscriptionLabel}. Complimentary access does not cancel a subscription. Manage it below.`),
       hosted && h("div", { class: "form-actions" }, plan.showSubscribe && subscribe, billing.portalAvailable && manage),
@@ -72,9 +72,9 @@ export function billingPanel({ billing, catalog, jev, jevError, api, notify, fai
     section("Built with open source", "As Engram earns revenue, we’ll use a portion to sponsor open-source projects.",
       h("p", { class: "detail-note" }, "Engram’s memory engine is ", link("gbrain", "https://github.com/garrytan/gbrain"), " by Garry Tan. Engram uses a pinned fork and other open-source tools.")),
     section("Your space, your boundaries", "The same access and publishing controls apply on hosted and self-hosted workspaces.", h("div", { class: "trust-list" },
-      h("p", {}, icon("shield-check", { size: 16 }), "Workspace-scoped access and agent credentials."),
-      h("p", {}, icon("eye-off", { size: 16 }), "Jev and embeddings/generated briefs have separate workspace permissions."),
-      h("p", {}, icon("globe", { size: 16 }), "Your activity profile stays private until you publish it."), link("Read how privacy works", "/privacy"))),
+      h("p", {}, "Workspace-scoped access and agent credentials."),
+      h("p", {}, "Jev and embeddings/generated briefs have separate workspace permissions."),
+      h("p", {}, "Your activity profile stays private until you publish it."), link("Read how privacy works", "/privacy"))),
   );
 }
 
@@ -120,7 +120,7 @@ export function workspacePanel({ session, members, invites, api, saved, notify, 
 
 function exportControl(session, api, fail, notify, isCurrent) {
   const feedback = h("p", { class: "form-feedback", tabindex: -1, role: "status", "aria-live": "polite" });
-  return h("div", { class: "stack" }, action([icon("file-text", { size: 14 }), "Export memory & activity"], event => exportWorkspace(event.currentTarget, feedback, session, api, fail, notify, isCurrent)), feedback);
+  return h("div", { class: "stack" }, action("Export memory & activity", event => exportWorkspace(event.currentTarget, feedback, session, api, fail, notify, isCurrent)), feedback);
 }
 
 async function exportWorkspace(button, feedback, session, api, fail, notify, isCurrent) {

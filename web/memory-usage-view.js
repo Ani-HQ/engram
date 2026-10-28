@@ -1,5 +1,6 @@
 import { h } from './profile.js';
-import { evidenceList, loadingState, statusBadge } from './design-system.js';
+import { evidenceList, loadingState } from './design-system.js';
+import { statusLabel } from './status-label.js';
 import { relativeTime } from './activity-view.js';
 import { managedSetupCommand, memoryRuntimeProfile } from './memory-runtime-options.js';
 
@@ -62,7 +63,7 @@ export function memoryUsagePanel(connection = {}, { loading = false, error = fal
   const value = memoryUsePresentation(connection);
   const integration = integrationUsePresentation(connection);
   return h('section', { class: 'connection-memory-use ds-stack', 'aria-label': 'Memory use' },
-    h('div', { class: 'ds-toolbar' }, h('h3', {}, 'Memory use'), statusBadge(error ? 'Unavailable' : value.label, { tone: error ? 'warning' : value.tone })),
+    h('div', { class: 'ds-toolbar' }, h('h3', {}, 'Memory use'), statusLabel(error ? 'Unavailable' : value.label, { tone: error ? 'danger' : 'neutral' })),
     error ? h('p', { class: 'ds-hint' }, 'Memory use could not load. Refresh Connections to try again.') : value.measured ? evidenceList(value.rows, { label: 'Recorded memory use and estimated context size' })
       : h('p', { class: 'ds-hint' }, 'No measurements yet. The next memory call starts tracking. A connection alone does not prove memory use.'),
     !error && h('details', { class: 'connection-workflow-checks' }, h('summary', {}, 'Integration checks'), evidenceList(integration.rows, { label: 'Connection and workflow verification' })),

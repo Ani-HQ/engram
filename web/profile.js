@@ -1,6 +1,6 @@
-import { icon } from "./icons.js";
 import { agentVisual, providerVisual, visualIcon } from "./tooling.js";
-import { highlightArt, profileAvatar, resourceChip, statusBadge, statusText } from "./design-system.js";
+import { profileAvatar, statusText } from "./design-system.js";
+import { statusLabel } from "./status-label.js";
 
 export function h(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -14,7 +14,7 @@ export function h(tag, attrs = {}, ...children) {
 }
 const number = value => new Intl.NumberFormat().format(value || 0);
 const setText = (node, value) => { if (node.textContent !== value) node.textContent = value; };
-const categories = { code: ["Code", "code"], files: ["Files", "file-text"], email: ["Email", "mail"], calendar: ["Calendar", "calendar"], cloud: ["Cloud", "cloud"], browser: ["Browser", "globe"], data: ["Data", "database"], memory: ["Memory", "brain"], other: ["Other tools", "plug"] };
+const categories = { code: ["Code"], files: ["Files"], email: ["Email"], calendar: ["Calendar"], cloud: ["Cloud"], browser: ["Browser"], data: ["Data"], memory: ["Memory"], other: ["Other tools"] };
 
 export function contributionGrid(daily = [], { headingTag = "h3" } = {}) {
   const maximum = Math.max(1, ...daily.map(day => day.count));
@@ -53,12 +53,12 @@ export function contributionGrid(daily = [], { headingTag = "h3" } = {}) {
         h("div", { class: "contribution-months", "aria-hidden": "true" }, months),
         h("div", { class: "contribution-layout" }, h("div", { class: "contribution-weekdays", "aria-hidden": "true" }, weekLabels), grid))),
     h("p", { class: "contribution-explore" }, "Swipe or use arrow keys to explore dates."),
-    h("div", { class: "contribution-footer" }, live, h("div", { class: "contribution-legend", "aria-hidden": "true" }, "Less", [0, 1, 2, 3, 4].map(level => h("span", { class: `contribution-cell level-${level}` })), "More")));
+    h("div", { class: "contribution-footer" }, live, h("div", { class: "contribution-legend", "aria-hidden": "true" }, h("span", { class: "contribution-cell level-0" }), "No activity", h("span", { class: "contribution-cell level-1" }), "Activity")));
 }
 
 const eventStates = {
-  running: ["In progress", "info"], completed: ["Completed", "success"],
-  failed: ["Needs attention", "danger"], stale: ["Update overdue", "warning"],
+  running: ["In progress", "neutral"], completed: ["Completed", "neutral"],
+  failed: ["Needs attention", "danger"], stale: ["Update overdue", "neutral"],
 };
 const eventSignatures = new WeakMap();
 const profileClocks = new WeakMap();
@@ -104,11 +104,11 @@ function relativeTime(value, now = Date.now()) {
 function publicEvent(event) {
   const service = providerVisual(event.service);
   const [label, tone] = eventStates[event.status] || eventStates.stale;
-  return h("li", { class: "public-event ds-card", "data-public-event": event.id, "data-event-status": event.status, title: eventEvidence(event), "aria-description": eventEvidence(event) },
-    eventMark(event, "public-event-mark ds-product-logo-frame"),
+  return h("li", { class: "public-event", "data-public-event": event.id, "data-event-status": event.status, title: eventEvidence(event), "aria-description": eventEvidence(event) },
+    eventMark(event, "public-event-mark"),
     h("div", { class: "public-event-content" },
-      h("div", { class: "public-event-heading" }, h("h3", {}, statusText(event.action || "Agent activity")), statusBadge(label, { tone })),
-      h("div", { class: "public-event-meta" }, resourceChip(service.label, { visual: visualIcon(service, { size: 16 }), title: `Service: ${service.label}` }),
+      h("div", { class: "public-event-heading" }, h("h3", {}, statusText(event.action || "Agent activity")), statusLabel(label, { tone })),
+      h("div", { class: "public-event-meta" }, h("span", { class: "public-event-service", title: `Service: ${service.label}` }, service.label),
         h("time", { datetime: event.updatedAt, title: exactTime(event.updatedAt), "data-public-time": event.updatedAt }, relativeTime(event.updatedAt)))));
 }
 function streamEvents(activity) {
@@ -118,11 +118,11 @@ function streamEvents(activity) {
 }
 function activityStream(activity, { headingTag = "h2" } = {}) {
   const section = h("section", { class: "public-stream", "aria-label": "Public activity stream" },
-    h("div", { class: "profile-section-heading public-stream-heading" }, h(headingTag, {}, "The live thread."), statusBadge("Safe labels only", { tone: "neutral" })),
+    h("div", { class: "profile-section-heading public-stream-heading" }, h(headingTag, {}, "The live thread."), h("span", {}, "Safe labels only")),
     h("p", { class: "public-stream-intro" }, "Which agents are working, and the kind of work they share."),
-    h("div", { class: "public-stream-state ds-notice" }),
-    h("section", { class: "public-stream-active", "aria-label": "Work in progress" }, h("p", { class: "ds-eyebrow" }, "IN PROGRESS"), h("ol", { class: "public-event-list", role: "list", "data-public-events": "running" })),
-    h("section", { class: "public-stream-recent", "aria-label": "Recent activity" }, h("p", { class: "ds-eyebrow" }, "RECENT ACTIVITY"), h("ol", { class: "public-event-list", role: "list", "data-public-events": "recent" })));
+    h("p", { class: "public-stream-state" }),
+    h("section", { class: "public-stream-active", "aria-label": "Work in progress" }, h("p", { class: "public-stream-label" }, "In progress"), h("ol", { class: "public-event-list", role: "list", "data-public-events": "running" })),
+    h("section", { class: "public-stream-recent", "aria-label": "Recent activity" }, h("p", { class: "public-stream-label" }, "Recent activity"), h("ol", { class: "public-event-list", role: "list", "data-public-events": "recent" })));
   updateActivityStream(section, activity);
   return section;
 }
@@ -175,26 +175,26 @@ export function profileCard(data, { compact = false } = {}) {
   const card = h("article", { class: `public-profile${compact ? " compact" : ""}`, "data-tools": JSON.stringify(tools) },
     h("header", { class: "profile-identity ds-heading-group" },
       h("div", { class: "profile-identity-top" }, h("div", { class: "profile-identity-photo" }),
-        h("div", { class: "profile-identity-copy ds-heading-group" }, h("span", { class: "ds-eyebrow profile-layout-label" }),
+        h("div", { class: "profile-identity-copy ds-heading-group" },
           h(compact ? "h2" : "h1", {}, profile.displayName || "Your public profile"))),
       h("p", {}, profile.bio || "A small window into the work across my agents.")),
     h("div", { class: "profile-main" },
       h("section", { class: "profile-desk", "aria-label": "The public desk" },
         h("div", { class: "profile-section-heading" }, h(headingTag, {}, "On the desk."), h("span", {}, "Fresh signals")),
         liveActivity(data.live, { headingTag }),
-        h("div", { class: "profile-desk-state ds-notice" }),
+        h("div", { class: "profile-desk-state" }),
         h("ol", { class: "profile-stage-list", role: "list", "aria-label": "Fresh running actions" })),
-      h("section", { class: "profile-overview ds-card", "aria-label": "Activity overview" },
+      h("section", { class: "profile-overview", "aria-label": "Activity overview" },
         h("div", { class: "profile-statistics", "aria-label": "All-time activity totals" }, [["totalActions", stats.totalActions === 1 ? "Action" : "Actions", stats.totalActions], ["activeAgents", stats.activeAgents === 1 ? "Agent" : "Agents", stats.activeAgents], ["activeDays", stats.activeDays === 1 ? "Active day" : "Active days", stats.activeDays]].map(([key, label, value]) => h("div", {}, h("strong", { "data-public-stat": key }, number(value)), h("span", { "data-public-label": key }, label)))),
         contributionGrid(daily, { headingTag })),
       h("section", { class: "profile-highlights", "aria-label": "Owner-selected highlights" },
         h("div", { class: "profile-section-heading" }, h(headingTag, { tabindex: "-1" }, "Selected work."), h("span", {}, "Chosen by the owner")),
         h("div", { class: "profile-highlight-list" }),
-        h("div", { class: "profile-highlight-empty ds-notice" }, h("strong", {}, "Nothing pinned here yet."), h("p", {}, "This space is ready for the notes and links the owner chooses to share."))),
+        h("div", { class: "profile-highlight-empty" }, h("strong", {}, "Nothing pinned here yet."), h("p", {}, "This space is ready for the notes and links the owner chooses to share."))),
       categorySummary(tools, headingTag)),
     h("details", { class: "profile-receipts" }, h("summary", {}, "Peek at the recent receipts", h("span", { class: "profile-receipt-count" })), activityStream(data.activity, { headingTag })),
     h("details", { class: "profile-history" }, h("summary", {}, "Across the tools", h("span", {}, "All categories")), profileTools(tools, headingTag)),
-    h("footer", { class: "profile-footnote" }, icon("shield-check", { size: 16 }), h("p", {}, privacyText(data.activity?.enabled === true, profileHighlights(profile).length > 0))));
+    h("footer", { class: "profile-footnote" }, h("p", {}, privacyText(data.activity?.enabled === true, profileHighlights(profile).length > 0))));
   const checkedAt = Date.parse(data.live?.checkedAt);
   if (Number.isFinite(checkedAt)) profileClocks.set(card, { serverNow: checkedAt, receivedAt: Date.now() });
   updateProfilePhoto(card, profile);
@@ -213,9 +213,9 @@ function categorySummary(tools, headingTag) {
 function updateCategories(section, tools) {
   const top = [...tools].filter(tool => tool.count > 0).sort((a, b) => b.count - a.count || String(a.category).localeCompare(String(b.category))).slice(0, 3);
   section.querySelector(".profile-category-list").replaceChildren(...(top.length ? top.map(tool => {
-    const [label, name] = categories[tool.category] || categories.other;
-    return h("div", { class: "profile-category ds-card" }, icon(name, { size: 20 }), h("strong", {}, number(tool.count)), h("span", {}, `${label} ${tool.count === 1 ? "action" : "actions"}`));
-  }) : [h("p", { class: "ds-notice" }, "No action counts yet.")]));
+    const [label] = categories[tool.category] || categories.other;
+    return h("div", { class: "profile-category" }, h("strong", {}, number(tool.count)), h("span", {}, `${label} ${tool.count === 1 ? "action" : "actions"}`));
+  }) : [h("p", { class: "profile-empty-note" }, "No action counts yet.")]));
 }
 function profileHighlights(profile = {}) {
   return (Array.isArray(profile.highlights) ? profile.highlights : []).filter(item => item && typeof item.title === "string" && item.title.trim()).slice(0, 3).map(item => ({ title: item.title.slice(0, 80), body: typeof item.body === "string" ? item.body.slice(0, 600) : "", url: publicLink(item.url) }));
@@ -226,13 +226,11 @@ function publicLink(value) {
 }
 const notePreview = body => body.length > 160 ? `${body.slice(0, 157).trimEnd()}…` : body;
 function highlightCard(item, index) {
-  return h("article", { class: "ds-card ds-highlight-card profile-highlight", "data-profile-highlight": index },
-    h("div", { class: "ds-highlight-visual" }, highlightArt({ variant: ["orbit", "grid", "layers"][index] })),
+  return h("article", { class: "profile-highlight", "data-profile-highlight": index },
     h("div", { class: "ds-highlight-content" },
-      h("p", { class: "ds-highlight-meta" }, `Highlight ${String(index + 1).padStart(2, "0")}`),
       h("h3", { class: "ds-highlight-title" }, item.title),
       h("p", { class: "ds-highlight-description profile-highlight-preview", hidden: !item.body }, notePreview(item.body)),
-      h("details", { class: "ds-highlight-disclosure", hidden: item.body.length <= 160 }, h("summary", {}, "Read full note", icon("chevron-down", { size: 14, className: "ds-disclosure-indicator" })), h("p", { class: "ds-highlight-description profile-highlight-body" }, item.body)),
+      h("details", { class: "ds-highlight-disclosure", hidden: item.body.length <= 160 }, h("summary", {}, "Read full note"), h("p", { class: "ds-highlight-description profile-highlight-body" }, item.body)),
       h("div", { class: "ds-highlight-actions", hidden: !item.url }, h("a", { class: "profile-highlight-link", href: item.url || undefined, target: "_blank", rel: "noopener noreferrer" }, "Open link"))));
 }
 function updateHighlights(section, profile) {
@@ -283,9 +281,9 @@ function updateDesk(section, data) {
     let row = rows.get(event.id);
     if (!row || eventSignatures.get(row) !== signature) {
       const content = h("li", { class: "ds-focus-row profile-stage-event", "data-stage-event": event.id, title: eventEvidence(event), "aria-description": eventEvidence(event) },
-        eventMark(event, "ds-focus-mark ds-product-logo-frame"),
+        eventMark(event, "ds-focus-mark"),
         h("div", { class: "ds-focus-content" }, h("div", { class: "profile-event-line" },
-          h("h3", { class: "ds-focus-title" }, statusText(event.action || "Agent activity")), statusBadge("In progress", { tone: "info" })),
+          h("h3", { class: "ds-focus-title" }, statusText(event.action || "Agent activity")), statusLabel("In progress")),
           h("div", { class: "ds-focus-meta" }, h("time", { datetime: event.updatedAt, title: exactTime(event.updatedAt), "data-public-time": event.updatedAt }, relativeTime(event.updatedAt)))));
       if (row) row.replaceChildren(...content.childNodes); else row = content;
       eventSignatures.set(row, signature);
@@ -303,7 +301,6 @@ function updatePresentation(card, data) {
   const highlights = card.querySelector(".profile-highlights");
   updateHighlights(highlights, data.profile);
   updateDesk(card.querySelector(".profile-desk"), data);
-  setText(card.querySelector(".profile-layout-label"), layout === "field-notes" ? "FIELD NOTES" : "A LIVING STUDIO");
   setText(card.querySelector(".profile-receipt-count"), data.activity?.enabled === true ? `${number(streamEvents(data.activity).length)} recent events` : "Activity labels are private");
   if (card.dataset.profileLayout !== layout) {
     const focus = card.contains(document.activeElement) ? document.activeElement : null;
@@ -318,8 +315,8 @@ function profileTools(tools = [], headingTag = "h2") {
   const totalTools = tools.reduce((sum, tool) => sum + tool.count, 0);
   return h("section", { class: "profile-tools" }, h("div", { class: "profile-section-heading" }, h(headingTag, {}, "Across the tools"), h("span", {}, `${tools.length} categories`)),
     tools.length ? tools.map(tool => {
-      const [label, name] = categories[tool.category] || categories.other;
-      return h("div", { class: "profile-tool" }, h("span", { class: "tool-label" }, icon(name, { size: 15 }), label), h("div", { class: "tool-meter", "aria-hidden": "true" }, h("div", { style: `width:${Math.max(2, totalTools ? tool.count / totalTools * 100 : 0)}%` })), h("span", { class: "tool-count" }, number(tool.count)));
+      const [label] = categories[tool.category] || categories.other;
+      return h("div", { class: "profile-tool" }, h("span", { class: "tool-label" }, label), h("span", { class: "tool-count" }, number(tool.count), totalTools ? ` · ${Math.round(tool.count / totalTools * 100)}%` : ""));
     }) : h("p", { class: "muted" }, "No activity counts to show yet."));
 }
 

@@ -30,9 +30,9 @@ describe("memory document ownership labels", () => {
   test("approved snapshots identify their read-only owner-managed access without altering source or adding actions", () => {
     const body = "Exact approved context.\nKeep this source intact.";
     const view = render({ type: "shared-context", title: "Memory excerpt", slug: "shared-context/grant/item", body });
-    const badge = nodes(view).find(node => node.attrs.class === "ds-badge")!;
-    expect(badge.textContent).toBe("Read-only snapshot");
-    expect(badge.dataset.tone).toBe("info");
+    const label = nodes(view).find(node => (node.attrs.class ?? node.className) === "status-label")!;
+    expect(label.textContent).toBe("Read-only snapshot");
+    expect(label.dataset.tone).toBe("neutral");
     expect(view.textContent).toContain("Approved snapshot. Changes and access are managed by the sharing owner.");
     expect(nodes(view).find(node => node.tag === "code")?.textContent).toBe(body);
     expect(nodes(view).filter(node => node.tag === "button").map(node => node.textContent)).toEqual(["Read", "Source"]);

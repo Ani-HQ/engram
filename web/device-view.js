@@ -1,11 +1,9 @@
 import { h } from "./profile.js";
-import { loadingState, statusBadge } from "./design-system.js";
-import { agentVisual, visualIcon } from "./tooling.js";
+import { loadingState } from "./design-system.js";
 import { agentList, devicePresentation, formatUserCode, installCommand, requestedAgo } from "./device-model.js";
 
-const BADGES = { expired: ["Expired", "neutral"], denied: ["Denied", "neutral"], approved: ["Approved", "success"], consumed: ["Connected", "success"], "approved-now": ["Approved", "success"], "denied-now": ["Denied", "neutral"] };
-const title = (text, description, badge) => h("div", { class: "ds-heading-group device-heading" },
-  badge && statusBadge(badge[0], { tone: badge[1] }),
+// Each finished state's heading already names its status in words.
+const title = (text, description) => h("div", { class: "ds-heading-group device-heading" },
   h("h1", { id: "device-title", tabindex: "-1" }, text), description && h("p", {}, description));
 
 function commandBlock(origin, copyControl) {
@@ -31,10 +29,7 @@ function codeEntry({ input = "", error = "", busy = false, onSubmit }) {
 }
 
 function agentsValue(agents = []) {
-  return h("ul", { class: "device-agents", role: "list" }, agents.map(agent => {
-    const visual = agentVisual(agent.label, { harness: agent.harness });
-    return h("li", {}, h("span", { class: "device-agent-mark ds-logo-backplate", "aria-hidden": "true" }, visualIcon(visual, { size: 18 })), h("span", {}, agent.label));
-  }));
+  return h("ul", { class: "device-agents", role: "list" }, agents.map(agent => h("li", {}, agent.label)));
 }
 
 function workspaceValue({ workspace, workspaces = [], switching = false, onSwitchWorkspace }) {
@@ -51,8 +46,8 @@ function details(rows) {
     rows.map(([label, value]) => h("div", { class: "ds-evidence-row" }, h("dt", {}, label), h("dd", {}, value))));
 }
 
-function finished({ heading, description, tone = "neutral", message, body, actions, badge }) {
-  return [title(heading, description, badge), message && h("p", { class: "ds-notice", "data-tone": tone, role: "status" }, message), body, actions && h("div", { class: "ds-row" }, actions)];
+function finished({ heading, description, tone = "neutral", message, body, actions }) {
+  return [title(heading, description), message && h("p", { class: "ds-notice", "data-tone": tone, role: "status" }, message), body, actions && h("div", { class: "ds-row" }, actions)];
 }
 
 /**
@@ -91,17 +86,17 @@ export function deviceView({
       h("p", { class: "ds-notice", "data-tone": "danger", role: "alert" }, error || "This request could not be loaded. Please try again."),
       h("div", { class: "ds-row" }, h("button", { type: "button", class: "primary", onclick: () => onRetry?.() }, "Try again"), startOver),
     ],
-    expired: () => finished({ badge: BADGES.expired, heading: "This code has expired", description: "Codes last 10 minutes. Run the command again in your terminal for a new one.", body: commandBlock(origin, copyControl), actions: [startOver] }),
-    denied: () => finished({ badge: BADGES.denied, heading: "This request was denied", description: "Nothing was connected. Run the command again in your terminal to start over.", actions: [startOver] }),
-    approved: () => finished({ badge: BADGES.approved, heading: "Already approved", description: "Return to your terminal to finish setting up this computer.", actions: [connections] }),
-    consumed: () => finished({ badge: BADGES.consumed, heading: "This computer is connected", description: `Its agents already received their access keys. You can review or revoke them in Connections.`, actions: [connections] }),
+    expired: () => finished({ heading: "This code has expired", description: "Codes last 10 minutes. Run the command again in your terminal for a new one.", body: commandBlock(origin, copyControl), actions: [startOver] }),
+    denied: () => finished({ heading: "This request was denied", description: "Nothing was connected. Run the command again in your terminal to start over.", actions: [startOver] }),
+    approved: () => finished({ heading: "Already approved", description: "Return to your terminal to finish setting up this computer.", actions: [connections] }),
+    consumed: () => finished({ heading: "This computer is connected", description: `Its agents already received their access keys. You can review or revoke them in Connections.`, actions: [connections] }),
     "approved-now": () => finished({
-      badge: BADGES["approved-now"], heading: "Computer approved", tone: "success",
+      heading: "Computer approved", tone: "success",
       message: "Approved. Return to your terminal. Your agents are being set up.",
       description: agents.length ? `Your terminal will finish connecting ${agentList(agents)} to ${workspaceName}.` : `Your terminal will finish connecting to ${workspaceName}.`,
       actions: [connections],
     }),
-    "denied-now": () => finished({ badge: BADGES["denied-now"], heading: "Request denied", tone: "neutral", message: "Nothing was connected. You can close this tab.", actions: [startOver] }),
+    "denied-now": () => finished({ heading: "Request denied", tone: "neutral", message: "Nothing was connected. You can close this tab.", actions: [startOver] }),
     pending: () => {
       const approving = busy === "approve", denying = busy === "deny", disabled = Boolean(busy) || switching;
       return [

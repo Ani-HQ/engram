@@ -1,9 +1,8 @@
 import { h } from "./profile.js";
 import { icon } from "./icons.js";
 import { renderMarkdown } from "./markdown.js";
-import { agentVisual, visualIcon } from "./tooling.js";
 import { memoryDocument, sourceExcerpt } from "./memory-document-model.js";
-import { statusBadge } from "./design-system.js";
+import { statusLabel } from "./status-label.js";
 
 const action = (label, fn, attrs = {}) => h("button", { type: "button", onclick: fn, ...attrs }, label);
 function dateLabel(value, options = { day: "numeric", month: "short", year: "numeric" }) {
@@ -26,17 +25,16 @@ function entryDate(entry) {
 export function memoryDocumentView(data, { copyControl } = {}) {
   const page = data?.page || {}, model = memoryDocument(page);
   const snapshot = page.type === "shared-context";
-  const snapshotBadge = snapshot ? statusBadge("Read-only snapshot", { tone: "info" }) : null;
-  if (snapshotBadge) snapshotBadge.prepend(icon("shield-check", { size: 13 }));
+  const snapshotBadge = snapshot ? statusLabel("Read-only snapshot") : null;
   const root = h("article", { class: "memory-document" });
   const titleText = (model.title === model.slug ? model.slug.split("/").filter(Boolean).at(-1) : model.title) || model.slug || "Untitled memory";
   const title = h("h2", { id: "detail-title", class: "memory-document-title" }, titleText);
   const metadata = h("div", { class: "memory-document-meta" },
-    model.entries.length ? h("span", {}, icon("layers", { size: 13 }), `${model.entries.length} ${model.entries.length === 1 ? "entry" : "entries"}`) : h("span", {}, icon("file-text", { size: 13 }), "Saved memory"),
-    dateLabel(page.updated_at) && h("time", { datetime: page.updated_at, title: timestamp(page.updated_at) }, icon("clock", { size: 13 }), `Updated ${dateLabel(page.updated_at)}`));
+    model.entries.length ? h("span", {}, `${model.entries.length} ${model.entries.length === 1 ? "entry" : "entries"}`) : h("span", {}, "Saved memory"),
+    dateLabel(page.updated_at) && h("time", { datetime: page.updated_at, title: timestamp(page.updated_at) }, `Updated ${dateLabel(page.updated_at)}`));
   const header = h("header", { class: "memory-document-header" },
-    h("div", { class: "memory-document-topline" }, h("span", { class: "memory-document-symbol", "aria-hidden": "true" }, icon("file-text", { size: 20 })), snapshotBadge),
-    title, h("p", { class: "memory-document-path" }, model.slug), metadata,
+    snapshotBadge && h("p", { class: "memory-document-topline" }, snapshotBadge),
+    title, metadata,
     snapshot && h("p", { class: "detail-note" }, "Approved snapshot. Changes and access are managed by the sharing owner."));
 
   const read = h("section", { id: "memory-reader-panel", role: "tabpanel", "aria-labelledby": "memory-reader-tab", tabindex: "0", class: "memory-reader-panel" });
@@ -44,7 +42,7 @@ export function memoryDocumentView(data, { copyControl } = {}) {
     h("div", { class: "memory-source-toolbar" }, h("p", { class: "memory-source-caption" }, "The exact text stored in this memory."), copyControl), h("pre", { class: "memory-source-text" }, h("code", {}, model.source)));
   const tabs = h("div", { class: "memory-document-tabs", role: "tablist", "aria-label": "Memory view" });
   const panels = [read, source];
-  const tabButtons = ["Read", "Source"].map((label, index) => action([icon(index ? "code" : "file-text", { size: 14 }), label], () => selectTab(index), {
+  const tabButtons = ["Read", "Source"].map((label, index) => action(label, () => selectTab(index), {
     id: index ? "memory-source-tab" : "memory-reader-tab", role: "tab", "aria-selected": index === 0 ? "true" : "false", "aria-controls": panels[index].id, tabindex: index ? "-1" : "0",
   }));
   function selectTab(index, focus = false) {
@@ -60,14 +58,14 @@ export function memoryDocumentView(data, { copyControl } = {}) {
   tabs.append(...tabButtons);
   if (model.isJournal) read.append(journal(model));
   else if (model.document.trim()) read.append(documentSections(model.document));
-  else read.append(h("div", { class: "memory-document-empty" }, icon("file-text", { size: 22 }), h("p", {}, "This memory has no content yet.")));
+  else read.append(h("div", { class: "memory-document-empty" }, h("p", {}, "This memory has no content yet.")));
 
   const related = relatedMemories(data?.links, model.slug);
   if (related) read.append(related);
   const provenance = data?.provenance || page.provenance;
   const contributors = Array.isArray(provenance?.contributors) ? provenance.contributors.filter(person => typeof person?.name === "string" && person.name.trim()) : [];
-  if (contributors.length) read.append(h("details", { class: "memory-contributors" }, h("summary", {}, icon("users", { size: 14 }), `${contributors.length} ${contributors.length === 1 ? "contributor" : "contributors"}`, icon("chevron-down", { size: 13, class: "memory-disclosure-arrow" })),
-    h("div", { class: "memory-contributor-list" }, contributors.map(person => h("div", { class: "memory-contributor" }, visualIcon(agentVisual(person.name), { size: 16 }), h("span", {}, person.name), Number.isInteger(person.writes) && person.writes > 0 && h("small", {}, `${person.writes} ${person.writes === 1 ? "write" : "writes"}`))))));
+  if (contributors.length) read.append(h("details", { class: "memory-contributors" }, h("summary", {}, `${contributors.length} ${contributors.length === 1 ? "contributor" : "contributors"}`),
+    h("div", { class: "memory-contributor-list" }, contributors.map(person => h("div", { class: "memory-contributor" }, h("span", {}, person.name), Number.isInteger(person.writes) && person.writes > 0 && h("small", {}, `${person.writes} ${person.writes === 1 ? "write" : "writes"}`))))));
   root.append(header, tabs, read, source);
   return root;
 }
@@ -94,7 +92,7 @@ function journal(model) {
   }
   let query = "", shown = 8;
   const more = action("Show older entries", () => { shown += 8; refresh(); }, { class: "memory-show-more" });
-  const empty = h("div", { class: "memory-search-empty", hidden: true }, icon("search", { size: 20 }), h("p", {}, "No entries match your search."));
+  const empty = h("div", { class: "memory-search-empty", hidden: true }, h("p", {}, "No entries match your search."));
   function refresh() {
     const matches = entries.filter(entry => !query || `${entry.text} ${entry.timestamp} ${entryDate(entry)}`.toLocaleLowerCase().includes(query));
     const openIds = new Set([...list.querySelectorAll("details[open]")].map(node => node.dataset.entryOrder));
@@ -133,7 +131,7 @@ function entryView(entry, open, changed) {
   const node = h("details", { class: "memory-entry", "data-entry-order": entry.order, open },
     h("summary", { "aria-label": `${date}${time ? ` at ${time}` : ""}: ${sourceExcerpt(plainText, 90)}` },
       h("span", { class: "memory-entry-topline" }, h("time", { datetime: entry.timestamp, title: time ? timestamp(entry.at) : date }, date, time && h("span", {}, time)),
-        h("span", { class: "memory-entry-prompt", "aria-hidden": "true" }, h("span", { class: "memory-entry-read" }, "Read note"), h("span", { class: "memory-entry-close" }, "Close"), icon("chevron-down", { size: 14, class: "memory-disclosure-arrow" }))),
+        h("span", { class: "memory-entry-prompt", "aria-hidden": "true" }, h("span", { class: "memory-entry-read" }, "Read note"), h("span", { class: "memory-entry-close" }, "Close"))),
       h("span", { class: "memory-entry-preview" }, preview)),
     h("div", { class: "memory-entry-body memory-prose" }, renderMarkdown(entry.text)));
   node.addEventListener("toggle", changed);
@@ -152,7 +150,7 @@ function documentSections(markdown) {
   let current = root, index = 0;
   for (const node of nodes) {
     if (sectionHeading(node)) {
-      const section = h("details", { class: "memory-document-section", open: index++ === 0 }, h("summary", {}, node, icon("chevron-down", { size: 14, class: "memory-disclosure-arrow" })));
+      const section = h("details", { class: "memory-document-section", open: index++ === 0 }, h("summary", {}, node));
       current = h("div", { class: "memory-document-section-body" }); section.append(current); root.append(section);
     } else current.append(node);
   }
@@ -166,5 +164,5 @@ function relatedMemories(links, currentSlug) {
     seen.add(link.slug); return true;
   }).slice(0, 12);
   if (!valid.length) return null;
-  return h("section", { class: "memory-related" }, h("h3", {}, "Linked memories"), h("div", {}, valid.map(link => h("a", { href: `#${encodeURIComponent(link.slug)}`, class: "wikilink memory-related-link ds-touch-target", "data-slug": link.slug }, icon("file-text", { size: 14 }), h("span", {}, link.title || link.slug)))));
+  return h("section", { class: "memory-related" }, h("h3", {}, "Linked memories"), h("div", {}, valid.map(link => h("a", { href: `#${encodeURIComponent(link.slug)}`, class: "wikilink memory-related-link ds-touch-target", "data-slug": link.slug }, h("span", {}, link.title || link.slug)))));
 }

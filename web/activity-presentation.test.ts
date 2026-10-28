@@ -122,26 +122,26 @@ describe("recorded activity presentation", () => {
       [github[0], gitlab[0]],
     ]) expect(activityPresentation(grouped(resources)).primaryResource).toBeNull();
     const card = render(() => activityCard(grouped(["web/app.js", github[0]])) as Element);
-    expect(nodes(card).some(node => node.attrs.class?.includes("ds-resource-chip") && node.textContent === "Ani-HQ/engram #42")).toBeTrue();
+    expect(nodes(card).some(node => node.attrs.class?.includes("activity-resource") && node.textContent === "Ani-HQ/engram #42")).toBeTrue();
   });
 
-  test("resource chips show provider marks without exposing URL query secrets in labels", () => {
+  test("resource links are plain text without provider marks or URL query secrets in labels", () => {
     const raw = "https://github.com/Ani-HQ/engram/pull/42?token=supersecret#review";
     let selected: any;
     const input = { ...operation, kind: "task", resources: [raw], tools: ["browser.navigate"], actions: [] };
     const card = render(() => activityCard(input, { onResource: resource => { selected = resource; } }) as Element);
-    const chip = nodes(card).find(node => node.attrs.class?.includes("ds-resource-chip"))!;
+    const chip = nodes(card).find(node => node.attrs.class?.includes("activity-resource"))!;
     expect(chip.attrs.title).toBe("Open resource: Ani-HQ/engram #42");
     expect(chip.attrs["aria-label"]).toBe("Open resource: Ani-HQ/engram #42");
     expect(chip.textContent).toBe("Ani-HQ/engram #42");
-    expect(nodes(chip).some(node => node.attrs["data-brand"] === "github")).toBeTrue();
+    expect(nodes(chip).some(node => node.attrs["data-brand"] || node.attrs["data-icon"])).toBeFalse();
     expect(chip.textContent).not.toContain("supersecret");
     chip.events.click();
     expect(selected.raw).toBe(raw); expect(selected.href).toBe(raw);
     const local = render(() => activityCard({ ...input, resources: ["web/app.js"], tools: ["github.read_file"] }) as Element);
-    const localChip = nodes(local).find(node => node.attrs.class?.includes("ds-resource-chip"))!;
-    expect(nodes(localChip).some(node => node.attrs["data-brand"] === "github")).toBeFalse();
-    expect(nodes(localChip).some(node => node.attrs["data-icon"] === "file-text")).toBeTrue();
+    const localChip = nodes(local).find(node => node.attrs.class?.includes("activity-resource"))!;
+    expect(localChip.textContent).toBe("web/app.js");
+    expect(nodes(localChip).some(node => node.attrs["data-brand"] || node.attrs["data-icon"])).toBeFalse();
   });
 
   test("orders logical steps by lifecycle start and keeps the source array unchanged", () => {

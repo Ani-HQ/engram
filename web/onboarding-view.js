@@ -1,8 +1,6 @@
 import { h } from "./profile.js";
-import { icon } from "./icons.js";
 import { onboardingAgents, onboardingProgress, onboardingWriteGuidance, agentConnectionGuide, connectionCheckPrompt, firstMemoryPrompt, recallMemoryPrompt } from "./onboarding-model.js";
 import { workspaceNameForm } from "./workspace-name.js";
-import { progressBar } from "./design-system.js";
 import { memorySetupGuide } from "./memory-usage-view.js";
 
 const button = (label, action, attrs = {}) => h("button", { type: "button", onclick: action, ...attrs }, label);
@@ -77,31 +75,28 @@ export function onboardingGuide({ data, agentId = "", mcp, checking, error, poli
     const saving = progress.step === "remember";
     const guidance = onboardingWriteGuidance({ policies, agentId, inventory });
     stage.append(...[
-      h("p", { class: "setup-prompt ds-notice" }, saving ? firstMemoryPrompt : recallMemoryPrompt),
+      h("p", { class: "setup-prompt setup-prompt-text" }, saving ? firstMemoryPrompt : recallMemoryPrompt),
       saving && h("p", { class: guidance.state === "check-permissions" ? "ds-hint" : "ds-notice", "data-tone": guidance.state === "check-permissions" ? null : "warning", role: "status" }, guidance.message, " ", h("a", { href: guidance.href }, guidance.link)),
       h("div", { class: "ds-row setup-actions" }, copyControl(saving ? "Copy save prompt" : "Copy recall prompt", saving ? firstMemoryPrompt : recallMemoryPrompt, { class: "primary", "data-setup-focus": "prompt" })),
     ].filter(Boolean));
   }
   const nameForm = workspaceNameForm({ session, editor: nameEditor });
   const nameState = nameEditor?.state;
-  return h("section", { class: "setup-guide ds-card", "aria-labelledby": "setup-title", "aria-busy": String(Boolean(checking)) },
+  return h("section", { class: "setup-guide", "aria-labelledby": "setup-title", "aria-busy": String(Boolean(checking)) },
     h("div", { class: "setup-heading" }, h("div", { class: "ds-heading-group" },
-      h("span", { class: "ds-eyebrow" }, demo ? "LOCAL PREVIEW · SIMULATED PROGRESS" : "GET STARTED WITH ENGRAM"),
+      demo && h("p", { class: "ds-hint setup-demo-note" }, "Local preview. Progress is simulated."),
       h("h2", { id: "setup-title", tabindex: "-1", "data-setup-focus": "title" }, titles[progress.step]),
       h("p", { class: "ds-hint" }, descriptions[progress.step])),
       button(progress.done ? "Close setup" : "Do this later", onDismiss, { class: "text", "data-setup-focus": "dismiss" })),
     !progress.done && h("div", { class: "setup-progress ds-stack" },
-      h("div", { class: "ds-toolbar" }, h("span", { class: "ds-hint" }, "Workspace checks"), h("span", { class: "ds-hint ds-tabular" }, checkCount)),
-      progress.available ? progressBar({ label: "Workspace setup checks", value: progress.completed, max: steps.length, valueText: checkCount })
-        : checking ? progressBar({ label: "Checking workspace setup", valueText: "Waiting for the first check results." }) : null,
+      h("p", { class: "ds-hint ds-tabular" }, "Workspace checks: ", checkCount),
       h("ol", { class: "setup-steps", "aria-label": "Getting started progress" }, steps.map(([key, label], index) => h("li", {
-        class: "ds-row", "aria-current": progress.step === ["connect", "remember", "recall"][index] ? "step" : null,
-      }, h("span", { class: "ds-badge", "data-tone": progress.checks[key] ? "success" : "neutral", "aria-hidden": "true" }, progress.checks[key] ? icon("check", { size: 14 }) : String(index + 1)),
-      h("span", {}, label), h("span", { class: "sr-only" }, progress.checks[key] ? ": complete" : ": pending"))))),
-    !progress.available && h("p", { class: "ds-notice", role: "status" }, checking ? "Checking successful agent calls received by this workspace." : "Workspace checks are unavailable. You can follow the setup instructions, then check again."),
+        "aria-current": progress.step === ["connect", "remember", "recall"][index] ? "step" : null, "data-complete": String(Boolean(progress.checks[key])),
+      }, h("span", {}, label), h("span", { class: "setup-step-state" }, progress.checks[key] ? " · Done" : ""), h("span", { class: "sr-only" }, progress.checks[key] ? ": complete" : ": pending"))))),
+    !progress.available && h("p", { class: "ds-hint", role: "status" }, checking ? "Checking successful agent calls received by this workspace." : "Workspace checks are unavailable. You can follow the setup instructions, then check again."),
     stage,
     h("div", { class: "setup-check" },
-      button([checking ? h("span", { class: "ds-spinner", "aria-hidden": "true" }) : icon("refresh-cw", { size: 14 }), checking ? "Checking…" : "Check progress"], () => { if (!checking) onCheck(); }, { "aria-busy": String(Boolean(checking)), "aria-disabled": String(Boolean(checking)), "aria-describedby": "setup-check-feedback", "data-setup-focus": "check" }),
+      button([checking && h("span", { class: "ds-spinner", "aria-hidden": "true" }), checking ? "Checking…" : "Check progress"], () => { if (!checking) onCheck(); }, { "aria-busy": String(Boolean(checking)), "aria-disabled": String(Boolean(checking)), "aria-describedby": "setup-check-feedback", "data-setup-focus": "check" }),
       h("p", { id: "setup-check-feedback", class: "ds-hint", role: error ? "alert" : "status", "aria-live": "polite" }, error || (checking ? "Checking activity received by this workspace…" : progress.done ? "All three workspace checks have successful agent calls." : progress.step === "connect" && !connection ? "Choose an agent to see connection instructions." : "After your agent runs the prompt, check progress here. Only successful agent calls complete a step."))),
     (progress.step !== "connect" || nameForm) && h("div", { class: "setup-options ds-stack" },
       progress.step !== "connect" && disclosure(progress.done ? "completedAgent" : "agentHelp", progress.done ? "Add or repair an agent" : "Agent connection help", agentSetup()),

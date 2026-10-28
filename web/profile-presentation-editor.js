@@ -1,6 +1,4 @@
 import { h } from './profile.js';
-import { icon } from './icons.js';
-import { profileLayoutPreview } from './design-system.js';
 
 let editorSequence = 0;
 export function profilePresentationValue(profile = {}) {
@@ -45,13 +43,13 @@ export function createProfilePresentationEditor({ profile, onChange = () => {}, 
     const title = value === 'studio' ? 'Living studio' : 'Field notes';
     const input = h('input', { type: 'radio', name: `${prefix}-layout`, value, checked: layout === value });
     input.addEventListener('change', () => { if (pending || !isCurrent() || !input.checked) return; layout = value; changed(); });
-    return { input, label: h('label', { class: 'ds-choice-card' }, input, h('span', { class: 'ds-choice-visual', 'aria-hidden': 'true' }, profileLayoutPreview(value)), h('span', { class: 'ds-choice-copy' },
+    return { input, label: h('label', { class: 'profile-layout-option' }, input, h('span', { class: 'profile-layout-copy' },
       h('strong', { class: 'ds-choice-title' }, title), h('small', { class: 'ds-choice-description' }, value === 'studio' ? 'A live desk, activity history, and room for highlights.' : 'Your chosen stories first, with activity quietly underneath.'))) };
   });
   const choices = h('fieldset', { class: 'ds-choice-group' }, h('legend', {}, 'Profile layout'),
-    h('div', { class: 'ds-choice-options' }, choiceInputs.map(item => item.label)),
+    h('div', { class: 'profile-layout-options' }, choiceInputs.map(item => item.label)),
     h('p', { class: 'ds-hint' }, 'Try either layout in the preview. Switching keeps your highlights.'));
-  const add = h('button', { type: 'button', class: 'small' }, icon('plus', { size: 14 }), 'Add highlight');
+  const add = h('button', { type: 'button', class: 'small' }, 'Add highlight');
   const refresh = () => {
     entries.forEach((row, index) => {
       row.heading.textContent = `Highlight ${index + 1}`;
@@ -87,7 +85,7 @@ export function createProfilePresentationEditor({ profile, onChange = () => {}, 
     const up = h('button', { type: 'button', class: 'small' }, 'Up');
     const down = h('button', { type: 'button', class: 'small' }, 'Down');
     const row = { title, body, url, heading, remove, up, down, errors: [[title, titleError], [body, bodyError], [url, urlError]] };
-    row.element = h('section', { class: 'ds-panel profile-highlight-editor', 'aria-labelledby': `${id}-heading` },
+    row.element = h('section', { class: 'profile-highlight-editor', 'aria-labelledby': `${id}-heading` },
       h('div', { class: 'ds-panel-header' }, heading, h('div', { class: 'ds-row' }, up, down, remove)),
       h('div', { class: 'ds-panel-body ds-stack' }, h('label', { class: 'field' }, 'Title', title), titleError,
         h('label', { class: 'field' }, 'Note', body), count, bodyError,
@@ -109,7 +107,7 @@ export function createProfilePresentationEditor({ profile, onChange = () => {}, 
   const element = h('div', { class: 'profile-presentation-editor ds-stack' }, choices,
     h('section', { class: 'ds-stack', 'aria-label': 'Profile highlights' },
       h('div', { class: 'ds-heading-group' }, h('h3', {}, 'A few things worth opening.'), h('p', { class: 'ds-hint' }, 'Write up to three highlights. You choose the words and links; private task text is never filled in for you.')),
-      h('p', { class: 'ds-notice' }, 'Highlights become public when your profile is published, even when the activity stream is off. Saving a private profile keeps them private.'), list,
+      h('p', { class: 'ds-hint profile-highlight-public-note' }, 'Highlights become public when your profile is published, even when the activity stream is off. Saving a private profile keeps them private.'), list,
       h('div', { class: 'ds-toolbar' }, add, limit), status));
   return {
     element, layoutElement: choices, read,
