@@ -6,6 +6,7 @@ export function devReviewPage(url: URL, head = false): Response {
     ["/app#workspace", "Workspace settings"], ["/app#billing", "Plan & billing"],
     ["/pricing", "Pricing"], ["/support", "Support"],
     ["/privacy", "Privacy"], ["/self-host", "Self-host"],
+    ["/changelog", "Changelog"],
     ["/design-system", "Design system"],
     ["/__open-source-review", "Open-source support copy"],
     ["/__mail-preview/preference/confirm", "Email preferences"],

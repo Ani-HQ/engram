@@ -129,6 +129,9 @@
 .m-toc > span { margin-bottom: var(--ds-space-2); color: var(--ds-muted); font: var(--ds-text-xs)/1.6 var(--ds-font-mono); }
 .m-toc a { text-decoration: none; color: var(--ds-muted); }
 .public-prose { min-width: 0; }
+.m-changelog { min-width: 0; }
+.m-changelog > section { padding-block: var(--ds-space-6) var(--ds-space-8); scroll-margin-top: var(--ds-space-8); }
+.m-changelog > section > h2 { margin-bottom: var(--ds-space-4); font-size: var(--ds-text-xl); font-weight: 500; line-height: 1.35; letter-spacing: -.025em; }
 .public-prose section { padding-block: var(--ds-space-8); border-top: 1px solid var(--ds-line); scroll-margin-top: var(--ds-space-8); }
 .public-prose h2 { margin-bottom: var(--ds-space-5); font-size: var(--ds-text-xl); font-weight: 500; line-height: 1.35; letter-spacing: -.025em; }
 .public-prose h3 { margin: var(--ds-space-6) 0 var(--ds-space-3); font-size: var(--ds-text-base); font-weight: 550; }

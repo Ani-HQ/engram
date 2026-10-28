@@ -1,0 +1,484 @@
+{
+  "repository": "https://github.com/Ani-HQ/engram",
+  "entries": [
+    {
+      "sha": "e65dcbf",
+      "at": "2026-10-28T00:31:44Z",
+      "kind": "improved",
+      "title": "Bridge 0.6.0 with task checkpoints",
+      "summary": "The `@ani-hq/engram-mcp` bridge moves to 0.6.0 with the checkpoint command and continuation hooks. Live transfer results across Claude Code, Codex and Cursor are recorded in the continuation spec.",
+      "pr": 54
+    },
+    {
+      "sha": "5b0917c",
+      "at": "2026-10-28T00:27:44Z",
+      "kind": "new",
+      "title": "Cookieless site analytics",
+      "summary": "Public pages count views, a few named calls to action and sign-up sources with a first-party script. No cookies, IP addresses, user agents or emails are stored, and Do Not Track and Global Privacy Control are honoured.",
+      "pr": 52
+    },
+    {
+      "sha": "7534fd7",
+      "at": "2026-10-28T00:24:12Z",
+      "kind": "new",
+      "title": "Task handoffs between agents",
+      "summary": "Agents can save a compact task record: objective, plan, decisions, blockers and next step. Another agent, or the same one after a crash or usage limit, can find it and continue from the last confirmed save. Activity gains a Handoffs view with a copyable continue prompt.",
+      "pr": 51
+    },
+    {
+      "sha": "792a2f9",
+      "at": "2026-10-27T13:17:27Z",
+      "kind": "improved",
+      "title": "Sharing in team workspaces",
+      "summary": "Team owners and members can browse the approved excerpts they received, open team memory, and switch to a personal workspace to prepare a new share.",
+      "pr": 50
+    },
+    {
+      "sha": "94a90b7",
+      "at": "2026-10-27T09:41:26Z",
+      "kind": "improved",
+      "title": "Compact action buttons",
+      "summary": "Buttons share one compact 32px size on desktop across the interface. Touch screens and narrow widths keep 44px targets.",
+      "pr": 49
+    },
+    {
+      "sha": "854c7d4",
+      "at": "2026-10-27T08:47:37Z",
+      "kind": "new",
+      "title": "A complete agent connection prompt",
+      "summary": "Connections offers a full setup prompt to paste into an agent, with the endpoint and intended workspace. It uses native MCP setup where available and exact guidance otherwise.",
+      "pr": 48
+    },
+    {
+      "sha": "4467b13",
+      "at": "2026-10-27T07:29:44Z",
+      "kind": "improved",
+      "title": "Simpler agent connections",
+      "summary": "Connect an agent shows the shared MCP endpoint right away. Access keys and agent-specific help are optional steps.",
+      "pr": 47
+    },
+    {
+      "sha": "7110a0a",
+      "at": "2026-10-26T17:48:32Z",
+      "kind": "improved",
+      "title": "Focused Connections, checks in Activity",
+      "summary": "Connections lists your agents and opens a dedicated setup dialog for each one, and reconnecting keeps existing settings. Workspace checks moved into Activity.",
+      "pr": 46
+    },
+    {
+      "sha": "abf097f",
+      "at": "2026-10-26T13:42:57Z",
+      "kind": "fixed",
+      "title": "Reliable memory save confirmations",
+      "summary": "Explicit memory saves get a longer, bounded deadline, so a slow write that reached the server is no longer reported as unavailable. Animation playback controls were removed.",
+      "pr": 45
+    },
+    {
+      "sha": "1efc774",
+      "at": "2026-10-26T12:47:39Z",
+      "kind": "fixed",
+      "title": "Useful memory at small budgets",
+      "summary": "Installed agent guidance is shorter, so a 1 KiB retrieval budget still leaves room for useful context. Grok setup steps match its current connector flow.",
+      "pr": 44
+    },
+    {
+      "sha": "2eb7e79",
+      "at": "2026-10-26T12:21:38Z",
+      "kind": "new",
+      "title": "Guided memory setup and repair",
+      "summary": "One guided command from Connections installs or repairs the memory workflow, without editing Markdown or configuration files. File changes are checked first and rolled back on failure.",
+      "pr": 43
+    },
+    {
+      "sha": "7de5646",
+      "at": "2026-10-26T10:39:08Z",
+      "kind": "improved",
+      "title": "Reliable, bounded agent memory",
+      "summary": "Retrieval is task-aware and capped so it does not flood an agent's context. Adds native runtime adapters, portable guidance, and JavaScript and Python SDKs.",
+      "pr": 42
+    },
+    {
+      "sha": "a1bb0fb",
+      "at": "2026-10-26T06:39:14Z",
+      "kind": "new",
+      "title": "Connection lifecycle and profile photos",
+      "summary": "Owners can archive, restore or delete connections without losing saved work, and upload, replace or remove a profile photo. Public profiles get quieter activity cards.",
+      "pr": 41
+    },
+    {
+      "sha": "6194065",
+      "at": "2026-10-26T03:37:34Z",
+      "kind": "improved",
+      "title": "Calmer handoff diagram on mobile",
+      "summary": "The landing-page handoff diagram is quieter and fits short screens, with compact agent cards on mobile.",
+      "pr": 40
+    },
+    {
+      "sha": "e8c81ab",
+      "at": "2026-10-25T18:08:40Z",
+      "kind": "improved",
+      "title": "Shared controls and animated handoffs",
+      "summary": "The landing page explains scoped sharing with a looping save-and-recall illustration and shows 21 agent products with locally bundled logos. Motion pauses offscreen.",
+      "pr": 39
+    },
+    {
+      "sha": "b18f943",
+      "at": "2026-10-25T16:15:19Z",
+      "kind": "new",
+      "title": "New interface system and profile layouts",
+      "summary": "One graphite and mint design system now covers the app, public pages, email and social cards. Public profiles offer two layouts, Living studio and Field notes, with up to three written highlights.",
+      "pr": 38
+    },
+    {
+      "sha": "0dcb769",
+      "at": "2026-10-25T11:58:05Z",
+      "kind": "under-the-hood",
+      "title": "Stricter release smoke checks",
+      "summary": "Before issuing a temporary read credential, the release check verifies the exact candidate revision, image digest and provider-free worker configuration.",
+      "pr": 37
+    },
+    {
+      "sha": "cd103dd",
+      "at": "2026-10-25T11:34:04Z",
+      "kind": "new",
+      "title": "Reviewed selective sharing",
+      "summary": "Describe which context belongs with a team or another agent, preview bounded excerpts, and approve the exact text. Shares are fixed snapshots, so new source text needs a fresh review.",
+      "pr": 36
+    },
+    {
+      "sha": "40d5bc7",
+      "at": "2026-10-25T06:18:23Z",
+      "kind": "improved",
+      "title": "Clearer beta pricing",
+      "summary": "Hosted beta pricing shows 60 days free with an invite instead of $0, and says access starts after email verification. The site states the plan to sponsor open-source projects from revenue.",
+      "pr": 35
+    },
+    {
+      "sha": "31ffe57",
+      "at": "2026-10-25T06:02:23Z",
+      "kind": "under-the-hood",
+      "title": "Fix worker preparation retries",
+      "summary": "Re-running mail or billing worker preparation updates existing schedules correctly, without enabling delivery or billing.",
+      "pr": 34
+    },
+    {
+      "sha": "95674af",
+      "at": "2026-10-25T05:51:10Z",
+      "kind": "under-the-hood",
+      "title": "Separate connection for operator setup",
+      "summary": "Operator bootstrap and maintenance use a scoped provisioner connection instead of the restricted request pool.",
+      "pr": 33
+    },
+    {
+      "sha": "f46a327",
+      "at": "2026-10-25T05:38:14Z",
+      "kind": "under-the-hood",
+      "title": "Fix scheduled worker configuration",
+      "summary": "Mail and Jev billing jobs get the correct Cloud Run execution settings and database attachment.",
+      "pr": 32
+    },
+    {
+      "sha": "b499b99",
+      "at": "2026-10-25T05:26:27Z",
+      "kind": "under-the-hood",
+      "title": "Explicit operator workspace for Jev",
+      "summary": "The operator's default Jev workspace is named explicitly, alongside the exact owner email.",
+      "pr": 31
+    },
+    {
+      "sha": "fe3699d",
+      "at": "2026-10-25T05:15:32Z",
+      "kind": "new",
+      "title": "60-day friend invites and onboarding emails",
+      "summary": "Invited friends get 60 days of unlimited core knowledge transfers from verified redemption, with a workspace countdown and an extension link. Adds an onboarding email series and optional Jev processing.",
+      "pr": 30
+    },
+    {
+      "sha": "c834723",
+      "at": "2026-10-24T17:54:21Z",
+      "kind": "security",
+      "title": "Email-only console sign-in",
+      "summary": "Hosted sign-in and invite screens use email verification only. Agent access tokens can no longer open a console session, though agents still use them.",
+      "pr": 29
+    },
+    {
+      "sha": "3f70c18",
+      "at": "2026-10-24T17:34:24Z",
+      "kind": "improved",
+      "title": "Invite screen copy",
+      "summary": "The invite screen now reads: “No card required. Verify your email to get started.”",
+      "pr": 28
+    },
+    {
+      "sha": "d894f2a",
+      "at": "2026-10-24T17:18:28Z",
+      "kind": "security",
+      "title": "Invite-only hosted beta",
+      "summary": "Hosted sign-up requires a single-use invitation bound to the recipient's email, plus inbox verification.",
+      "pr": 27
+    },
+    {
+      "sha": "b94bcc2",
+      "at": "2026-10-24T15:00:42Z",
+      "kind": "new",
+      "title": "Hosted launch",
+      "summary": "The hosted service launches with workspace-scoped credentials, isolated workers, billing, privacy and support pages, and an activity view that separates observed memory calls from tasks agents report. Guided onboarding advances as setup succeeds.",
+      "pr": 26
+    },
+    {
+      "sha": "240c964",
+      "at": "2026-10-06T08:52:38Z",
+      "kind": "improved",
+      "title": "A helpful page at /mcp",
+      "summary": "Opening the MCP URL in a browser explains how to paste it into a ChatGPT, Claude or Grok connector instead of showing a blank error.",
+      "pr": 24
+    },
+    {
+      "sha": "2cfe9df",
+      "at": "2026-10-06T08:21:50Z",
+      "kind": "new",
+      "title": "Sign in from chat connectors",
+      "summary": "Engram runs its own OAuth authorization server. Claude, ChatGPT and Grok connectors sign in with the same email link as the console.",
+      "pr": 23
+    },
+    {
+      "sha": "a0d6e04",
+      "at": "2026-10-06T05:27:07Z",
+      "kind": "new",
+      "title": "Share slices from a personal brain",
+      "summary": "Notes land in a personal brain first. Share rules copy matching slices into a team brain, and a share can be undone.",
+      "pr": 22
+    },
+    {
+      "sha": "a40c541",
+      "at": "2026-09-22T13:25:15Z",
+      "kind": "under-the-hood",
+      "title": "README as the project front page",
+      "summary": "The README explains what Engram is, how to self-host it and how to ask for hosted access.",
+      "pr": 21
+    },
+    {
+      "sha": "f428c91",
+      "at": "2026-09-21T13:24:16Z",
+      "kind": "under-the-hood",
+      "title": "Keep Jev on across deploys",
+      "summary": "Deploys keep the Jev provider key mounted, so a routine release cannot switch Jev off.",
+      "pr": 20
+    },
+    {
+      "sha": "408c368",
+      "at": "2026-09-21T09:36:42Z",
+      "kind": "under-the-hood",
+      "title": "Restore proven deploy settings",
+      "summary": "Deployment returns to the last working Cloud Run configuration so the Jev release could go live.",
+      "pr": 19
+    },
+    {
+      "sha": "f3add89",
+      "at": "2026-09-21T09:29:23Z",
+      "kind": "under-the-hood",
+      "title": "Deploy before provider access is ready",
+      "summary": "Deploys skip provider keys until access is granted. Jev stays off and memory keeps working.",
+      "pr": 18
+    },
+    {
+      "sha": "3d39bfd",
+      "at": "2026-09-21T09:24:26Z",
+      "kind": "under-the-hood",
+      "title": "Optional provider keys",
+      "summary": "Releases mount the Jev and embedding keys only when they exist; otherwise the gateway runs without them.",
+      "pr": 17
+    },
+    {
+      "sha": "c9da53a",
+      "at": "2026-09-21T09:18:42Z",
+      "kind": "under-the-hood",
+      "title": "Run the Jev tests in the build",
+      "summary": "Tests preload the database setting they need, so the Jev suite runs in Cloud Build.",
+      "pr": 16
+    },
+    {
+      "sha": "638b635",
+      "at": "2026-09-21T09:14:49Z",
+      "kind": "under-the-hood",
+      "title": "Fix the provider key build step",
+      "summary": "The build escapes its shell variables so it can create provider key placeholders.",
+      "pr": 15
+    },
+    {
+      "sha": "b8f2a9d",
+      "at": "2026-09-21T09:13:24Z",
+      "kind": "new",
+      "title": "Jev memory cycle and nightly consolidation",
+      "summary": "Optional Jev judgments route topics, classify notes and rerank recall, and a nightly job consolidates memory. Saves still work when Jev is down.",
+      "pr": 14
+    },
+    {
+      "sha": "10f15d1",
+      "at": "2026-09-21T09:03:36Z",
+      "kind": "new",
+      "title": "Graph view, live usage and provenance",
+      "summary": "The console shows which agent first wrote a page and who has added to it since, a graph of pages and their links, and live usage.",
+      "pr": 13
+    },
+    {
+      "sha": "8cdbeeb",
+      "at": "2026-09-18T10:32:38Z",
+      "kind": "improved",
+      "title": "Console redesign",
+      "summary": "The console drops its paper-and-ink theme and Japanese vocabulary for a plainer design and plain terms.",
+      "pr": 12
+    },
+    {
+      "sha": "06a9ac0",
+      "at": "2026-09-18T10:11:32Z",
+      "kind": "under-the-hood",
+      "title": "Record which page each call touched",
+      "summary": "Each call records the page it touched: the groundwork for showing where a memory came from and who contributed to it.",
+      "pr": 11
+    },
+    {
+      "sha": "1c892b1",
+      "at": "2026-09-18T06:35:51Z",
+      "kind": "fixed",
+      "title": "Long topic pages stay current",
+      "summary": "Topic pages are bounded and roll over, instead of recall cutting the answer off mid-sentence and returning an old state.",
+      "pr": 10
+    },
+    {
+      "sha": "0a12442",
+      "at": "2026-09-17T13:35:04Z",
+      "kind": "under-the-hood",
+      "title": "Fix the deploy trigger",
+      "summary": "The automatic deploy names a log destination, so the trigger can run.",
+      "pr": 9
+    },
+    {
+      "sha": "8241d28",
+      "at": "2026-09-17T10:03:20Z",
+      "kind": "under-the-hood",
+      "title": "Notes on a hidden test bug",
+      "summary": "Adds notes on how a global test mock removed exports and why a local container run hid the problem.",
+      "pr": 8
+    },
+    {
+      "sha": "0185867",
+      "at": "2026-09-17T09:56:49Z",
+      "kind": "fixed",
+      "title": "Test mocks keep real exports",
+      "summary": "Module mocks keep the exports they do not replace, fixing the first automated build failure.",
+      "pr": 7
+    },
+    {
+      "sha": "b16b2bd",
+      "at": "2026-09-17T09:49:10Z",
+      "kind": "under-the-hood",
+      "title": "Deploy on merge, gated on tests",
+      "summary": "Merging to main deploys automatically, and only after the test suite passes.",
+      "pr": 6
+    },
+    {
+      "sha": "5d54a79",
+      "at": "2026-09-17T06:37:33Z",
+      "kind": "fixed",
+      "title": "No failed connection after idle",
+      "summary": "An idle Engram no longer fails an agent's first connection while it wakes up.",
+      "pr": 5
+    },
+    {
+      "sha": "59b6705",
+      "at": "2026-09-16T07:59:48Z",
+      "kind": "fixed",
+      "title": "No lost saves from concurrent writers",
+      "summary": "Concurrent saves to the same page verify what they wrote, so one agent's entry is not dropped by another's.",
+      "pr": 4
+    },
+    {
+      "sha": "140fa11",
+      "at": "2026-09-15T17:19:02Z",
+      "kind": "under-the-hood",
+      "title": "Headless agent permissions guide",
+      "summary": "Documents the tool permissions headless agents need to reach Engram, and scopes the OAuth work."
+    },
+    {
+      "sha": "fc6f145",
+      "at": "2026-09-15T16:53:12Z",
+      "kind": "fixed",
+      "title": "Saves to one page run in order",
+      "summary": "Saves to the same page run one at a time, so two agents appending together no longer drop an entry. Tool counts in the docs were corrected."
+    },
+    {
+      "sha": "40046f6",
+      "at": "2026-09-15T10:44:33Z",
+      "kind": "new",
+      "title": "remember and recall",
+      "summary": "Adds the remember and recall tools, short tool descriptions, response size caps and MCP server instructions."
+    },
+    {
+      "sha": "02188ef",
+      "at": "2026-09-09T05:59:14Z",
+      "kind": "under-the-hood",
+      "title": "Bridge setup from npm",
+      "summary": "The wiring guide drops its clone-and-run workaround now that the bridge is published on npm."
+    },
+    {
+      "sha": "07bea64",
+      "at": "2026-09-08T12:54:28Z",
+      "kind": "under-the-hood",
+      "title": "Bridge command path",
+      "summary": "Fixes the bridge's command path so the published package matches the repository."
+    },
+    {
+      "sha": "c1d9480",
+      "at": "2026-09-08T12:41:58Z",
+      "kind": "under-the-hood",
+      "title": "Bridge package links",
+      "summary": "The npm package links to the correct repository, homepage and issue tracker."
+    },
+    {
+      "sha": "5160f76",
+      "at": "2026-09-02T12:56:04Z",
+      "kind": "under-the-hood",
+      "title": "Ready for other people to run",
+      "summary": "Removes an unused cloud dependency, corrects the package description and adds CI that runs the tests on every change."
+    },
+    {
+      "sha": "5bef9c3",
+      "at": "2026-09-02T05:03:47Z",
+      "kind": "improved",
+      "title": "One brain",
+      "summary": "Engram collapses to a single brain with one tool surface, and forgetting a page can be undone."
+    },
+    {
+      "sha": "4900b2b",
+      "at": "2026-09-02T05:03:47Z",
+      "kind": "new",
+      "title": "A browser console",
+      "summary": "Adds a browser console to search, browse, read and quickly capture memory. The gateway serves it with no build step.",
+      "pr": 3
+    },
+    {
+      "sha": "b7614f6",
+      "at": "2026-08-16T07:54:22Z",
+      "kind": "new",
+      "title": "MIT license and stateless MCP",
+      "summary": "Engram is MIT licensed and supports the 2026-07-28 stateless MCP specification.",
+      "pr": 2
+    },
+    {
+      "sha": "43c71a7",
+      "at": "2026-08-15T19:11:40Z",
+      "kind": "new",
+      "title": "Engram v0",
+      "summary": "A scoped MCP gateway over gbrain, with per-agent tokens and a separate database for each scope.",
+      "pr": 1
+    },
+    {
+      "sha": "a560d75",
+      "at": "2026-08-15T16:00:04Z",
+      "kind": "new",
+      "title": "First commit",
+      "summary": "The first gateway: MCP over HTTP with per-agent bearer tokens, an audit log, an admin CLI and a docker-compose self-host path."
+    }
+  ]
+}
