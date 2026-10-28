@@ -479,18 +479,19 @@ fork or new task; a final `completed` checkpoint; and `node --test` passing.
 | Codex → Cursor, handoff | Pass |
 | Codex → Cursor, interrupted | Pass, Codex finished before the kill landed |
 | Claude Code → Cursor, interrupted | Pass |
-| Claude Code → Cursor, handoff | Fail: Claude saved the handoff; Cursor produced no output and never resumed |
-| Cursor → Claude Code, handoff | Fail: Cursor run aborted with `read ECONNRESET` before any tool call |
-| Cursor → Claude Code, interrupted | Fail: Cursor lost its connection to its API and retried until the time limit |
-| Cursor → Codex, interrupted | Fail: Cursor produced no output within the 7 minute limit |
-| Cursor restart | Fail: Cursor produced no output within the 7 minute limit |
+| Claude Code → Cursor, handoff | Pass on re-run (first run: Cursor produced no output) |
+| Cursor → Claude Code, handoff | Pass on re-run (first run: `read ECONNRESET` before any tool call) |
+| Cursor → Claude Code, interrupted | Not established: in both runs Cursor lost its connection to its own API and retried until the time limit, with no tool call |
+| Cursor → Codex, interrupted | Not established: same Cursor connection failure in both runs |
+| Cursor restart | Not established: same Cursor connection failure in both runs |
 
 Lab setup facts, not product claims: Codex needed
 `default_tools_approval_mode = "approve"` for the Engram server under
 `codex exec`; Claude Code loads remote MCP tools through ToolSearch; agents used
 the MCP tools directly rather than the bridge `checkpoint` command. These are
-CLI runs, not the desktop apps. Desktop behaviour remains unverified. Every
-Cursor failure ended with no Cursor output, after connection errors to Cursor's
-own API (2026-10-28); none reached an Engram tool call. Re-run those five
-before claiming Cursor coverage.
+CLI runs, not the desktop apps. Desktop behaviour remains unverified. Cursor passes 6 of 9 after
+one re-run (2026-10-28). The three remaining Cursor-first interrupt and restart
+runs failed twice the same way: Cursor's CLI lost its connection to Cursor's API
+before any tool call. That repeated pattern is unexplained, so Cursor-first
+interruption is unverified, not shown to work.
 
