@@ -38,9 +38,11 @@ function dispatch() {
   // In a terminal, `engram-mcp` or `engram-mcp setup` with no agent named
   // connects the whole computer. Agents start the proxy without a terminal.
   const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
-  const computerSetup = interactive && ((!subcommand && !process.env.ENGRAM_TOKEN) || (subcommand === 'setup' && args.every((arg, i) => arg === '--host' || arg.startsWith('--host=') || args[i - 1] === '--host')));
+  const hostOnly = list => list.every((arg, i) => arg === '--host' || arg.startsWith('--host=') || list[i - 1] === '--host');
+  const bare = !subcommand || subcommand === '--host' || subcommand.startsWith('--host=');
+  const computerSetup = interactive && ((bare && !process.env.ENGRAM_TOKEN && hostOnly(process.argv.slice(2))) || (subcommand === 'setup' && hostOnly(args)));
   if (computerSetup) {
-    require('./connect-computer').connectComputer(subcommand ? args : [], { planConnection: planHarnessConnection, cacheTools: writeToolCache }).then(code => { process.exitCode = code; }).catch(error => {
+    require('./connect-computer').connectComputer(subcommand === 'setup' ? args : process.argv.slice(2), { planConnection: planHarnessConnection, cacheTools: writeToolCache }).then(code => { process.exitCode = code; }).catch(error => {
       console.error(error.message || 'Engram setup failed.');
       process.exitCode = 1;
     });
