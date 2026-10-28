@@ -75,12 +75,12 @@ at runtime. Marks identify a connection's configured or reported source and do
 not indicate endorsement or a verified model.
 
 
-## Muse and Instinct: official product assets
+## Muse: official product asset
 
 Retrieved on 25 October 2026 for named product identification in an illustrative
-shared-memory diagram. These are original public product assets, not generated
-or redrawn marks. They do not claim an Engram-tested MCP integration, partnership,
-or endorsement. No open-source license grant is claimed for either asset;
+shared-memory diagram. This is an original public product asset, not a generated
+or redrawn mark. They do not claim an Engram-tested MCP integration, partnership,
+or endorsement. No open-source license grant is claimed for it;
 copyright and trademark ownership stay with the respective product owners.
 
 - **Muse** (`muse.svg`): the unchanged 100×100 app mark at
@@ -91,17 +91,9 @@ copyright and trademark ownership stay with the respective product owners.
   links to muse.ai. The original gradient, geometry, dimensions and viewBox are
   preserved. SHA-256:
   `6373d89d274258a38432f3c3729cd716498b8ded849b174a7998683dcf4aaba5`.
-- **Instinct** (`instinct.png`): the unchanged 64×64 icon at
-  https://instinct.com/redesign/favicon.ico , linked by https://instinct.com/ .
-  That upstream URL returns PNG bytes; only the local filename extension matches
-  its actual format. The stick-figure artwork and white background are preserved.
-  The product's terms identify Spear Street Technology, Inc. d/b/a Instinct:
-  https://instinct.com/terms . Brand and content rights remain reserved there.
-  SHA-256:
-  `0b666ba5c89408ca2b9c790ce7bf65da063645ca60a5e06426461924b0c1fd08`.
 
-Neither asset is covered by the LobeHub MIT or Simple Icons CC0 notices above.
-Both load from local files at runtime; no visitor request goes to their source
+It is not covered by the LobeHub MIT or Simple Icons CC0 notices above.
+It loads from local files at runtime; no visitor request goes to their source
 websites.
 
 ## Additional ecosystem marks
@@ -115,13 +107,11 @@ do not claim a tested MCP integration or endorsement.
   https://code.visualstudio.com/brand . Original proportions and colors are
   preserved; Microsoft retains its trademark rights. SHA-256:
   `7ac29e00cd66e549acc2ea6a99a813f92cb23a6d165293be6959845670f0c5a4`.
-- **Aider** (`aider.png`): original 180×180 app icon linked by the official
-  website at https://aider.chat/assets/icons/apple-touch-icon.png . Project:
-  https://github.com/Aider-AI/aider . The project is Apache-2.0 licensed;
-  no separate trademark grant is claimed. SHA-256:
-  `6efbd1fc700f455630b59d233aa37bfc764cffb0bcb255a42e73837f12497a2b`.
 
 `web/public-agent-catalog.js` is the fixed public catalog. The homepage includes
 every named console source, guided setup client and additional named diagram
 example. Its "MCP support and setup vary by client" caption preserves the
 distinction between an ecosystem product and verified Engram compatibility.
+
+Instinct and Aider marks were removed on 28 October 2026: neither product can
+connect to a remote MCP server, so Engram cannot support them.

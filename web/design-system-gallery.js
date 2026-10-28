@@ -47,7 +47,7 @@ for (const id of ['gallery-logo-ticker', 'gallery-logo-ticker-static']) {
   }
   observeLogoTicker(root, { reduced: id.endsWith('-static') });
 }
-document.querySelector('#agent-orbit-example').append(memoryOrbit({ agents: true, label: 'Illustrative agent ecosystem: Claude, OpenClaw, Grok Bot, Muse and Instinct around shared memory. Not live connections.' }));
+document.querySelector('#agent-orbit-example').append(memoryOrbit({ agents: true, label: 'Illustrative agent ecosystem: Claude, OpenClaw, Grok Bot, Muse and Hermes Agent around shared memory. Not live connections.' }));
 document.querySelector('#ink-orbit-example').append(memoryOrbit({ compact: true, className: 'ds-orbit--on-ink' }));
 document.querySelector('#stream-example').append(memoryStream({ label: 'A decision is saved to shared memory and recalled for the next task. This is an illustration.' }));
 const resourceExamples = document.querySelector('#resource-chip-examples');
