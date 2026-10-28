@@ -25,6 +25,7 @@ export async function checkContinuation(db: postgres.Sql): Promise<number> {
       await migrateOrgDataTables(poolFor(`brain_org_${id}`));
       await migrateOrgDataTables(poolFor(`brain_org_${id}`));
       await poolFor(`brain_org_${id}`)`TRUNCATE continuation_receipts, continuation_heads, continuation_checkpoints, continuation_tasks`;
+      await poolFor(`brain_org_${id}`)`TRUNCATE memory_entries, trails, reflex_decisions, review_items, dream_runs RESTART IDENTITY CASCADE`;
     }
     const orgA = (await getOrg(aId, db))!, orgB = (await getOrg(bId, db))!;
     const claude = normalizeToken({ name: "claude-code", orgId: aId, canWrite: true });
@@ -96,7 +97,7 @@ export async function checkContinuation(db: postgres.Sql): Promise<number> {
     equal(done.closed, true, "A completed trigger closes the task");
     equal((await inA(codex, () => findTasks(codex, { project: "engram" }))).tasks.length, 0, "Closed tasks are hidden by default");
     equal((await inA(codex, () => findTasks(codex, { project: "engram", includeClosed: true }))).tasks.length, 1, "Closed tasks are found on request");
-    equal((await inA(owner, () => listTasks(owner, new URLSearchParams("status=closed")))).tasks[0].latest?.lineage, "main", "The console lists closed tasks with their latest checkpoint");
+    equal((await inA(owner, () => listTasks(owner, new URLSearchParams("status=closed")))).tasks.find(task => task.id === created.taskId)?.latest?.lineage, "main", "The console lists closed tasks with their latest checkpoint");
     const detail = await inA(owner, () => getTask(owner, created.taskId));
     equal([detail.lineages.length, detail.history.length, detail.task.status], [2, 5, "closed"], "Task detail shows lineages and full history");
     const exported = await inA(owner, () => exportTasks(owner, new URLSearchParams()));
@@ -116,9 +117,29 @@ export async function checkContinuation(db: postgres.Sql): Promise<number> {
     await inA(owner, () => setTaskState(owner, created.taskId, "delete"));
     await reject(() => inA(codex, () => resumeTask(codex, { taskId: created.taskId })), "task_deleted", "A deleted task never falls back to an older checkpoint");
     await reject(() => inA(claude, () => checkpointTask(claude, start)), "task_deleted", "A delayed retry cannot resurrect a deleted task");
-    equal((await inA(owner, () => exportTasks(owner, new URLSearchParams()))).tasks.length, 0, "Deleted tasks leave exports");
+    equal((await inA(owner, () => exportTasks(owner, new URLSearchParams()))).tasks.some(task => task.id === created.taskId), false, "Deleted tasks leave exports");
     await inA(owner, () => setTaskState(owner, created.taskId, "restore"));
-    equal((await inA(owner, () => exportTasks(owner, new URLSearchParams()))).tasks.length, 1, "An authorized person can restore a deleted task");
+    equal((await inA(owner, () => exportTasks(owner, new URLSearchParams()))).tasks.some(task => task.id === created.taskId), true, "An authorized person can restore a deleted task");
+
+    // Meaning-based matching (judge injected; production uses Jev with consent).
+    const pricing = await inA(codex, () => checkpointTask(codex, { requestId: "req_price_0001", title: "Pricing page copy refresh", project: "site", record: { objective: "Rewrite the pricing page around one flat plan.", next: "Draft three headlines.", decisions: [{ text: "Use a flat team price of $49." }] } }));
+    const judge = async (_query: string, items: any[]) => new Map(items.map((item: any) => [item.id, item.id === pricing.taskId ? 3 : 0]));
+    const vague = await inA(codex, () => findTasks(codex, { query: "the money page thing" }, undefined, 5, { judge }));
+    equal([vague.ranking, vague.ambiguous, vague.tasks.map(task => task.id)], ["jev", false, [pricing.taskId]], "A judged match finds a task whose words differ from the request");
+    const noJudge = await inA(codex, () => findTasks(codex, { query: "the money page thing" }, undefined, 5, { judge: async () => null }));
+    equal([noJudge.ranking, noJudge.tasks.length], ["text", 0], "Without Jev, matching falls back to literal text");
+    const tie = await inA(codex, () => findTasks(codex, { query: "anything", includeClosed: true }, undefined, 5, { judge: async (_q: string, items: any[]) => new Map(items.map((item: any) => [item.id, 3])) }));
+    equal(tie.ambiguous, true, "Several equally strong matches stay ambiguous");
+
+    // Memory saved after a checkpoint is counted; a judged contradiction is flagged.
+    await poolFor(`brain_org_${aId}`)`INSERT INTO memory_entries (id, fingerprint, slug, raw_text, recorded_at) VALUES ('me_price_1', 'fp_price_1', 'projects/pricing', 'Decision: the team price is now $29 flat.', clock_timestamp())`;
+    const plain: any = await inA(codex, () => resumeTask(codex, { taskId: pricing.taskId }, undefined, { judge: async () => null }));
+    equal([plain.newerMemories, plain.freshness, plain.staleDecisions], [1, undefined, undefined], "Without Jev, resume only counts newer memory");
+    ok(/recall it if relevant/.test(plain.boundary), "The boundary tells the agent to recall newer memory");
+    const judged: any = await inA(codex, () => resumeTask(codex, { taskId: pricing.taskId }, undefined, { judge: async () => [{ decision: 0, memory: "projects/pricing", relation: "supersede" as const }] }));
+    equal([judged.freshness, judged.staleDecisions], ["checked", [{ decision: 0, relation: "supersede", memory: "projects/pricing" }]], "A judged stale decision is flagged with its memory page");
+    const { resumeEnvelopeBytes } = await import("../gateway/src/continuation");
+    ok(resumeEnvelopeBytes(judged) <= 3840, "Resume with notes still fits one default read");
 
     // Through the MCP tool boundary, results stay bounded and errors are structured.
     const tool = await inA(codex, () => callTool(codex, "resume_task", { taskId: created.taskId, lineage: "main" }));

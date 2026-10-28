@@ -58,6 +58,15 @@ it does not store provider prompts, memory text, answers or API keys.
    report relationships/relevance. Optional generated briefs retain their own
    provider configuration and the older external-AI consent.
 5. Trail digest selection can ask Jev to choose among local heuristic variants.
+6. `find_tasks` with a query can ask Jev to score up to 12 recent saved tasks
+   against the request (task `task-match`, 800ms deadline). One clear best
+   match is returned as unambiguous; ties stay ambiguous. Unavailable or late
+   results fall back to literal text matching, labeled `ranking: "text"`.
+7. `resume_task` counts memory entries saved after the checkpoint without any
+   model. With consent, Jev compares the record's decisions with those newer
+   entries (task `freshness`, 1.2s deadline, only pairs sharing a word) and
+   flags confident supersede/contradict judgments as `staleDecisions`. Flags
+   are advisory; the record is never changed.
    The local digest remains available when the provider cannot be used.
 
 ### Extractive recall selection

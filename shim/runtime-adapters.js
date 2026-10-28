@@ -10,6 +10,10 @@ const { hash, readPrivate, writePrivate, sessionFile } = memory.internals;
 const ACTIVE_AGE = 15 * 60 * 1000;
 const pendingFile = (binding, runtime, session) => path.join(memory.stateRoot(), binding.scope, `pending-${hash(`${runtime}\n${session}`)}.json`);
 const activeFile = (binding, runId) => path.join(memory.stateRoot(), binding.scope, `active-${runId}.json`);
+// Cursor/Copilot sessionStart output is fire-and-forget. Keep one copy of what it
+// carried and deliver it again on the first tool result, then forget it.
+const deliveryFile = (binding, runtime, session) => path.join(memory.stateRoot(), binding.scope, `delivery-${hash(`${runtime}\n${session}`)}.json`);
+const DELIVERY_AGE = 30 * 60 * 1000;
 
 function publishActiveRun(binding, runId, runtime, sessionId) {
   writePrivate(activeFile(binding, runId), { runId, runtime, sessionId, updatedAt: Date.now() });
@@ -35,9 +39,17 @@ async function nativeHook(runtime, input, eventName, dependencies = {}) {
   if (normalized.event === 'session-end') {
     if (active.runId) removeFile(activeFile(binding, active.runId));
     removeFile(pendingFile(binding, normalized.runtime, normalized.sessionId));
+    removeFile(deliveryFile(binding, normalized.runtime, normalized.sessionId));
     return {};
   }
   if (normalized.event === 'tool-result') {
+    const carried = deliveryFile(binding, normalized.runtime, normalized.sessionId);
+    const delivery = readPrivate(carried, null);
+    if (delivery) {
+      // Removing first means duplicate post-tool events cannot repeat it.
+      removeFile(carried);
+      if (delivery.expiresAt > Date.now() && typeof delivery.context === 'string' && delivery.context) return outputFor(normalized, `Engram session context (repeated once in case session start was not delivered):\n${delivery.context}`);
+    }
     const file = pendingFile(binding, normalized.runtime, normalized.sessionId);
     const pending = readPrivate(file, null);
     if (!pending) return {};
@@ -55,10 +67,15 @@ async function nativeHook(runtime, input, eventName, dependencies = {}) {
       // first actual task rather than replenished by the later prompt.
       const prefetched = await memory.lifecycle('task-context', { runtime: normalized.runtime, sessionId: normalized.sessionId, taskId: 'bound-project-task:0', query: binding.topic }, { ...dependencies, binding });
       if (prefetched.runId) writePrivate(file, { runId: prefetched.runId, tasks: { 'bound-project-task': { generation: 0, runId: prefetched.runId } }, sequence: 1 });
-      if (prefetched.context) return outputFor(normalized, prefetched.context);
+      const guide = await memory.claudeHook({ session_id: normalized.sessionId, cwd: normalized.cwd, hook_event_name: 'SessionStart' }, { ...dependencies, binding, runtime: normalized.runtime });
+      const text = [prefetched.context, guide.hookSpecificOutput?.additionalContext].filter(Boolean).join('\n\n');
+      if (text) writePrivate(deliveryFile(binding, normalized.runtime, normalized.sessionId), { context: text, expiresAt: Date.now() + DELIVERY_AGE });
+      return outputFor(normalized, text);
     }
     const guide = await memory.claudeHook({ session_id: normalized.sessionId, cwd: normalized.cwd, hook_event_name: 'SessionStart' }, { ...dependencies, binding, runtime: normalized.runtime });
-    return outputFor(normalized, guide.hookSpecificOutput?.additionalContext);
+    const text = guide.hookSpecificOutput?.additionalContext;
+    if (text && ['cursor', 'copilot'].includes(normalized.runtime)) writePrivate(deliveryFile(binding, normalized.runtime, normalized.sessionId), { context: text, expiresAt: Date.now() + DELIVERY_AGE });
+    return outputFor(normalized, text);
   }
   if (normalized.admissionId) {
     const admissionsFile = path.join(memory.stateRoot(), binding.scope, `admissions-${hash(`${normalized.runtime}\n${normalized.sessionId}`)}.json`);

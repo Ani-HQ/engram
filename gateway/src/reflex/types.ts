@@ -46,7 +46,7 @@ export type ReflexResult = {
   usage?: { inputTokens: number; outputTokens: number };
 };
 
-export type ReflexTask = "evaluation" | "classify" | "pairwise" | "topic-route" | "rerank" | "activity" | "trail-digest";
+export type ReflexTask = "evaluation" | "classify" | "pairwise" | "topic-route" | "rerank" | "activity" | "trail-digest" | "task-match" | "freshness";
 
 export interface ReflexClient {
   enabled(): boolean;

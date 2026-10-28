@@ -94,8 +94,9 @@ checkpoint workflow. Allowlisted artifact references must exclude credentials
 and unrelated absolute local paths; omission is preferred to regex-only cleanup.
 
 Implemented bound: a save is measured as the exact `resume_task` envelope it
-would produce (escaping, Unicode and metadata included) and must fit 3,840 bytes,
-leaving 256 bytes of the default 4,096-byte response for transport metadata. A
+would produce (escaping, Unicode and metadata included) and must fit 3,584 bytes,
+leaving 512 bytes of the default 4,096-byte response for transport metadata and
+the optional freshness notes added at resume time. A
 record at the old proposed 4,096-byte cap could never be read back in one default
 response, so the gate measures delivery instead of raw JSON. Field and list limits
 also apply (objective 500, next 400, 12 plan steps, 10 decisions, 8 references).
@@ -432,9 +433,53 @@ Deviations and open work:
 
 | Item | Status |
 | --- | --- |
-| Memory references are stored but not resolved at resume, so missing or changed pages are not flagged yet. | OPEN, stage 2 |
-| Local pending checkpoint queue and unsent/unconfirmed states in the bridge. | OPEN, stage 2 |
-| Claude Code, Codex desktop and Cursor desktop adapters, including Cursor startup delivery. | OPEN, stage 3 |
+| Memory references are stored but not resolved at resume. Resume now counts memory saved after the checkpoint and, with Jev, flags decisions it may supersede; per-reference version checks remain open. | Partly done |
+| Local pending checkpoint queue (`memory checkpoint`): durable, bounded to four, exact-payload retries on later lifecycle events, unsent saves collapse, conflicts stop the queue, status separates unsent, unconfirmed and saved. | Done on `feat/continuation-runtime` |
+| Claude Code, Codex and Cursor hooks: shared continuation guidance, run ID announced on task start, current task named after a context reset, Claude Stop asks for a checkpoint, Cursor/Copilot session-start context repeated once on the first tool result. | Done; live CLI results below |
 | Activity shows checkpoint calls only as observed audit rows (IDs and trigger). No outbox projection. | Accepted for now |
 | Live twelve-scenario transfer matrix. | Not run; required before claiming runtime support |
+
+### Stage 2–3 and Jev, `feat/continuation-runtime`
+
+- **Jev task matching.** `find_tasks` with a query asks Jev, with consent, to
+  score recent tasks against the request; one clear best match is unambiguous.
+  The response says `ranking: "jev"`, `"text"` or `"recent"`.
+- **Jev freshness.** `resume_task` reports `newerMemories` (no model) and, with
+  Jev, `staleDecisions` for confident supersede/contradict judgments. The save
+  gate dropped to 3,584 bytes so these notes still fit one default read.
+- **Engine-independent tools.** If the memory engine cannot start, `tools/list`
+  still serves `whoami`, action and task tools instead of failing. Found by the
+  live lab, where a missing engine hid every tool from agents.
+- **Live lab findings fixed in code:** the run ID was not announced when there
+  was nothing to recall; substantive-work detection missed "implementing" and
+  "continue"; a project with one binding rejected calls without `--run`.
+
+### Live transfer matrix, 27–28 October 2026
+
+Run with the real CLIs against the production Docker image built from this
+branch (gateway plus pinned gbrain), a disposable PostgreSQL, scratch repos and
+test-only tokens. Agents: Claude Code 2.1.311 (`claude -p`, sonnet), Codex CLI
+0.155.1 (`codex exec`, gpt-6-sol), Cursor Agent CLI 2026.10.14. Each scenario
+asked the outgoing agent to plan and start a three-function task, then either
+hand off deliberately or be killed after its second confirmed checkpoint. The
+incoming agent was told only the Engram project name. A pass requires: outgoing
+checkpoints saved; a handoff trigger or a real kill; the incoming agent called
+`resume_task`; its saves continued the same task from the outgoing head with no
+fork or new task; a final `completed` checkpoint; and `node --test` passing.
+
+| Scenario | Result |
+| --- | --- |
+| Claude Code → Codex, handoff | Pass |
+| Claude Code → Codex, interrupted | Pass (killed after 2 checkpoints, mid-task) |
+| Codex → Claude Code, handoff | Pass |
+| Codex → Claude Code, interrupted | Pass, but Codex finished before the kill landed |
+| Claude Code restart | Pass |
+| Codex restart | Pass, Codex finished before the kill landed |
+| All nine Cursor scenarios | Not run: Cursor Agent CLI rejected every prompt with "Authentication required" on this machine, including outside the lab |
+
+Lab setup facts, not product claims: Codex needed
+`default_tools_approval_mode = "approve"` for the Engram server under
+`codex exec`; Claude Code loads remote MCP tools through ToolSearch; agents used
+the MCP tools directly rather than the bridge `checkpoint` command. These are
+CLI runs, not the desktop apps. Desktop behaviour and Cursor remain unverified.
 
