@@ -45,9 +45,9 @@ describe("device model", () => {
   });
 
   test("the setup command names a self-hosted address and stays plain for hosted Engram", () => {
-    expect(installCommand("https://engram.ani.computer")).toBe("npx @ani-hq/engram-mcp@latest");
-    expect(installCommand("https://memory.example.com")).toBe("npx @ani-hq/engram-mcp@latest --host https://memory.example.com");
-    expect(installCommand("not a url")).toBe("npx @ani-hq/engram-mcp@latest");
+    expect(installCommand("https://engram.ani.computer")).toBe("npx -y @ani-hq/engram-mcp@latest");
+    expect(installCommand("https://memory.example.com")).toBe("npx -y @ani-hq/engram-mcp@latest --host https://memory.example.com");
+    expect(installCommand("not a url")).toBe("npx -y @ani-hq/engram-mcp@latest");
   });
 
   test("presentation follows request state, errors and the person's decision", () => {
@@ -90,7 +90,7 @@ describe("device view", () => {
     let submitted = "";
     const view = render({ code: "", origin: "https://engram.ani.computer", copyControl: (label: string, value: string) => { copies.push(value); return new Element("button", label); }, onSubmitCode: (value: string) => { submitted = value; } });
     expect(view.textContent).toContain("Connect a computer");
-    expect(copies).toEqual(["npx @ani-hq/engram-mcp@latest"]);
+    expect(copies).toEqual(["npx -y @ani-hq/engram-mcp@latest"]);
     const input = find(view, item => item.tag === "input")!;
     expect(input.attrs).toMatchObject({ id: "device-code", autocomplete: "one-time-code", "aria-describedby": "device-code-hint" });
     expect(find(view, item => item.tag === "label")!.textContent).toContain("Code from your terminal");

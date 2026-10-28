@@ -313,4 +313,4 @@ async function runOnboarding(command, args, dependencies) {
   return 0;
 }
 
-module.exports = { HOSTED_URL, endpointForHost, inspectConnection, runOnboarding, askSecret, nextPrompt };
+module.exports = { HOSTED_URL, endpointForHost, inspectConnection, runOnboarding, askSecret, askLine, nextPrompt };

@@ -7,7 +7,7 @@ One-command MCP harness connector and stdio-to-HTTP proxy for engram.
 Run this in your terminal:
 
 ```bash
-npx @ani-hq/engram-mcp@latest
+npx -y @ani-hq/engram-mcp@latest
 ```
 
 It finds Claude Code, Codex and Cursor on this computer, including their

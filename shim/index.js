@@ -127,7 +127,7 @@ function dispatch() {
 
 function printRootHelp() {
   console.log(`Connect this computer (run in a terminal; approve in your browser):
-  npx @ani-hq/engram-mcp@latest
+  npx -y @ani-hq/engram-mcp@latest
 
 Usage:
   engram-mcp                      in a terminal: connect this computer; otherwise the stdio MCP proxy
@@ -446,16 +446,22 @@ function tomlString(value) {
   return JSON.stringify(String(value));
 }
 
+// Per-tool preferences the person set, such as Codex's
+// [mcp_servers.engram.tools.remember] approval_mode, survive a reconnect.
+// Everything else under the table is connection detail and is replaced.
+const KEPT_CHILD_TABLES = ['tools'];
+
 function replaceTomlTable(raw, tablePath, replacement) {
   const lines = splitLines(raw);
   const headers = tomlHeaders(lines.map(line => line.text));
   const target = tablePath.split('.');
   const remove = new Array(lines.length).fill(false);
   let firstRemoved = -1;
+  const kept = path => path.length > target.length && KEPT_CHILD_TABLES.includes(path[target.length]);
 
   for (let i = 0; i < lines.length; i += 1) {
     const header = headers[i];
-    if (!header || !isSameOrChildPath(header.path, target)) continue;
+    if (!header || !isSameOrChildPath(header.path, target) || kept(header.path)) continue;
 
     if (firstRemoved === -1) firstRemoved = i;
 
