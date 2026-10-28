@@ -4,7 +4,8 @@
 // web/changelog.html so the page stays static and readable without JavaScript.
 //
 //   bun scripts/changelog.ts render    rewrite the generated part of the page
-//   bun scripts/changelog.ts missing   list commits on main with no entry yet
+//   bun scripts/changelog.ts missing   list commits on main with no entry yet,
+//                                      skipping commits that only update the changelog
 import { readFileSync, writeFileSync } from "node:fs";
 
 export const KINDS = {
@@ -81,7 +82,13 @@ if (import.meta.main) {
     const known = new Set(readChangelog().entries.map(entry => entry.sha));
     const ref = process.argv[3] ?? "origin/main";
     const log = Bun.spawnSync(["git", "log", ref, "--first-parent", "--format=%h|%cI|%s", "--abbrev=7"], { cwd: root.pathname });
-    const missing = log.stdout.toString().trim().split("\n").filter(Boolean).filter(line => !known.has(line.split("|")[0]));
+    // A commit that only updates the changelog itself needs no entry.
+    const ownFiles = new Set(["docs/changelog.json", "web/changelog.html", "scripts/changelog.ts", "test/changelog.test.ts"]);
+    const onlyChangelog = (sha: string) => {
+      const files = Bun.spawnSync(["git", "show", "--name-only", "--format=", sha], { cwd: root.pathname }).stdout.toString().trim().split("\n").filter(Boolean);
+      return files.length > 0 && files.every(file => ownFiles.has(file));
+    };
+    const missing = log.stdout.toString().trim().split("\n").filter(Boolean).filter(line => !known.has(line.split("|")[0]) && !onlyChangelog(line.split("|")[0]));
     for (const line of missing) {
       const [sha, at, subject] = line.split("|");
       console.log(`${sha}  ${new Date(at).toISOString().replace(".000", "")}  ${subject}`);

@@ -2,6 +2,22 @@
   "repository": "https://github.com/Ani-HQ/engram",
   "entries": [
     {
+      "sha": "ebfae9d",
+      "at": "2026-10-28T01:48:22Z",
+      "kind": "under-the-hood",
+      "title": "Release record and Cursor results",
+      "summary": "Records the 28 October release and the live Cursor transfer runs: 6 of 9 pass, and Cursor-first interruption is not yet verified.",
+      "pr": 56
+    },
+    {
+      "sha": "023cc1a",
+      "at": "2026-10-28T01:36:45Z",
+      "kind": "new",
+      "title": "A public changelog",
+      "summary": "This page: every change to Engram, newest first, with the time it landed and a link to its source.",
+      "pr": 55
+    },
+    {
       "sha": "e65dcbf",
       "at": "2026-10-28T00:31:44Z",
       "kind": "improved",
