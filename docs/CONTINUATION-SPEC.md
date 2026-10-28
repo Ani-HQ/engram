@@ -475,11 +475,22 @@ fork or new task; a final `completed` checkpoint; and `node --test` passing.
 | Codex → Claude Code, interrupted | Pass, but Codex finished before the kill landed |
 | Claude Code restart | Pass |
 | Codex restart | Pass, Codex finished before the kill landed |
-| All nine Cursor scenarios | Not run: Cursor Agent CLI rejected every prompt with "Authentication required" on this machine, including outside the lab |
+| Cursor → Codex, handoff | Pass |
+| Codex → Cursor, handoff | Pass |
+| Codex → Cursor, interrupted | Pass, Codex finished before the kill landed |
+| Claude Code → Cursor, interrupted | Pass |
+| Claude Code → Cursor, handoff | Fail: Claude saved the handoff; Cursor produced no output and never resumed |
+| Cursor → Claude Code, handoff | Fail: Cursor run aborted with `read ECONNRESET` before any tool call |
+| Cursor → Claude Code, interrupted | Fail: Cursor lost its connection to its API and retried until the time limit |
+| Cursor → Codex, interrupted | Fail: Cursor produced no output within the 7 minute limit |
+| Cursor restart | Fail: Cursor produced no output within the 7 minute limit |
 
 Lab setup facts, not product claims: Codex needed
 `default_tools_approval_mode = "approve"` for the Engram server under
 `codex exec`; Claude Code loads remote MCP tools through ToolSearch; agents used
 the MCP tools directly rather than the bridge `checkpoint` command. These are
-CLI runs, not the desktop apps. Desktop behaviour and Cursor remain unverified.
+CLI runs, not the desktop apps. Desktop behaviour remains unverified. Every
+Cursor failure ended with no Cursor output, after connection errors to Cursor's
+own API (2026-10-28); none reached an Engram tool call. Re-run those five
+before claiming Cursor coverage.
 
