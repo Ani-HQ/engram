@@ -505,8 +505,10 @@ try {
   checks += await checkJev(sql);
   const { checkContextSharing } = await import("./integration-context-sharing");
   checks += await checkContextSharing(sql);
+  const { checkContinuation } = await import("./integration-continuation");
+  checks += await checkContinuation(sql);
 
-  process.stdout.write(JSON.stringify({ ok: true, checks, postgres: "real", coverage: ["repeatable migrations", "physical tenant databases", "token and live session isolation", "action union and filters", "trial persistence", "public aggregate privacy and unpublishing", "CLI workspace creation and owner login", "concurrent action lifecycle and delivery idempotency", "fresh and stale public activity", "private grouped activity and contributor methods", "durable insight queue and provider budget"] }) + "\n");
+  process.stdout.write(JSON.stringify({ ok: true, checks, postgres: "real", coverage: ["repeatable migrations", "physical tenant databases", "token and live session isolation", "action union and filters", "trial persistence", "public aggregate privacy and unpublishing", "CLI workspace creation and owner login", "concurrent action lifecycle and delivery idempotency", "fresh and stale public activity", "private grouped activity and contributor methods", "durable insight queue and provider budget", "task continuation checkpoints, conflicts and lifecycle"] }) + "\n");
 } finally {
   await Promise.all([closeOrgPool("brain_org_2"), closeOrgPool("brain_org_3")]);
   await sql.end({ timeout: 2 });

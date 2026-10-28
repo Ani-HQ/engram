@@ -23,6 +23,9 @@ describe("Activity history and checks navigation", () => {
     const old = new URLSearchParams("q=release+handoff&activityId=activity%3A42");
     expect(activityDestination("attention", old)).toEqual({ view: "activity", activityTab: "checks" });
     expect(activityDestination("activity", new URLSearchParams("tab=checks"))).toEqual({ view: "activity", activityTab: "checks" });
+    expect(activityDestination("activity", new URLSearchParams("tab=handoffs"))).toEqual({ view: "activity", activityTab: "handoffs" });
+    expect(activityHref({ tab: "handoffs" })).toBe("#activity?tab=handoffs");
+    expect(activityDestination("memory", new URLSearchParams("tab=handoffs"))).toEqual({ view: "memory", activityTab: "history" });
     // Query and activity scope survive canonicalizing the legacy destination.
     const href = activityHref({ tab: "checks", query: old.get("q")!, activityId: old.get("activityId")! });
     expect(paramsFor(href).get("q")).toBe("release handoff");
@@ -69,6 +72,7 @@ describe("Activity history and checks navigation", () => {
     expect(view.tag).toBe("nav"); expect(view.attrs.class).toBe("ds-tabs activity-section-tabs"); expect(view.attrs["aria-label"]).toBe("Activity views");
     expect(view.children.map(child => ({ tag: child.tag, label: child.textContent, href: child.attrs.href, current: child.attrs["aria-current"], key: child.attrs["data-activity-section"] }))).toEqual([
       { tag: "a", label: "History", href: historyHref, current: undefined, key: "history" },
+      { tag: "a", label: "Handoffs", href: "#activity?tab=handoffs", current: undefined, key: "handoffs" },
       { tag: "a", label: "Checks", href: checksHref, current: "page", key: "checks" },
     ]);
     expect(view.children.every(child => child.attrs.class === "ds-tab" && !child.attrs.role && !child.attrs["aria-selected"])).toBe(true);

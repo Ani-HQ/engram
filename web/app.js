@@ -25,6 +25,7 @@ import { parseInviteEntry, parseSignupPolicy, signupAuthMode, signupEntryMode, e
 import { signupView } from "./signup-view.js";
 import { signupAdminPanel } from "./signup-admin.js";
 import { sharingView } from "./sharing-view.js";
+import { handoffsView } from "./handoffs-view.js";
 import { statusBadge, loadingState, observeLoadingMotion, observeSelects } from "./design-system.js";
 import { createJevSettingsPanel } from "./jev-settings.js";
 import { createAccessClock, friendAccessCard, friendAccessPresentation } from "./access-view.js";
@@ -42,6 +43,7 @@ const state = {
 };
 const activityHistoryActive = () => state.view === "activity" && state.activityTab === "history";
 const activityChecksActive = () => state.view === "activity" && state.activityTab === "checks";
+const activityHandoffsActive = () => state.view === "activity" && state.activityTab === "handoffs";
 let generation = 0;
 let searchTimer, memoryLoadingTimer;
 let returnFocus, returnActivityFocus, returnFocusSelector = null, pendingActivityRender = false;
@@ -60,7 +62,7 @@ let connectionDraft = null, connectionFocusPending = null, connectionEditor = nu
 const connectionKeyRequests = new Map();
 const connectionMutations = new Map();
 let signupPolicy = null, signupPolicyRequest = null, authPanel = null, signupAdmin = null, jevSettingsPanel = null, pendingInviteEntry = null;
-let sharingPanel = null, sharingSwitchError = null;
+let sharingPanel = null, sharingSwitchError = null, handoffsPanel = null;
 let workspaceNameEpoch = 0;
 let accessSnapshot = null, accessClock = () => null, accessRefreshTimer, accessRequest = 0, accessError = "", accessRefreshing = false;
 const setupByWorkspace = new Map();
@@ -194,13 +196,14 @@ function activitySectionHrefs() {
   return {
     historyHref: activityHref({ kind: state.activityKind, filters: state.filters }),
     checksHref: activityHref({ tab: "checks", query: state.insightsQuery, activityId: state.insightsActivityId }),
+    handoffsHref: activityHref({ tab: "handoffs" }),
   };
 }
 function writeRoute() {
   if (state.view === "activity") {
     const hrefs = activitySectionHrefs();
-    history.replaceState(null, "", state.activityTab === "checks" ? hrefs.checksHref : hrefs.historyHref);
-    for (const key of ["history", "checks"]) document.querySelector(`[data-activity-section="${key}"]`)?.setAttribute("href", hrefs[`${key}Href`]);
+    history.replaceState(null, "", state.activityTab === "checks" ? hrefs.checksHref : state.activityTab === "handoffs" ? hrefs.handoffsHref : hrefs.historyHref);
+    for (const key of ["history", "checks", "handoffs"]) document.querySelector(`[data-activity-section="${key}"]`)?.setAttribute("href", hrefs[`${key}Href`]);
     return;
   }
   const query = new URLSearchParams();
@@ -304,6 +307,7 @@ async function refreshSetup() {
 function render() {
   const setupFocus = captureSetupFocus(document.querySelector("#setup-slot"));
   sharingPanel?.dispose(); sharingPanel = null;
+  handoffsPanel?.dispose(); handoffsPanel = null;
   authPanel?.dispose(); authPanel = null;
   signupAdmin?.dispose(); signupAdmin = null;
   jevSettingsPanel?.dispose(); jevSettingsPanel = null;
@@ -436,6 +440,7 @@ function watchPreview() {
   if (document.hidden) previewWatcher.pause();
 }
 function activityView() {
+  if (activityHandoffsActive()) return [heading("Activity", "Saved task records any connected agent can continue."), activitySections({ tab: "handoffs", ...activitySectionHrefs() }), handoffsSection()];
   const checking = activityChecksActive(), memory = state.activityKind === "memory";
   const description = checking ? "Review recorded work for loose ends, find related activity, and prepare a handoff."
     : memory ? "Memory calls recorded by Engram in this workspace." : state.activityKind === "tasks" ? "Steps, progress, and outcomes reported by your agents." : "Memory calls and agent-reported work across this workspace.";
@@ -445,6 +450,13 @@ function activityView() {
     activitySections({ tab: state.activityTab, ...activitySectionHrefs() }),
     checking ? el("section", { class: "activity-checks", "aria-label": "Activity checks" }, activityChecksView()) : activityHistoryView(),
   ];
+}
+function handoffsSection() {
+  const workspaceId = state.session.org.id, epoch = authEpoch;
+  handoffsPanel = handoffsView({ api: workspaceApi(workspaceId), role: state.session.role, canWrite: state.session.canWrite !== false, copyControl: copyButton,
+    fail: error => { if (error instanceof AuthError) expired("Your session expired. Please sign in again."); },
+    isCurrent: () => !sessionMutation && authEpoch === epoch && activityHandoffsActive() && state.session?.org.id === workspaceId });
+  return handoffsPanel.element;
 }
 function activityHistoryView() {
   const search = el("input", { type: "search", class: "search", placeholder: "Search work, tools, or approaches…", "aria-label": "Search activity", value: state.filters.q,
@@ -1439,7 +1451,7 @@ async function switchOrg(orgId) {
   sessionMutation = true; setSessionControlsBusy(true);
   ++accessRequest; clearTimeout(accessRefreshTimer); accessError = "";
   invalidateWorkspaceNames();
-  sharingPanel?.dispose(); sharingPanel = null;
+  sharingPanel?.dispose(); sharingPanel = null; handoffsPanel?.dispose(); handoffsPanel = null;
   signupAdmin?.dispose(); signupAdmin = null;
   jevSettingsPanel?.dispose(); jevSettingsPanel = null;
   const epoch = authEpoch;
@@ -1529,7 +1541,7 @@ async function signOut() {
   if (sessionMutation) return;
   sessionMutation = true; ++authEpoch; setSessionControlsBusy(true);
   invalidateWorkspaceNames();
-  sharingPanel?.dispose(); sharingPanel = null;
+  sharingPanel?.dispose(); sharingPanel = null; handoffsPanel?.dispose(); handoffsPanel = null;
   signupAdmin?.dispose(); signupAdmin = null;
   jevSettingsPanel?.dispose(); jevSettingsPanel = null;
   try { await api.logout(); expired(); }
@@ -1540,7 +1552,7 @@ function expired(message = "") {
   ++authEpoch;
   ++accessRequest; clearTimeout(accessRefreshTimer); accessSnapshot = null; accessError = "";
   invalidateWorkspaceNames();
-  sharingPanel?.dispose(); sharingPanel = null;
+  sharingPanel?.dispose(); sharingPanel = null; handoffsPanel?.dispose(); handoffsPanel = null;
   signupAdmin?.dispose(); signupAdmin = null;
   jevSettingsPanel?.dispose(); jevSettingsPanel = null;
   setupReader.invalidate(); setupByWorkspace.clear();
@@ -1551,7 +1563,7 @@ function expired(message = "") {
 }
 function renderAuth(mode = "email", message = "") {
   mode = signupAuthMode(mode, signupPolicy);
-  sharingPanel?.dispose(); sharingPanel = null;
+  sharingPanel?.dispose(); sharingPanel = null; handoffsPanel?.dispose(); handoffsPanel = null;
   authPanel?.dispose(); signupAdmin?.dispose(); signupAdmin = null;
   jevSettingsPanel?.dispose(); jevSettingsPanel = null;
   authPanel = signupView({ mode, policy: signupPolicy, message, api, inviteEntry: pendingInviteEntry, inviteSubmitted: () => { pendingInviteEntry = null; },
@@ -1586,6 +1598,7 @@ async function loadView() {
   if (workspacePending(state.session)) { scheduleProvisioning(); return; }
   if (activityChecksActive()) { if (pendingInsightRun) { pendingInsightRun = false; await runInsights(); } else await loadInsights({ jobId: state.insights?.job?.id }); }
   else if (activityHistoryActive()) await loadActivity();
+  else if (activityHandoffsActive()) return;
   else if (state.view === "memory") { if (state.memoryTab === "review") await loadReviews(); else await loadMemories(); }
   else if (state.view === "showcase") await loadShowcase();
   else if (state.view === "sharing") return;

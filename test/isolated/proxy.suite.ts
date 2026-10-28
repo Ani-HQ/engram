@@ -121,7 +121,18 @@ describe("proxy tool surface", () => {
       "recall",
       "record_action",
       "list_actions",
+      "checkpoint_task",
+      "find_tasks",
+      "resume_task",
     ]);
+  });
+
+  test("an unavailable engine still serves gateway-owned tools, uncached", async () => {
+    const { ENGINE_FREE_TOOLS } = await import("../../gateway/src/proxy");
+    expect(ENGINE_FREE_TOOLS().map((tool: any) => tool.name)).toEqual(["whoami", "record_action", "list_actions", "checkpoint_task", "find_tasks", "resume_task"]);
+    // Once the full surface is known it stays served; otherwise the engine-free subset.
+    const names = (await listTools(token, { engineAvailable: false })).map((tool: any) => tool.name);
+    for (const name of ["checkpoint_task", "find_tasks", "resume_task"]) expect(names).toContain(name);
   });
 
   test("every served description stays short enough to ship in a system prompt", async () => {
