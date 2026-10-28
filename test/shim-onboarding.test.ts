@@ -190,7 +190,7 @@ const ptyProgram = String.raw`
 import json, os, pty, select, signal, sys, termios, time
 pid, fd = pty.fork()
 if pid == 0:
-    os.execvp("node", ["node", sys.argv[1], "setup"])
+    os.execvp("node", ["node", sys.argv[1], "setup", "codex"])
 received = b""
 def until(marker):
     global received
@@ -205,8 +205,6 @@ def until(marker):
             received += chunk
     if marker not in received: raise RuntimeError("PTY ended before prompt: " + repr(marker))
 try:
-    until(b"Which agent?")
-    os.write(fd, b"2\r")
     until(b"Project folder")
     os.write(fd, os.environ["HOME"].encode() + b"\r")
     until(b"Memory topic")

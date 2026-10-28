@@ -18,6 +18,10 @@ const { spawnSync } = require('node:child_process');
 const { SERVER_INSTRUCTIONS } = require('./instructions');
 const { connectorBranding } = require('./branding');
 
+// HOME wins over the OS account lookup, matching the memory bridge, so a
+// caller (or a test) that sets HOME never writes another home's config.
+function homeDir() { return process.env.HOME || os.homedir(); }
+
 const SUPPORTED_HARNESSES = ['claude', 'codex', 'cursor', 'vscode', 'windsurf'];
 
 function dispatch() {
@@ -26,6 +30,18 @@ function dispatch() {
   if (subcommand === 'memory') {
     require('./memory').runMemoryCli(args).then(code => { process.exitCode = code; }).catch(() => {
       console.error('Memory lifecycle setup failed. Check the project binding, credentials, and file permissions. No transcript was captured.');
+      process.exitCode = 1;
+    });
+    return;
+  }
+
+  // In a terminal, `engram-mcp` or `engram-mcp setup` with no agent named
+  // connects the whole computer. Agents start the proxy without a terminal.
+  const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  const computerSetup = interactive && ((!subcommand && !process.env.ENGRAM_TOKEN) || (subcommand === 'setup' && args.every((arg, i) => arg === '--host' || arg.startsWith('--host=') || args[i - 1] === '--host')));
+  if (computerSetup) {
+    require('./connect-computer').connectComputer(subcommand ? args : [], { planConnection: planHarnessConnection, cacheTools: writeToolCache }).then(code => { process.exitCode = code; }).catch(error => {
+      console.error(error.message || 'Engram setup failed.');
       process.exitCode = 1;
     });
     return;
@@ -108,8 +124,12 @@ function dispatch() {
 }
 
 function printRootHelp() {
-  console.log(`Usage:
-  engram-mcp
+  console.log(`Connect this computer (run in a terminal; approve in your browser):
+  npx @ani-hq/engram-mcp@latest
+
+Usage:
+  engram-mcp                      in a terminal: connect this computer; otherwise the stdio MCP proxy
+  engram-mcp setup [--host <url>]  connect every Claude Code, Codex and Cursor install on this computer
   engram-mcp setup [harness] [--project <directory>] [--skill-scope project|user] [--host <url>] [--token-stdin]
   engram-mcp upgrade [harness] [--project <directory>] [--skill-scope project|user] [--host <url>]
   engram-mcp doctor [harness] [--host <url>] [--token-stdin]
@@ -242,15 +262,15 @@ function printConnectList() {
 }
 
 function configPathForList(harness) {
-  if (harness === 'claude') return path.join(os.homedir(), '.claude.json');
+  if (harness === 'claude') return path.join(homeDir(), '.claude.json');
   if (harness === 'codex') return codexConfigPath();
   if (harness === 'cursor') return cursorConfigPath();
   if (harness === 'vscode') return vscodeConfigPath();
   if (harness === 'windsurf') return windsurfConfigPath();
-  if (harness === 'gemini') return path.join(os.homedir(), '.gemini', 'settings.json');
-  if (harness === 'copilot') return path.join(os.homedir(), '.copilot', 'mcp-config.json');
-  if (harness === 'opencode') return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'opencode', 'opencode.json');
-  if (harness === 'openclaw') return path.join(os.homedir(), '.openclaw', 'openclaw.json');
+  if (harness === 'gemini') return path.join(homeDir(), '.gemini', 'settings.json');
+  if (harness === 'copilot') return path.join(homeDir(), '.copilot', 'mcp-config.json');
+  if (harness === 'opencode') return path.join(process.env.XDG_CONFIG_HOME || path.join(homeDir(), '.config'), 'opencode', 'opencode.json');
+  if (harness === 'openclaw') return path.join(homeDir(), '.openclaw', 'openclaw.json');
   return '';
 }
 
@@ -408,7 +428,7 @@ function connectCodex(endpoint, token) {
 }
 
 function codexConfigPath() {
-  return path.join(os.homedir(), '.codex', 'config.toml');
+  return path.join(homeDir(), '.codex', 'config.toml');
 }
 
 function codexTomlEntry(endpoint, token) {
@@ -622,21 +642,21 @@ function vscodeServer(endpoint, token) {
 }
 
 function cursorConfigPath() {
-  return path.join(os.homedir(), '.cursor', 'mcp.json');
+  return path.join(homeDir(), '.cursor', 'mcp.json');
 }
 
 function vscodeConfigPath() {
   if (process.platform === 'win32') {
-    return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'Code', 'User', 'mcp.json');
+    return path.join(process.env.APPDATA || path.join(homeDir(), 'AppData', 'Roaming'), 'Code', 'User', 'mcp.json');
   }
   if (process.platform === 'darwin') {
-    return path.join(os.homedir(), 'Library', 'Application Support', 'Code', 'User', 'mcp.json');
+    return path.join(homeDir(), 'Library', 'Application Support', 'Code', 'User', 'mcp.json');
   }
-  return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'Code', 'User', 'mcp.json');
+  return path.join(process.env.XDG_CONFIG_HOME || path.join(homeDir(), '.config'), 'Code', 'User', 'mcp.json');
 }
 
 function windsurfConfigPath() {
-  return path.join(os.homedir(), '.codeium', 'windsurf', 'mcp_config.json');
+  return path.join(homeDir(), '.codeium', 'windsurf', 'mcp_config.json');
 }
 
 function readTextIfExists(file) {
@@ -686,7 +706,7 @@ function backupExistingFile(file, missingMessage) {
 
 function assertSafeConfigPath(file) {
   const target = path.resolve(file);
-  const home = path.resolve(os.homedir());
+  const home = path.resolve(homeDir());
   const contains = root => { const relative = path.relative(root, target); return relative !== '' && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative); };
   // Treat the resolved home as the trust boundary. Its own platform aliases
   // (notably /var -> /private/var on macOS) are legitimate; links beneath it
@@ -793,7 +813,7 @@ function cacheKeyForHost(host) {
 
 function toolCachePath(host, token) {
   if (typeof token !== 'string' || !token) return null;
-  const base = process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache');
+  const base = process.env.XDG_CACHE_HOME || path.join(homeDir(), '.cache');
   const key = createHash('sha256').update(JSON.stringify([String(host).replace(/\/+$/, ''), token])).digest('hex');
   return path.join(base, 'engram-mcp', `tools-v${TOOL_CACHE_VERSION}-${key}.json`);
 }
