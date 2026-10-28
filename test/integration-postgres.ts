@@ -505,6 +505,8 @@ try {
   checks += await checkJev(sql);
   const { checkContextSharing } = await import("./integration-context-sharing");
   checks += await checkContextSharing(sql);
+  const { checkDeviceAuth } = await import("./integration-device-auth");
+  checks += await checkDeviceAuth(sql);
   {
     const { handleSiteEvent, recordSiteEvent, siteReport } = await import("../gateway/src/site-analytics");
     await sql`TRUNCATE site_events`;

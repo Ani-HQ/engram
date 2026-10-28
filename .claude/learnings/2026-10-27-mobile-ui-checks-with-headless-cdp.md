@@ -6,6 +6,9 @@ a resize call), and the app's CSP blocks loading it in an iframe.
 
 **The procedure:**
 1. Launch `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --headless=new --remote-debugging-port=9333 --user-data-dir=<scratch dir>`.
+   In a worktree-isolated agent the shell may refuse the quoted Chrome path;
+   start it from a tiny Bun script with `Bun.spawn([...])` run in the background.
+   The `web/dev-server.ts` demo needs `bun --preload ./test/preload.ts`.
 2. Fetch `http://127.0.0.1:9333/json`, open the page target's WebSocket.
 3. Send `Network.setCookie` with the local dev session cookie
    (`engram_session`, httpOnly, url `http://localhost:<port>/`).

@@ -12,6 +12,7 @@ import { ensureConnectionsSchema } from "./connections-schema";
 import { ensureMemoryUsageSchema } from "./memory-usage-schema";
 import { ensureConnectionClientSchema } from "./connection-client-schema";
 import { ensureSiteAnalyticsSchema } from "./site-analytics-schema";
+import { ensureDeviceAuthSchema } from "./device-auth-schema";
 import { assertRuntimeSchema, ensureProvisioningSchema, markSchemaReady } from "./provisioning-schema";
 import { migrateContinuationTables } from "./continuation-schema";
 
@@ -551,6 +552,7 @@ export async function migrate() {
   await ensureJevSchema(sql);
   await ensureContextSharingSchema(sql);
   await ensureSiteAnalyticsSchema(sql);
+  await ensureDeviceAuthSchema(sql);
   await protectGatewayMetadata(sql);
   await markSchemaReady(sql);
   if (databaseSecurity.authority === "inline") {

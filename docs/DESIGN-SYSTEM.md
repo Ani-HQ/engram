@@ -119,6 +119,8 @@ these same label-first actions without reserving a trailing icon slot.
 | Divider | `.ds-divider` | Decorative 1px horizontal separator; use semantic headings to establish content hierarchy |
 | Status dot | `.ds-status-dot` beside visible state text | Inherits text color. Never conveys state alone |
 | Feedback | `.ds-notice[data-tone]` (neutral, success, warning, danger), `.ds-toast` | Label state; errors should remain until a user can act; avoid disappearing essential instructions |
+| Command with copy | `.ds-command` containing a `code.ds-code-scroll` and the owner's Copy button | One-line value beside its action; the value scrolls, the action never does. At ≤420px the action moves below at full width. The scroll region keeps `tabindex="0"`, `role="region"` and a label naming the value. Gallery: `/design-system#device-approval` |
+| Confirmation code | `.ds-confirm-code` with `.ds-confirm-code-label` and `.ds-confirm-code-value` | A short, non-secret code a person compares with another screen before acting. Mono, tabular and large; steps down at ≤360px. Place it directly above the action it guards. Gallery: `/design-system#device-approval` |
 
 ### Content fit and keyboard navigation
 
@@ -397,3 +399,17 @@ to the workspace and discarded after navigation. Loading, empty, filtered-empty,
 error and unavailable-storage states use the shared patterns. Buttons keep 44px
 targets at narrow widths, and the view has no horizontal overflow at 320px.
 
+## Computer approval composition
+
+`#device` approves a terminal's sign-in request. `web/device-view.js` composes a
+heading group, the confirmation code, an evidence-list of the request (computer,
+agents with their local product marks, workspace and request time) and one
+primary **Approve** beside a secondary **Deny**; `web/device.css` owns only its
+layout. With no code it shows the setup command (`.ds-command`) and a labeled code
+field. Loading, not found, expired, denied, already approved, connected, error,
+approved and denied states use the shared notice, badge and loading patterns.
+When a person has several workspaces, the native workspace select switches the
+session's workspace with the existing switcher; approval is pinned to it. Copy
+says that approval creates one key per agent in the approver's name. At ≤600px,
+rows and actions stack with 44px targets and no horizontal overflow at 320px.
+Connections leads with a "Connect this computer" panel that reuses `.ds-command`.
