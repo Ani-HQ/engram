@@ -21,6 +21,13 @@ in [PRIVACY.md](PRIVACY.md).
   public-profile settings, billing, and inference-job metadata. The legacy org 1
   data binding can share the gateway database; do not assume every workspace has
   an exclusive data database.
+- Task continuation records (`continuation_tasks`, immutable
+  `continuation_checkpoints`, lineage heads and request receipts) live in
+  workspace storage. Closing keeps history. A workspace member's soft delete
+  removes a task from discovery, resume and export until restored; it does not
+  purge checkpoints, receipts, audit rows or backups. Audit rows for task tools
+  hold identifiers and triggers only. Local pending copies are not created by
+  the gateway; erasure must also cover any adapter queue on the agent host.
 - `action_events` is append-only in normal operation. Neither it nor `audit_log`
   has an age-based retention job. An expired session/token/grant is unusable;
   expiry does not prove the database row was deleted.

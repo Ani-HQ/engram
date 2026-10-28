@@ -126,7 +126,8 @@ function exportControl(session, api, fail, notify, isCurrent) {
 async function exportWorkspace(button, feedback, session, api, fail, notify, isCurrent) {
   if (button.disabled || !isCurrent()) return;
   const original = [...button.childNodes]; button.disabled = true; button.setAttribute("aria-busy", "true");
-  const memories = [], actions = [], number = new Intl.NumberFormat();
+  const memories = [], actions = [], tasks = [], number = new Intl.NumberFormat();
+  let tasksUnavailable = null;
   const pending = message => { button.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), message); feedback.textContent = message; };
   feedback.setAttribute("role", "status");
   try {
@@ -150,8 +151,19 @@ async function exportWorkspace(button, feedback, session, api, fail, notify, isC
       more = page.more === true; offset += page.actions.length;
       if (more && !page.actions.length) throw new Error("The export could not finish. Please retry.");
     }
+    more = true; offset = 0;
+    while (more) {
+      if (!isCurrent()) return;
+      pending(`Reading saved tasks… ${number.format(tasks.length)} tasks collected`);
+      let page;
+      // A workspace whose storage is not updated yet still exports everything else, and says so.
+      try { page = await api.exportTasks({ limit: 50, offset }, session.org.id); }
+      catch (error) { if (error.code === "continuation_unavailable") { tasksUnavailable = error.message; break; } throw error; }
+      tasks.push(...page.tasks); more = page.more === true; offset += page.tasks.length;
+      if (more && !page.tasks.length) throw new Error("The export could not finish. Please retry.");
+    }
     if (!isCurrent()) return;
-    const blob = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), workspace: { id: session.org.id, name: session.org.name }, memories, actions }, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), workspace: { id: session.org.id, name: session.org.name }, memories, actions, tasks, ...(tasksUnavailable ? { tasksUnavailable } : {}) }, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob), download = h("a", { href: url, download: `engram-${session.org.slug}.json` });
     download.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); feedback.textContent = "Export downloaded."; notify("Export downloaded");
   } catch (error) { if (isCurrent()) { fail(error); feedback.setAttribute("role", "alert"); feedback.textContent = error.message || "Export failed. Please retry."; notify(feedback.textContent); if ([button, document.body].includes(document.activeElement)) feedback.focus?.(); } }

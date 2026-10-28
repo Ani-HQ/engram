@@ -110,6 +110,64 @@ export function evidenceList(rows = [], { label = 'Recorded evidence' } = {}) {
   return list;
 }
 
+const stepStates = { todo: ['To do', 'neutral'], doing: ['In progress', 'info'], done: ['Done', 'success'], dropped: ['Dropped', 'neutral'] };
+function recordSection(title, body) {
+  const section = document.createElement('section'); section.setAttribute('class', 'ds-task-record-section');
+  const heading = document.createElement('h4'); heading.textContent = title;
+  section.append(heading, body); return section;
+}
+function textList(items, ordered = false) {
+  const list = document.createElement(ordered ? 'ol' : 'ul'); list.setAttribute('class', 'ds-task-record-list'); list.setAttribute('role', 'list');
+  for (const value of items) { const item = document.createElement('li'); item.textContent = String(value); list.append(item); }
+  return list;
+}
+
+/** A saved task record, rendered as text only. Every field is agent-reported:
+ * the owner keeps provenance, save time and the recheck boundary visible. */
+export function taskRecord(record = {}, { headingLevel = 4 } = {}) {
+  const root = document.createElement('div'); root.setAttribute('class', 'ds-task-record');
+  const lead = (label, value, className) => {
+    if (typeof value !== 'string' || !value) return null;
+    const block = document.createElement('div'); block.setAttribute('class', `ds-task-record-lead ${className}`);
+    const term = document.createElement('span'); term.setAttribute('class', 'ds-task-record-label'); term.textContent = label;
+    const body = document.createElement('p'); body.textContent = value;
+    block.append(term, body); return block;
+  };
+  for (const block of [lead('Next step', record.next, 'is-next'), lead('Objective', record.objective, 'is-objective')]) if (block) root.append(block);
+  const plan = Array.isArray(record.plan) ? record.plan.filter(step => step && typeof step.step === 'string') : [];
+  if (plan.length) {
+    const list = document.createElement('ol'); list.setAttribute('class', 'ds-task-plan'); list.setAttribute('role', 'list');
+    for (const step of plan) {
+      const [label, tone] = stepStates[step.status] || stepStates.todo;
+      const item = document.createElement('li'); item.setAttribute('class', 'ds-task-plan-step'); item.dataset.status = stepStates[step.status] ? step.status : 'todo';
+      const copy = document.createElement('span'); copy.setAttribute('class', 'ds-task-plan-text'); copy.textContent = step.step;
+      item.append(copy, statusBadge(label, { tone })); list.append(item);
+    }
+    root.append(recordSection('Plan', list));
+  }
+  const decisions = Array.isArray(record.decisions) ? record.decisions.filter(item => item && typeof item.text === 'string') : [];
+  if (decisions.length) {
+    const list = document.createElement('ul'); list.setAttribute('class', 'ds-task-record-list'); list.setAttribute('role', 'list');
+    for (const decision of decisions) {
+      const item = document.createElement('li'); item.textContent = decision.text;
+      if (typeof decision.why === 'string' && decision.why) { const why = document.createElement('small'); why.textContent = `Why: ${decision.why}`; item.append(why); }
+      list.append(item);
+    }
+    root.append(recordSection('Decisions', list));
+  }
+  for (const [key, title] of [['blockers', 'Blockers'], ['constraints', 'Constraints'], ['questions', 'Open questions']]) {
+    const items = Array.isArray(record[key]) ? record[key].filter(item => typeof item === 'string' && item) : [];
+    if (items.length) root.append(recordSection(title, textList(items)));
+  }
+  const refs = Array.isArray(record.refs) ? record.refs : [];
+  const refText = ref => ref?.kind === 'memory' ? `Memory · ${ref.slug}${ref.version ? ` · ${ref.version.slice(0, 12)}` : ''}` : ref?.kind === 'url' ? ref.url : ref?.kind === 'path' ? `File · ${ref.path}` : ref?.kind === 'commit' ? `Commit · ${ref.sha}` : null;
+  const refItems = refs.map(refText).filter(Boolean);
+  if (refItems.length) root.append(recordSection('References', textList(refItems)));
+  const level = Math.min(6, Math.max(2, Number(headingLevel) || 4));
+  if (level !== 4) for (const heading of root.querySelectorAll('h4')) { const next = document.createElement(`h${level}`); next.textContent = heading.textContent; heading.replaceWith(next); }
+  return root;
+}
+
 /** Readable status copy, with an optional decorative sheen for fresh work only. */
 export function statusText(label, { active = false, className = '' } = {}) {
   const value = String(label);

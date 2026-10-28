@@ -13,6 +13,7 @@ import { ensureMemoryUsageSchema } from "./memory-usage-schema";
 import { ensureConnectionClientSchema } from "./connection-client-schema";
 import { ensureSiteAnalyticsSchema } from "./site-analytics-schema";
 import { assertRuntimeSchema, ensureProvisioningSchema, markSchemaReady } from "./provisioning-schema";
+import { migrateContinuationTables } from "./continuation-schema";
 
 export const sql = postgres(dbUrl("engram_gateway"), {
   max: 5,
@@ -187,6 +188,7 @@ export async function migrateOrgDataTables(client: postgres.Sql) {
       created_at   timestamptz NOT NULL DEFAULT now()
     )`;
   await client`CREATE INDEX IF NOT EXISTS review_items_state_idx ON review_items (state, created_at DESC)`;
+  await migrateContinuationTables(client);
 }
 
 export async function migrateTenantDataTables(dbName: string): Promise<void> {

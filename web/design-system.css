@@ -335,6 +335,7 @@ html[data-design-system] .ds-resource-chip:is(:hover, :active) { transform: none
 .ds-notice { padding: var(--ds-space-4); border: 1px solid var(--ds-line-strong); border-radius: var(--ds-radius-control); background: var(--ds-surface-soft); font-size: var(--ds-text-sm); }
 .ds-notice[data-tone='danger'] { border-color: var(--ds-danger); color: var(--ds-danger); background: var(--ds-danger-bg); }
 .ds-notice[data-tone='success'] { border-color: var(--ds-success); color: var(--ds-success); background: var(--ds-success-bg); }
+.ds-notice[data-tone='warning'] { border-color: var(--ds-warning); color: var(--ds-warning); background: var(--ds-warning-bg); }
 
 /* The actual text remains solid. A clipped duplicate moves its narrow window
    while counter-translating its letters, so only transform and opacity animate. */
@@ -583,6 +584,24 @@ html[data-design-system] .ds-tab:focus-visible { outline-offset: -3px; }
 .ds-evidence-row dt { color: var(--ds-muted); min-width: 0; }
 .ds-evidence-row dd { margin: 0; min-width: 0; color: var(--ds-ink); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .ds-evidence-row dd small { display: block; color: var(--ds-muted); font-size: var(--ds-text-xs); }
+
+/* Task record: a saved, agent-reported continuation record. Text only. */
+.ds-task-record { display: grid; gap: var(--ds-space-5); width: 100%; min-width: 0; }
+.ds-task-record-lead { display: grid; gap: var(--ds-space-1); min-width: 0; }
+.ds-task-record-lead p { margin: 0; color: var(--ds-ink); font-size: var(--ds-text-sm); line-height: 1.7; overflow-wrap: anywhere; white-space: pre-wrap; }
+.ds-task-record-lead.is-next { padding: var(--ds-space-3) var(--ds-space-4); border-left: 2px solid var(--ds-accent); background: var(--ds-surface-soft); border-radius: 0 var(--ds-radius-control) var(--ds-radius-control) 0; }
+.ds-task-record-label, .ds-task-record-section > :is(h2, h3, h4, h5, h6) { margin: 0; color: var(--ds-muted); font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); font-weight: 450; letter-spacing: .02em; line-height: 1.5; }
+.ds-task-record-section { display: grid; gap: var(--ds-space-2); min-width: 0; }
+.ds-task-plan, .ds-task-record-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.ds-task-plan-step { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--ds-space-3); padding-block: var(--ds-space-2); border-bottom: 1px solid var(--ds-line); font-size: var(--ds-text-sm); line-height: 1.6; }
+.ds-task-plan-step:last-child, .ds-task-record-list > li:last-child { border-bottom: 0; }
+.ds-task-plan-text { min-width: 0; overflow-wrap: anywhere; }
+.ds-task-plan-step[data-status="done"] .ds-task-plan-text, .ds-task-plan-step[data-status="dropped"] .ds-task-plan-text { color: var(--ds-muted); }
+.ds-task-plan-step[data-status="dropped"] .ds-task-plan-text { text-decoration: line-through; }
+.ds-task-plan-step > .ds-badge { flex: none; }
+.ds-task-record-list > li { padding-block: var(--ds-space-2); border-bottom: 1px solid var(--ds-line); color: var(--ds-ink); font-size: var(--ds-text-sm); line-height: 1.6; overflow-wrap: anywhere; }
+.ds-task-record-list > li small { display: block; margin-top: var(--ds-space-1); color: var(--ds-muted); font-size: var(--ds-text-xs); }
+@media (max-width: 600px) { .ds-task-plan-step { flex-direction: column; gap: var(--ds-space-1); } }
 .ds-disclosure-indicator { display: inline-flex; flex-shrink: 0; transition: transform var(--ds-duration-fast) var(--ds-ease-out); }
 .ds-disclosure-toggle[aria-expanded='true'] .ds-disclosure-indicator { transform: rotate(180deg); }
 [data-input='keyboard'] .ds-disclosure-indicator { transition: none; }

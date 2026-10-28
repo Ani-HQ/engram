@@ -1,5 +1,19 @@
 # Responsive and interaction review
 
+## Handoffs and task records — 27 October 2026
+
+Activity gains a Handoffs section for saved continuation records, built from
+existing cards, badges, switcher, search, compact buttons, `evidenceList`,
+notices and the new shared `taskRecord` component. Local review used a
+self-hosted gateway with tasks seeded through the real checkpoint code (sample
+data, no agents connected). Checked at 1280px, 390px and 320px: no horizontal
+overflow, 44px mobile targets, and stacked plan rows and headings at narrow
+widths. Close, reopen, inline delete confirmation, Undo, the Closed filter,
+filtered-empty search and lazy record loading worked with focus kept on the
+acted-on control. No console errors. The gallery `#task-record` section renders
+full, minimal and long-text examples plus the new warning notice tone. These
+checks do not certify any external agent app.
+
 ## Endpoint-first connections and client labels — 27 October 2026
 
 The connection dialog shows the shared endpoint immediately. Key creation and

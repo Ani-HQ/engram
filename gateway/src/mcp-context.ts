@@ -214,6 +214,18 @@ export function boundMcpResult(name: string, args: Record<string, unknown> = {},
     return fits(receipt, maxBytes) ? receipt : oversized(result, maxBytes);
   }
   if (!result?.isError && name === "list_actions") { const listing = actionResults(args, payload, result, maxBytes); if (listing) return listing; }
+  if (!result?.isError && name === "resume_task" && payload?.task && payload?.checkpoint && !fits(result, maxBytes)) {
+    // Never cut a task record. Say exactly what was not delivered and how to get it.
+    const control = jsonResult({ ok: false, code: "context_too_small", taskId: payload.task.id, checkpointId: payload.checkpoint.id,
+      neededBytes: mcpResultBytes(result), error: "The task record did not fit this response budget and was not delivered. Retry with the default 4096-byte budget or larger." }, { isError: true });
+    return fits(control, maxBytes) ? control : oversized(result, maxBytes);
+  }
+  if (!result?.isError && name === "find_tasks" && Array.isArray(payload?.tasks) && !fits(result, maxBytes)) {
+    const kept: any[] = [];
+    const build = (tasks: any[]) => jsonResult({ tasks, more: true, ambiguous: payload.ambiguous || tasks.length < payload.tasks.length, _context: { truncated: true } }, result);
+    for (const task of payload.tasks) { if (!fits(build([...kept, task]), maxBytes)) break; kept.push(task); }
+    return kept.length ? build(kept) : oversized(result, maxBytes, "Task candidates exceed the context budget. Narrow the query.");
+  }
   if (!result?.isError && ["put_page", "add_tag", "add_link", "add_timeline_entry"].includes(name)) {
     const receipt = jsonResult({ ok: true, ...(typeof payload?.slug === "string" && Buffer.byteLength(payload.slug) <= 1_024 ? { slug: payload.slug } : {}), ...(typeof payload?.content_hash === "string" && /^[a-f0-9]{64}$/.test(payload.content_hash) ? { content_hash: payload.content_hash } : {}) }, result);
     return fits(receipt, maxBytes) ? receipt : oversized(result, maxBytes);

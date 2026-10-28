@@ -9,6 +9,7 @@ const SERVER_INSTRUCTIONS = [
   'Do not duplicate installed lifecycle adapter calls. Otherwise, for substantive tasks call record_action with tool "agent.task", taskTitle, and status "running" at start, then "completed" or "failed" only for known outcomes. Stopping a response does not prove completion.',
   'Keep one opaque runId per task and a stable actionKey per action. Repeat tool, runId, and resource on updates. Use a new eventId per update; reuse it only for an identical retry. After completion or failure, use a new actionKey for another attempt. Refresh running work within 15 minutes only while it is known to be running.',
   'Reports remain agent-reported, never independently observed external actions. Never invent tasks or outcomes. Never include credentials or hidden reasoning. Reporting failures must not block work or cause retry loops; say not recorded when delivery is unconfirmed.',
+  'To continue another agent\'s work, call find_tasks then resume_task. Save checkpoint_task unprompted at decisions, plan changes, blockers, milestones and handoff; a confirmed receipt is the recovery point.',
   'list_actions reads the history shared with the web app.',
 ].join('\n\n');
 

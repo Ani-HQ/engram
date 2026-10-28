@@ -84,6 +84,7 @@ these same label-first actions without reserving a trailing icon slot.
 | Icon action | `.ds-icon-button` or `.icon-button` | 32×32px desktop, 44×44px on narrow/coarse-pointer screens; accessible name required |
 | Fallback agent avatar | `.ds-agent-avatar` through `agentVisual` / `visualIcon` | Local deterministic Beam face only for unknown agents; visible name/provenance stay separate. Public callers use the constant public-safe seed. Known products keep their actual logo |
 | Human profile image | `profileAvatar({src,label,size})`; `.ds-profile-avatar` | Sizes `sm/md/lg` are 56/80/112px. One accessible image label; static local memory-bloom fallback while missing, loading or unavailable. Only the versioned local public PNG endpoint or bounded PNG data drafts are accepted |
+| Task record | `taskRecord(record,{headingLevel})`; `.ds-task-record`, `.ds-task-plan`, `.ds-task-record-list` | Text-only continuation record: next step (accent rule), objective, plan steps with To do/In progress/Done/Dropped badges, decisions with reasons, blockers, constraints, open questions and portable references. Empty sections are omitted. It is agent-reported; the owning view shows author, save time and the recheck rule. Plan rows stack below 600px. Gallery: `/design-system#task-record` |
 | Recorded evidence | `evidenceList(rows,{label})`; `.ds-evidence-list` | A labeled native definition list of text-only `{label,value,note}` records. Unknown values stay explicit. Two flexible columns wrap within narrow containers; values use tabular numbers. Keep access, individual memory receipts, explicit workflow checks and automatic-use claims separate. Client declarations never prove behavior. Gallery: `/design-system#memory-evidence` |
 | Product logo | `img.ds-product-logo`, optional `data-size="28"` | 24px default or 28px; `object-fit: contain`, local source, no distortion or recoloring |
 | Attribution | `.ds-attribution`, `.ds-attribution-label`, `.ds-attribution-links`, `.ds-attribution-link.ds-touch-target`, optional `.ds-attribution-avatar` | Compact source credits with visible names, original local product marks and 24px circular author photos. Native links keep shared focus and mobile targets; groups wrap without shrinking images. Participates in heading rhythm; static with or without JS. Gallery: `/design-system#attribution` |
@@ -116,7 +117,7 @@ these same label-first actions without reserving a trailing icon slot.
 | Metric | `.ds-metric` with `.ds-metric-label`, `.ds-metric-value`, `.ds-metric-note` | Tabular value with visible meaning and provenance. No invented activity or hidden unit |
 | Divider | `.ds-divider` | Decorative 1px horizontal separator; use semantic headings to establish content hierarchy |
 | Status dot | `.ds-status-dot` beside visible state text | Inherits text color. Never conveys state alone |
-| Feedback | `.ds-notice[data-tone]`, `.ds-toast` | Label state; errors should remain until a user can act; avoid disappearing essential instructions |
+| Feedback | `.ds-notice[data-tone]` (neutral, success, warning, danger), `.ds-toast` | Label state; errors should remain until a user can act; avoid disappearing essential instructions |
 
 ### Content fit and keyboard navigation
 
@@ -381,3 +382,17 @@ status feedback for preview, approval, clipboard, replacement and revocation;
 keep all actions keyboard immediate and stack controls at narrow widths.
 
 Email-preference standalone header, action, and footer links use `.ds-touch-target` so the shared 44px mobile minimum applies alongside the native button targets.
+
+## Handoffs composition
+
+Activity's Handoffs section lists saved task records. It composes the existing
+card, badge, activity switcher, search field, compact buttons, `evidenceList`,
+`taskRecord`, disclosure toggle and notice primitives; `web/activity.css` owns
+only its layout. Each card leads with the next step and one primary action,
+**Copy continue prompt**, followed by a disclosure that lazily loads the record,
+provenance, parallel-lineage warning and history. Delete uses an inline two-step
+confirmation and an Undo notice instead of a browser dialog. Requests are pinned
+to the workspace and discarded after navigation. Loading, empty, filtered-empty,
+error and unavailable-storage states use the shared patterns. Buttons keep 44px
+targets at narrow widths, and the view has no horizontal overflow at 320px.
+

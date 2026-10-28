@@ -34,6 +34,19 @@ entire cited excerpt or omits its row; it never shortens a cited span while
 claiming its old coordinates. This describes a source span, not an independent
 verification of the memory's claims.
 
+## Task continuation
+
+`checkpoint_task`, `find_tasks` and `resume_task` are bounded per response but do
+not consume the cumulative per-task retrieval budget: an incoming agent must be
+able to load its task even after earlier recall used that budget. Instead, every
+save is measured at its actual `resume_task` envelope size, escaping included,
+and refused with `record_too_large` above 3,584 bytes, leaving room in the
+default 4,096-byte response for transport metadata and optional freshness notes
+(a count of newer memory and, with Jev, flagged stale decisions). Notes are
+dropped before a resume would exceed one default read. A client with a smaller explicit budget receives a short
+`context_too_small` control response naming the task and checkpoint, never a
+shortened record. `find_tasks` drops whole candidates to fit.
+
 ## Request context
 
 The HTTP transport reads request metadata separately from tool arguments:
