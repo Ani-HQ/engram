@@ -1,6 +1,6 @@
 import { h } from "./profile.js";
-import { loadingState, statusBadge } from "./design-system.js";
-import { icon } from "./icons.js";
+import { loadingState } from "./design-system.js";
+import { statusLabel } from "./status-label.js";
 
 let instance = 0;
 const button = (text, onclick, attrs = {}) => h("button", { type: "button", onclick, ...attrs }, text);
@@ -33,7 +33,7 @@ function teamSharingView({ api, personalWorkspaces, onOpenPersonal, role, initia
       if (current()) { switching = false; chooser.disabled = false; openPersonal.disabled = !selectedPersonal(); openPersonal.setAttribute("aria-busy", "false"); openPersonal.textContent = "Share from personal workspace"; }
     }
   }, { class: "primary", disabled: personal.length !== 1 || typeof onOpenPersonal !== "function" });
-  const source = h("section", { class: "sharing-start ds-card", "aria-labelledby": prefix + "-source-title" },
+  const source = h("section", { class: "sharing-start", "aria-labelledby": prefix + "-source-title" },
     h("div", { class: "ds-heading-group" }, h("h2", { id: prefix + "-source-title" }, "Share personal memory"),
       h("p", {}, personal.length ? "Open your personal workspace to choose what this team can read." : "Your personal workspace is not available in this session. You can still read this team’s shared memory.")),
     personal.length > 1 && h("label", { class: "field" }, "Personal workspace", chooser),
@@ -52,7 +52,7 @@ function teamSharingView({ api, personalWorkspaces, onOpenPersonal, role, initia
 
   function excerpt(item) {
     const truncated = item.text.length > 180;
-    return h("article", { class: "sharing-received ds-card" },
+    return h("article", { class: "sharing-received" },
       h("h3", { tabindex: -1 }, item.title || "Approved excerpt"),
       h("p", { class: "sharing-received-preview" }, truncated ? item.text.slice(0, 179) + "…" : item.text),
       truncated && h("details", { class: "ds-highlight-disclosure sharing-approved-text" }, h("summary", {}, "Read full excerpt"), h("section", {}, h("p", {}, item.text))));
@@ -119,7 +119,7 @@ export function sharingView({ api, workspaceKind = "personal", personalWorkspace
   const recipientNote = h("p", { class: "field-hint", id: prefix + "-recipient-note" }, "Choose who can read this approved snapshot.");
   const previewButton = h("button", { type: "submit", class: "primary" }, "Preview matching text");
   const cancelPreview = button("Cancel preview", () => { ++previewVersion; previewBusy = false; discardReview(); lockForm(); report("Preview canceled. Nothing was shared."); previewButton.focus(); }, { class: "text", hidden: true });
-  const form = h("form", { class: "sharing-form ds-card", hidden: true, onsubmit: event => { event.preventDefault(); requestPreview(); } },
+  const form = h("form", { class: "sharing-form", hidden: true, onsubmit: event => { event.preventDefault(); requestPreview(); } },
     h("h2", {}, "Create a share"),
     h("label", { class: "field" }, "Include and exclude", instruction),
     h("p", { class: "field-hint", id: prefix + "-instruction-hint" }, "Describe topics to include and anything to leave out. Use 5–1,000 characters."),
@@ -253,8 +253,8 @@ export function sharingView({ api, workspaceKind = "personal", personalWorkspace
       h("label", { class: "ds-option sharing-acknowledgment" }, acknowledge, h("span", {}, h("strong", {}, "I reviewed the selected text and want to share it with " + targetName + "."), h("small", {}, data.recipient.kind === "team" ? "Everyone authorized in that team can read this approved snapshot." : "The separate read-only credential will access this approved snapshot only."))),
       selectionNote, h("div", { class: "form-actions" }, shareButton, button("Cancel review", () => { ++previewVersion; discardReview(); report("Review canceled. Nothing was shared."); previewButton.focus(); }, { class: "text" })),
     ] : [notice("No matching excerpts were proposed. Adjust the instruction and preview again. Nothing was shared.")];
-    review.replaceChildren(h("section", { class: "sharing-review-card ds-card" },
-      h("div", { class: "ds-heading-group" }, statusBadge(data.method === "model" ? "Jev-assisted preview" : "Text match · manual review", { tone: "lilac" }), title,
+    review.replaceChildren(h("section", { class: "sharing-review-card" },
+      h("div", { class: "ds-heading-group" }, statusLabel(data.method === "model" ? "Jev-assisted preview" : "Text match · manual review"), title,
         h("p", {}, data.method === "model" ? "Optional Jev processing helped select candidates. You still approve every excerpt." : "Text matching proposed these candidates. It does not fully interpret a natural-language policy; review the selection yourself.")),
       h("p", { class: "sharing-preview-meta" }, "Recipient: " + targetName + ". Showing " + candidates.length + " candidate excerpt(s). ", h("time", { datetime: data.expiresAt }, "Preview expires " + date(data.expiresAt)), Number(data.excludedCount) > 0 ? " · " + data.excludedCount + " excerpt(s) excluded." : ""),
       h("p", { class: "field-hint" }, (Number.isSafeInteger(data.scannedCount) ? "Scanned " + data.scannedCount + " source(s). " : "") + (Number.isSafeInteger(data.consideredCount) ? "Considered " + data.consideredCount + " excerpt(s). " : "Considered up to 16 excerpts. ") + "At most three excerpts per source, up to 1,200 characters each. This bounded review may miss relevant content or private details; check every selected word."),
@@ -308,7 +308,7 @@ export function sharingView({ api, workspaceKind = "personal", personalWorkspace
       try {
         if (await copy(token.value) === false) throw new Error();
         if (!stillCurrent()) return;
-        copyToken.setAttribute("data-feedback", "success"); copyToken.replaceChildren(icon("check", { size: 14, class: "ds-feedback-icon" }), "Token copied");
+        copyToken.setAttribute("data-feedback", "success"); copyToken.replaceChildren("Token copied");
         report("Read-only token copied. Store it privately; it is shown only in this view.");
       } catch {
         if (!stillCurrent()) return;
@@ -316,8 +316,8 @@ export function sharingView({ api, workspaceKind = "personal", personalWorkspace
         report("Could not copy. Show the token, then select and copy it.", true);
       } finally { if (stillCurrent()) { copyToken.disabled = false; copyToken.setAttribute("aria-busy", "false"); } }
     }, { class: "small", "aria-describedby": prefix + "-feedback" });
-    credentials.replaceChildren(h("section", { class: "sharing-credential ds-card" },
-      h("div", { class: "ds-heading-group" }, statusBadge("Read-only · approved text only", { tone: "lime" }), title,
+    credentials.replaceChildren(h("section", { class: "sharing-credential" },
+      h("div", { class: "ds-heading-group" }, statusLabel("Read-only · approved text only"), title,
         h("p", {}, "Use this separate endpoint and token in the receiving agent. It can read only this approved snapshot. This is not a personal workspace credential.")),
       h("label", { class: "field" }, "MCP endpoint", endpoint), h("label", { class: "field" }, "Access token · shown once", token),
       h("div", { class: "form-actions" }, show, copyToken, button("Done · clear token", clearCredential, { class: "text small" })),
@@ -328,7 +328,7 @@ export function sharingView({ api, workspaceKind = "personal", personalWorkspace
     const items = catalog?.shares || [];
     const existingOpen = new Set([...grantsList.querySelectorAll("details[open]")].map(node => node.dataset.share));
     grantsList.replaceChildren(...(items.length ? items.map(share => {
-      const status = share.revokedAt ? statusBadge("Revoked", { tone: "neutral" }) : statusBadge("Active snapshot", { tone: "success" });
+      const status = share.revokedAt ? statusLabel("Revoked") : statusLabel("Active snapshot");
       const heading = h("h3", { tabindex: "-1" }, share.recipient?.name || "Approved snapshot");
       const info = h("div", { class: "sharing-grant-heading" }, heading, status);
       const actions = h("div", { class: "form-actions" });
@@ -362,7 +362,7 @@ export function sharingView({ api, workspaceKind = "personal", personalWorkspace
       if (!share.revokedAt) { actions.append(refreshPolicy); if (share.recipient?.kind === "agent") manage("rotate", "Replace agent token", "Confirm token replacement"); manage("revoke", "Revoke sharing", "Confirm revoke"); }
       const details = h("details", { class: "sharing-approved-text", "data-share": share.id, open: existingOpen.has(share.id) }, h("summary", {}, "Read approved text · " + share.itemCount + " excerpt(s)"),
         ...(share.items || []).map(item => h("section", {}, h("h4", {}, item.title || "Approved excerpt"), h("p", {}, item.text))));
-      return h("article", { class: "sharing-grant ds-card" }, info, h("p", { class: "sharing-policy" }, share.instruction),
+      return h("article", { class: "sharing-grant" }, info, h("p", { class: "sharing-policy" }, share.instruction),
         h("p", { class: "field-hint" }, (share.recipient?.kind === "team" ? "Team snapshot · authorized team members can read it." : "Agent snapshot · isolated read-only access.") + " Created " + date(share.createdAt) + "."),
         details, actions, !share.revokedAt && share.recipient?.kind === "agent" && h("p", { class: "field-hint" }, "Replacing a token stops the old token immediately. Revoking the share stops all new reads."),
         !share.revokedAt && share.recipient?.kind === "team" && h("p", { class: "field-hint" }, "Revoking removes this approved snapshot from the receiving workspace. It cannot recall text already read or exported."));

@@ -95,7 +95,7 @@ export async function checkMailSeries(db: postgres.Sql): Promise<number> {
     equal((await handleMailUnsubscribe(new Request(optoutUrl, { method: "POST", body: "List-Unsubscribe=One-Click" }), db)).status, 200, "A genuine one-click POST opts out");
     const browserSuccess = await handleWeb(new Request(optoutUrl, { method: "POST", headers: { Accept: "text/html" } }));
     equal(browserSuccess.status, 200, "Browser optout remains idempotent");
-    check((await browserSuccess.text()).includes("PREFERENCE SAVED"), "Browser POST receives the shared branded success view");
+    check((await browserSuccess.text()).includes("<title>Email preference saved · Engram</title>"), "Browser POST receives the shared branded success view");
     equal((await drain(new Date(now.getTime() + 30 * day))).sent, 0, "Unsubscribed users receive no later reminders");
 
     const retry = await fresh("retry"); const attempts: any[] = [];

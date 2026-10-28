@@ -1,6 +1,5 @@
 import { h } from "./profile.js";
 import { parseInviteEntry, signupInviteStatus } from "./signup-model.js";
-import { icon } from "./icons.js";
 
 const action = (label, onclick, attrs = {}) => h("button", { type: "button", onclick, ...attrs }, label);
 const date = value => {
@@ -53,7 +52,7 @@ export function signupAdminPanel({ session, api, fail = () => {}, copy, isCurren
     codeRegion.replaceChildren(h("strong", {}, address ? `Bound to ${address}` : "Single-use link · not bound to an email yet"), h("p", {}, `Copy this ${noun} and share it privately. ${address ? "Only this email address may verify and claim it." : "The first person to verify an email address claims it; entering an email alone does not reserve it."} You can copy an unused invitation's link again from the list below. Generating an invitation does not send an email.`), secretInput,
       h("div", { class: "form-actions" }, reveal, copyCode, action(`Done · clear ${noun}`, clearSecret, { class: "text small" })));
   };
-  const copyLabel = () => [icon("copy", { size: 14 }), "Copy link"];
+  const copyLabel = () => ["Copy link"];
   const clearPendingLinks = () => {
     for (const pending of pendingLinks.values()) { pending.button.disabled = false; pending.button.replaceChildren(...copyLabel()); }
     pendingLinks.clear();

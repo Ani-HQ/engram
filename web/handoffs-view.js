@@ -1,7 +1,8 @@
 import { h } from "./profile.js";
-import { evidenceList, loadingState, statusBadge, taskRecord } from "./design-system.js";
+import { evidenceList, loadingState, taskRecord } from "./design-system.js";
 import { icon } from "./icons.js";
-import { agentAvatar, relativeTime } from "./activity-view.js";
+import { relativeTime } from "./activity-view.js";
+import { statusLabel } from "./status-label.js";
 
 // Saved task records that another agent can continue. Everything shown here is
 // agent-reported; the view keeps save time, author and the recheck rule visible.
@@ -34,7 +35,7 @@ export function handoffsView({ api, role, canWrite = true, copyControl, fail = (
   const announce = h("p", { class: "ds-sr-only", role: "status", "aria-live": "polite" });
   const results = h("div", { class: "ds-results handoffs-results", id: `${prefix}-results`, "aria-busy": "false" });
   const loadMore = button("Load more tasks", () => load({ append: true }), { class: "small", hidden: true });
-  const refresh = button([icon("refresh-cw", { size: 14 }), "Refresh"], () => load(), { class: "small" });
+  const refresh = button("Refresh", () => load(), { class: "small" });
   const search = h("input", { type: "search", class: "search", placeholder: "Search tasks…", "aria-label": "Search saved tasks",
     oninput: event => { q = event.target.value.trim(); clearTimeout(searchTimer); searchTimer = setTimeout(() => load(), 250); } });
   const statusButtons = [["open", "Open"], ["closed", "Closed"]].map(([value, label]) => button(label, () => {
@@ -43,19 +44,18 @@ export function handoffsView({ api, role, canWrite = true, copyControl, fail = (
   function syncStatus() { for (const node of statusButtons) node.setAttribute("aria-pressed", String(node.dataset.handoffStatus === status)); }
 
   const element = h("section", { class: "handoffs-view", "aria-labelledby": `${prefix}-title` },
-    h("div", { class: "handoffs-intro ds-card" },
+    h("div", { class: "handoffs-intro" },
       h("div", { class: "ds-heading-group" },
-        h("span", { class: "ds-badge", "data-tone": "accent" }, "Continue anywhere"),
         h("h2", { id: `${prefix}-title` }, "Pick up where any agent left off."),
         h("p", {}, "Connected agents save a compact task record when work starts, at decisions and plan changes, and when you ask for a handoff. Copy a task’s prompt into another agent to continue from the last confirmed save.")),
-      h("p", { class: "field-hint" }, icon("info", { size: 13 }), "Records are agent-reported. The next agent rechecks files, Git and tests before relying on them.")),
+      h("p", { class: "field-hint" }, "Records are agent-reported. The next agent rechecks files, Git and tests before relying on them.")),
     h("div", { class: "handoffs-toolbar" },
       h("div", { class: "activity-switcher", role: "group", "aria-label": "Task status" }, statusButtons),
       h("div", { class: "search-field" }, icon("search", { size: 16 }), search),
       refresh),
     results, h("div", { class: "form-actions handoffs-more" }, loadMore), announce);
 
-  const empty = (title, text, action) => h("div", { class: "empty handoffs-empty" }, h("div", { class: "empty-icon" }, icon("layers", { size: 22 })), h("h2", {}, title), h("p", {}, text), action);
+  const empty = (title, text, action) => h("div", { class: "empty handoffs-empty" }, h("h2", {}, title), h("p", {}, text), action);
   function emptyState() {
     if (q) return empty(`No tasks match “${q}”`, "Try other words from the title, objective or next step.",
       button("Clear search", () => { search.value = ""; q = ""; load(); search.focus(); }, { class: "small" }));
@@ -66,25 +66,23 @@ export function handoffsView({ api, role, canWrite = true, copyControl, fail = (
 
   function badges(task) {
     const latest = task.latest;
-    return h("div", { class: "handoff-badges" },
-      task.status === "closed" ? statusBadge(latest?.trigger === "completed" ? "Completed" : "Closed", { tone: "success" })
-        : latest?.trigger === "handoff" ? statusBadge("Handoff", { tone: "accent" }) : statusBadge("Open", { tone: "info" }),
-      task.lineages > 1 && statusBadge(`${task.lineages} lineages`, { tone: "warning" }),
-      task.project && statusBadge(task.project, { tone: "neutral" }));
+    const words = [task.status === "closed" ? latest?.trigger === "completed" ? "Completed" : "Closed" : latest?.trigger === "handoff" ? "Handoff" : "Open",
+      task.lineages > 1 && `${task.lineages} lineages`, task.project].filter(Boolean);
+    return h("p", { class: "handoff-badges" }, statusLabel(words.join(" · ")));
   }
 
   function card(task) {
     const latest = task.latest, detailId = `${prefix}-detail-${task.id}`;
     const detail = h("div", { class: "handoff-detail", id: detailId, hidden: true });
-    const toggle = button([h("span", {}, "View record"), icon("chevron-down", { size: 14, class: "ds-disclosure-indicator" })], () => toggleDetail(task, toggle, detail),
+    const toggle = button("View record", () => toggleDetail(task, toggle, detail),
       { class: "small ds-disclosure-toggle", "aria-expanded": "false", "aria-controls": detailId });
     const copy = copyControl ? copyControl("Copy continue prompt", () => continuePrompt(task), { class: "small primary", "aria-label": `Copy continue prompt for ${task.title}` }) : null;
-    return h("article", { class: "handoff-card ds-card", "data-task-id": task.id },
+    return h("article", { class: "handoff-card", "data-task-id": task.id },
       h("div", { class: "handoff-card-heading" }, h("h3", { tabindex: -1 }, task.title), badges(task)),
       latest?.next && h("p", { class: "handoff-next" }, h("span", {}, "Next"), latest.next),
       h("div", { class: "handoff-meta" },
         latest ? [
-          h("span", { class: "handoff-author", title: latest.savedBy }, agentAvatar(latest.savedBy, { harness: latest.reportedSource || undefined }), latest.savedBy),
+          h("span", { class: "handoff-author", title: latest.savedBy }, latest.savedBy),
           latest.reportedSource && h("span", { title: "Reported source, not a verified identity" }, `via ${latest.reportedSource}`),
           h("span", {}, TRIGGERS[latest.trigger] || "Saved"),
           h("time", { datetime: latest.savedAt, title: exact(latest.savedAt), "data-relative-time": latest.savedAt }, relativeTime(latest.savedAt)),

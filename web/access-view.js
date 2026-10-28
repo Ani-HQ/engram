@@ -33,9 +33,9 @@ export function friendAccessPresentation(access, { now = timestamp(access?.serve
 export function friendAccessCard(access, { now, error = "", retry } = {}) {
   const view = friendAccessPresentation(access, { ...(now === undefined ? {} : { now }) });
   if (!view) return null;
-  return h("section", { class: "ds-benefit ds-card", "data-tone": view.state === "active" ? "lime" : "apricot", "aria-label": "Friend access" },
+  return h("section", { class: "ds-benefit", "aria-label": "Friend access" },
     h("div", { class: "ds-stack" },
-      h("div", { class: "ds-row" }, h("span", { class: "ds-badge" }, view.label), h("strong", { class: "ds-benefit-count" }, view.headline)),
+      h("div", {}, h("p", { class: "ds-hint access-label" }, view.label), h("strong", { class: "ds-benefit-count" }, view.headline)),
       h("p", { class: "ds-benefit-description" }, view.state === "active" ? [view.unlimited ? "Unlimited knowledge transfers through " : "Access through ", h("time", { datetime: view.expiresAt }, view.expiryLabel), "."] : view.state === "unknown" ? ["Your recorded access end is ", h("time", { datetime: view.expiresAt }, view.expiryLabel), ". Refresh to check the remaining time."] : ["This invitation’s access is no longer active. Scheduled end: ", h("time", { datetime: view.expiresAt }, view.expiryLabel), ". ", view.hasOtherAccess ? "Your current plan keeps core write access available." : "Your existing memory and activity remain readable and exportable."]),
       h("p", { class: "ds-hint" }, "Core memory transfers only. Jev has separate permission and usage costs."),
       error && h("p", { class: "ds-hint", role: "status" }, "Access status could not refresh. The last recorded expiry is shown. ", retry && h("button", { type: "button", class: "text small", onclick: retry }, "Try again"))),

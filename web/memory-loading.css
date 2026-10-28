@@ -1,26 +1,22 @@
-/* A stable scaffold for one pending read. Shared DS shimmer has no staged progress. */
-.memory-loading { min-width:0; padding-top:1px; }
-.memory-loading-header { margin-bottom:26px; }
-.memory-loading-kicker { display:flex; align-items:center; gap:7px; margin-bottom:14px; color:var(--ds-muted); font-size:var(--ds-text-xs); }
-.memory-loading-kicker svg { flex-shrink:0; }
-.memory-loading .memory-loading-title { position:relative; isolation:isolate; overflow:hidden; width:fit-content; max-width:100%; margin:0; color:var(--ds-ink); font-size:23px; font-weight:550; letter-spacing:-.55px; line-height:1.45; }
-.memory-loading-subtitle { margin-top:11px; max-width:340px; color:var(--ds-muted); font-size:11px; line-height:1.8; }
-.memory-loading-target { margin-top:12px; color:var(--ds-muted); font:10px/1.7 var(--font-mono,ui-monospace,SFMono-Regular,monospace); overflow-wrap:anywhere; }
-.memory-loading-sheet { position:relative; isolation:isolate; overflow:hidden; padding:25px 23px 24px; border:1px solid var(--ds-line); border-radius:var(--radius-card,14px); background:var(--ds-surface); }
+/* A stable scaffold for one pending read. No staged progress is implied. */
+.memory-loading { min-width:0; }
+.memory-loading-header { margin-bottom:var(--ds-space-6); }
+.memory-loading .memory-loading-title { width:fit-content; max-width:100%; margin:0; color:var(--ds-ink); font-size:var(--ds-text-xl); font-weight:600; line-height:1.4; }
+.memory-loading-subtitle { margin-top:var(--ds-space-2); max-width:420px; color:var(--ds-muted); font-size:var(--ds-text-base); line-height:1.65; }
+.memory-loading-target { margin-top:var(--ds-space-2); color:var(--ds-muted); font-size:var(--ds-text-sm); overflow-wrap:anywhere; }
+.memory-loading-sheet { padding:0; border:0; background:transparent; }
 .memory-loading-sheet-title,.memory-loading-metadata span,.memory-loading-paragraph span { display:block; }
 .memory-loading-sheet-title { width:64%; height:15px; }
-.memory-loading-metadata { display:flex; gap:11px; margin-top:14px; }
-.memory-loading-metadata span { width:62px; height:7px; }
+.memory-loading-metadata { display:flex; gap:var(--ds-space-3); margin:var(--ds-space-3) 0 var(--ds-space-6); }
+.memory-loading-metadata span { width:62px; height:8px; }
 .memory-loading-metadata span+span { width:88px; }
-.memory-loading-rule { height:1px; background:var(--ds-surface-soft); margin:22px 0 23px; }
-.memory-loading-paragraph { display:grid; gap:12px; }
-.memory-loading-paragraph+.memory-loading-paragraph { margin-top:26px; }
+.memory-loading-paragraph { display:grid; gap:var(--ds-space-3); }
+.memory-loading-paragraph+.memory-loading-paragraph { margin-top:var(--ds-space-6); }
 .memory-loading-paragraph span { height:9px; }
 .memory-loading-paragraph span:nth-child(2) { width:92%; }
 .memory-loading-paragraph span:nth-child(3) { width:97%; }
 .memory-loading-paragraph span:last-child { width:71%; }
 .memory-loading-paragraph.short span:last-child { width:58%; }
-.memory-loading-delayed { display:flex; align-items:start; gap:8px; margin-top:20px; padding:12px 14px; border:1px solid var(--ds-line); border-radius:var(--radius-control,10px); color:var(--ds-muted); background:var(--ds-surface); font-size:11px; line-height:1.8; }
+.memory-loading-delayed { margin-top:var(--ds-space-6); padding:0; border:0; color:var(--ds-muted); background:transparent; font-size:var(--ds-text-base); line-height:1.65; }
 .memory-loading-delayed[hidden] { display:none; }
-@media (max-width:620px) { .memory-loading-header { margin-bottom:23px; } .memory-loading .memory-loading-title { font-size:22px; } .memory-loading-sheet { padding:22px 18px; } }
-@media (forced-colors:active) { .memory-loading-title,.memory-loading-subtitle,.memory-loading-target,.memory-loading-delayed { color:CanvasText; } .memory-loading-sheet,.memory-loading-delayed { background:Canvas; border-color:GrayText; } .memory-loading-sheet-title,.memory-loading-metadata span,.memory-loading-paragraph span,.memory-loading-rule { background:GrayText; } }
+@media (forced-colors:active) { .memory-loading-title,.memory-loading-subtitle,.memory-loading-target,.memory-loading-delayed { color:CanvasText; } .memory-loading-sheet-title,.memory-loading-metadata span,.memory-loading-paragraph span { background:GrayText; } }

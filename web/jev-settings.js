@@ -31,7 +31,7 @@ export function jevUsageSummary(data, { error = "", refresh } = {}) {
   const selfHosted = data.eligibility === "self-hosted", funded = data.eligibility === "operator-funded";
   return h("section", { class: "account-section ds-stack", "aria-label": "Jev usage and cost" },
     h("div", { class: "ds-heading-group" }, h("h2", {}, "Jev usage"), h("p", { class: "detail-note" }, "Optional assistance, with a separate permission and budget.")),
-    h("div", { class: "ds-card ds-stack" }, h("div", { class: "ds-row" }, h("span", { class: "ds-badge", "data-tone": data.available ? "success" : "neutral" }, stateLabel(data)), h("span", { class: "ds-badge", "data-tone": "lilac" }, "TypeSafe")),
+    h("div", { class: "ds-stack" }, h("p", { class: "status-label" }, `${stateLabel(data)} · TypeSafe`),
       h("p", {}, selfHosted ? "Your TypeSafe account pays the provider directly. Engram does not invoice this usage or meter provider spend here." : funded ? "Operator-funded usage. No Jev usage is added to your bill." : priced(data) ? `Jev rates: ${rateText(data)}. Enabled usage is added to your Cloud bill.` : "Billable Jev is unavailable on this installation. When available, review and accept the displayed rate before enabling it."),
       !selfHosted && h("p", {}, h("strong", {}, jevUsd(data.budget?.spentUsd)), funded ? " provider cost tracked this month" : " settled Jev usage cost this month", ` · ${period(data.budget?.periodStartsAt)}–${period(data.budget?.periodEndsAt)} UTC`),
       !selfHosted && h("p", { class: "ds-hint" }, `Monthly soft budget: ${jevUsd(data.budget?.monthlyUsd)}. Remaining against settled spend: ${jevUsd(data.budget?.remainingUsd)}.`),
@@ -90,7 +90,7 @@ export function createJevSettingsPanel({ data, error = "", api, saved, fail, ref
   update();
   const element = h("section", { class: "account-section ds-stack", "aria-label": "Optional Jev processing" },
     h("div", { class: "ds-heading-group" }, h("h2", {}, "Jev · optional"), h("p", { class: "detail-note" }, "A separate choice for model-assisted routing, ranking, and review.")),
-    h("div", { class: "ds-card ds-stack" }, h("div", { class: "ds-row" }, h("span", { class: "ds-badge", "data-tone": data.available ? "success" : "neutral" }, stateLabel(data)), h("span", { class: "ds-badge", "data-tone": "lilac" }, "TypeSafe"), h("span", { class: "ds-badge" }, data.configured ? "Server configured" : "Not configured")),
+    h("div", { class: "ds-stack" }, h("p", { class: "status-label" }, `${stateLabel(data)} · TypeSafe · ${data.configured ? "Server configured" : "Not configured"}`),
       h("p", { class: "ds-hint" }, explanation(data)),
       !canManage && h("p", { class: "ds-notice" }, "Only a workspace owner signed in with email can change Jev settings."),
       data.eligibility === "subscription-required" && h("a", { href: "#billing" }, "Review your Cloud subscription"),

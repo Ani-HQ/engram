@@ -279,7 +279,7 @@ describe("public activity profile", () => {
     const stats = { totalActions: 1234, activeAgents: 9, activeDays: 104 };
     const card = profileCard({ ...sample, stats, daily: days }) as unknown as Element;
     const overview = card.querySelector(".profile-overview")!;
-    expect(overview.classList.contains("ds-card")).toBe(true);
+    expect(overview.classList.contains("ds-card")).toBe(false);
     expect(overview.parentElement).toBe(card.querySelector(".profile-main"));
     expect(overview.closest("details")).toBeNull();
     expect(card.querySelector(".profile-weekly")).toBeNull();

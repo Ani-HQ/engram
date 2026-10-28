@@ -38,10 +38,10 @@ export function renderOAuthAuthorizePage(parsed: OAuthAuthorizeViewParams, messa
 </head>
 <body class="oauth-surface">
   <main class="oauth-page">
-    <section class="oauth-card ds-card" aria-labelledby="oauth-title">
+    <section class="oauth-card" aria-labelledby="oauth-title">
       <a class="oauth-brand" href="/" aria-label="Engram home"><img src="/brand/engram-mark.svg" alt="" width="36" height="36"><span>engram</span></a>
       <header class="oauth-heading">
-        <p class="oauth-context ds-eyebrow">Agent connection</p>
+        <p class="oauth-context">Agent connection</p>
         <h1 id="oauth-title">Connect to Engram</h1>
         <p id="oauth-description" class="oauth-description">Sign in with your workspace email. We’ll email you a link to continue.</p>
       </header>
@@ -52,7 +52,7 @@ export function renderOAuthAuthorizePage(parsed: OAuthAuthorizeViewParams, messa
           <label for="oauth-email">Email address</label>
           <input id="oauth-email" type="email" name="email" autocomplete="email" inputmode="email" spellcheck="false" required placeholder="you@example.com" aria-describedby="oauth-description${feedback ? " oauth-feedback" : ""}">
         </div>
-        <button type="submit" class="ds-button primary">Email a sign-in link <span aria-hidden="true">→</span></button>
+        <button type="submit" class="ds-button primary">Email a sign-in link</button>
       </form>
       <p class="oauth-reassurance">Your existing workspace permissions still apply.</p>
     </section>
