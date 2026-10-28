@@ -1,68 +1,92 @@
 # Engram design system
 
-This is the authority for frontend visual and interaction decisions. It establishes the graphite-and-mint direction; the canonical pulse logo remains unchanged. Read this document and inspect the local `/design-system` gallery before changing an app view, public page, graphic, interaction, or loading state. The repository [frontend contract](../AGENTS.md) requires every future frontend change to consume or extend this system.
+This is the authority for frontend visual and interaction decisions. Read this document and inspect the local `/design-system` gallery before changing an app view, public page, graphic, interaction, or loading state. The repository [frontend contract](../AGENTS.md) requires every future frontend change to consume or extend this system. The canonical pulse logo is unchanged.
 
-The direction takes inspiration from Supabase’s precise technical interfaces, with Engram’s own graphite palette, softer mint, and canonical pulse identity. Neutral surface layers, thin borders, compact Inter typography, consistent insets, and restrained feedback make complex context easier to scan. Marketing can use a larger type scale and more open composition; the component grammar stays the same. Technical diagrams remain explanatory. They must never look like evidence that an agent connected, saved memory, or completed work.
+The direction is plain, quiet and confident: one sans typeface (local Inter) at normal letter-spacing, generous whitespace, few colors and no decoration. Content is separated by space, not by rules, borders or ornaments. Marketing pages use a larger type scale and more open composition; the component grammar stays the same. Nothing visual may look like evidence that an agent connected, saved memory, or completed work.
+
+## Do not use
+
+These ten patterns are removed from the marketing pages and are being removed from the app. Do not add them anywhere.
+
+1. **Tags.** No badges, pills, chips, stickers or label tags ("New", "Beta", kind labels). State the information as plain text in the normal text style, or drop it if it is redundant.
+2. **Italicized words.** No italics, and no accent-colored "highlighted" words in headlines. A headline is one color.
+3. **Serif display type or negative kerning.** Inter only; no Instrument Serif or other serif. `letter-spacing` is never negative, and uppercase labels get no wide tracking.
+4. **Over-detailed UI.** No decorative illustrations, faux interface mockups, glow, grain or gradient effects, ornamental animation or heavy shadows. Keep fewer elements per section and only functional motion.
+5. **Dividers.** No `<hr>`, no border-top/bottom section separators, no rule lines between list items. Use spacing.
+6. **Extra color shades and opacities.** Use only the core palette below. No opacity-based text or surface variants, `color-mix` tints, rgba overlays or multiple accent shades.
+7. **Containers with borders.** No bordered cards, panels or sections. Group with whitespace, or at most one flat surface fill with no border. Exception for usability: form inputs, selects, choice controls and focus indicators keep a visible boundary, and buttons keep a clear shape.
+8. **Diagrams.** No decorative diagrams, connection canvases, SVG motifs or animated "context in motion" compositions. Say it in a sentence or a list.
+9. **Code breadcrumbs.** No monospace, uppercase, slash-separated or path-like labels ("CONNECTION DIAGRAM / CANVAS LAYER", kickers, file-path captions). If a label is needed, use a normal sans heading. Monospace is only for code and commands a person copies.
+10. **Section numbering.** No "01 /", "02 —" or "Step 1" decorations. A genuinely ordered list of steps may be a plain `<ol>`.
 
 ## Files and adoption
 
 - `web/design-system.css`: semantic tokens, native primitives, reusable components, motion, accessibility, and the isolated gallery layout.
-- `web/design-system.js`: safe DOM helpers `memoryOrbit`, `memoryStream`, `statusBadge`, `statusText`, `profileAvatar`, `resourceChip`, `progressBar`, `setProgress`, `loadingState`, `observeLoadingMotion`, `observeContextFlow`, `contextFlowArt`, `highlightArt`, and `profileLayoutPreview` (plus the legacy `sticker` alias). They parse no HTML or stylesheet and make no API calls. Avatar images use only the local photo endpoint or a bounded PNG draft. Decorative artwork defaults to static; its motion requires an explicit opt-in. Labeled loading helpers move only while their owning operation is pending.
+- `web/design-system.js`: safe DOM helpers `statusBadge`, `statusText`, `evidenceList`, `taskRecord`, `profileAvatar`, `resourceChip`, `progressBar`, `setProgress`, `loadingState` and `observeLoadingMotion`. They parse no HTML or stylesheet and make no API calls. Labeled loading helpers move only while their owning operation is pending. Deprecated helpers kept only for current app callers: `memoryOrbit` (signup), `sticker` (signup), `highlightArt` (public profile) and `profileLayoutPreview` (profile editor). The retired `memoryStream`, `observeContextFlow`, `contextFlowArt` and `observeLogoTicker` have been removed.
 - `web/select-control.js`: progressive single-select enhancement, re-exported as `enhanceSelect` and `observeSelects` from `design-system.js`. Native values, validation, form submission and existing change handlers remain authoritative.
-- `web/logo-ticker.js`: `observeLogoTicker`, re-exported from `design-system.js`, progressively animates an informational local-logo list while keeping one accessible original and a full static fallback.
 - `web/design-system.html` and `web/design-system-gallery.js`: interactive review examples. `/design-system.html` works as a static path; the local server also maps `/design-system`.
 - Surface styles own composition: `app-theme.css` for the app and `marketing.css` for public pages. They may arrange and size components; they must not create parallel button, badge, field, or motion systems.
 
-Use `<html data-design-system="signal">`. Load `/design-system.css` first, then legacy styles if needed, then the owning surface stylesheet. The document marker enables a higher-priority visual bridge over legacy generic body/control/type rules. The bridge deliberately leaves record rows, card grids, and control layout to the owning surface. Scoped compositions such as `.workspace .activity-card` can override layout and surface-specific presentation with DS tokens. Do not copy the shared primitive declarations into a surface stylesheet.
+Use `<html data-design-system="signal">`. Load `/design-system.css` first, then legacy styles if needed, then the owning surface stylesheet. The document marker enables a higher-priority visual bridge over legacy generic body/control/type rules. The bridge deliberately leaves record rows, card grids, and control layout to the owning surface. Do not copy the shared primitive declarations into a surface stylesheet.
 
-Legacy aliases `--muted`, `--line`, `--soft`, `--radius-control`, `--radius-card`, `--radius-panel`, `--ease-out`, and `--font-mono` resolve to DS tokens. The marked root restores aliases after older `:root` declarations. No new frontend code should introduce an unprefixed token.
+Legacy aliases `--muted`, `--line`, `--soft`, `--radius-control`, `--radius-card`, `--radius-panel`, `--ease-out`, and `--font-mono` resolve to DS tokens. No new frontend code should introduce an unprefixed token.
 
 ## Tokens
 
+The interface is dark only (`color-scheme: dark`); there is no separate light theme, so a light color-scheme preference renders the same palette.
+
 | Role | Token | Value / use |
 | --- | --- | --- |
-| Canvas | `--ds-paper` | `#111313`; retained name for compatibility, now graphite |
-| Primary text | `--ds-ink` | `#ededed`; never assume “ink” is a dark background |
-| Surface | `--ds-surface` | `#181b1a` |
-| Raised/recessed layer | `--ds-surface-soft` | `#202423` |
-| Secondary text | `--ds-muted` | `#a1aaa6` |
-| Decorative separators | `--ds-line`, `--ds-line-strong` | `#2c3230`, `#424b47` |
-| Input boundaries | `--ds-input-border` | `#65716b`; standalone controls need this stronger boundary |
-| Accent | `--ds-accent`, `--ds-accent-ink`, `--ds-accent-muted` | `#77d9ad`, `#10261b`, `#1b3529`; mint action fill, its dark text, and quiet tint |
-| Accent hover | `--ds-accent-hover` | `#8ae4bd`; a subtle primary-control hover shift |
-| Inverse | `--ds-inverse`, `--ds-inverse-ink` | `#ededed`, `#111313`; intentional light plate or export, never infer it from text tokens |
-| Compatibility tones | `--ds-lime`, `--ds-lilac`, `--ds-apricot` | `#1b3529`, `#252d35`, `#332c24`; subdued legacy fills, not new accent names |
-| Semantic states | `--ds-success`, `--ds-warning`, `--ds-danger`, `--ds-info` | Light state text paired with matching dark `-bg` tokens and a visible label |
-| Contribution chart | `--ds-chart-0/1/2/3/4` | `#202423`, `#254333`, `#34694d`, `#4e9b73`, `#77d9ad`; zero and four activity levels, always accompanied by values/labels |
-| Type | `--ds-font-sans`, `--ds-font-mono` | Local Inter; system monospace |
-| Legacy expressive type | `--ds-font-editorial` | Alias to Inter. `.ds-editorial` is a mint Inter emphasis; no serif or italic treatment |
+| Canvas | `--ds-paper` | `#111313`; the page background |
+| Surface | `--ds-surface` | `#181b1a`; the one flat fill, used only when grouping is essential |
+| Text | `--ds-ink` | `#ededed`; headings and body text |
+| Muted text | `--ds-muted` | `#a1aaa6`; supporting copy, captions, metadata |
+| Accent | `--ds-accent`, `--ds-accent-ink` | `#77d9ad`, `#10261b`; the primary action fill and its text, text links, focus ring |
+| Control boundary | `--ds-input-border` | `#65716b`; inputs, selects, secondary buttons and choice controls |
+| Functional states | `--ds-success`, `--ds-warning`, `--ds-danger` | Text color for a state, always beside words that name it |
+| Deprecated compatibility | `--ds-surface-soft`, `--ds-accent-hover`, `--ds-info`, `--ds-*-bg` | Aliases of the core palette. Do not use in new work |
+| Deprecated legacy values | `--ds-line`, `--ds-line-strong`, `--ds-accent-muted`, `--ds-lime`, `--ds-lilac`, `--ds-apricot`, `--ds-inverse`, `--ds-inverse-ink` | Kept for the email renderer and remaining app callers. No shared primitive or public page uses them. Do not use in new work |
+| Data and identity | `--ds-chart-0/1/2/3/4`, `--ds-avatar-1/2/3/4/5`, `--ds-avatar-face` | App-only: the contribution-chart ramp and local fallback avatar colors |
+| Type | `--ds-font-sans`, `--ds-font-mono` | Local Inter for everything; system monospace only for code and commands |
+| Legacy expressive type | `--ds-font-editorial` | Alias to Inter. `.ds-editorial` renders as inherited plain text |
 | Text sizes | `--ds-text-xs/sm/base/lg/xl/2xl/display` | `.75/.8125/.875/1.0625/1.375/2rem`, then `clamp(2.75rem,6vw,5rem)` |
 | Mobile control text | `--ds-text-input` | `1rem`; minimum for text inputs, selects, and textareas at widths ≤600px |
 | Spacing | `--ds-space-1/2/3/4/5/6/8/10/12/16/20/24` | `4/8/12/16/20/24/32/40/48/64/80/96px` |
-| Heading rhythm | `--ds-gap-label-title`, `--ds-gap-title-body`, `--ds-gap-heading-actions` | `12px`, `12px`, `20px`; hero groups can use larger steps |
-| Corners | `--ds-radius-control/card/panel/pill` | `6/8/12/999px`; pill reserved for resource chips |
-| Action sizing | `--ds-button-height`, `--ds-button-padding-block/inline`, `--ds-button-font-weight` | 32px desktop height with 5px/10px padding and 450 weight; height becomes 44px on narrow screens or coarse pointers. Icon actions use the height for both dimensions |
-| Shadows | `--ds-shadow-press/card/sticker/dialog` | Subtle inset control highlight, almost-flat card highlight, no sticker shadow, focused overlay |
-| Motion | `--ds-duration-fast/base/slow` | `120/180/220ms` |
-| Illustration entrance | `--ds-duration-illustration` | `220ms`; one finite, occasional explanatory SVG entrance |
-| Context-flow explanation | `--ds-context-flow-phase` | `880ms`; three phases, 2640ms total, once on entering view or on deliberate pointer replay |
-| Controlled circuit loop | `--ds-context-loop-duration`, `--ds-context-identity-duration` | `8s` circuit and `24s` three-identity crossfade. Automatic decorative loop; optional `pauseOnInteraction`, no visible playback controls or activity claim |
-| Logo ticker | `--ds-ticker-speed`, `--ds-ticker-item-gap`, `--ds-ticker-group-gap`, `--ds-ticker-edge-fade` | `30px/sec`, `space-8`, `space-10`, `32px`. Measured seamless transform; fade applies only to the moving presentation |
-| Easing | `--ds-ease-out`, `--ds-ease-in-out` | Responsive feedback; occasional on-screen movement |
+| Heading rhythm | `--ds-gap-label-title`, `--ds-gap-title-body`, `--ds-gap-heading-actions` | `12px`, `12px`, `20px` |
+| Corners | `--ds-radius-control/card/panel/pill` | `6/8/12/999px` |
+| Action sizing | `--ds-button-height`, `--ds-button-padding-block/inline`, `--ds-button-font-weight` | 32px desktop height with 5px/10px padding and 450 weight; height becomes 44px on narrow screens or coarse pointers |
+| Shadows | `--ds-shadow-press/card/sticker`, `--ds-shadow-dialog` | The first three are `none`. One shadow for overlays only: dialogs, select menus and toasts |
+| Motion | `--ds-duration-fast/base/slow` | `120/180/220ms`; control feedback and overlays |
+| Illustration entrance | `--ds-duration-illustration` | `220ms`; deprecated, used only by the app's remaining `memoryOrbit` |
+| Easing | `--ds-ease-out`, `--ds-ease-in-out` | Responsive feedback |
 | Pending motion | `--ds-shimmer-duration`, `--ds-progress-duration`, `--ds-progress-height` | `1400ms`, `1200ms`, `4px`; only while a real request is pending (or a labeled local preview) |
-| Fresh activity text | `--ds-status-shimmer-duration`, `--ds-status-shine-ink` | `3200ms`; one subtle mint-tinted sweep with rest. Only fresh running activity or an explicitly labeled component example |
-| Fallback avatars | `--ds-avatar-1/2/3/4/5`, `--ds-avatar-face` | Mint `#77d9ad`, sky `#9fc7e8`, sand `#dec39e`, lilac `#c3b4df`, pink `#e3b5c9`; dark features `#10261b`. Local deterministic fallback illustrations; recognized products retain their original marks |
-| Profile image sizes | `--ds-profile-avatar-sm/md/lg` | `56/80/112px`; fixed circular human profile images with a graphite/mint memory-bloom fallback |
-| Visual layout preview | `--ds-choice-preview-min-height` | `132px`; a stable decorative thumbnail region inside a native radio choice |
-| Highlight art | `--ds-highlight-art-ratio` | `24 / 11`; shared decorative art-slot ratio, sized by the owning composition |
-| Week pulse bar | `--ds-week-bar-height` | `72px`; static comparison height, paired with exact supplied counts |
+| Fresh activity text | `--ds-status-shimmer-duration`, `--ds-status-shine-ink` | `3200ms`; an accent sweep on fresh running activity only |
+| Profile image sizes | `--ds-profile-avatar-sm/md/lg` | `56/80/112px` |
+| Visual layout preview | `--ds-choice-preview-min-height` | `132px` |
+| Highlight art | `--ds-highlight-art-ratio` | `24 / 11` |
+| Week pulse bar | `--ds-week-bar-height` | `72px` |
 | Busy indicator | `--ds-spinner-size/stroke/duration` | `16px/1.6px/720ms`; actual loading feedback only |
 
-Primary text on the canvas has approximately 15.92:1 contrast; muted text has 7.83:1 on canvas and 6.59:1 on the soft surface. The input boundary has approximately 3.41:1 against the control surface. Accent-ink on the mint action has approximately 9.36:1. Decorative separators can be quieter because they only group content; an interactive boundary needs the control token or another clear affordance.
+Text on the canvas has approximately 15.92:1 contrast; muted text has 7.83:1 on the canvas and about 7.2:1 on the surface. The control boundary has approximately 3.7:1 against the canvas and 3.4:1 against the surface. Accent-ink on the accent fill has approximately 9.36:1. The dialog backdrop keeps a dark translucent scrim as a functional modal overlay.
 
-The default is dark. Keep text and surface roles separate: `--ds-ink` is now light text. Use `--ds-accent` with `--ds-accent-ink` for a primary action, or the explicit inverse pair for an intentional light region. Do not place paper text on an ink background by habit. Legacy tone cards keep light text and the shared muted text token. `data-tone="ink"` now means the deep canvas layer; it is retained as an API compatibility name.
+At widths of 600px and below, native text inputs, selects, and textareas use `--ds-text-input` (1rem, normally 16px). This avoids iOS focus zoom caused by smaller control text while respecting the user's root font preference. The shared marked-root selectors preserve a minimum 44px height for native text inputs and selects and outrank legacy compact form styles without `!important`; textareas retain their larger 110px minimum. Surface styles may stack or resize controls but must not shrink their targets or text below these minimums. Checkbox and radio controls are excluded.
 
-At widths of 600px and below, native text inputs, selects, and textareas use `--ds-text-input` (1rem, normally 16px). This avoids iOS focus zoom caused by smaller control text while respecting the user's root font preference. The shared marked-root selectors preserve a minimum 44px height for native text inputs and selects and outrank legacy compact form styles without `!important`; textareas retain their larger 110px minimum. Surface styles may stack or resize controls but must not shrink their targets or text below these minimums. Checkbox and radio controls are excluded. The gallery forms demonstrate the same rule automatically.
+## Deprecated primitives
+
+Kept working (restyled plainly) only while app callers remain. Do not use them in new work; delete each once nothing references it.
+
+| Primitive | Now renders as |
+| --- | --- |
+| `.ds-badge`, `statusBadge`, `.ds-sticker`, `sticker` | Plain inline text in muted color; success, warning and danger keep their text color. No border, fill or padding |
+| `.ds-eyebrow` | Plain muted sans text, normal case and tracking |
+| `.ds-editorial`, `--ds-font-editorial` | Inherited text; no accent color |
+| `.ds-divider` | Empty vertical space only |
+| `.ds-card[data-tone]` | Every tone is the one surface; `ink` sits on the canvas |
+| `.ds-product-logo-frame`, `.ds-logo-backplate` | Borderless light plate. Prefer the bare mark with `data-tone="mono"` |
+| `.ds-resource-chip`, `resourceChip` | Unbordered, unfilled inline label with its mark |
+| `memoryOrbit`, `.ds-orbit`, `.ds-motif-*` | The app's signup diagram, with normal letter-spacing |
+| `highlightArt`, `profileLayoutPreview` | Unchanged decorative art for current public-profile callers |
+| Tokens in the two deprecated token rows above | See Tokens |
 
 ## Shared primitives
 
@@ -77,48 +101,47 @@ these same label-first actions without reserving a trailing icon slot.
 | --- | --- | --- |
 | Button / link action | Native `button`, `.button`, `.button-link`, or `.ds-button` | 32px desktop target, 44px at mobile widths or coarse pointers; visible action label; use a button for a mutation and an anchor for navigation |
 | Primary button | `.primary` or `.ds-button[data-variant="primary"]` | Mint fill with accent-ink text; one main action per moment |
-| Accent action | `.ds-button[data-variant="accent"]` (`lime` is a legacy alias) | Mint text on quiet accent tint; use sparingly |
-| Secondary / quiet / destructive | Default outlined; `[data-variant="text"]` or `.text`; `[data-variant="danger"]` | Destructive labels must name the action; no color-only confirmation |
+| Accent action | `.ds-button[data-variant="accent"]` (`lime` is a legacy alias) | Accent text and boundary on no fill; use sparingly |
+| Secondary / quiet / destructive | Default ghost with the control boundary; `[data-variant="text"]` or `.text`; `[data-variant="danger"]` | Destructive labels must name the action; no color-only confirmation |
 | Size | `.small`, `.large` | One compact action density: default, small and legacy large actions use the shared 32px desktop treatment. Controls increase to 44px for coarse pointers and at widths ≤600px; long labels grow naturally |
 | Standalone touch link | `.ds-touch-target` on an anchor | Shared unstyled inline-flex target. At mobile widths/coarse pointers, it is at least 44×44px. Keep inline prose links in normal text flow |
 | Icon action | `.ds-icon-button` or `.icon-button` | 32×32px desktop, 44×44px on narrow/coarse-pointer screens; accessible name required |
 | Fallback agent avatar | `.ds-agent-avatar` through `agentVisual` / `visualIcon` | Local deterministic Beam face only for unknown agents; visible name/provenance stay separate. Public callers use the constant public-safe seed. Known products keep their actual logo |
 | Human profile image | `profileAvatar({src,label,size})`; `.ds-profile-avatar` | Sizes `sm/md/lg` are 56/80/112px. One accessible image label; static local memory-bloom fallback while missing, loading or unavailable. Only the versioned local public PNG endpoint or bounded PNG data drafts are accepted |
 | Task record | `taskRecord(record,{headingLevel})`; `.ds-task-record`, `.ds-task-plan`, `.ds-task-record-list` | Text-only continuation record: next step (accent rule), objective, plan steps with To do/In progress/Done/Dropped badges, decisions with reasons, blockers, constraints, open questions and portable references. Empty sections are omitted. It is agent-reported; the owning view shows author, save time and the recheck rule. Plan rows stack below 600px. Gallery: `/design-system#task-record` |
-| Release log | `ol.ds-release-log` of `li.ds-release-entry` with `time.ds-release-time[datetime]`, `.ds-release-content`, badge, `.ds-release-title`, `.ds-release-summary`, `.ds-release-refs` | Static, newest-first changelog entries. The time element carries a UTC ISO timestamp and shows date plus UTC time; the badge names the kind (New accent, Improved lilac, Fixed apricot, Security info, Under the hood neutral); references link to the PR and commit. Two columns stack below 600px, where reference links get 44px targets. The public `/changelog` is rendered from `docs/changelog.json` by `bun scripts/changelog.ts render`. Gallery: `/design-system#release-log` |
+| Release log | `ol.ds-release-log` of `li.ds-release-entry` with `time.ds-release-time[datetime]`, `.ds-release-content`, `p.ds-release-kind`, `.ds-release-title`, `.ds-release-summary`, `.ds-release-refs` | Static, newest-first changelog entries separated by space, no rules. The time element carries a UTC ISO timestamp and shows date plus UTC time in Inter with tabular numbers; the kind (New, Improved, Fixed, Security, Under the hood) is plain muted text, never a tag; references link to the PR and to the commit as plain text ("Commit abc1234"). Two columns stack below 600px, where reference links get 44px targets. The public `/changelog` is rendered from `docs/changelog.json` by `bun scripts/changelog.ts render`. Gallery: `/design-system#release-log` |
 | Recorded evidence | `evidenceList(rows,{label})`; `.ds-evidence-list` | A labeled native definition list of text-only `{label,value,note}` records. Unknown values stay explicit. Two flexible columns wrap within narrow containers; values use tabular numbers. Keep access, individual memory receipts, explicit workflow checks and automatic-use claims separate. Client declarations never prove behavior. Gallery: `/design-system#memory-evidence` |
-| Product logo | `img.ds-product-logo`, optional `data-size="28"` | 24px default or 28px; `object-fit: contain`, local source, no distortion or recoloring |
+| Product logo | `img.ds-product-logo`, optional `data-size="28"`, optional `data-tone="mono"` | 24px default or 28px; `object-fit: contain`, local source, no distortion. One-color marks drawn in black (`currentColor` SVGs) take `data-tone="mono"` so they show light on the dark canvas; colored marks render unchanged. No frame or tile |
 | Attribution | `.ds-attribution`, `.ds-attribution-label`, `.ds-attribution-links`, `.ds-attribution-link.ds-touch-target`, optional `.ds-attribution-avatar` | Compact source credits with visible names, original local product marks and 24px circular author photos. Native links keep shared focus and mobile targets; groups wrap without shrinking images. Participates in heading rhythm; static with or without JS. Gallery: `/design-system#attribution` |
-| Logo ticker | `observeLogoTicker(root, options)`; `.ds-logo-ticker`, viewport/track/list | One accessible original list; inert hidden visual copies only. No visible playback controls; hover/focus/background/offscreen pause; reduced/no-JS static list wraps in full |
-| Logo backplate | `.ds-product-logo-frame`, optional `data-tone="inverse"`; `.ds-logo-backplate` for an existing local-mark frame | Optional 44px light neutral backplate for unchanged source marks; keep adjacent visible product name |
+| Logo list | `ul.ds-logo-list` of `li` with an `img.ds-product-logo` and the visible name | Static wrapping grid of every mark beside its name. No frames, tiles, ticker or motion. The homepage authors all 21 catalog items in HTML. Gallery: `/design-system#logo-list` |
+| Logo backplate (deprecated) | `.ds-product-logo-frame`, `.ds-logo-backplate` | Borderless light plate kept for app callers; new work uses the bare mark |
 | Fields | `.ds-field` or `.field` wrapping native controls | Visible label, associated hint/error, correct autocomplete, retain drafts after failure |
 | Select | `enhanceSelect(native)` or `observeSelects(root)`; `.ds-select`, `.ds-select-trigger`, `.ds-select-popup` | Accessible select-only combobox, explicit selected check, wrapped labels, viewport-bounded list. Native form/validation/value retained. Multiple and unsupported controls stay native; see contract below |
 | Invalid field | `aria-invalid="true"` + `.ds-field-error` | Link error text with `aria-describedby`; explain the correction |
-| Card | `.ds-card`, optional `data-tone="accent/lime/lilac/apricot/ink"` | Layout inside the card belongs to the surface; a card is not automatically clickable |
+| Card | `.ds-card` | One flat surface, no border or shadow, used only when grouping is essential. Tones are deprecated and all render as the surface. A card is not automatically clickable |
 | Visual radio choice | `.ds-choice-group` fieldset, `.ds-choice-options`, `.ds-choice-card` label, native radio, `.ds-choice-visual`, `.ds-choice-copy/title/description` | Native grouping, checked/disabled and arrow-key behavior. Keep a visible legend and text beside the decorative thumbnail. Never publish merely by choosing a layout |
 | Highlight card | `.ds-card.ds-highlight-card`, `.ds-highlight-visual/content/title/description/meta/actions` | Only deliberately public text and approved references. Static art is decorative. Keep optional links separate from native disclosure summaries |
 | Highlight disclosure | Native `details.ds-highlight-disclosure` with `summary` | Keyboard immediate, readable in document flow; optional `.ds-disclosure-indicator` follows open state |
 | Focus row | `.ds-focus-row`, `.ds-focus-mark/content/label/title/description/meta` | Neutral summary row. A logo may replace the repeated product name when its canonical name remains accessible. Preserve observed/reported provenance in accessible text and a title when omitting repeated visible copy; the row does not imply verified work |
 | Seven-day pulse | `.ds-week-pulse` list, `.ds-week-day`, native `.ds-week-button`, `.ds-week-bar` and `.ds-week-bar-fill`, `.ds-week-label/count` | Supply real UTC dates and counts. Static ratio only, no invented activity. `aria-pressed` shows selected day; roving focus and arrow/Home/End handling belong to the owner |
-| Badge | `.ds-badge[data-tone]` or `statusBadge(text,{tone,className})` | Tone: neutral, accent, lime, lilac, apricot, success, warning, danger, info; visible text required |
+| Badge (deprecated) | `.ds-badge[data-tone]` or `statusBadge(text,{tone,className})` | Renders as plain inline text: muted, or the success/warning/danger text color. Do not add new badges; write the state as words |
 | Activity text | `statusText(label,{active=false,className})`; `.ds-status-text[data-active]` | Solid readable copy with a decorative sheen only for fresh running work. Use `observeLoadingMotion(root)`. Offscreen, background, keyboard, reduced-motion and forced-color states stay static; the owner stops active state when freshness expires |
-| Legacy sticker | `.ds-sticker` or `sticker(text,{tone,tilt})` | Compatibility alias with the same restrained badge treatment; tilt is no longer rendered. Use badges in new UI |
-| Eyebrow / editorial accent | `.ds-eyebrow`, `.ds-editorial` | Compact mono eyebrow; mint Inter emphasis for a short phrase. Operational instructions keep neutral text |
-| Heading group | `.ds-heading-group` | Badge/eyebrow → title → description → actions; shared semantic gaps preserve breathing room |
-| Heading label row | `.ds-heading-label` inside a heading group | A badge/eyebrow plus an optional secondary action, such as Back; the row gets the same gap before the title |
+| Legacy sticker (deprecated) | `.ds-sticker` or `sticker(text,{tone,tilt})` | Same plain-text treatment as a badge |
+| Eyebrow / editorial accent (deprecated) | `.ds-eyebrow`, `.ds-editorial` | Both render as plain text. Do not add kickers or highlighted words |
+| Heading group | `.ds-heading-group` | Title, then description, then actions; shared semantic gaps preserve breathing room |
+| Heading label row | `.ds-heading-label` inside a heading group | An optional secondary action above the title, such as Back; the row gets the same gap before the title |
 | Busy | `loadingState({label,description,compact,lines})`; `.ds-spinner`; `.ds-skeleton` inside `[aria-busy="true"]` | Labeled pending operation. Skeleton shimmer starts only for busy content; its geometry remains stable. Use `observeLoadingMotion(root)` and dispose it when the surface unmounts |
-| Context-flow illustration | `.ds-context-flow`, `.ds-context-flow-node[data-flow-stage]`, `observeContextFlow(root, options)` | Finite save → memory → recall by default; explicit controlled loop for the hero. Clear visible illustrative caption or label; no live state or hidden essential copy. See motion contract below |
 | Progress | `progressBar({label,value,max,valueText,className})`, `setProgress(element, options)` | Omit value for unknown-duration work. Pass an actual measured count plus max for determinate work. Never invent a percentage or advance on a timer |
 | Action result | `data-feedback="success/error"` on the actual button; optional `.ds-feedback-icon` | Set only after the operation result. Preserve the accessible label and visible result. The icon has one 180ms response; no loop |
 | Disclosure | `.ds-disclosure-toggle`, optional `.ds-disclosure-indicator` | Native button with accurate `aria-expanded` and `aria-controls`; Enter/Space toggle, Escape closes and returns focus. Indicators turn over 120ms; keyboard/reduced motion is immediate |
 | Dialog | `.ds-dialog` on native `dialog` | Title via `aria-labelledby`, native focus management, Escape support, return focus to opener |
-| Panel | `.ds-panel` with `.ds-panel-header`, `.ds-panel-body`, `.ds-panel-footer` | Shared boundary, 20px inset (16px mobile), optional header/footer rules. The surface arranges content |
+| Panel | `.ds-panel` with `.ds-panel-header`, `.ds-panel-body`, `.ds-panel-footer` | One flat surface with a 20px inset (16px mobile); no border and no header/footer rules. The surface arranges content |
 | Toolbar | `.ds-toolbar` | Flexible wrapping action row. Keep action meaning and accessible names visible |
 | Tabs | `.ds-tabs` containing `.ds-tab` | Use native links with `aria-current="page"` for navigation; buttons with tab roles and `aria-selected` require complete arrow/Home/End keyboard handling and associated panels. Selected state uses a mint underline |
 | Metric | `.ds-metric` with `.ds-metric-label`, `.ds-metric-value`, `.ds-metric-note` | Tabular value with visible meaning and provenance. No invented activity or hidden unit |
-| Divider | `.ds-divider` | Decorative 1px horizontal separator; use semantic headings to establish content hierarchy |
+| Divider (deprecated) | `.ds-divider` | Renders as empty space. Separate content with spacing and headings |
 | Status dot | `.ds-status-dot` beside visible state text | Inherits text color. Never conveys state alone |
-| Feedback | `.ds-notice[data-tone]` (neutral, success, warning, danger), `.ds-toast` | Label state; errors should remain until a user can act; avoid disappearing essential instructions |
+| Feedback | `.ds-notice[data-tone]` (neutral, success, warning, danger), `.ds-toast` | A flat surface; the state is carried by its text color and words, never a tinted fill or border. Errors should remain until a user can act; avoid disappearing essential instructions |
 | Command with copy | `.ds-command` containing a `code.ds-code-scroll` and the owner's Copy button | One-line value beside its action; the value scrolls, the action never does. At ≤420px the action moves below at full width. The scroll region keeps `tabindex="0"`, `role="region"` and a label naming the value. Gallery: `/design-system#device-approval` |
 | Confirmation code | `.ds-confirm-code` with `.ds-confirm-code-label` and `.ds-confirm-code-value` | A short, non-secret code a person compares with another screen before acting. Mono, tabular and large; steps down at ≤360px. Place it directly above the action it guards. Gallery: `/design-system#device-approval` |
 
@@ -170,7 +193,7 @@ Opening, hovering, typing or navigating highlights a choice without changing the
 
 Reversible per-instance accessors forward `value`, `selectedIndex`, `disabled`, `required` and each option's `selected` property to their original native getters/setters, then synchronize the display. They do not change global prototypes. No-op polling assignments preserve the open highlight, scroll position and rendered option identity. Native reset restores the original selection; becoming valid clears locally generated validation feedback. Attribute, optgroup, hidden-option and option-text changes synchronize through the observer. `update()` is available for an unusual external mutation; `dispose()` restores native descriptors/attributes, removes generated nodes and listeners, and respects a caller removing or moving the original select. Controls with `multiple`, a list size above one, `data-select-native`, or unsupported property forwarding retain native behavior.
 
-Shared styles own the thin input boundary, mint selected check, distinct active outline, group labels, 36px desktop/44px mobile and coarse-pointer targets, long-label wrapping, and scroll-bounded menu. The popup flips toward the larger usable viewport space, clamps horizontally, and responds to viewport resize/scroll. It uses the native popover top layer when available and otherwise an in-page portal; a popup always remains inside its owning dialog to respect modal interaction. Keyboard and reduced-motion opening are immediate; pointer opening may use a 120ms opacity entrance. Menus use safe DOM text and fixed SVG marks, with no parsed markup or external assets.
+Shared styles own the thin input boundary, accent selected check, distinct active outline, group labels, 36px desktop/44px mobile and coarse-pointer targets, long-label wrapping, and scroll-bounded menu. The popup flips toward the larger usable viewport space, clamps horizontally, and responds to viewport resize/scroll. It uses the native popover top layer when available and otherwise an in-page portal; a popup always remains inside its owning dialog to respect modal interaction. Keyboard and reduced-motion opening are immediate; pointer opening may use a 120ms opacity entrance. Menus use safe DOM text and fixed SVG marks, with no parsed markup or external assets.
 
 Surface styles arrange `.ds-select` wherever they previously arranged a native select, including filter flex sizing and workspace picker width. Set `data-select-variant="embedded"` on the native select when its containing surface already supplies the control boundary; the shared wrapper mirrors that variant without creating a second border. Preserve the shared focus and target rules. The `#select-controls` gallery demonstrates grouped/disabled/long options, required validation, invalid and empty states, native multiple fallback, native reset and programmatic synchronization. The same component and keyboard behavior apply on narrow screens.
 
@@ -217,9 +240,9 @@ The `#profile-patterns` gallery includes both layout choices, a disabled-choice 
 
 ### Heading rhythm
 
-Wrap a label/badge, heading, and optional description in `.ds-heading-group`. The label-to-title and title-to-body gaps are 12px; actions begin 20px after the preceding content. Hero groups may choose 20px or 24px shared spacing steps. Apply these values consistently instead of adding local ad hoc spacing. Cards and dialogs also apply the shared adjacent label/heading/body rhythm when no wrapper is needed. The gallery uses this pattern on every section heading and the dialog so a badge never touches its title.
+Wrap a heading, optional description and actions in `.ds-heading-group`. The label-to-title and title-to-body gaps are 12px; actions begin 20px after the preceding content. Hero groups may choose 20px or 24px shared spacing steps. Apply these values consistently instead of adding local ad hoc spacing. Cards and dialogs also apply the shared adjacent label/heading/body rhythm when no wrapper is needed. The gallery uses this pattern on every section heading and the dialog so a badge never touches its title.
 
-When the top row contains a badge plus a Back action, wrap that row in `.ds-heading-label`. It is a layout container, not an HTML `label`. It participates in the same label-to-title spacing. Keep the heading reset low-specificity with `:where(...)`; a reset must never outrank the adjacent heading/body spacing rules. Verify computed margins as well as appearance, especially on narrow screens.
+When a Back action sits above the heading, wrap that row in `.ds-heading-label`. It is a layout container, not an HTML `label`. It participates in the same label-to-title spacing. Keep the heading reset low-specificity with `:where(...)`; a reset must never outrank the adjacent heading/body spacing rules. Verify computed margins as well as appearance, especially on narrow screens.
 
 For source credits above a heading, use `.ds-attribution` with a quiet label and
 `.ds-attribution-links` holding named native links. Use `.ds-product-logo` for an
@@ -234,7 +257,6 @@ text-only fallback. This static pattern has no pending or success state.
 ```html
 <div class="ds-heading-group">
   <div class="ds-heading-label">
-    <span class="ds-badge" data-tone="accent">Account access</span>
     <a href="/app#signin">Back to sign in</a>
   </div>
   <h2>Continue to your workspace.</h2>
@@ -242,27 +264,9 @@ text-only fallback. This static pattern has no pending or success state.
 </div>
 ```
 
-```js
-import { memoryOrbit, memoryStream, statusBadge } from '/design-system.js';
-
-slot.append(memoryOrbit()); // Decorative and static by default.
-darkSlot.append(memoryOrbit({ compact: true, className: 'ds-orbit--on-ink' }));
-hero.append(memoryOrbit({ motion: 'intro' })); // Initial hero mount only; never polling.
-hero.append(memoryOrbit({ agents: true })); // Named agent ecosystem, using bundled marks.
-diagram.append(memoryStream({ label: 'Illustration of saving and recalling shared context.' }));
-caption.append(statusBadge('Illustration', { tone: 'accent' }));
-status.append(statusBadge('Read only', { tone: 'neutral' }));
-```
-
-An explicit `label` makes a motif an accessible image; the default is `aria-hidden="true"`. Put essential product explanation in normal HTML as well. The connection diagram, still named `memoryOrbit` for compatibility, uses precise rectilinear paths, neutral node panels, and an accent core. `.ds-orbit--on-ink` and `.ds-memory-stream--on-ink` remain compatibility classes for the deep canvas layer; all variants use the same semantic line and text tokens. `motion: 'intro'` adds `.ds-motif-intro`: connector groups make a subtle 220ms transform/opacity entrance, the core enters over 180ms, and nodes enter over 120ms with 30/60ms stagger delays. It finishes once and stays still. The app may opt in on the first auth-story mount, tracking that mount outside the renderer; every onboarding/polling rerender must remain static. The gallery exposes a deliberate replay. Reduced motion and keyboard input skip the movement. Custom page illustrations may add a composition but must consume DS colors and stroke/type decisions. Reusable variants belong here and in the gallery.
-
-`memoryStream(options)` returns a responsive wrapper, not a bare SVG. Its wide SVG and narrow HTML ordered steps share one fixed set of three labels, titles, and supporting lines. At viewport widths ≤600px, or when the component’s container is ≤700px, only the HTML cards display; the wide SVG is removed from layout and accessibility exposure. This keeps labels at shared 12px/14px text sizes instead of shrinking a 900px diagram into a phone. A provided illustration label names whichever representation is visible; without a label both remain decorative. The mobile sequence is static, including when the wide illustration opts into its finite intro. The gallery demonstrates the same helper consumed by public pages.
-
-`memoryOrbit({agents:true})` adds Claude, OpenClaw, Grok Bot, Muse and Instinct around the shared-memory core. Each pod uses a fixed local image reference, preserves the original mark's proportions and color, and keeps the product name visible. This option identifies examples of the agent ecosystem; it must not imply a live connection, tested setup, endorsement, or broader integration support. Any surface that needs this agent diagram and the gallery consume the same variant. Keep all marks bundled and record their actual source in `web/vendor/brands/SOURCE.md`; never accept an arbitrary image URL or redraw a third-party mark. The generic orbit remains the default for app decoration.
-
 ### Card captions
 
-Use `.ds-card-caption` for supporting text immediately below a card or card group. It adds 16px above the note and aligns its text with the card content, including the 1px card border. Its default inset follows the standard card's 24px padding. When a surface changes card padding, set `--ds-card-content-padding` on their shared parent and consume that value in the cards; the caption follows automatically. Marketing examples use 32px on desktop and 24px at widths up to 850px. The gallery includes this pattern. The marked-root selector preserves the gap over surface paragraph resets.
+Use `.ds-card-caption` for supporting text immediately below a card or card group. It adds 16px above the note and aligns its text with the card content. Its default inset follows the standard card's 24px padding. When a surface changes card padding, set `--ds-card-content-padding` on their shared parent and consume that value in the cards; the caption follows automatically. Marketing examples use 32px on desktop and 24px at widths up to 850px. The gallery includes this pattern. The marked-root selector preserves the gap over surface paragraph resets.
 
 ## Semantic states and truthful feedback
 
@@ -288,7 +292,7 @@ Show settled spend separately from pending calls and unknown usage. Explain that
 - **Success:** acknowledge the actual accepted result. Use `role="status"`; do not turn a successful key mint or copied prompt into successful agent onboarding.
 - **Disabled:** communicate why an action is unavailable when it is not obvious. `aria-disabled` alone does not prevent activation; the owning interaction must enforce it.
 - **Reported / observed:** an agent's report, a known connection, and a successful observed tool call remain distinct. Color and motion must not blur those meanings.
-- **Focus:** the mint outline is always visible. Native keyboard actions remain immediate. Preserve focus, caret, drafts, and expanded content across polling and progress updates.
+- **Focus:** the accent outline is always visible. Native keyboard actions remain immediate. Preserve focus, caret, drafts, and expanded content across polling and progress updates.
 
 ### Pending work and measured progress
 
@@ -306,37 +310,9 @@ The `#feedback-states` gallery exposes idle/loading/success/error/disabled sampl
 
 The [Emil design-engineering skill](https://emilkowal.ski/skill) informs this system. Motion has a job: input feedback, a rare overlay transition, or an explanation that someone deliberately requests. Everyday navigation and repeated updates should feel still.
 
-Use 120ms for a restrained pointer press at scale(.985) with opacity feedback, 180ms for an overlay/feedback transition, 220ms for an occasional response. The SVG illustration entrance finishes once within 220ms. An explicitly illustrative context-flow sequence may use three 880ms phases; an explicitly opted-in hero may use the controlled eight-second circuit described below. These exceptions never apply to controls, real pending requests, or repeated activity updates. Motion transitions transform and opacity only. Hover and selected colors update immediately; keyboard controls remain immediate. Do not animate layout dimensions, use `transition: all`, add uncontrolled ambient loops, or replay card entrances when data refreshes. Controls keep hover positioning still; keyboard input skips action feedback through `data-input="keyboard"` and `:focus-visible`. Keep app code's input-mode tracking.
+Use 120ms for a restrained pointer press at scale(.985) with opacity feedback, 180ms for an overlay/feedback transition, 220ms for an occasional response. The app's deprecated `memoryOrbit` entrance finishes once within 220ms. Motion transitions transform and opacity only. Hover and selected colors update immediately; keyboard controls remain immediate. Do not animate layout dimensions, use `transition: all`, add uncontrolled ambient loops, or replay card entrances when data refreshes. Controls keep hover positioning still; keyboard input skips action feedback through `data-input="keyboard"` and `:focus-visible`. Keep app code's input-mode tracking.
 
-### Context-flow explanations
-
-`observeContextFlow(root, { replayButton, mode = 'finite', autoplay = true, reduced = false })` returns `{ play(event?), dispose() }` in finite mode. Mount it on a `.ds-context-flow` whose always-readable HTML nodes use `.ds-context-flow-node` and `data-flow-stage="save"`, `"memory"`, or `"recall"`. A phase accents only the decorative border overlay; text and card positions never animate. Keep a clear visible caption or label stating that the diagram is an example, not a live connection or request. A caption such as “Agent examples, not live connections” is sufficient; a separate “Illustration” badge is optional. This pattern sets no `aria-busy`, progress amount, success state, or live announcement, and has no network behavior.
-
-For another three-part illustration, `data-flow-step="0"`, `"1"`, or `"2"` supplies the same 0/880/1760ms delay without assigning a named save, memory, or recall stage. A numeric step wins when both attributes appear. Prose and receipt rows may add `data-flow-emphasis="line"` to `.ds-context-flow-node`: its same decorative `::after` becomes a 2px left accent rather than a rectangular border, with the same phase timing, static emphasis and reduced-motion behavior. The owning surface supplies content insets and row layout; the accent never hides, moves or replaces text. Keep observed versus agent-reported provenance continuously visible, and label sample receipts as illustrative rather than live activity. Separate memory and activity panels may each mount their own controller so mobile scrolling starts each explanation only when that panel is sufficiently visible. The gallery demonstrates normal and reduced-motion line stories, including the controlled looping variant described below.
-
-Optional connector rails use `.ds-context-flow-track[data-flow-stage="save"|"recall"]` containing an `aria-hidden` `.ds-context-flow-traveler`. The traveler occupies the rail's full box and moves a decorative dot from its origin through `translate(var(--ds-flow-x), var(--ds-flow-y))`. The shared defaults are `100%` and `0%` for horizontal travel; a surface may set `0%` and `100%` for vertical travel and owns the rail's position, width, and height. Keep the track and traveler hidden from accessibility. An optional `aria-hidden` `.ds-context-flow-packet` inside a node gives a brief accent pulse. Neither a packet nor an accented node proves that data moved or a tool succeeded.
-
-For a quieter connection, use a single `aria-hidden` span with `.ds-context-connector` and `data-flow-stage="save"` or `"recall"`. Its solid 1px mint line remains visible in every state; a wide, soft `::after` sheen travels along it only during a controlled loop. There are no dots, dashes, rings or discrete packets. The owning surface positions the absolute span and supplies its length; its default inset is `auto`. Horizontal travel uses `--ds-connector-x: 100%` and `--ds-connector-y: 0%`; a vertical composition sets `0%` and `100%` and changes the span to 1px wide. `data-flow-order="1"` staggers a second connector by 750ms, while recall starts four seconds after save in the existing eight-second cycle. Pause, offscreen/background suspension and reduced motion share the controller lifecycle below. The glow gallery demonstrates four connections, a narrow vertical composition and static connectors in the reduced-motion preview. Decorative animation has no visible playback control.
-
-Autoplay starts once when at least 50% of the diagram enters view, and cancels below that threshold. Three phases finish after 2640ms and leave a restrained static emphasis. A native “Replay flow” button or explicit `play(event?)` call may replay while any part of the panel intersects the viewport; a deliberate action measures its current bounds once so it can work before a queued observer sample catches up with scrolling. A pointer replay continues below 50% and cancels only when wholly offscreen, hidden or detached. Keyboard replay immediately emphasizes all steps without movement. The observer watches both zero and 50% thresholds; scheduled work retains the manual or autoplay visibility policy that started it. Any substantive keyboard use interrupts movement and consumes autoplay, so scrolling with keys cannot start the sequence afterward. Reduced motion (system preference, an enclosing `data-motion="reduced"`, or the explicit preview option) uses the same static composition. Offscreen or hidden documents cancel and reset rather than resuming or replaying automatically; a detached root disposes its observers, listeners and scheduled work. Call `dispose()` when the owning surface unmounts; repeated disposal is safe. Missing observer/animation support keeps the composition static. Without JavaScript all labels, marks and explanation remain readable and no motion runs. The gallery includes normal and reduced previews with native replay controls; all narrow layouts preserve readable HTML text.
-
-The homepage hero explicitly opts into `observeContextFlow(root, { mode: 'loop' })`, which returns `{ play(), pause(), dispose() }` for its owner. Decorative loops start automatically without visible play, pause or resume controls. The eight-second sequence staggers source borders/card shines, four simple connector sheens, a core glow/sheen, and destination receipt accents. The hero uses `contextFlowArt({ variant: 'glow' })`, which creates only the glow and sheen, with no rings or orbiting particles; the separate `.ds-context-connector` spans connect its two source and two destination cards. Its center reads “Engram” / “Shared Memory.” `contextFlowArt()` retains the optional circuit geometry for other illustrative compositions in the gallery. Both variants create safe decorative DOM nodes. The glow uses a static blur whose opacity and transform animate; blur, layout and text positioning never animate. All shared color, shadow, timing and motion rules live in the design system; a surface positions the nodes, connectors and art.
-
-Three `.ds-context-identity[data-flow-identity="0|1|2"]` layers inside `.ds-context-identities` crossfade across 24 seconds, one identity per circuit. They occupy the same grid cell with stable card bounds. The hero uses only the vetted fixed local logos in `public-agent-catalog.js`; each card has a stable accessible description naming its example set, while the duplicated visual layers are `aria-hidden`. Names are illustrative product identities, never a live feed, connection test, endorsement, or promise of setup support. The product-logo gallery renders the full same catalog, preserving source proportions and inverse backplates.
-
-Loop autoplay begins when 1% of the panel enters view, so a tall mobile composition can start even when half of it cannot fit in a short viewport. The owner may call `play()` while any part is visible. Thereafter `data-flow-paused` freezes all CSS timelines together when wholly offscreen, backgrounded or deliberately paused, including identity rotation. Returning to view resumes that same timeline; an explicit owner pause remains in force. Reduced motion uses a static first identity and decorative composition. Keyboard use settles static immediately. BFCache restoration measures viewport visibility once and preserves owner, keyboard and reduced-motion choices. No JavaScript interval or animation-frame loop drives this pattern. Unmount/page-exit disposal removes observers and all listeners. The gallery includes an automatic running circuit, a reduced static preview, and the separate finite flow.
-
-The homepage’s “Context that travels” memory and activity panels explicitly use `observeContextFlow(root, { mode: 'loop', pauseOnInteraction: true })` without visible Pause/Resume controls, as requested for these nonessential illustrations. Interaction suspension is opt-in and does not add a visible control. Hover with a mouse or pen and focus within pause the same CSS timeline until both leave; touch pointer entry does not create a sticky hover pause. Keyboard use settles the illustration static. Existing reduced-motion, offscreen, background, unmount and BFCache handling remain in force, and restoration reconciles current hover/focus without restarting time. The product opts in through `data-context-flow-pause-on-interaction`; each panel has an independent visibility lifecycle so it can start when reached on a narrow screen. Their numbered steps use three short opacity accents at 0/880/1760ms in the shared eight-second cycle, followed by a quiet rest. Line accents never scale or move the text; the optional decorative memory packet follows the same repeating beat. No replay or pause buttons appear in this section. The gallery’s interaction-paused story and its reduced-motion counterpart demonstrate this shared numbered-step pattern. Copy and observed-versus-reported provenance remain continuously visible.
-
-Spinners, skeleton shimmers, and indeterminate travel are permitted only while actual work is pending or an explicitly labeled local preview is selected. They are not decoration and do not represent numeric progress. Reduced motion stops those animations, removes transform feedback, and retains labeled states. Native dialogs and controls remain usable without animation support. Forced colors preserve visible boundaries.
-
-### Informational logo ticker
-
-Compose `.ds-logo-ticker` with a `.ds-logo-ticker-viewport`, a `.ds-logo-ticker-track`, and the original `ul.ds-logo-ticker-list[data-ticker-list][role="list"]`. Its 21 labeled local products come from `public-agent-catalog.js`; they remain the only accessible items. Keep links and actions outside the moving list. The homepage authors every original item in HTML, so the full list wraps and remains readable without JavaScript. The gallery's `#logo-ticker` shows the shared catalog in moving and reduced-motion variants.
-
-`observeLogoTicker(root, { list, track, viewport, speed, reduced = false })` returns `{ play, pause, update, dispose }`. Element arguments default to those shared descendants. It measures the original group's width including the shared end gap, creates enough visual copies to fill the viewport through a full cycle, and uses one linear Web Animation transform at approximately 30px/sec. Copies are `aria-hidden`, inert, stripped of duplicate IDs, and contain no focusable controls; an interactive original list retains the static fallback. The same original nodes and complete readable labels remain present throughout. A resize preserves the current cycle fraction; no JavaScript interval or frame loop drives movement.
-
-The ticker starts automatically without visible playback controls or a stored pause preference. Old pause preferences are ignored so a removed control cannot leave the ticker permanently stopped. Hover and focus within the ticker, a hidden document or an offscreen section pause the same timeline. A resumed ticker waits until hover/focus leaves it. Returning to view or restoring from BFCache reconciles current bounds and preserves the owner pause state and cycle position. Reduced motion, unsupported animation/observer support, empty content, or unsuitable interactive content remove copies and clipping and keep the complete original list wrapped. Reduced-motion previews show the full static list without a disabled playback control. Unmount/page-exit disposal cancels animation, removes visual copies and observers/listeners, and leaves the original list intact. Surface styles arrange the heading and supporting actions; shared styles own the fade, gaps, typography and motion.
+Decorative motion is not part of the system. The former context-flow illustrations and the moving logo ticker have been removed.
 
 ## Static social exports
 

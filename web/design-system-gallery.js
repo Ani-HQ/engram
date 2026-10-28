@@ -1,4 +1,4 @@
-import { memoryOrbit, memoryStream, resourceChip, loadingState, progressBar, setProgress, observeLoadingMotion, observeContextFlow, contextFlowArt, observeLogoTicker, observeSelects, statusBadge, statusText, profileAvatar, highlightArt, profileLayoutPreview, evidenceList, taskRecord } from './design-system.js';
+import { resourceChip, loadingState, progressBar, setProgress, observeLoadingMotion, observeSelects, statusBadge, statusText, profileAvatar, highlightArt, profileLayoutPreview, evidenceList, taskRecord } from './design-system.js';
 import { publicAgentCatalog } from './public-agent-catalog.js';
 import { icon } from './icons.js';
 import { agentVisual, toolVisual, visualIcon } from './tooling.js';
@@ -12,7 +12,6 @@ if (document.querySelector('meta[name="engram-demo"]')) {
   document.querySelector('.ds-gallery-header nav')?.append(emailStudio);
 }
 
-document.querySelector('#orbit-example').append(memoryOrbit());
 document.getElementById('task-record-full')?.append(taskRecord({ objective: 'Illustrative: let another agent continue a coding task.', next: 'Write the storage migration and its retry tests.', plan: [{ id: 's1', step: 'Agree the record shape', status: 'done' }, { id: 's2', step: 'Storage and receipts', status: 'doing' }, { id: 's3', step: 'Console view', status: 'todo' }, { id: 's4', step: 'Timer-based saves', status: 'dropped' }], decisions: [{ text: 'Checkpoints are the authoritative snapshot.', why: 'Memory indexing is best effort.' }], blockers: ['Waiting on a design review.'], refs: [{ kind: 'path', path: 'docs/EXAMPLE.md' }, { kind: 'commit', sha: '0a1b2c3' }] }));
 document.getElementById('task-record-minimal')?.append(taskRecord({ objective: 'Illustrative minimal record.', next: 'Ask the user which lineage to continue.' }));
 document.getElementById('task-record-long')?.append(taskRecord({ objective: 'Illustrative long identifier: ' + 'a'.repeat(120), next: 'Keep long values wrapping inside the card.', questions: ['Does https://example.com/' + 'b'.repeat(80) + ' wrap?'] }));
@@ -31,25 +30,19 @@ const loadingAvatar = profileAvatar({ label: 'Profile image while loading' }); l
 document.getElementById('profile-avatar-loading').append(loadingAvatar);
 document.getElementById('profile-avatar-unavailable').append(profileAvatar({ src: 'data:image/png;base64,invalid', label: 'Unavailable profile image fallback' }));
 document.getElementById('profile-avatar-narrow').append(profileAvatar({ size: 'sm', label: 'Default profile image in a narrow layout' }));
-const productLogos = document.getElementById('product-logo-examples');
-productLogos.replaceChildren(...publicAgentCatalog.map(product => {
-  const sample = document.createElement('div'); sample.className = 'ds-gallery-product';
-  const frame = document.createElement('span'); frame.className = 'ds-product-logo-frame'; frame.setAttribute('data-tone', 'inverse');
-  const logo = document.createElement('img'); logo.className = 'ds-product-logo'; logo.setAttribute('data-size', '28'); logo.src = product.logo; logo.width = logo.height = 28; logo.alt = '';
-  const name = document.createElement('span'); name.textContent = product.label; frame.append(logo); sample.append(frame, name); return sample;
-}));
-for (const id of ['gallery-logo-ticker', 'gallery-logo-ticker-static']) {
-  const root = document.getElementById(id), list = root.querySelector('[data-ticker-list]');
-  for (const product of publicAgentCatalog) {
-    const item = document.createElement('li'), frame = document.createElement('span'), logo = document.createElement('img'), name = document.createElement('span');
-    frame.className = 'ds-product-logo-frame'; frame.setAttribute('data-tone', 'inverse'); logo.className = 'ds-product-logo'; logo.src = product.logo; logo.width = logo.height = 28; logo.alt = ''; name.textContent = product.label;
-    frame.append(logo); item.append(frame, name); list.append(item);
-  }
-  observeLogoTicker(root, { reduced: id.endsWith('-static') });
+// Plain product marks: the mark beside its name. One-color SVG marks are drawn in
+// black, so they take data-tone="mono" to read on the dark canvas.
+const monoMark = src => src.endsWith('.svg') && !src.endsWith('/muse.svg');
+function logoItem(product, tag) {
+  const item = document.createElement(tag), logo = document.createElement('img'), name = document.createElement('span');
+  logo.className = 'ds-product-logo'; logo.setAttribute('data-size', '28'); if (monoMark(product.logo)) logo.setAttribute('data-tone', 'mono');
+  logo.src = product.logo; logo.width = logo.height = 28; logo.alt = ''; name.textContent = product.label;
+  item.append(logo, name); return item;
 }
-document.querySelector('#agent-orbit-example').append(memoryOrbit({ agents: true, label: 'Illustrative agent ecosystem: Claude, OpenClaw, Grok Bot, Muse and Instinct around shared memory. Not live connections.' }));
-document.querySelector('#ink-orbit-example').append(memoryOrbit({ compact: true, className: 'ds-orbit--on-ink' }));
-document.querySelector('#stream-example').append(memoryStream({ label: 'A decision is saved to shared memory and recalled for the next task. This is an illustration.' }));
+const productLogos = document.getElementById('product-logo-examples');
+productLogos.setAttribute('role', 'list');
+productLogos.replaceChildren(...publicAgentCatalog.slice(0, 6).map(product => { const item = logoItem(product, 'div'); item.setAttribute('role', 'listitem'); return item; }));
+document.getElementById('gallery-logo-list').replaceChildren(...publicAgentCatalog.map(product => logoItem(product, 'li')));
 const resourceExamples = document.querySelector('#resource-chip-examples');
 for (const [tool, label] of [['github.create_pull_request', 'example / shared-memory'], ['googledocs.get_document', 'Project notes'], ['linear.get_issue', 'ENG-42'], ['figma.get_file', 'Activity canvas']]) {
   resourceExamples.append(resourceChip(label, { visual: visualIcon(toolVisual(tool), { size: 16 }), onClick: () => { document.querySelector('#resource-chip-feedback').textContent = `Selected illustrative resource: ${label}. No resource was opened.`; } }));
@@ -66,7 +59,6 @@ renderConsentExample(sampleJev);
 const friendExample = { serverNow: '2026-10-25T09:00:00.000Z', canWrite: true, entitlementSource: 'complimentary', complimentary: { active: true, source: 'invite', durationDays: 60, grantedAt: '2026-10-12T09:00:00.000Z', expiresAt: '2026-12-11T09:00:00.000Z', revokedAt: null, unlimitedKnowledgeTransfers: true, extensionUrl: 'https://x.com/anirudh_twt' } };
 document.querySelector('#friend-access-example').append(friendAccessCard(friendExample));
 document.querySelector('#friend-expired-example').append(friendAccessCard({ ...friendExample, serverNow: '2026-12-12T09:00:00.000Z', canWrite: false, entitlementSource: 'none', complimentary: { ...friendExample.complimentary, active: false, unlimitedKnowledgeTransfers: false } }));
-const motionOrbit = document.querySelector('#motion-orbit');
 document.getElementById('compact-copy').prepend(icon('copy', { size: 14 }));
 const commandCopy = document.getElementById('command-copy-example');
 commandCopy.prepend(icon('copy', { size: 14 }));
@@ -77,7 +69,6 @@ commandCopy.addEventListener('click', () => {
 for (const id of ['compact-close', 'compact-close-disabled']) document.getElementById(id).append(icon('x', { size: 16 }));
 for (const id of ['compact-default', 'compact-small', 'compact-large', 'compact-copy', 'compact-close']) document.getElementById(id).addEventListener('click', () => { document.getElementById('compact-button-feedback').textContent = 'Compact control preview selected.'; });
 for (const id of ['long-action-example', 'icon-action-example']) document.getElementById(id).addEventListener('click', () => { document.getElementById('fit-feedback').textContent = 'Preview received. The control keeps its full label and focus.'; });
-motionOrbit.append(memoryOrbit());
 
 document.addEventListener('pointerdown', () => { document.documentElement.dataset.input = 'pointer'; }, { passive: true });
 document.addEventListener('keydown', () => { document.documentElement.dataset.input = 'keyboard'; });
@@ -104,12 +95,6 @@ document.querySelector('#sample-form').addEventListener('submit', async event =>
   save.replaceChildren(spinner, 'Saving example…'); feedback.textContent = 'Showing the busy state. No server request is being made.';
   await new Promise(resolve => setTimeout(resolve, 700));
   save.disabled = false; save.textContent = 'Try saving again'; feedback.textContent = 'Saved state preview. Your text is still here; no memory was written.';
-});
-document.querySelector('#motion-replay').addEventListener('click', event => {
-  const feedback = document.querySelector('#motion-feedback');
-  if (reduced() || event.detail === 0) { motionOrbit.replaceChildren(memoryOrbit()); feedback.textContent = 'Feedback received. Movement is skipped for reduced motion and keyboard input.'; return; }
-  motionOrbit.replaceChildren(memoryOrbit({ motion: 'intro' }));
-  feedback.textContent = 'One finite SVG reveal: 120ms nodes, 180ms core, 220ms connectors. No loop.';
 });
 document.querySelector('#loading-replay').addEventListener('click', async () => {
   const button = document.querySelector('#loading-replay'), example = document.querySelector('#loading-example'), feedback = document.querySelector('#loading-feedback');
@@ -193,14 +178,6 @@ for (const element of [navigationToggle, navigationPanel]) element.addEventListe
 navigationPanel.addEventListener('click', event => { if (event.target.closest('a')) closeNavigationPreview(); });
 const stopLoadingMotion = observeLoadingMotion(document.body);
 window.addEventListener('pagehide', event => { if (!event.persisted) stopLoadingMotion(); });
-observeContextFlow(document.getElementById('context-flow-example'), { replayButton: document.getElementById('context-flow-example-replay') });
-document.getElementById('context-flow-glow-art').replaceWith(contextFlowArt({ variant: 'glow' }));
-observeContextFlow(document.getElementById('context-flow-glow-example'), { mode: 'loop' });
-document.getElementById('context-flow-loop-art').replaceWith(contextFlowArt());
-observeContextFlow(document.getElementById('context-flow-loop-example'), { mode: 'loop' });
-observeContextFlow(document.getElementById('context-flow-reduced-example'), { mode: 'loop', reduced: true });
-observeContextFlow(document.getElementById('context-flow-line-example'), { mode: 'loop', pauseOnInteraction: true });
-observeContextFlow(document.getElementById('context-flow-line-reduced-example'), { mode: 'loop', pauseOnInteraction: true, reduced: true });
 
 
 for (const [name, publicSafe] of [['Research helper', false], ['Build helper', false], ['Review helper', false], ['Public fallback', true]]) {
