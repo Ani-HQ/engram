@@ -2,6 +2,14 @@
   "repository": "https://github.com/Ani-HQ/engram",
   "entries": [
     {
+      "sha": "87f3b32",
+      "at": "2026-10-28T07:18:22Z",
+      "kind": "improved",
+      "title": "Smoother first-time setup",
+      "summary": "The setup command no longer stops for npx's install prompt, Codex keeps your per-tool approval settings when it reconnects, Engram's hooks carry readable labels, and setups made earlier for single folders can be switched to the new connection in one answer.",
+      "pr": 60
+    },
+    {
       "sha": "325b979",
       "at": "2026-10-28T04:32:02Z",
       "kind": "new",
