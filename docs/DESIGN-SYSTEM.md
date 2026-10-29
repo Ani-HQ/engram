@@ -2,11 +2,13 @@
 
 This is the authority for frontend visual and interaction decisions. Read this document and inspect the local `/design-system` gallery before changing an app view, public page, graphic, interaction, or loading state. The repository [frontend contract](../AGENTS.md) requires every future frontend change to consume or extend this system. The canonical pulse logo is unchanged.
 
-The direction is plain, quiet and confident: one sans typeface (local Inter) at normal letter-spacing, generous whitespace, few colors and no decoration. Content is separated by space, not by rules, borders or ornaments. Marketing pages use a larger type scale and more open composition; the component grammar stays the same. Nothing visual may look like evidence that an agent connected, saved memory, or completed work.
+The app direction is plain, quiet and confident: one sans typeface (local Inter) at normal letter-spacing, generous whitespace, few colors and no decoration. Content is separated by space, not by rules, borders or ornaments. Nothing visual may look like evidence that an agent connected, saved memory, or completed work.
 
-## Do not use
+Public pages use the **Marketing kit** below: a developer-platform language modeled on Supabase's site, with Engram's own mint accent, pulse mark and copy. It adds hairline containers, a cursor spotlight, terminal windows, a dot-grid glow, an announcement pill, header menus and scroll reveal. The app keeps the plain grammar and the "Do not use" list.
 
-These ten patterns are removed from the marketing pages and are being removed from the app. Do not add them anywhere.
+## Do not use (app)
+
+These ten patterns are removed from the app. Do not add them to app views. Public pages may use the marketing kit's pill, kicker, hairline and window patterns instead; they still never use italics, serif type, negative letter-spacing or section numbering.
 
 1. **Tags.** No badges, pills, chips, stickers or label tags ("New", "Beta", kind labels). State the information as plain text in the normal text style, or drop it if it is redundant.
 2. **Italicized words.** No italics, and no accent-colored "highlighted" words in headlines. A headline is one color.
@@ -19,12 +21,35 @@ These ten patterns are removed from the marketing pages and are being removed fr
 9. **Code breadcrumbs.** No monospace, uppercase, slash-separated or path-like labels ("CONNECTION DIAGRAM / CANVAS LAYER", kickers, file-path captions). If a label is needed, use a normal sans heading. Monospace is only for code and commands a person copies.
 10. **Section numbering.** No "01 /", "02 —" or "Step 1" decorations. A genuinely ordered list of steps may be a plain `<ol>`.
 
+## Marketing kit (public pages)
+
+Defined in the "Marketing kit" section of `web/design-system.css`, arranged by `web/marketing.css`, and made interactive by `web/marketing-site.js`. Shown in the gallery under `#marketing-kit`.
+
+| Primitive | Use |
+| --- | --- |
+| `.ds-icon[data-icon="name"]` | A local Lucide icon tinted with `currentColor`. Every icon in `web/vendor/lucide` has a rule. No inline `style`, so it works under the gallery's strict `style-src 'self'`. |
+| `.ds-icon-tile` (`data-tone="accent"`) | A 32px hairline tile around an icon, for cards, menus and pairs. |
+| `.ds-kicker` | Accent icon plus a short muted label above a section heading. |
+| `.ds-announce` + `.ds-announce-label` | One announcement pill in a hero, linking to a real release. The label is a short word such as "New". |
+| `.ds-spotlight` | Hairline card on the raised surface. `marketing-site.js` sets `--mx/--my` so a mint glow follows the pointer. |
+| `.ds-window`, `-bar`, `-dots`, `-title`, `-tabs`, `-body`, `.ds-copy` | Terminal or code window. Tabs use `role="tab"`/`tabpanel` with arrow-key navigation; `.ds-copy[data-copy-from]` copies the visible panel's `data-command`. |
+| `.ds-term-prompt`, `-muted`, `-ok`, `.ds-caret` | Terminal text colors and a blinking caret for the example handoff. |
+| `.ds-stat` | Value with an accent rule above it. Values must be true facts, never invented metrics. |
+| `.ds-accordion` | Hairline question list built on native `<details>`. |
+| `.ds-marquee` | Two lists: the real list, then an `aria-hidden` copy. Scrolls, pauses on hover or focus, and becomes a static wrapping list for reduced motion. |
+| `.ds-dotgrid` | Dot grid and soft mint glow behind a hero or closing call to action. |
+| `.ds-menu` | Header dropdown panel. Opens on hover with a fine pointer, on click, and closes on Escape or outside click. Inline on narrow screens. |
+| `[data-reveal]`, `data-reveal-delay` | Fade-up on scroll. Content is hidden only after the script adds `html.ds-js`, and never for reduced motion. |
+
+Tokens: `--ds-hairline`, `--ds-hairline-strong`, `--ds-surface-raised`, `--ds-glow`, `--ds-glow-soft`, `--ds-dot`, `--ds-reveal-distance`, `--ds-duration-reveal`. Example content in mockups (pages, terminals, share lists) is labeled as an example and describes real behavior.
+
 ## Files and adoption
 
 - `web/design-system.css`: semantic tokens, native primitives, reusable components, motion, accessibility, and the isolated gallery layout.
 - `web/design-system.js`: safe DOM helpers `statusBadge`, `statusText`, `evidenceList`, `taskRecord`, `profileAvatar`, `resourceChip`, `progressBar`, `setProgress`, `loadingState` and `observeLoadingMotion`. They parse no HTML or stylesheet and make no API calls. Labeled loading helpers move only while their owning operation is pending. Deprecated helpers kept only for current app callers: `memoryOrbit` (signup), `sticker` (signup), `highlightArt` (public profile) and `profileLayoutPreview` (profile editor). The retired `memoryStream`, `observeContextFlow`, `contextFlowArt` and `observeLogoTicker` have been removed.
 - `web/select-control.js`: progressive single-select enhancement, re-exported as `enhanceSelect` and `observeSelects` from `design-system.js`. Native values, validation, form submission and existing change handlers remain authoritative.
 - `web/design-system.html` and `web/design-system-gallery.js`: interactive review examples. `/design-system.html` works as a static path; the local server also maps `/design-system`.
+- `web/marketing-site.js`: public-page interactions (header menus, mobile navigation, spotlight, tabs, copy, scroll reveal and the example handoff). Pages read fully without it; the CSP allows only same-origin scripts, so nothing is inline.
 - Surface styles own composition: `app-theme.css` for the app and `marketing.css` for public pages. They may arrange and size components; they must not create parallel button, badge, field, or motion systems.
 
 Use `<html data-design-system="signal">`. Load `/design-system.css` first, then legacy styles if needed, then the owning surface stylesheet. The document marker enables a higher-priority visual bridge over legacy generic body/control/type rules. The bridge deliberately leaves record rows, card grids, and control layout to the owning surface. Do not copy the shared primitive declarations into a surface stylesheet.

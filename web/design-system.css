@@ -688,3 +688,179 @@ html[data-design-system] .ds-week-button:focus-visible { outline-offset: -2px; }
   .ds-progress { border: 1px solid CanvasText; background: Canvas; }
   .ds-progress-fill { background: Highlight; }
 }
+
+/* ── Marketing kit ─────────────────────────────────────────────────────────
+   Public-page components modeled on developer-platform sites: hairline
+   containers, cursor spotlight, terminal windows, stats and a dot-grid glow.
+   The app keeps the plain grammar above; these primitives are for public pages
+   and the gallery. Layout belongs in marketing.css. */
+:root {
+  --ds-hairline: #222826;
+  --ds-hairline-strong: #343c39;
+  --ds-surface-raised: #151918;
+  --ds-glow: rgb(119 217 173 / .16);
+  --ds-glow-soft: rgb(119 217 173 / .06);
+  --ds-dot: rgb(237 237 237 / .07);
+  --ds-reveal-distance: 14px;
+  --ds-duration-reveal: 640ms;
+}
+
+/* Icon from a local Lucide SVG, tinted with currentColor: <span class="ds-icon" data-icon="brain">. No inline styles, so it works under a strict style-src. */
+.ds-icon[data-icon='activity'] { --icon: url('/vendor/lucide/activity.svg'); }
+.ds-icon[data-icon='arrow-left'] { --icon: url('/vendor/lucide/arrow-left.svg'); }
+.ds-icon[data-icon='arrow-right'] { --icon: url('/vendor/lucide/arrow-right.svg'); }
+.ds-icon[data-icon='arrow-up-right'] { --icon: url('/vendor/lucide/arrow-up-right.svg'); }
+.ds-icon[data-icon='bot'] { --icon: url('/vendor/lucide/bot.svg'); }
+.ds-icon[data-icon='brain'] { --icon: url('/vendor/lucide/brain.svg'); }
+.ds-icon[data-icon='calendar'] { --icon: url('/vendor/lucide/calendar.svg'); }
+.ds-icon[data-icon='check'] { --icon: url('/vendor/lucide/check.svg'); }
+.ds-icon[data-icon='check-check'] { --icon: url('/vendor/lucide/check-check.svg'); }
+.ds-icon[data-icon='chevron-down'] { --icon: url('/vendor/lucide/chevron-down.svg'); }
+.ds-icon[data-icon='chevron-right'] { --icon: url('/vendor/lucide/chevron-right.svg'); }
+.ds-icon[data-icon='circle-check'] { --icon: url('/vendor/lucide/circle-check.svg'); }
+.ds-icon[data-icon='circle-dashed'] { --icon: url('/vendor/lucide/circle-dashed.svg'); }
+.ds-icon[data-icon='circle-dot'] { --icon: url('/vendor/lucide/circle-dot.svg'); }
+.ds-icon[data-icon='circle-help'] { --icon: url('/vendor/lucide/circle-help.svg'); }
+.ds-icon[data-icon='circle-x'] { --icon: url('/vendor/lucide/circle-x.svg'); }
+.ds-icon[data-icon='clock'] { --icon: url('/vendor/lucide/clock.svg'); }
+.ds-icon[data-icon='cloud'] { --icon: url('/vendor/lucide/cloud.svg'); }
+.ds-icon[data-icon='code'] { --icon: url('/vendor/lucide/code.svg'); }
+.ds-icon[data-icon='copy'] { --icon: url('/vendor/lucide/copy.svg'); }
+.ds-icon[data-icon='database'] { --icon: url('/vendor/lucide/database.svg'); }
+.ds-icon[data-icon='ellipsis'] { --icon: url('/vendor/lucide/ellipsis.svg'); }
+.ds-icon[data-icon='external-link'] { --icon: url('/vendor/lucide/external-link.svg'); }
+.ds-icon[data-icon='eye'] { --icon: url('/vendor/lucide/eye.svg'); }
+.ds-icon[data-icon='eye-off'] { --icon: url('/vendor/lucide/eye-off.svg'); }
+.ds-icon[data-icon='file-text'] { --icon: url('/vendor/lucide/file-text.svg'); }
+.ds-icon[data-icon='git-branch'] { --icon: url('/vendor/lucide/git-branch.svg'); }
+.ds-icon[data-icon='globe'] { --icon: url('/vendor/lucide/globe.svg'); }
+.ds-icon[data-icon='hash'] { --icon: url('/vendor/lucide/hash.svg'); }
+.ds-icon[data-icon='info'] { --icon: url('/vendor/lucide/info.svg'); }
+.ds-icon[data-icon='key-round'] { --icon: url('/vendor/lucide/key-round.svg'); }
+.ds-icon[data-icon='layers'] { --icon: url('/vendor/lucide/layers.svg'); }
+.ds-icon[data-icon='link'] { --icon: url('/vendor/lucide/link.svg'); }
+.ds-icon[data-icon='loader-circle'] { --icon: url('/vendor/lucide/loader-circle.svg'); }
+.ds-icon[data-icon='log-out'] { --icon: url('/vendor/lucide/log-out.svg'); }
+.ds-icon[data-icon='mail'] { --icon: url('/vendor/lucide/mail.svg'); }
+.ds-icon[data-icon='menu'] { --icon: url('/vendor/lucide/menu.svg'); }
+.ds-icon[data-icon='plug'] { --icon: url('/vendor/lucide/plug.svg'); }
+.ds-icon[data-icon='plus'] { --icon: url('/vendor/lucide/plus.svg'); }
+.ds-icon[data-icon='refresh-cw'] { --icon: url('/vendor/lucide/refresh-cw.svg'); }
+.ds-icon[data-icon='route'] { --icon: url('/vendor/lucide/route.svg'); }
+.ds-icon[data-icon='search'] { --icon: url('/vendor/lucide/search.svg'); }
+.ds-icon[data-icon='settings-2'] { --icon: url('/vendor/lucide/settings-2.svg'); }
+.ds-icon[data-icon='share-2'] { --icon: url('/vendor/lucide/share-2.svg'); }
+.ds-icon[data-icon='shield-check'] { --icon: url('/vendor/lucide/shield-check.svg'); }
+.ds-icon[data-icon='terminal'] { --icon: url('/vendor/lucide/terminal.svg'); }
+.ds-icon[data-icon='users'] { --icon: url('/vendor/lucide/users.svg'); }
+.ds-icon[data-icon='workflow'] { --icon: url('/vendor/lucide/workflow.svg'); }
+.ds-icon[data-icon='x'] { --icon: url('/vendor/lucide/x.svg'); }
+.ds-icon { display: inline-block; flex-shrink: 0; width: 1em; height: 1em; background: currentColor; -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
+.ds-icon-tile { display: inline-grid; place-items: center; flex-shrink: 0; width: 32px; height: 32px; color: var(--ds-ink); background: var(--ds-surface-raised); border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-control); font-size: 16px; }
+.ds-icon-tile[data-tone='accent'] { color: var(--ds-accent); }
+
+/* Icon + label above a heading. */
+.ds-kicker { display: inline-flex; align-items: center; gap: var(--ds-space-2); color: var(--ds-muted); font-size: var(--ds-text-sm); font-weight: 500; line-height: 1.4; }
+.ds-kicker > .ds-icon { color: var(--ds-accent); font-size: 15px; }
+
+/* Announcement pill: a quiet link to the latest release. */
+.ds-announce { display: inline-flex; align-items: center; gap: var(--ds-space-2); max-width: 100%; min-height: 32px; padding: 4px 12px 4px 4px; color: var(--ds-ink); background: var(--ds-surface-raised); border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-pill); font-size: var(--ds-text-sm); line-height: 1.3; text-decoration: none; transition: border-color var(--ds-duration-base) var(--ds-ease-out), background-color var(--ds-duration-base) var(--ds-ease-out); }
+.ds-announce-label { display: inline-flex; align-items: center; min-height: 22px; padding: 0 8px; color: var(--ds-accent-ink); background: var(--ds-accent); border-radius: var(--ds-radius-pill); font-size: var(--ds-text-xs); font-weight: 600; white-space: nowrap; }
+.ds-announce-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-announce > .ds-icon { color: var(--ds-muted); transition: transform var(--ds-duration-base) var(--ds-ease-out); }
+@media (hover: hover) { .ds-announce:hover { border-color: var(--ds-accent); } .ds-announce:hover > .ds-icon { transform: translateX(3px); color: var(--ds-ink); } }
+
+/* Hairline card with a cursor-following glow (marketing-site.js sets --mx/--my). */
+.ds-spotlight { position: relative; isolation: isolate; display: flex; flex-direction: column; min-width: 0; overflow: hidden; background: var(--ds-surface-raised); border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-panel); transition: border-color var(--ds-duration-slow) var(--ds-ease-out); }
+.ds-spotlight::before { content: ''; position: absolute; inset: 0; z-index: -1; opacity: 0; background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 0%), var(--ds-glow), transparent 62%); transition: opacity var(--ds-duration-slow) var(--ds-ease-out); pointer-events: none; }
+@media (hover: hover) { .ds-spotlight:hover { border-color: var(--ds-hairline-strong); } .ds-spotlight:hover::before { opacity: 1; } }
+a.ds-spotlight { color: inherit; text-decoration: none; }
+a.ds-spotlight:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+
+/* Terminal / code window with optional tabs and copy action. */
+.ds-window { min-width: 0; overflow: hidden; background: #0c0e0d; border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-panel); box-shadow: 0 24px 64px rgb(0 0 0 / .45); }
+.ds-window-bar { display: flex; align-items: center; gap: var(--ds-space-3); min-height: 40px; padding: 0 var(--ds-space-3) 0 var(--ds-space-4); border-bottom: 1px solid var(--ds-hairline); color: var(--ds-muted); font-size: var(--ds-text-xs); }
+.ds-window-dots { display: inline-flex; gap: 6px; } .ds-window-dots > span { width: 10px; height: 10px; border-radius: 50%; background: var(--ds-hairline-strong); }
+.ds-window-title { display: inline-flex; align-items: center; gap: var(--ds-space-2); min-width: 0; overflow: hidden; color: var(--ds-ink); white-space: nowrap; text-overflow: ellipsis; }
+.ds-window-title > img { width: 16px; height: 16px; }
+.ds-window-bar > :last-child:not(:first-child) { margin-left: auto; }
+.ds-window-body { margin: 0; padding: var(--ds-space-5); overflow-x: auto; color: var(--ds-ink); background: transparent; border-radius: 0; font-family: var(--ds-font-mono); font-size: var(--ds-text-sm); line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ds-window-tabs { display: flex; gap: 2px; min-width: 0; padding: 0 var(--ds-space-2); overflow-x: auto; border-bottom: 1px solid var(--ds-hairline); scrollbar-width: none; }
+.ds-window-tabs [role='tab'] { position: relative; flex-shrink: 0; min-height: 40px; padding: 0 var(--ds-space-3); color: var(--ds-muted); background: none; border: 0; border-radius: 0; font-size: var(--ds-text-xs); font-weight: 500; }
+.ds-window-tabs [role='tab']::after { content: ''; position: absolute; inset: auto var(--ds-space-3) -1px; height: 1px; background: var(--ds-accent); transform: scaleX(0); transition: transform var(--ds-duration-base) var(--ds-ease-out); }
+.ds-window-tabs [role='tab'][aria-selected='true'] { color: var(--ds-ink); }
+.ds-window-tabs [role='tab'][aria-selected='true']::after { transform: scaleX(1); }
+.ds-window-tabs [role='tab']:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: -2px; }
+.ds-copy { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 8px; color: var(--ds-muted); background: transparent; border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-control); font-size: var(--ds-text-xs); }
+.ds-copy[data-copied='true'] { color: var(--ds-accent); border-color: var(--ds-accent); }
+@media (hover: hover) { .ds-copy:hover { color: var(--ds-ink); border-color: var(--ds-input-border); } }
+.ds-term-prompt { color: var(--ds-accent); user-select: none; }
+.ds-term-muted { color: var(--ds-muted); }
+.ds-term-ok { color: var(--ds-success); }
+.ds-caret { display: inline-block; width: .55em; height: 1.1em; margin-left: 1px; vertical-align: text-bottom; background: var(--ds-accent); animation: ds-caret 1s steps(1) infinite; }
+@keyframes ds-caret { 50% { opacity: 0; } }
+
+/* Stat with an accent rule above it. */
+.ds-stat { display: grid; align-content: start; gap: var(--ds-space-2); padding-top: var(--ds-space-5); border-top: 1px solid var(--ds-hairline-strong); position: relative; }
+.ds-stat::before { content: ''; position: absolute; top: -1px; left: 0; width: 48px; height: 1px; background: var(--ds-accent); }
+.ds-stat-value { color: var(--ds-ink); font-size: clamp(28px, 3.4vw, 40px); font-weight: 500; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.ds-stat-label { color: var(--ds-muted); font-size: var(--ds-text-sm); line-height: 1.5; }
+
+/* Hairline accordion for questions. */
+.ds-accordion { border-top: 1px solid var(--ds-hairline); }
+.ds-accordion > details { border-bottom: 1px solid var(--ds-hairline); }
+.ds-accordion summary { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-4); min-height: 56px; padding-block: var(--ds-space-4); color: var(--ds-ink); font-size: var(--ds-text-base); font-weight: 500; cursor: pointer; list-style: none; }
+.ds-accordion summary::-webkit-details-marker { display: none; }
+.ds-accordion summary::after { content: ''; flex-shrink: 0; width: 16px; height: 16px; background: var(--ds-muted); -webkit-mask: url('/vendor/lucide/plus.svg') center / contain no-repeat; mask: url('/vendor/lucide/plus.svg') center / contain no-repeat; transition: transform var(--ds-duration-base) var(--ds-ease-out); }
+.ds-accordion details[open] summary::after { transform: rotate(45deg); background: var(--ds-accent); }
+.ds-accordion summary:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+.ds-accordion details > :not(summary) { max-width: 70ch; margin: 0 0 var(--ds-space-5); color: var(--ds-muted); line-height: 1.8; }
+
+/* Dot grid with a soft accent glow, for a hero or closing call to action. */
+.ds-dotgrid { position: relative; isolation: isolate; }
+.ds-dotgrid::before { content: ''; position: absolute; inset: 0; z-index: -1; background-image: radial-gradient(var(--ds-dot) 1px, transparent 1px); background-size: 22px 22px; -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000 30%, transparent 75%); mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000 30%, transparent 75%); pointer-events: none; }
+.ds-dotgrid::after { content: ''; position: absolute; inset: -10% 10% auto; height: 70%; z-index: -1; background: radial-gradient(ellipse at 50% 0%, var(--ds-glow), transparent 65%); pointer-events: none; }
+
+/* Logo marquee: a duplicated, aria-hidden list scrolls; it pauses on hover and stops for reduced motion. */
+.ds-marquee { --ds-marquee-gap: var(--ds-space-10); display: flex; gap: var(--ds-marquee-gap); overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); }
+.ds-marquee > ul { display: flex; flex-shrink: 0; align-items: center; gap: var(--ds-marquee-gap); min-width: 100%; margin: 0; padding: 0; list-style: none; animation: ds-marquee 48s linear infinite; }
+.ds-marquee:hover > ul, .ds-marquee:focus-within > ul { animation-play-state: paused; }
+.ds-marquee li { display: inline-flex; align-items: center; gap: var(--ds-space-2); color: var(--ds-muted); font-size: var(--ds-text-sm); white-space: nowrap; transition: color var(--ds-duration-base) var(--ds-ease-out); }
+.ds-marquee li img { filter: grayscale(1) brightness(1.4); opacity: .72; transition: filter var(--ds-duration-base) var(--ds-ease-out), opacity var(--ds-duration-base) var(--ds-ease-out); }
+.ds-marquee li img[data-tone='mono'] { filter: invert(1) grayscale(1); }
+@media (hover: hover) { .ds-marquee li:hover { color: var(--ds-ink); } .ds-marquee li:hover img { filter: none; opacity: 1; } .ds-marquee li:hover img[data-tone='mono'] { filter: invert(1); } }
+@keyframes ds-marquee { to { transform: translateX(calc(-100% - var(--ds-marquee-gap))); } }
+
+/* Scroll reveal. Hidden only after marketing-site.js marks the root, so content shows without JavaScript. */
+html.ds-js [data-reveal] { opacity: 0; transform: translateY(var(--ds-reveal-distance)); transition: opacity var(--ds-duration-reveal) var(--ds-ease-out), transform var(--ds-duration-reveal) var(--ds-ease-out); transition-delay: var(--ds-reveal-delay, 0ms); }
+html.ds-js [data-reveal].is-visible { opacity: 1; transform: none; }
+
+/* Navigation menu panel (header dropdowns). */
+.ds-menu { position: absolute; top: calc(100% + 8px); left: -8px; z-index: 40; display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: var(--ds-space-1); width: max-content; max-width: min(560px, calc(100vw - 32px)); padding: var(--ds-space-2); background: var(--ds-surface-raised); border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-panel); box-shadow: var(--ds-shadow-dialog); opacity: 0; transform: translateY(-4px) scale(.98); transform-origin: top left; visibility: hidden; transition: opacity var(--ds-duration-base) var(--ds-ease-out), transform var(--ds-duration-base) var(--ds-ease-out), visibility 0s linear var(--ds-duration-base); }
+.ds-menu[data-open='true'] { opacity: 1; transform: none; visibility: visible; transition-delay: 0s; }
+.ds-menu a { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 2px var(--ds-space-3); align-items: start; padding: var(--ds-space-3); color: var(--ds-ink); border-radius: var(--ds-radius-card); text-decoration: none; }
+.ds-menu a > .ds-icon-tile { grid-row: span 2; }
+.ds-menu a > strong { font-size: var(--ds-text-sm); font-weight: 500; line-height: 1.4; }
+.ds-menu a > span:last-child { color: var(--ds-muted); font-size: var(--ds-text-xs); line-height: 1.5; }
+.ds-menu a:is(:hover, :focus-visible) { background: var(--ds-surface); outline: none; }
+.ds-menu a:is(:hover, :focus-visible) > .ds-icon-tile { color: var(--ds-accent); border-color: var(--ds-accent); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-marquee { flex-wrap: wrap; -webkit-mask-image: none; mask-image: none; }
+  .ds-marquee > ul { flex-wrap: wrap; min-width: 0; animation: none; }
+  .ds-marquee > ul[aria-hidden='true'] { display: none; }
+  html.ds-js [data-reveal] { opacity: 1; transform: none; transition: none; }
+  .ds-caret { animation: none; }
+  .ds-menu, .ds-announce > .ds-icon, .ds-spotlight, .ds-spotlight::before { transition: none; }
+}
+@media (forced-colors: active) { .ds-spotlight, .ds-window, .ds-announce, .ds-menu { border-color: CanvasText; } .ds-icon { background: CanvasText; } }
+
+/* Gallery layout for the marketing kit examples. */
+.ds-gallery-kit { display: grid; gap: var(--ds-space-8); }
+.ds-gallery-kit > .ds-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ds-space-5); }
+.ds-gallery-kit-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: var(--ds-space-4); }
+.ds-gallery-kit-card { gap: var(--ds-space-3); padding: var(--ds-space-6); }
+.ds-gallery-kit-card > span:last-child { color: var(--ds-muted); }
+.ds-gallery-kit-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ds-space-8); }
+.ds-gallery-kit-glow { display: grid; place-items: center; min-height: 160px; color: var(--ds-muted); border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-panel); overflow: hidden; }
+@media (max-width: 700px) { .ds-gallery-kit-grid, .ds-gallery-kit-stats { grid-template-columns: 1fr; } }
