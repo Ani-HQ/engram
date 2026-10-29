@@ -17,11 +17,34 @@
 <a class="ds-skip-link ds-button" href="#main">Skip to content</a>
 <header class="m-header"><div class="m-wrap m-header-inner">
   <a class="m-wordmark" href="/" aria-label="Engram home"><img src="/brand/engram-mark.svg" alt="" width="31" height="31">engram</a>
-  <nav class="m-nav" aria-label="Main navigation"><a href="/how-it-works">How it works</a><a href="/pricing" aria-current="page">Pricing</a><a href="/self-host">Self-host</a><a href="/support">Support</a></nav>
-  <div class="m-header-actions"><a href="/app#signin">Sign in</a><a class="ds-button m-button small m-button-small" data-variant="primary" href="https://x.com/anirudh_twt">Ask for an invite</a></div>
+  <nav class="m-nav" id="site-nav" aria-label="Main navigation">
+    <div class="m-nav-item"><button type="button" class="m-nav-trigger" data-menu-trigger aria-expanded="false" aria-controls="menu-product">Product<span class="ds-icon" data-icon="chevron-down" aria-hidden="true"></span></button>
+      <div class="ds-menu" id="menu-product">
+        <a href="/how-it-works#remember"><span class="ds-icon-tile"><span class="ds-icon" data-icon="brain"></span></span><strong>Memory</strong><span>Readable pages your agents write to</span></a>
+        <a href="/how-it-works#recall"><span class="ds-icon-tile"><span class="ds-icon" data-icon="search"></span></span><strong>Recall</strong><span>Pick up context in any connected agent</span></a>
+        <a href="/how-it-works#activity"><span class="ds-icon-tile"><span class="ds-icon" data-icon="activity"></span></span><strong>Activity</strong><span>Observed calls and reported work, kept apart</span></a>
+        <a href="/how-it-works#sharing"><span class="ds-icon-tile"><span class="ds-icon" data-icon="share-2"></span></span><strong>Scoped sharing</strong><span>Approve exact excerpts for a team or agent</span></a>
+      </div></div>
+    <div class="m-nav-item"><button type="button" class="m-nav-trigger" data-menu-trigger aria-expanded="false" aria-controls="menu-developers">Developers<span class="ds-icon" data-icon="chevron-down" aria-hidden="true"></span></button>
+      <div class="ds-menu" id="menu-developers">
+        <a href="/how-it-works#connections"><span class="ds-icon-tile"><span class="ds-icon" data-icon="terminal"></span></span><strong>Connect an agent</strong><span>One command for your coding agents</span></a>
+        <a href="/self-host"><span class="ds-icon-tile"><span class="ds-icon" data-icon="database"></span></span><strong>Self-host</strong><span>MIT licensed, Docker Compose to start</span></a>
+        <a href="https://github.com/Ani-HQ/engram/blob/main/docs/WIRING.md"><span class="ds-icon-tile"><span class="ds-icon" data-icon="file-text"></span></span><strong>Connection guide</strong><span>Exact setup for every client</span></a>
+        <a href="/changelog"><span class="ds-icon-tile"><span class="ds-icon" data-icon="git-branch"></span></span><strong>Changelog</strong><span>What shipped, and when</span></a>
+      </div></div>
+    <a class="m-nav-link" href="/pricing" aria-current="page">Pricing</a>
+    <a class="m-nav-link" href="/support">Support</a>
+    <div class="m-nav-mobile-actions"><a class="ds-button m-button" href="/app#signin">Sign in</a><a class="ds-button m-button" data-variant="primary" href="https://x.com/anirudh_twt">Ask for an invite</a></div>
+  </nav>
+  <div class="m-header-actions">
+    <a class="m-github" href="https://github.com/Ani-HQ/engram"><img src="/vendor/simple-icons/github.svg" alt="" width="16" height="16">Star on GitHub</a>
+    <a class="ds-button m-button m-button-ghost" href="/app#signin">Sign in</a>
+    <a class="ds-button m-button" data-variant="primary" href="https://x.com/anirudh_twt">Ask for an invite</a>
+  </div>
+  <button type="button" class="m-nav-toggle" data-nav-toggle aria-controls="site-nav" aria-expanded="false" aria-label="Open menu"><span class="ds-icon" data-icon="menu" aria-hidden="true"></span></button>
 </div></header>
-<main id="main" tabindex="-1"><div class="m-wrap"><div class="m-page-hero"><h1>Your memory. Your choice of hosting.</h1><p>Run Engram on your own infrastructure, or ask for a place in the hosted closed beta. The core idea stays the same: shared memory and a readable history across your agents.</p></div></div>
-<div class="m-wrap"><div class="m-pricing-intro"><h2>Hosted access is invitation only.</h2><p>Ask for an invitation to the closed beta. Already have a code? <a href="/app#invite">Redeem it with your email</a>. Existing members can <a href="/app#signin">sign in</a>.</p><div class="m-actions"><a class="ds-button m-button" data-variant="primary" href="https://x.com/anirudh_twt">Ask for an invite</a></div></div>
+<main id="main" tabindex="-1"><section class="m-page-hero-band ds-dotgrid"><div class="m-wrap"><div class="m-page-hero" data-reveal><span class="ds-kicker"><span class="ds-icon" data-icon="cloud" aria-hidden="true"></span>Pricing</span><h1>Free to self-host.<span class="m-accent">Hosted when you’re ready.</span></h1><p>Self-host the MIT-licensed source at no cost, or ask for a place in the hosted closed beta. Either way, your agents share one memory and a readable history.</p></div></div></section>
+<div class="m-wrap"><div class="m-pricing-intro"><h2>Hosted access is invitation only.</h2><p>Ask for an invitation to the closed beta. Already have a code? <a href="/app#invite">Redeem it with your email</a>. Existing members can <a href="/app#signin">sign in</a>.</p><div class="m-actions"><a class="ds-button m-button m-button-lg" data-variant="primary" href="https://x.com/anirudh_twt">Ask for an invite</a><a class="ds-button m-button m-button-lg m-button-ghost" href="/app#invite">Redeem an invite</a></div></div>
 <div id="pricing-plans" aria-live="polite"><p class="ds-notice public-message" role="status">Loading the current plans…</p></div>
 <noscript><p class="public-message">Enable JavaScript to load this installation’s current plan catalog. Self-hosting is MIT licensed; hosted access is currently invite only. <a href="/support">Contact support for current plan details.</a></p></noscript>
 <p class="m-quiet-note" id="open-source-support">As Engram earns revenue, we’ll use a portion to sponsor open-source projects. Built on <a href="https://github.com/garrytan/gbrain">gbrain</a> and other open-source tools.</p>
@@ -34,14 +57,18 @@
 <details><summary>What happens when paid write access ends?</summary><p>Existing data remains readable and exportable. Credential revocation, privacy controls, and unpublishing remain available. Canceling a subscription does not erase your workspace; <a href="/privacy#requests">request erasure separately</a>.</p></details>
 <details><summary>Can I cancel a subscription?</summary><p>A workspace owner can manage an existing subscription in Plan &amp; billing. Cancellation at the end of the billing period keeps access through that date. Complimentary beta access and an existing paid subscription are separate; a grant does not automatically cancel a subscription.</p></details>
 <details><summary>Who do I contact about billing?</summary><p><a href="mailto:ani@odstdio.com?subject=Engram%20billing%20help">Email ani@odstdio.com</a> with your account email and workspace name. Keep tokens, passwords, payment details, and private memory out of your message.</p></details>
-</div></section></div></main>
+</div></section></div><section class="m-final ds-dotgrid" aria-labelledby="cta-title"><div class="m-wrap m-final-inner" data-reveal><img class="m-final-mark" src="/brand/engram-mark.svg" alt="" width="44" height="44"><h2 id="cta-title">Your next agent should already know.<span class="m-accent">Ask for an invite.</span></h2><p>New invites get 60 days of unlimited knowledge transfers, no card. Or self-host it today under MIT.</p><div class="m-actions"><a class="ds-button m-button m-button-lg" data-variant="primary" href="https://x.com/anirudh_twt">Ask for an invite</a><a class="ds-button m-button m-button-lg m-button-ghost" href="/self-host">Self-host for free</a></div></div></section></main>
 <footer class="m-footer" id="open-source-footer"><div class="m-wrap">
-<div class="m-footer-main"><div class="m-footer-brand"><a class="m-wordmark" href="/"><img src="/brand/engram-mark.svg" width="31" height="31" alt="">engram</a><p>Shared memory for your AI agents.<br>Keep the useful context moving.</p><p>As Engram earns revenue, we’ll use a portion to sponsor open-source projects.</p></div>
-<nav aria-label="Product"><span>Product</span><a href="/how-it-works">How it works</a><a href="/pricing">Pricing</a><a href="/self-host">Self-host Engram</a><a href="/app#signin">Sign in</a></nav>
-<nav aria-label="Resources"><span>Resources</span><a href="/support">Help &amp; support</a><a href="/changelog">Changelog</a><a href="https://github.com/Ani-HQ/engram">Source code</a><a href="https://github.com/Ani-HQ/engram/blob/main/docs/WIRING.md">Connection guide</a><a href="/design-system">Design system</a></nav>
-<nav aria-label="Contact and privacy"><span>Company</span><a href="/privacy">Privacy &amp; data</a><a href="mailto:ani@odstdio.com">Email us</a><a href="https://x.com/anirudh_twt">Ask for an invite</a><a href="/app#invite">Have an invite code?</a></nav></div>
+<div class="m-footer-main">
+  <div class="m-footer-brand"><a class="m-wordmark" href="/"><img src="/brand/engram-mark.svg" width="31" height="31" alt="">engram</a><p>Shared memory for your AI agents. Decide once, recall anywhere.</p><p>As Engram earns revenue, we’ll use a portion to sponsor open-source projects.</p>
+    <div class="m-socials"><a href="https://github.com/Ani-HQ/engram" aria-label="Engram on GitHub"><img src="/vendor/simple-icons/github.svg" alt="" width="18" height="18"></a><a href="https://x.com/anirudh_twt" aria-label="Engram on X"><span class="m-x-mark" aria-hidden="true">𝕏</span></a><a href="mailto:ani@odstdio.com" aria-label="Email us"><span class="ds-icon" data-icon="mail" aria-hidden="true"></span></a></div></div>
+  <nav aria-label="Product"><span>Product</span><a href="/how-it-works">How it works</a><a href="/how-it-works#sharing">Scoped sharing</a><a href="/pricing">Pricing</a><a href="/app#signin">Sign in</a><a href="/app#invite">Redeem an invite</a></nav>
+  <nav aria-label="Developers"><span>Developers</span><a href="/self-host">Self-host Engram</a><a href="https://github.com/Ani-HQ/engram/blob/main/docs/WIRING.md">Connection guide</a><a href="https://github.com/Ani-HQ/engram">Source code</a><a href="/changelog">Changelog</a><a href="/design-system">Design system</a></nav>
+  <nav aria-label="Company"><span>Company</span><a href="/support">Help &amp; support</a><a href="/privacy">Privacy &amp; data</a><a href="mailto:ani@odstdio.com">Email us</a><a href="https://x.com/anirudh_twt">Ask for an invite</a></nav>
+</div>
 <div class="m-footer-bottom"><span>© 2026 Outcome Driven Holdings LLC</span><span>MIT licensed. Built on <a href="https://github.com/garrytan/gbrain">gbrain</a>.</span></div>
 </div></footer>
 <script type="module" src="/public.js"></script>
+<script type="module" src="/marketing-site.js"></script>
 <script type="module" src="/analytics.js"></script>
 </body></html>

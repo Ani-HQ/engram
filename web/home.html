@@ -2,12 +2,12 @@
 <html lang="en" data-design-system="signal">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Engram — A shared drive for agent context</title><meta name="description" content="Give your AI agents one place for decisions, memory pages, and project context. Carry knowledge between agents and selectively share it with your team.">
+  <title>Engram — Shared memory for your AI agents</title><meta name="description" content="Your agents forget. Engram remembers. One shared memory for Claude Code, Codex, Cursor and your other MCP agents: save a decision in one, recall it in the next.">
   <meta name="robots" content="index, follow"><link rel="canonical" href="https://engram.ani.computer/">
   <meta property="og:type" content="website"><meta property="og:site_name" content="Engram">
-  <meta property="og:title" content="Engram — A shared drive for agent context"><meta property="og:description" content="Give your AI agents one place for decisions, memory pages, and project context. Carry knowledge between agents and selectively share it with your team."><meta property="og:url" content="https://engram.ani.computer/">
+  <meta property="og:title" content="Engram — Shared memory for your AI agents"><meta property="og:description" content="Your agents forget. Engram remembers. One shared memory for Claude Code, Codex, Cursor and your other MCP agents: save a decision in one, recall it in the next."><meta property="og:url" content="https://engram.ani.computer/">
   <meta property="og:image" content="https://engram.ani.computer/brand/engram-social.png"><meta property="og:image:type" content="image/png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="Engram: your agents, same drive. Shared memory and context across connected agents.">
-  <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="Engram — A shared drive for agent context"><meta name="twitter:description" content="Give your AI agents one place for decisions, memory pages, and project context. Carry knowledge between agents and selectively share it with your team."><meta name="twitter:image" content="https://engram.ani.computer/brand/engram-social.png"><meta name="twitter:image:alt" content="Engram connects your AI agents to shared memory and task activity.">
+  <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="Engram — Shared memory for your AI agents"><meta name="twitter:description" content="Your agents forget. Engram remembers. One shared memory for Claude Code, Codex, Cursor and your other MCP agents: save a decision in one, recall it in the next."><meta name="twitter:image" content="https://engram.ani.computer/brand/engram-social.png"><meta name="twitter:image:alt" content="Engram connects your AI agents to shared memory and task activity.">
   <meta name="application-name" content="Engram"><meta name="theme-color" content="#111313">
   <link rel="icon" href="/favicon.ico" type="image/x-icon" sizes="16x16 32x32 48x48"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180"><link rel="manifest" href="/site.webmanifest">
   <link rel="preload" href="/vendor/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
@@ -17,20 +17,46 @@
 <a class="ds-skip-link ds-button" href="#main">Skip to content</a>
 <header class="m-header"><div class="m-wrap m-header-inner">
   <a class="m-wordmark" href="/" aria-label="Engram home"><img src="/brand/engram-mark.svg" alt="" width="31" height="31">engram</a>
-  <nav class="m-nav" aria-label="Main navigation"><a href="/how-it-works">How it works</a><a href="/pricing">Pricing</a><a href="/self-host">Self-host</a><a href="/support">Support</a></nav>
-  <div class="m-header-actions"><a href="/app#signin">Sign in</a><a class="ds-button m-button small m-button-small" data-variant="primary" href="https://x.com/anirudh_twt">Ask for an invite</a></div>
+  <nav class="m-nav" id="site-nav" aria-label="Main navigation">
+    <div class="m-nav-item"><button type="button" class="m-nav-trigger" data-menu-trigger aria-expanded="false" aria-controls="menu-product">Product<span class="ds-icon" data-icon="chevron-down" aria-hidden="true"></span></button>
+      <div class="ds-menu" id="menu-product">
+        <a href="/how-it-works#remember"><span class="ds-icon-tile"><span class="ds-icon" data-icon="brain"></span></span><strong>Memory</strong><span>Readable pages your agents write to</span></a>
+        <a href="/how-it-works#recall"><span class="ds-icon-tile"><span class="ds-icon" data-icon="search"></span></span><strong>Recall</strong><span>Pick up context in any connected agent</span></a>
+        <a href="/how-it-works#activity"><span class="ds-icon-tile"><span class="ds-icon" data-icon="activity"></span></span><strong>Activity</strong><span>Observed calls and reported work, kept apart</span></a>
+        <a href="/how-it-works#sharing"><span class="ds-icon-tile"><span class="ds-icon" data-icon="share-2"></span></span><strong>Scoped sharing</strong><span>Approve exact excerpts for a team or agent</span></a>
+      </div></div>
+    <div class="m-nav-item"><button type="button" class="m-nav-trigger" data-menu-trigger aria-expanded="false" aria-controls="menu-developers">Developers<span class="ds-icon" data-icon="chevron-down" aria-hidden="true"></span></button>
+      <div class="ds-menu" id="menu-developers">
+        <a href="/how-it-works#connections"><span class="ds-icon-tile"><span class="ds-icon" data-icon="terminal"></span></span><strong>Connect an agent</strong><span>One command for your coding agents</span></a>
+        <a href="/self-host"><span class="ds-icon-tile"><span class="ds-icon" data-icon="database"></span></span><strong>Self-host</strong><span>MIT licensed, Docker Compose to start</span></a>
+        <a href="https://github.com/Ani-HQ/engram/blob/main/docs/WIRING.md"><span class="ds-icon-tile"><span class="ds-icon" data-icon="file-text"></span></span><strong>Connection guide</strong><span>Exact setup for every client</span></a>
+        <a href="/changelog"><span class="ds-icon-tile"><span class="ds-icon" data-icon="git-branch"></span></span><strong>Changelog</strong><span>What shipped, and when</span></a>
+      </div></div>
+    <a class="m-nav-link" href="/pricing">Pricing</a>
+    <a class="m-nav-link" href="/support">Support</a>
+    <div class="m-nav-mobile-actions"><a class="ds-button m-button" href="/app#signin">Sign in</a><a class="ds-button m-button" data-variant="primary" href="https://x.com/anirudh_twt">Ask for an invite</a></div>
+  </nav>
+  <div class="m-header-actions">
+    <a class="m-github" href="https://github.com/Ani-HQ/engram"><img src="/vendor/simple-icons/github.svg" alt="" width="16" height="16">Star on GitHub</a>
+    <a class="ds-button m-button m-button-ghost" href="/app#signin">Sign in</a>
+    <a class="ds-button m-button" data-variant="primary" href="https://x.com/anirudh_twt">Ask for an invite</a>
+  </div>
+  <button type="button" class="m-nav-toggle" data-nav-toggle aria-controls="site-nav" aria-expanded="false" aria-label="Open menu"><span class="ds-icon" data-icon="menu" aria-hidden="true"></span></button>
 </div></header>
-<main id="main" tabindex="-1"><div class="m-wrap">
-<section class="m-hero" aria-labelledby="home-title">
-  <h1 id="home-title">Different agents. One shared memory.</h1>
-  <p class="m-lead">A shared home for decisions and project context. Pick up with another connected agent, or share selected excerpts with your team.</p>
-  <div class="m-actions"><a class="ds-button m-button" data-variant="primary" href="https://x.com/anirudh_twt">Ask for an invite</a><a class="m-text-link" href="/how-it-works">Explore how it works</a></div>
-  <p class="m-quiet-note">Cloud is invite-only. <a href="/self-host">Self-host anytime.</a> <a href="/app#invite">Have an invite?</a></p>
-  <div class="ds-attribution"><span class="ds-attribution-label">Powered by</span><span class="ds-attribution-links"><a class="ds-attribution-link ds-touch-target" href="https://typesafe.ai/" aria-label="Jev by TypeSafe AI"><img class="ds-product-logo" src="/vendor/brands/typesafe.png" width="24" height="24" alt=""><span>jev</span></a><span>and</span><a class="ds-attribution-link ds-touch-target" href="https://github.com/garrytan/gbrain" aria-label="gbrain by Garry Tan"><img class="ds-attribution-avatar" src="/vendor/brands/garry-tan.jpg" width="24" height="24" alt=""><span>gbrain</span></a></span></div>
-</section>
-<section class="m-section m-agents" id="agents" aria-labelledby="agent-ecosystem-title">
-  <div class="m-section-head"><h2 id="agent-ecosystem-title">Bring your whole toolkit.</h2><p>MCP support and setup vary by client. <a class="m-text-link" href="/how-it-works#connections">Explore setup</a></p></div>
-  <ul class="ds-logo-list" role="list" aria-label="Agent product examples">
+<main id="main" tabindex="-1">
+<section class="m-hero ds-dotgrid" aria-labelledby="home-title"><div class="m-wrap m-hero-inner">
+  <a class="ds-announce" href="/changelog" data-reveal><span class="ds-announce-label">New</span><span class="ds-announce-text">One command now connects OpenClaw, Hermes Agent, Amp and Devin CLI</span><span class="ds-icon" data-icon="arrow-right" aria-hidden="true"></span></a>
+  <h1 id="home-title" data-reveal data-reveal-delay="60">Your agents forget.<span class="m-hero-accent">Engram remembers.</span></h1>
+  <p class="m-lead" data-reveal data-reveal-delay="120">One shared memory for Claude Code, Codex, Cursor and the rest of your MCP agents. Save a decision in one, recall it in the next, and stop re-explaining your project every session.</p>
+  <div class="m-actions" data-reveal data-reveal-delay="180"><a class="ds-button m-button m-button-lg" data-variant="primary" href="https://x.com/anirudh_twt">Ask for an invite</a><a class="ds-button m-button m-button-lg m-button-ghost" href="/self-host"><span class="ds-icon" data-icon="terminal" aria-hidden="true"></span>Self-host for free</a></div>
+  <p class="m-hero-note" data-reveal data-reveal-delay="240">Closed beta. New invites get 60 days of unlimited knowledge transfers, no card. <a href="/app#invite">Have an invite?</a></p>
+  <div class="ds-attribution" data-reveal data-reveal-delay="300"><span class="ds-attribution-label">Powered by</span><span class="ds-attribution-links"><a class="ds-attribution-link ds-touch-target" href="https://typesafe.ai/" aria-label="Jev by TypeSafe AI"><img class="ds-product-logo" src="/vendor/brands/typesafe.png" width="24" height="24" alt=""><span>jev</span></a><span>and</span><a class="ds-attribution-link ds-touch-target" href="https://github.com/garrytan/gbrain" aria-label="gbrain by Garry Tan"><img class="ds-attribution-avatar" src="/vendor/brands/garry-tan.jpg" width="24" height="24" alt=""><span>gbrain</span></a></span></div>
+</div></section>
+
+<section class="m-logos" id="agents" aria-labelledby="agent-ecosystem-title"><div class="m-wrap">
+  <h2 id="agent-ecosystem-title" class="m-logos-title">Works with the agents you already use</h2>
+  <div class="ds-marquee">
+  <ul role="list" aria-label="Agent products">
 <li data-agent-product="claude-code"><img class="ds-product-logo" data-size="28" data-tone="mono" src="/vendor/simple-icons/claude.svg" width="28" height="28" alt="" loading="lazy"><span>Claude Code</span></li>
 <li data-agent-product="codex"><img class="ds-product-logo" data-size="28" data-tone="mono" src="/vendor/brands/codex.svg" width="28" height="28" alt="" loading="lazy"><span>Codex</span></li>
 <li data-agent-product="cursor"><img class="ds-product-logo" data-size="28" data-tone="mono" src="/vendor/simple-icons/cursor.svg" width="28" height="28" alt="" loading="lazy"><span>Cursor</span></li>
@@ -52,54 +78,169 @@
 <li data-agent-product="aider"><img class="ds-product-logo" data-size="28" src="/vendor/brands/aider.png" width="28" height="28" alt="" loading="lazy"><span>Aider</span></li>
 <li data-agent-product="grok"><img class="ds-product-logo" data-size="28" data-tone="mono" src="/vendor/brands/grok.svg" width="28" height="28" alt="" loading="lazy"><span>Grok</span></li>
 <li data-agent-product="claude"><img class="ds-product-logo" data-size="28" data-tone="mono" src="/vendor/simple-icons/claude.svg" width="28" height="28" alt="" loading="lazy"><span>Claude</span></li>
-</ul>
-</section>
-<section class="m-section" aria-labelledby="handoff-title">
-  <div class="m-section-head"><h2 id="handoff-title">Keep the decision. Skip the catch-up.</h2><p>You have agents for writing code, exploring an idea, and finishing the next task. Give them a shared place for the decisions and context worth carrying forward.</p></div>
-  <div class="m-columns" data-columns="2">
-    <div><h3>Memory that another agent can recall.</h3><p>Save a decision in one agent, such as “Keep background jobs idempotent. Retries should use a stable request ID.” Later, in another agent, ask what you decided about background-job retries. Recall brings the saved context back into the conversation.</p></div>
-    <div><h3>And a trail of the work.</h3><p>Activity shows which agent saved or read context through Engram, alongside work an agent chose to report, such as opening a pull request. Reported work stays labeled as agent reported and unverified.</p></div>
+  </ul>
+  <ul aria-hidden="true">
+<li><img class="ds-product-logo" data-size="28" data-tone="mono" src="/vendor/simple-icons/claude.svg" width="28" height="28" alt=""><span>Claude Code</span></li>
+<li><img class="ds-product-logo" data-size="28" data-tone="mono" src="/vendor/brands/codex.svg" width="28" height="28" alt=""><span>Codex</span></li>
+<li><img class="ds-product-logo" data-size="28" data-tone="mono" src="/vendor/simple-icons/cursor.svg" width="28" height="28" alt=""><span>Cursor</span></li>
+<li><img class="ds-product-logo" data-size="28" data-tone="mono" src="/vendor/brands/openai.svg" width="28" height="28" alt=""><span>ChatGPT</span></li>
+<li><img class="ds-product-logo" data-size="28" src="/vendor/brands/grok-bot.png" width="28" height="28" alt=""><span>Grok Bot</span></li>
+<li><img class="ds-product-logo" data-size="28" src="/vendor/brands/muse.svg" width="28" height="28" alt=""><span>Muse</span></li>
+<li><img class="ds-product-logo" data-size="28" src="/vendor/brands/instinct.png" width="28" height="28" alt=""><span>Instinct</span></li>
+<li><img class="ds-product-logo" data-size="28" data-tone="mono" src="/vendor/brands/windsurf.svg" width="28" height="28" alt=""><span>Windsurf</span></li>
+<li><img class="ds-product-logo" data-size="28" data-tone="mono" src="/vendor/brands/devin.svg" width="28" height="28" alt=""><span>Devin</span></li>
+<li><img class="ds-product-logo" data-size="28" data-tone="mono" src="/vendor/brands/openclaw.svg" width="28" height="28" alt=""><span>OpenClaw</span></li>
+<li><img class="ds-product-logo" data-size="28" data-tone="mono" src="/vendor/brands/hermesagent.svg" width="28" height="28" alt=""><span>Hermes Agent</span></li>
+<li><img class="ds-product-logo" data-size="28" data-tone="mono" src="/vendor/brands/gemini.svg" width="28" height="28" alt=""><span>Gemini CLI</span></li>
+<li><img class="ds-product-logo" data-size="28" data-tone="mono" src="/vendor/brands/opencode.svg" width="28" height="28" alt=""><span>OpenCode</span></li>
+<li><img class="ds-product-logo" data-size="28" data-tone="mono" src="/vendor/brands/cline.svg" width="28" height="28" alt=""><span>Cline</span></li>
+<li><img class="ds-product-logo" data-size="28" data-tone="mono" src="/vendor/brands/goose.svg" width="28" height="28" alt=""><span>Goose</span></li>
+<li><img class="ds-product-logo" data-size="28" data-tone="mono" src="/vendor/brands/amp.svg" width="28" height="28" alt=""><span>Amp</span></li>
+<li><img class="ds-product-logo" data-size="28" data-tone="mono" src="/vendor/brands/githubcopilot.svg" width="28" height="28" alt=""><span>GitHub Copilot</span></li>
+<li><img class="ds-product-logo" data-size="28" src="/vendor/brands/vscode.png" width="28" height="28" alt=""><span>Visual Studio Code</span></li>
+<li><img class="ds-product-logo" data-size="28" src="/vendor/brands/aider.png" width="28" height="28" alt=""><span>Aider</span></li>
+<li><img class="ds-product-logo" data-size="28" data-tone="mono" src="/vendor/brands/grok.svg" width="28" height="28" alt=""><span>Grok</span></li>
+<li><img class="ds-product-logo" data-size="28" data-tone="mono" src="/vendor/simple-icons/claude.svg" width="28" height="28" alt=""><span>Claude</span></li>
+  </ul>
   </div>
-  <p class="m-note">Engram observes its own memory calls. Work in other tools appears when an agent reports it. Connecting Engram does not silently monitor every conversation or tool call.</p>
-</section>
-<section class="m-section" id="scoped-shares" aria-labelledby="sharing-title">
-  <div class="m-section-head"><h2 id="sharing-title">Share a little. Keep the rest yours.</h2><p>Give your team selected decisions, or give an agent a separate read-only connection to approved context. You review the exact excerpts before sharing.</p></div>
-  <ol class="m-columns">
-    <li><h3>Describe the slice.</h3><p>Choose a team or a separate agent connection, then say what belongs in the share.</p></li>
-    <li><h3>Review every excerpt.</h3><p>Suggestions can be wrong. Select and trim the proposed text, then approve the exact excerpts.</p></li>
-    <li><h3>Share a snapshot.</h3><p>The recipient gets the approved excerpts. New or edited memories need fresh approval.</p></li>
-  </ol>
-  <p class="m-note">A team workspace makes approved excerpts read-only shared memory for everyone authorized there. A separate read-only agent connection can search and recall only those excerpts. Existing workspace connections keep their broader access; disconnect or revoke those separately to limit an agent to the slice.</p>
-  <div class="m-section-foot"><a class="m-text-link" href="/how-it-works#sharing">Explore scoped shares</a><span class="m-quiet-note">Start in Sharing in your personal workspace.</span></div>
-</section>
-<section class="m-section" aria-labelledby="moves-title">
-  <div class="m-section-head"><h2 id="moves-title">Connect. Remember. Recall.</h2><p>Three moves to carry context from one agent to the next. <a class="m-text-link" href="/how-it-works">Walk through the details</a></p></div>
-  <ol class="m-columns">
-    <li><h3>Connect your first agent.</h3><p>Claim your invite by verifying your email, then open Connections and make a workspace-bound key. Guided setup keeps the token out of your shell history.</p><pre><code>npx @ani-hq/engram-mcp setup</code></pre></li>
-    <li><h3>Save a useful decision.</h3><p>Ask the connected agent to remember a decision or a useful bit of project context, such as “Remember: use stable IDs for job retries.” It lands on a readable memory page.</p></li>
-    <li><h3>Continue with another agent.</h3><p>Connect another agent to the same workspace and ask it to recall that context, such as “Recall our decision about job retries.” Task reporting is there when you want a wider work history.</p></li>
-  </ol>
-</section>
-<section class="m-section" aria-labelledby="private-title">
-  <div class="m-section-head"><h2 id="private-title">Shared with your agents. Private by default.</h2><p><a class="m-text-link" href="/privacy">Read the privacy details</a></p></div>
-  <div class="m-columns">
-    <div><h3>Scoped to your workspace.</h3><p>Connections belong to one workspace. Personal memory stays separate from a team’s shared space. You choose what to share.</p></div>
-    <div><h3>Optional AI stays optional.</h3><p>External AI processing starts off. Core storage, keyword search, and activity work without it. Connected agents have their own data policies.</p></div>
-    <div><h3>Open source. Your choice.</h3><p>Use hosted Engram or run it yourself under MIT. Self-hosting puts the infrastructure, updates, and backups in your hands.</p></div>
+  <p class="m-logos-note">MCP support and setup vary by client. <a href="/how-it-works#connections">See setup for each one</a></p>
+</div></section>
+
+<section class="m-section" id="handoff" aria-labelledby="handoff-title"><div class="m-wrap">
+  <div class="m-section-head m-center" data-reveal><span class="ds-kicker"><span class="ds-icon" data-icon="route" aria-hidden="true"></span>The handoff</span><h2 id="handoff-title">Decide in Claude Code.<span class="m-accent">Continue in Codex.</span></h2><p>One agent saves the decision. The next one recalls it. You never paste the same context twice.</p></div>
+  <div class="m-handoff" data-handoff data-reveal>
+    <div class="ds-window" data-pane>
+      <div class="ds-window-bar"><span class="ds-window-dots" aria-hidden="true"><span></span><span></span><span></span></span><span class="ds-window-title"><img src="/vendor/simple-icons/claude.svg" alt="" class="m-invert" width="16" height="16">Claude Code</span><span class="m-pane-time">Monday</span></div>
+<pre class="ds-window-body"><span class="m-line" data-step="type" data-prompt="› ">› Remember: background-job retries must use a stable request ID.</span>
+<span class="m-line ds-term-muted" data-step="show">  ⏺ engram · remember</span>
+<span class="m-line ds-term-ok" data-step="show" data-delay="900">  ✓ Added a dated entry to projects/billing</span></pre>
+    </div>
+    <div class="m-handoff-link" aria-hidden="true"><span></span><img src="/brand/engram-mark.svg" alt="" width="28" height="28"><span></span></div>
+    <div class="ds-window" data-pane>
+      <div class="ds-window-bar"><span class="ds-window-dots" aria-hidden="true"><span></span><span></span><span></span></span><span class="ds-window-title"><img src="/vendor/brands/codex.svg" alt="" class="m-invert" width="16" height="16">Codex</span><span class="m-pane-time">Thursday</span></div>
+<pre class="ds-window-body"><span class="m-line" data-step="type" data-prompt="› ">› What did we decide about job retries?</span>
+<span class="m-line ds-term-muted" data-step="show">  ⏺ engram · recall "job retries"</span>
+<span class="m-line ds-term-ok" data-step="show">  ✓ 1 snippet from projects/billing</span>
+<span class="m-line" data-step="show">    “Background-job retries must use a stable request ID.”</span>
+<span class="m-line ds-term-muted" data-step="show" data-delay="200">  Got it. I’ll key the retry on the request ID.</span></pre>
+    </div>
+    <p class="m-handoff-caption">Example session. You type the prompts; your agent decides when to call Engram. <button type="button" class="m-replay" data-handoff-replay><span class="ds-icon" data-icon="refresh-cw" aria-hidden="true"></span>Replay</button></p>
   </div>
-</section>
-<section class="m-section" aria-labelledby="faq-title">
-  <div class="m-section-head"><h2 id="faq-title">Questions</h2><p>Looking for setup help? <a class="m-text-link" href="/support">Start with the support guide.</a></p></div>
-  <div class="m-faq"><details><summary>What exactly do my agents share?</summary><p>The memory pages and activity in the workspace they are authorized to use. Save useful context through Engram, then recall it from another connected agent. A separate workspace has separate memory storage and scoped access.</p></details><details><summary>Does Engram automatically record everything?</summary><p>No. It observes requests to its own memory tools. External actions appear when an agent or integration reports them, and those reports remain labeled unverified. A connection alone does not capture every tool call or conversation.</p></details><details><summary>Do I have to change the agent I use?</summary><p>Keep your existing MCP-compatible client. Guided setup supports Claude Code, Codex, Cursor, OpenClaw, Hermes Agent, Amp, Devin CLI, VS Code and Windsurf. Chat clients that need OAuth use their connector sign-in flow. <a href="/how-it-works#connections">See the connection options.</a></p></details><details><summary>How do I get an invitation?</summary><p>Hosted Engram is in closed beta. <a href="https://x.com/anirudh_twt">Ask for an invite on X.</a> Open the single-use invite link and verify your chosen inbox; an email-bound invitation needs its invited address. New friend invitations include 60 days of unlimited knowledge transfers after verification. Jev is separate. Existing members <a href="/app#signin">sign in with email</a>.</p></details><details><summary>What lives on this shared drive?</summary><p>Engram holds memory pages and project context: notes, decisions, and the useful details your agents save through MCP. Task activity appears alongside that memory. The shared-drive analogy describes a common place for agent context; it does not promise general file upload or automatic synchronization of every app.</p></details><details><summary>Can I give an agent only part of my context?</summary><p>Yes. Create a scoped share in Sharing, review the exact excerpts, and configure its separate read-only agent connection. If the agent already has a broader workspace connection, disconnect or revoke that separately. You can also share approved excerpts with a team; everyone authorized there can read them. <a href="/how-it-works#sharing">See how scoped shares work.</a></p></details><details><summary>Do scoped shares stay in sync?</summary><p>A reviewed share is a fixed snapshot. New or edited source text needs fresh review and approval. Revoking a share stops future service reads through it; it cannot recall text someone already read or exported.</p></details><details><summary>Can I run it on my own machine?</summary><p>Yes. The MIT-licensed app includes the MCP gateway, memory, activity history, and web console. Docker Compose is the local starting point. You operate the infrastructure and any optional providers. <a href="/self-host">Read the self-hosting guide.</a></p></details></div>
-</section>
-<section class="m-cta" aria-labelledby="cta-title"><h2 id="cta-title">Start your next task with the context intact.</h2><p>Engram Cloud is in closed beta. Tell us what you’re building and ask for an invitation.</p><div class="m-actions"><a class="ds-button m-button" data-variant="primary" href="https://x.com/anirudh_twt">Ask for an invite</a></div></section>
-</div></main>
+</div></section>
+
+<section class="m-section" id="features" aria-labelledby="features-title"><div class="m-wrap">
+  <div class="m-section-head m-center" data-reveal><span class="ds-kicker"><span class="ds-icon" data-icon="layers" aria-hidden="true"></span>One shared drive for agent context</span><h2 id="features-title">Everything your agents need to stop starting over.</h2></div>
+  <div class="m-bento">
+    <a class="ds-spotlight m-card m-span-2" href="/how-it-works#remember" data-reveal>
+      <div class="m-card-copy"><span class="ds-icon-tile" data-tone="accent"><span class="ds-icon" data-icon="brain"></span></span><h3>Memory you can actually read</h3><p>Decisions land on readable pages with tags, links and a timeline. Open the console and see exactly what was saved.</p><span class="m-card-more">How memory works<span class="ds-icon" data-icon="chevron-right" aria-hidden="true"></span></span></div>
+      <div class="m-card-art m-page-art" aria-hidden="true"><div class="m-art-head"><span class="ds-icon" data-icon="file-text"></span>projects/billing</div><ul><li><time>Oct 21</time><span>Retries use a stable request ID.</span></li><li><time>Oct 18</time><span>Verify webhook signatures before parsing.</span></li><li><time>Oct 12</time><span>Invoices stay in cents, never floats.</span></li></ul><span class="m-art-caption">Example page</span></div>
+    </a>
+    <a class="ds-spotlight m-card" href="/how-it-works#recall" data-reveal data-reveal-delay="80">
+      <div class="m-card-copy"><span class="ds-icon-tile" data-tone="accent"><span class="ds-icon" data-icon="search"></span></span><h3>Recall from any agent</h3><p>A second agent asks, Engram returns a few relevant snippets. Full pages are one call away.</p><span class="m-card-more">How recall works<span class="ds-icon" data-icon="chevron-right" aria-hidden="true"></span></span></div>
+      <div class="m-card-art m-search-art" aria-hidden="true"><div class="m-art-input"><span class="ds-icon" data-icon="search"></span>job retries</div><div class="m-art-hit"><strong>projects/billing</strong><span>Retries use a stable request ID.</span></div></div>
+    </a>
+    <a class="ds-spotlight m-card" href="/how-it-works#activity" data-reveal>
+      <div class="m-card-copy"><span class="ds-icon-tile" data-tone="accent"><span class="ds-icon" data-icon="activity"></span></span><h3>A trail you can trust</h3><p>Engram’s own calls are observed. Work in other tools appears when an agent reports it, and stays labeled unverified.</p><span class="m-card-more">What gets recorded<span class="ds-icon" data-icon="chevron-right" aria-hidden="true"></span></span></div>
+      <div class="m-card-art m-trail-art" aria-hidden="true"><div><span class="m-dot" data-tone="ok"></span><span>Codex recalled <b>job retries</b></span><span class="m-trail-tag" data-tone="ok">Observed</span></div><div><span class="m-dot"></span><span>Claude Code opened a pull request</span><span class="m-trail-tag">Reported</span></div></div>
+    </a>
+    <a class="ds-spotlight m-card m-span-2" href="/how-it-works#sharing" data-reveal data-reveal-delay="80">
+      <div class="m-card-copy"><span class="ds-icon-tile" data-tone="accent"><span class="ds-icon" data-icon="share-2"></span></span><h3>Share a slice, not the whole drive</h3><p>Describe what a team or agent should see. Review the exact excerpts, approve them, and share a fixed snapshot. Everything else stays yours.</p><span class="m-card-more">How scoped sharing works<span class="ds-icon" data-icon="chevron-right" aria-hidden="true"></span></span></div>
+      <div class="m-card-art m-share-art" aria-hidden="true"><div class="m-art-head"><span class="ds-icon" data-icon="users"></span>Share with Platform team</div><ul><li data-on><span class="m-check"></span>Retries use a stable request ID.</li><li data-on><span class="m-check"></span>Verify webhook signatures before parsing.</li><li><span class="m-check"></span>Personal notes on the pricing call</li></ul><span class="m-art-button">Approve 2 excerpts</span></div>
+    </a>
+    <a class="ds-spotlight m-card" href="/self-host" data-reveal>
+      <div class="m-card-copy"><span class="ds-icon-tile" data-tone="accent"><span class="ds-icon" data-icon="database"></span></span><h3>Open source. Run it yourself.</h3><p>The gateway, memory, activity and console are MIT licensed. Docker Compose is the starting point.</p><code class="m-card-code">docker compose up --build -d</code></div>
+    </a>
+    <a class="ds-spotlight m-card" href="/privacy" data-reveal data-reveal-delay="80">
+      <div class="m-card-copy"><span class="ds-icon-tile" data-tone="accent"><span class="ds-icon" data-icon="shield-check"></span></span><h3>Optional AI stays off</h3><p>External AI processing starts off. Storage, keyword search and activity work without it until an owner turns it on.</p><span class="m-switch" aria-hidden="true"><span></span>External AI · Off</span></div>
+    </a>
+    <a class="ds-spotlight m-card" href="/how-it-works#boundaries" data-reveal data-reveal-delay="160">
+      <div class="m-card-copy"><span class="ds-icon-tile" data-tone="accent"><span class="ds-icon" data-icon="key-round"></span></span><h3>One key per agent</h3><p>Every connection belongs to one workspace. Turn off write access for agents that should only read.</p><span class="m-card-more">Know the boundaries<span class="ds-icon" data-icon="chevron-right" aria-hidden="true"></span></span></div>
+    </a>
+  </div>
+</div></section>
+
+<section class="m-section" id="connect" aria-labelledby="connect-title"><div class="m-wrap m-split">
+  <div class="m-split-copy" data-reveal>
+    <span class="ds-kicker"><span class="ds-icon" data-icon="terminal" aria-hidden="true"></span>Setup</span>
+    <h2 id="connect-title">Connected in one command.</h2>
+    <p>Guided setup checks identity and tool discovery before it writes your agent’s native config. Your key goes in at a hidden prompt, never into your shell history.</p>
+    <ul class="m-checks">
+      <li><span>Claude Code, Codex, Cursor, OpenClaw, Hermes Agent, Amp and Devin CLI in one step</span></li>
+      <li><span>Claude and ChatGPT connectors sign in with OAuth</span></li>
+      <li><span><code>doctor</code> checks a connection without changing it</span></li>
+    </ul>
+    <a class="m-text-link" href="/how-it-works#connections">See every client<span class="ds-icon" data-icon="arrow-right" aria-hidden="true"></span></a>
+  </div>
+  <div class="ds-window" id="setup-window" data-reveal data-reveal-delay="100">
+    <div class="ds-window-bar"><span class="ds-window-dots" aria-hidden="true"><span></span><span></span><span></span></span><span class="ds-window-title">Terminal</span><button type="button" class="ds-copy" data-copy-from="setup-window"><span class="ds-icon" data-icon="copy" aria-hidden="true"></span><span data-copy-label>Copy</span></button></div>
+    <div class="ds-window-tabs" role="tablist" aria-label="Setup command">
+      <button type="button" role="tab" id="tab-all" aria-controls="panel-all" aria-selected="true">All at once</button>
+      <button type="button" role="tab" id="tab-claude" aria-controls="panel-claude" aria-selected="false" tabindex="-1">Claude Code</button>
+      <button type="button" role="tab" id="tab-codex" aria-controls="panel-codex" aria-selected="false" tabindex="-1">Codex</button>
+      <button type="button" role="tab" id="tab-cursor" aria-controls="panel-cursor" aria-selected="false" tabindex="-1">Cursor</button>
+      <button type="button" role="tab" id="tab-doctor" aria-controls="panel-doctor" aria-selected="false" tabindex="-1">Check</button>
+    </div>
+    <pre class="ds-window-body" role="tabpanel" id="panel-all" aria-labelledby="tab-all" tabindex="0" data-command="npx -y @ani-hq/engram-mcp@latest"><span class="ds-term-muted"># Connect every supported coding agent on this machine</span>
+<span class="ds-term-prompt">$ </span>npx -y @ani-hq/engram-mcp@latest</pre>
+    <pre class="ds-window-body" role="tabpanel" id="panel-claude" aria-labelledby="tab-claude" tabindex="0" hidden data-command="npx @ani-hq/engram-mcp setup claude"><span class="ds-term-muted"># Native HTTP MCP configuration</span>
+<span class="ds-term-prompt">$ </span>npx @ani-hq/engram-mcp setup claude</pre>
+    <pre class="ds-window-body" role="tabpanel" id="panel-codex" aria-labelledby="tab-codex" tabindex="0" hidden data-command="npx @ani-hq/engram-mcp setup codex"><span class="ds-term-muted"># Guided configuration, with OAuth also available</span>
+<span class="ds-term-prompt">$ </span>npx @ani-hq/engram-mcp setup codex</pre>
+    <pre class="ds-window-body" role="tabpanel" id="panel-cursor" aria-labelledby="tab-cursor" tabindex="0" hidden data-command="npx @ani-hq/engram-mcp setup cursor"><span class="ds-term-muted"># A named server in Cursor’s MCP configuration</span>
+<span class="ds-term-prompt">$ </span>npx @ani-hq/engram-mcp setup cursor</pre>
+    <pre class="ds-window-body" role="tabpanel" id="panel-doctor" aria-labelledby="tab-doctor" tabindex="0" hidden data-command="npx @ani-hq/engram-mcp doctor codex"><span class="ds-term-muted"># Read-only: checks identity and the tool catalog</span>
+<span class="ds-term-prompt">$ </span>npx @ani-hq/engram-mcp doctor codex</pre>
+  </div>
+</div></section>
+
+<section class="m-section m-stats-section" aria-label="Engram in numbers"><div class="m-wrap"><div class="m-stats">
+  <div class="ds-stat" data-reveal><span class="ds-stat-value">21</span><span class="ds-stat-label">agents and clients you can bring along</span></div>
+  <div class="ds-stat" data-reveal data-reveal-delay="80"><span class="ds-stat-value">1</span><span class="ds-stat-label">command to connect your coding agents</span></div>
+  <div class="ds-stat" data-reveal data-reveal-delay="160"><span class="ds-stat-value">60 days</span><span class="ds-stat-label">of unlimited knowledge transfers for new invites</span></div>
+  <div class="ds-stat" data-reveal data-reveal-delay="240"><span class="ds-stat-value">$0</span><span class="ds-stat-label">to self-host, MIT licensed</span></div>
+</div></div></section>
+
+<section class="m-section" id="private" aria-labelledby="private-title"><div class="m-wrap">
+  <div class="m-section-head m-center" data-reveal><span class="ds-kicker"><span class="ds-icon" data-icon="shield-check" aria-hidden="true"></span>Privacy</span><h2 id="private-title">Shared with your agents.<span class="m-accent">Private by default.</span></h2></div>
+  <div class="m-trio">
+    <div data-reveal><div class="m-pair" aria-hidden="true"><span class="ds-icon-tile"><img src="/brand/engram-mark.svg" alt="" width="18" height="18"></span><span>×</span><span class="ds-icon-tile"><span class="ds-icon" data-icon="users"></span></span></div><h3>Scoped to a workspace</h3><p>Connections belong to one workspace. Personal memory stays separate from a team’s shared space, and you choose what crosses over.</p></div>
+    <div data-reveal data-reveal-delay="80"><div class="m-pair" aria-hidden="true"><span class="ds-icon-tile"><img src="/brand/engram-mark.svg" alt="" width="18" height="18"></span><span>×</span><span class="ds-icon-tile"><span class="ds-icon" data-icon="eye-off"></span></span></div><h3>Nothing silently watched</h3><p>Engram observes calls to its own memory tools. It does not monitor every conversation or tool call your agents make.</p></div>
+    <div data-reveal data-reveal-delay="160"><div class="m-pair" aria-hidden="true"><span class="ds-icon-tile"><img src="/brand/engram-mark.svg" alt="" width="18" height="18"></span><span>×</span><span class="ds-icon-tile"><span class="ds-icon" data-icon="code"></span></span></div><h3>Open source, your call</h3><p>Use hosted Engram or run it yourself under MIT. Self-hosting puts the infrastructure, updates and backups in your hands.</p></div>
+  </div>
+  <p class="m-center-link" data-reveal><a class="m-text-link" href="/privacy">Read the privacy details<span class="ds-icon" data-icon="arrow-right" aria-hidden="true"></span></a></p>
+</div></section>
+
+<section class="m-section" id="faq" aria-labelledby="faq-title"><div class="m-wrap m-faq-layout">
+  <div class="m-faq-head" data-reveal><h2 id="faq-title">Questions, answered.</h2><p>Looking for setup help? <a class="m-text-link" href="/support">Start with the support guide</a></p></div>
+  <div class="ds-accordion" data-reveal>
+<details><summary>What exactly do my agents share?</summary><p>The memory pages and activity in the workspace they are authorized to use. Save useful context through Engram, then recall it from another connected agent. A separate workspace has separate memory storage and scoped access.</p></details>
+<details><summary>Does Engram automatically record everything?</summary><p>No. It observes requests to its own memory tools. External actions appear when an agent or integration reports them, and those reports remain labeled unverified. A connection alone does not capture every tool call or conversation.</p></details>
+<details><summary>Do I have to change the agent I use?</summary><p>Keep your existing MCP-compatible client. Guided setup supports Claude Code, Codex, Cursor, OpenClaw, Hermes Agent, Amp, Devin CLI, VS Code and Windsurf. Chat clients that need OAuth use their connector sign-in flow. <a href="/how-it-works#connections">See the connection options.</a></p></details>
+<details><summary>How do I get an invitation?</summary><p>Hosted Engram is in closed beta. <a href="https://x.com/anirudh_twt">Ask for an invite on X.</a> Open the single-use invite link and verify your chosen inbox; an email-bound invitation needs its invited address. New friend invitations include 60 days of unlimited knowledge transfers after verification. Jev is separate. Existing members <a href="/app#signin">sign in with email</a>.</p></details>
+<details><summary>What lives on this shared drive?</summary><p>Engram holds memory pages and project context: notes, decisions, and the useful details your agents save through MCP. Task activity appears alongside that memory. The shared-drive analogy describes a common place for agent context; it does not promise general file upload or automatic synchronization of every app.</p></details>
+<details><summary>Can I give an agent only part of my context?</summary><p>Yes. Create a scoped share in Sharing, review the exact excerpts, and configure its separate read-only agent connection. If the agent already has a broader workspace connection, disconnect or revoke that separately. You can also share approved excerpts with a team; everyone authorized there can read them. <a href="/how-it-works#sharing">See how scoped shares work.</a></p></details>
+<details><summary>Do scoped shares stay in sync?</summary><p>A reviewed share is a fixed snapshot. New or edited source text needs fresh review and approval. Revoking a share stops future service reads through it; it cannot recall text someone already read or exported.</p></details>
+<details><summary>Can I run it on my own machine?</summary><p>Yes. The MIT-licensed app includes the MCP gateway, memory, activity history, and web console. Docker Compose is the local starting point. You operate the infrastructure and any optional providers. <a href="/self-host">Read the self-hosting guide.</a></p></details>
+  </div>
+</div></section>
+
+<section class="m-final ds-dotgrid" aria-labelledby="cta-title"><div class="m-wrap m-final-inner" data-reveal>
+  <img class="m-final-mark" src="/brand/engram-mark.svg" alt="" width="44" height="44">
+  <h2 id="cta-title">Stop re-explaining your project.<span class="m-accent">Give your next agent a head start.</span></h2>
+  <p>Engram Cloud is in closed beta. Ask for an invite, or run it yourself today.</p>
+  <div class="m-actions"><a class="ds-button m-button m-button-lg" data-variant="primary" href="https://x.com/anirudh_twt">Ask for an invite</a><a class="ds-button m-button m-button-lg m-button-ghost" href="/self-host">Self-host for free</a></div>
+</div></section>
+</main>
 <footer class="m-footer" id="open-source-footer"><div class="m-wrap">
-<div class="m-footer-main"><div class="m-footer-brand"><a class="m-wordmark" href="/"><img src="/brand/engram-mark.svg" width="31" height="31" alt="">engram</a><p>Shared memory for your AI agents.<br>Keep the useful context moving.</p><p>As Engram earns revenue, we’ll use a portion to sponsor open-source projects.</p></div>
-<nav aria-label="Product"><span>Product</span><a href="/how-it-works">How it works</a><a href="/pricing">Pricing</a><a href="/self-host">Self-host Engram</a><a href="/app#signin">Sign in</a></nav>
-<nav aria-label="Resources"><span>Resources</span><a href="/support">Help &amp; support</a><a href="/changelog">Changelog</a><a href="https://github.com/Ani-HQ/engram">Source code</a><a href="https://github.com/Ani-HQ/engram/blob/main/docs/WIRING.md">Connection guide</a><a href="/design-system">Design system</a></nav>
-<nav aria-label="Contact and privacy"><span>Company</span><a href="/privacy">Privacy &amp; data</a><a href="mailto:ani@odstdio.com">Email us</a><a href="https://x.com/anirudh_twt">Ask for an invite</a><a href="/app#invite">Have an invite code?</a></nav></div>
+<div class="m-footer-main">
+  <div class="m-footer-brand"><a class="m-wordmark" href="/"><img src="/brand/engram-mark.svg" width="31" height="31" alt="">engram</a><p>Shared memory for your AI agents. Decide once, recall anywhere.</p><p>As Engram earns revenue, we’ll use a portion to sponsor open-source projects.</p>
+    <div class="m-socials"><a href="https://github.com/Ani-HQ/engram" aria-label="Engram on GitHub"><img src="/vendor/simple-icons/github.svg" alt="" width="18" height="18"></a><a href="https://x.com/anirudh_twt" aria-label="Engram on X"><span class="m-x-mark" aria-hidden="true">𝕏</span></a><a href="mailto:ani@odstdio.com" aria-label="Email us"><span class="ds-icon" data-icon="mail" aria-hidden="true"></span></a></div></div>
+  <nav aria-label="Product"><span>Product</span><a href="/how-it-works">How it works</a><a href="/how-it-works#sharing">Scoped sharing</a><a href="/pricing">Pricing</a><a href="/app#signin">Sign in</a><a href="/app#invite">Redeem an invite</a></nav>
+  <nav aria-label="Developers"><span>Developers</span><a href="/self-host">Self-host Engram</a><a href="https://github.com/Ani-HQ/engram/blob/main/docs/WIRING.md">Connection guide</a><a href="https://github.com/Ani-HQ/engram">Source code</a><a href="/changelog">Changelog</a><a href="/design-system">Design system</a></nav>
+  <nav aria-label="Company"><span>Company</span><a href="/support">Help &amp; support</a><a href="/privacy">Privacy &amp; data</a><a href="mailto:ani@odstdio.com">Email us</a><a href="https://x.com/anirudh_twt">Ask for an invite</a></nav>
+</div>
 <div class="m-footer-bottom"><span>© 2026 Outcome Driven Holdings LLC</span><span>MIT licensed. Built on <a href="https://github.com/garrytan/gbrain">gbrain</a>.</span></div>
 </div></footer>
+<script type="module" src="/marketing-site.js"></script>
 <script type="module" src="/analytics.js"></script>
 </body></html>

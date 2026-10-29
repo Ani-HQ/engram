@@ -40,8 +40,9 @@ test("every public invitation request names the supplied X destination", () => {
   }
 });
 
-// The owner's plain-design rules (docs/DESIGN-SYSTEM.md "Do not use").
-test("public pages use no tags, kickers, highlighted words, dividers, diagrams or section numbering", () => {
+// Public pages use the marketing kit (docs/DESIGN-SYSTEM.md "Marketing kit"); the
+// retired app-era primitives and decorations stay out of them.
+test("public pages avoid retired primitives, italics, serif type and section numbering", () => {
   const pages = [...new Set([...INDEXABLE_PAGE_PATHS.map(path => PUBLIC_PAGE_FILES[path]), "not-found.html", "changelog.html"])];
   for (const file of pages) {
     const html = read(file);
@@ -59,6 +60,30 @@ test("shared and public stylesheets never tighten letter-spacing, italicize or l
     expect(css).not.toMatch(/font-style:\s*italic/);
     expect(css).not.toMatch(/Instrument|font-family:[^;]*\bserif\b(?![-])/i);
   }
+});
+
+test("every public page loads the shared interactions and works without them", () => {
+  const pages = [...new Set([...INDEXABLE_PAGE_PATHS.map(path => PUBLIC_PAGE_FILES[path]), "not-found.html"])];
+  for (const file of pages) {
+    const html = read(file);
+    expect(html).toContain('<script type="module" src="/marketing-site.js"></script>');
+    expect(html).not.toMatch(/<script(?![^>]*\bsrc=)[^>]*>/); // CSP: no inline scripts
+    expect(html).toContain('data-nav-toggle');
+    expect(html).not.toMatch(/\sstyle="/); // icons and delays use data attributes, so a strict style-src still works
+    expect(html).toMatch(/<nav class="m-nav" id="site-nav"[^>]*>[\s\S]*href="\/pricing"/); // links stay in markup for no-JS readers
+  }
+  const js = read("marketing-site.js");
+  expect(js).toContain("prefers-reduced-motion");
+  expect(read("design-system.css")).toMatch(/html\.ds-js \[data-reveal\]/); // content is only hidden once the script runs
+});
+
+test("homepage tabs, marquee and demo stay accessible", () => {
+  const html = read("home.html");
+  const tabs = [...html.matchAll(/role="tab" id="([^"]+)" aria-controls="([^"]+)"/g)];
+  expect(tabs.length).toBeGreaterThan(1);
+  for (const [, tab, panel] of tabs) expect(html).toContain(`role="tabpanel" id="${panel}" aria-labelledby="${tab}"`);
+  expect(html).toMatch(/<ul aria-hidden="true">\s*<li><img/); // the marquee copy is hidden from assistive tech
+  expect(html).toContain("Example session.");
 });
 
 test("the homepage keeps every agent logo as a plain list item", () => {
