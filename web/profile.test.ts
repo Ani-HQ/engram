@@ -118,9 +118,9 @@ describe("public activity profile", () => {
     expect(composition.querySelector(".contribution-months")!.children).toHaveLength(3);
     expect(composition.querySelector(".contribution-weekdays")!.children).toHaveLength(7);
     expect(viewport.getAttribute("role")).toBe("region");
-    expect(viewport.getAttribute("aria-label")).toContain("Swipe or use arrow keys");
+    expect(viewport.getAttribute("aria-label")).toContain("Tap a day or use arrow keys");
     expect(viewport.querySelector(".contribution-caption")).toBeNull();
-    expect(chart.querySelector(".contribution-explore")!.textContent).toContain("Swipe or use arrow keys");
+    expect(chart.querySelector(".contribution-explore")!.textContent).toContain("Tap a day or use arrow keys");
     const key = (value: string) => {
       let prevented = false;
       grid.events.keydown({ key: value, preventDefault: () => { prevented = true; } });

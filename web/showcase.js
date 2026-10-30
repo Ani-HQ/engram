@@ -1,6 +1,7 @@
 import { h, profileCard, profileSkeleton, updateProfileCard, updateProfileTimes } from "./profile.js";
 import { watchPublicActivity } from "./live-activity.js";
 import { observeLoadingMotion } from "./design-system.js";
+import { icon } from "./icons.js";
 
 const root = document.querySelector("#public-showcase");
 const slug = root?.dataset.slug;
@@ -13,14 +14,15 @@ const toast = h("div", { class: "sr-only", role: "status", "aria-live": "polite"
 document.body.append(toast);
 
 async function copyValue(button, value, label, confirmation) {
+  const restore = () => button.replaceChildren(...(typeof label === "function" ? label() : [label]));
   if (button.getAttribute("aria-busy") === "true") return;
   button.setAttribute("aria-busy", "true"); button.setAttribute("aria-disabled", "true");
   button.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), "Copying…");
   try {
     await navigator.clipboard.writeText(value); if (!button.isConnected) return; button.replaceChildren("Copied"); toast.textContent = confirmation;
     clearTimeout(copyTimers.get(button));
-    copyTimers.set(button, setTimeout(() => { if (button.isConnected) button.replaceChildren(label); }, 2200));
-  } catch { if (button.isConnected) { button.replaceChildren(label); toast.textContent = "Could not copy. Select and copy the URL instead."; } }
+    copyTimers.set(button, setTimeout(() => { if (button.isConnected) restore(); }, 2200));
+  } catch { if (button.isConnected) { restore(); toast.textContent = "Could not copy. Select and copy the URL instead."; } }
   finally { button.removeAttribute("aria-busy"); button.removeAttribute("aria-disabled"); }
 }
 
@@ -36,7 +38,13 @@ function unavailable(reason) {
 
 function render(data) {
   document.title = `${data.profile.displayName || data.profile.slug} · engram`;
-  const share = h("button", { type: "button", class: "small", onclick: () => copyValue(share, `${location.origin}/u/${encodeURIComponent(slug)}`, "Copy link", "Profile link copied") }, "Copy link");
+  const pageUrl = `${location.origin}/u/${encodeURIComponent(slug)}`;
+  const linkLabel = () => [icon("link", { size: 16 }), "Copy link"];
+  const share = h("button", { type: "button", class: "ds-button profile-share-copy", onclick: () => copyValue(share, pageUrl, linkLabel, "Profile link copied") }, linkLabel());
+  const actions = data.stats?.totalActions || 0, agents = data.stats?.activeAgents || 0;
+  const owner = data.profile?.displayName || `@${slug}`;
+  const postText = `${owner} on engram: ${actions.toLocaleString("en-US")} agent actions across ${agents.toLocaleString("en-US")} ${agents === 1 ? "agent" : "agents"}.`;
+  const post = h("a", { class: "ds-button profile-share-x", "data-variant": "primary", href: `https://x.com/intent/post?text=${encodeURIComponent(postText)}&url=${encodeURIComponent(pageUrl)}`, target: "_blank", rel: "noopener noreferrer" }, icon("share-2", { size: 16 }), "Share on X");
   const streamCopy = h("button", { type: "button", class: "text small", onclick: () => copyValue(streamCopy, `${location.origin}${streamUrl}`, "Copy live API", "Live stream URL copied") }, "Copy live API");
   const label = h("span", { role: "status", "aria-live": "polite" }, "Connecting…");
   const connectionNote = h("span", {}, "Updates automatically");
@@ -45,10 +53,17 @@ function render(data) {
   const card = profileCard(data);
   const view = [document.querySelector('meta[name="engram-demo"]') && h("div", { class: "demo" }, "Local preview", h("span", {}, "Sample public profile. No real account data.")),
     h("a", { class: "ds-button ds-skip-link", href: "#main" }, "Skip to content"),
-    h("header", { class: "public-header" }, h("a", { class: "wordmark", href: "/", "aria-label": "Engram home" }, h("img", { class: "brand-mark", src: "/brand/engram-mark.svg", width: 32, height: 32, alt: "" }), "engram"), share),
+    h("header", { class: "public-header" }, h("a", { class: "wordmark", href: "/", "aria-label": "Engram home" }, h("img", { class: "brand-mark", src: "/brand/engram-mark.svg", width: 32, height: 32, alt: "" }), "engram"),
+      h("a", { class: "ds-button public-header-cta", href: "/" }, "Make your own", icon("arrow-up-right", { size: 15 }))),
     h("main", { class: "public-page", id: "main", tabindex: "-1" }, connection, card,
-      h("div", { class: "public-links" }, h("span", {}, "One history. Every agent."), streamCopy, h("a", { href: jsonUrl }, "JSON"), h("a", { href: `${jsonUrl}/card.svg`, target: "_blank", rel: "noopener" }, "Share card"))),
+      h("section", { class: "public-cta ds-dotgrid", "aria-label": "Make a profile like this" },
+        h("img", { class: "public-cta-mark", src: "/brand/engram-mark.svg", width: 40, height: 40, alt: "" }),
+        h("h2", {}, "Your agents do the work.", h("span", {}, "Show it off.")),
+        h("p", {}, "Engram is a shared drive for agent context. Every connected agent adds to one history, and a profile like this is built from it."),
+        h("div", { class: "public-cta-actions" }, h("a", { class: "ds-button", "data-variant": "primary", href: "/" }, "Make your own profile"), h("a", { class: "ds-button", href: "https://x.com/anirudh_twt" }, "Ask for an invite"))),
+      h("div", { class: "public-links" }, h("span", {}, "For builders and bots"), streamCopy, h("a", { href: jsonUrl }, "JSON"), h("a", { href: `${jsonUrl}/card.svg`, target: "_blank", rel: "noopener" }, "Share card"))),
     h("footer", { class: "public-bottom" }, "Highlights are chosen by the profile owner. Activity uses broad labels with observed or agent-reported sources. Fresh running reports are from the last 15 minutes; times use UTC.")].filter(Boolean);
+  card.querySelector(".profile-actions")?.replaceChildren(post, share);
   root.replaceChildren(...view);
   clearInterval(timeRefresh);
   timeRefresh = setInterval(() => { if (!document.hidden && card.isConnected) updateProfileTimes(card); }, 30_000);

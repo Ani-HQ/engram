@@ -22,6 +22,8 @@ export const ICONS = [
   "sparkles", "zap", "radio", "wifi-off", "pause", "play", "filter", "sliders-horizontal", "arrow-down-up", "sun", "moon",
   // App shell (Supabase-style top bar, rail, palette)
   "chevrons-up-down", "book-open", "command", "life-buoy", "circle-user", "panel-left", "bell", "keyboard", "corner-down-left", "arrow-up", "arrow-down", "house", "circle-play", "megaphone", "badge-check",
+  // Public profiles
+  "flame", "trophy",
 ];
 
 const tagPattern = /<(path|circle|rect|line|polyline|polygon|ellipse)\b([^>]*?)\/?>/g;

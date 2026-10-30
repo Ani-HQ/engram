@@ -773,6 +773,7 @@ html[data-design-system] .ds-week-button:focus-visible { outline-offset: -2px; }
 .ds-icon[data-icon='file-text'] { --icon: url('/vendor/lucide/file-text.svg'); }
 .ds-icon[data-icon='files'] { --icon: url('/vendor/lucide/files.svg'); }
 .ds-icon[data-icon='filter'] { --icon: url('/vendor/lucide/filter.svg'); }
+.ds-icon[data-icon='flame'] { --icon: url('/vendor/lucide/flame.svg'); }
 .ds-icon[data-icon='folder'] { --icon: url('/vendor/lucide/folder.svg'); }
 .ds-icon[data-icon='git-branch'] { --icon: url('/vendor/lucide/git-branch.svg'); }
 .ds-icon[data-icon='git-commit-horizontal'] { --icon: url('/vendor/lucide/git-commit-horizontal.svg'); }
@@ -824,6 +825,7 @@ html[data-design-system] .ds-week-button:focus-visible { outline-offset: -2px; }
 .ds-icon[data-icon='terminal'] { --icon: url('/vendor/lucide/terminal.svg'); }
 .ds-icon[data-icon='trash-2'] { --icon: url('/vendor/lucide/trash-2.svg'); }
 .ds-icon[data-icon='triangle-alert'] { --icon: url('/vendor/lucide/triangle-alert.svg'); }
+.ds-icon[data-icon='trophy'] { --icon: url('/vendor/lucide/trophy.svg'); }
 .ds-icon[data-icon='unlock'] { --icon: url('/vendor/lucide/unlock.svg'); }
 .ds-icon[data-icon='upload'] { --icon: url('/vendor/lucide/upload.svg'); }
 .ds-icon[data-icon='user'] { --icon: url('/vendor/lucide/user.svg'); }
