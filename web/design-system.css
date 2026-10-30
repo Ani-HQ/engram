@@ -1134,3 +1134,211 @@ input.ds-switch:disabled { opacity: .5; cursor: not-allowed; }
 }
 @media (forced-colors: active) { .ds-pill, .ds-panel-list, .ds-banner, .ds-palette, .ds-toast-item { border-color: CanvasText; } }
 html[data-design-system] .ds-palette-search input { min-height: 48px; padding: 0; background: transparent; border: 0; box-shadow: none; outline: none; }
+
+/* ── Settings cards, plan cards and preview panel (dashboard grammar) ───────
+   A bordered settings card: header (title + one-line description), two-column
+   rows (label + muted help left, control right) and a footer bar with
+   right-aligned Cancel / Save changes. data-tone="danger" is the red-tinted
+   Danger zone. Plan cards ring the current plan in mint. */
+.ds-settings { display: grid; gap: var(--ds-space-6); min-width: 0; }
+.ds-settings-card { min-width: 0; overflow: hidden; background: var(--ds-paper); border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-card); }
+.ds-settings-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--ds-space-2) var(--ds-space-4); padding: var(--ds-space-4) var(--ds-space-5); border-bottom: 1px solid var(--ds-hairline-strong); }
+.ds-settings-head > div { display: grid; gap: 2px; min-width: 0; }
+.ds-settings-head :is(h2, h3) { display: flex; align-items: center; gap: var(--ds-space-2); margin: 0; font-size: var(--ds-text-base); font-weight: 550; line-height: 1.4; letter-spacing: normal; }
+.ds-settings-head p { margin: 0; color: var(--ds-muted); font-size: var(--ds-text-sm); line-height: 1.5; }
+.ds-settings-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: var(--ds-space-3) var(--ds-space-8); align-items: start; padding: var(--ds-space-5); }
+.ds-settings-row + .ds-settings-row, .ds-settings-card > .ds-settings-row-full + .ds-settings-row, .ds-settings-row + .ds-settings-row-full { border-top: 1px solid var(--ds-hairline); }
+.ds-settings-row-full { padding: var(--ds-space-5); min-width: 0; }
+.ds-settings-label { display: grid; gap: var(--ds-space-1); min-width: 0; }
+.ds-settings-label > :is(label, strong, span:first-child) { color: var(--ds-ink); font-size: var(--ds-text-sm); font-weight: 500; line-height: 1.5; }
+.ds-settings-help { margin: 0; color: var(--ds-muted); font-size: var(--ds-text-sm); line-height: 1.6; }
+.ds-settings-control { display: grid; gap: var(--ds-space-2); justify-items: start; min-width: 0; overflow-wrap: anywhere; }
+.ds-settings-control > :is(input:not([type='checkbox']):not([type='radio']), select, textarea, .ds-command, .ds-progress) { justify-self: stretch; width: 100%; }
+.ds-settings-value { color: var(--ds-ink); font-size: var(--ds-text-sm); line-height: 1.6; font-variant-numeric: tabular-nums; }
+.ds-settings-switch { display: inline-flex; align-items: center; gap: var(--ds-space-3); min-height: 32px; color: var(--ds-ink); font-size: var(--ds-text-sm); cursor: pointer; }
+.ds-settings-switch:has(input:disabled) { color: var(--ds-muted); cursor: not-allowed; }
+.ds-settings-foot { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: var(--ds-space-2); min-height: 52px; padding: var(--ds-space-2) var(--ds-space-5); background: var(--ds-surface-raised); border-top: 1px solid var(--ds-hairline-strong); }
+.ds-settings-foot > .ds-settings-note { margin: 0 auto 0 0; color: var(--ds-muted); font-size: var(--ds-text-sm); line-height: 1.5; }
+.ds-settings-foot > .ds-settings-note:empty { display: none; }
+.ds-settings-foot:has(> .ds-settings-note:only-child:empty) { display: none; }
+.ds-settings-foot > .ds-settings-note[role='alert'] { color: var(--ds-danger); }
+.ds-settings-card[data-tone='danger'] { border-color: rgb(240 170 165 / .4); }
+.ds-settings-card[data-tone='danger'] > .ds-settings-head { background: rgb(240 170 165 / .06); border-bottom-color: rgb(240 170 165 / .3); }
+.ds-settings-card[data-tone='danger'] > .ds-settings-head :is(h2, h3) { color: var(--ds-danger); }
+.ds-settings-card[data-tone='danger'] > .ds-settings-row + .ds-settings-row { border-top-color: rgb(240 170 165 / .18); }
+/* Settings skeleton: label and control blocks that shimmer while a settings card loads. */
+.ds-skeleton-row[data-variant='settings'] { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); padding: var(--ds-space-5); }
+.ds-skeleton-row[data-variant='settings'] > span:first-child { height: 10px; width: 50%; border-radius: 4px; }
+.ds-skeleton-row[data-variant='settings'] > span:nth-child(2) { width: 100%; height: 32px; border-radius: var(--ds-radius-control); }
+.ds-skeleton-row[data-variant='settings'] + .ds-skeleton-row { border-top: 1px solid var(--ds-hairline); }
+
+/* Plan cards. data-current rings the plan this workspace is on. */
+.ds-plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: var(--ds-space-4); }
+.ds-plan-card { display: flex; flex-direction: column; gap: var(--ds-space-4); min-width: 0; padding: var(--ds-space-5); background: var(--ds-paper); border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-card); }
+.ds-plan-card[data-current] { background: var(--ds-surface-raised); border-color: var(--ds-accent); box-shadow: 0 0 0 1px var(--ds-accent), 0 0 24px rgb(119 217 173 / .08); }
+.ds-plan-name { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ds-space-2); margin: 0; font-size: var(--ds-text-base); font-weight: 550; }
+.ds-plan-name > .icon { color: var(--ds-muted); }
+.ds-plan-card[data-current] .ds-plan-name > .icon { color: var(--ds-accent); }
+.ds-plan-name > .ds-pill { margin-left: auto; }
+.ds-plan-description { margin: 0; color: var(--ds-muted); font-size: var(--ds-text-sm); line-height: 1.6; }
+.ds-plan-price { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--ds-space-2); margin: 0; }
+.ds-plan-price > strong { font-size: var(--ds-text-2xl); font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.ds-plan-price > span { color: var(--ds-muted); font-size: var(--ds-text-sm); }
+.ds-plan-features { display: grid; gap: var(--ds-space-2); flex: 1; margin: 0; padding: var(--ds-space-4) 0 0; list-style: none; border-top: 1px solid var(--ds-hairline); }
+.ds-plan-features > li { display: flex; align-items: flex-start; gap: var(--ds-space-2); font-size: var(--ds-text-sm); line-height: 1.5; }
+.ds-plan-features > li > .icon { flex-shrink: 0; margin-top: 2px; color: var(--ds-accent); }
+.ds-plan-card > :is(a, button) { justify-content: center; width: 100%; }
+.ds-plan-note { margin: 0; color: var(--ds-muted); font-size: var(--ds-text-xs); line-height: 1.6; }
+
+/* Usage meter: a label, its measured value and a determinate bar. */
+.ds-usage { display: grid; gap: var(--ds-space-2); width: 100%; min-width: 0; }
+.ds-usage-line { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: var(--ds-space-1) var(--ds-space-3); font-size: var(--ds-text-sm); }
+.ds-usage-line > span:last-child { color: var(--ds-muted); font-variant-numeric: tabular-nums; }
+.ds-usage .ds-progress { background: var(--ds-surface-raised); }
+
+/* Preview panel: a bordered panel with a mono header holding a live preview. */
+.ds-preview-panel { min-width: 0; overflow: hidden; background: var(--ds-paper); border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-card); }
+.ds-preview-panel > .ds-panel-head { justify-content: space-between; }
+.ds-preview-body { min-width: 0; padding: var(--ds-space-5); }
+
+@media (max-width: 720px) {
+  .ds-settings-row, .ds-skeleton-row[data-variant='settings'] { grid-template-columns: minmax(0, 1fr); gap: var(--ds-space-3); }
+  .ds-settings-head, .ds-settings-row, .ds-settings-row-full { padding-inline: var(--ds-space-4); }
+  .ds-settings-foot { padding-inline: var(--ds-space-4); }
+  .ds-settings-foot > :is(button, a) { flex: 1 1 auto; }
+  .ds-settings-foot > .ds-settings-note { flex-basis: 100%; }
+  .ds-preview-body { padding: var(--ds-space-4); }
+}
+@media (forced-colors: active) { .ds-settings-card, .ds-plan-card, .ds-preview-panel { border-color: CanvasText; } .ds-plan-card[data-current] { outline: 2px solid Highlight; } }
+
+/* ── Entry and setup flows (dashboard grammar) ─────────────────────────────
+   Split sign-in (form column + quiet product panel), result states with an
+   icon tile (email sent, approved, denied), a setup checklist with a progress
+   bar whose steps tick only when a real check arrives, numbered step lists,
+   client tabs with product marks and a centered decision card. Surface layout
+   stays in its own stylesheet. */
+:root { --ds-auth-aside: 46%; --ds-auth-column: 380px; --ds-duration-check: 420ms; }
+
+/* Split sign-in. The aside is decorative context and hides below 960px. */
+.ds-auth { display: grid; grid-template-columns: minmax(0, 1fr); min-height: 100svh; color: var(--ds-ink); background: var(--ds-paper); }
+.ds-auth-main { display: flex; flex-direction: column; gap: var(--ds-space-8); min-width: 0; padding: var(--ds-space-5) var(--ds-space-4) var(--ds-space-6); }
+.ds-auth-brand { display: inline-flex; align-items: center; gap: var(--ds-space-2); align-self: flex-start; min-height: 36px; color: var(--ds-ink); font-size: var(--ds-text-lg); font-weight: 600; text-decoration: none; }
+.ds-auth-brand > img { width: 24px; height: 24px; }
+.ds-auth-body { display: grid; gap: var(--ds-space-6); width: 100%; max-width: var(--ds-auth-column); margin: auto; }
+.ds-auth-heading { display: grid; gap: var(--ds-space-2); }
+.ds-auth-title { margin: 0; font-size: 28px; font-weight: 600; line-height: 1.2; }
+.ds-auth-subtitle { margin: 0; color: var(--ds-muted); font-size: var(--ds-text-base); line-height: 1.6; }
+.ds-auth-body form { display: grid; gap: var(--ds-space-4); margin: 0; }
+.ds-auth-body .field { display: grid; gap: var(--ds-space-2); color: var(--ds-ink); font-size: var(--ds-text-sm); font-weight: 500; }
+.ds-auth-body .field > input { width: 100%; min-height: 40px; font-size: var(--ds-text-input); font-weight: 400; }
+.ds-auth-body button[type='submit'] { justify-content: center; width: 100%; min-height: 40px; }
+.ds-auth-legal { display: grid; gap: var(--ds-space-3); justify-items: center; width: 100%; max-width: var(--ds-auth-column); margin: 0 auto; color: var(--ds-muted); font-size: var(--ds-text-xs); line-height: 1.6; text-align: center; }
+.ds-auth-legal p { margin: 0; }
+.ds-auth-legal a { color: var(--ds-muted); text-underline-offset: 3px; }
+.ds-auth-legal a:hover { color: var(--ds-ink); }
+.ds-auth-legal nav { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--ds-space-1) var(--ds-space-4); }
+.ds-auth-aside { display: none; }
+.ds-auth-statement { display: grid; gap: var(--ds-space-6); max-width: 440px; }
+.ds-auth-statement > p { margin: 0; color: var(--ds-ink); font-size: var(--ds-text-xl); font-weight: 500; line-height: 1.4; }
+.ds-auth-statement > p > span { color: var(--ds-accent); }
+.ds-auth-facts { display: grid; gap: var(--ds-space-3); margin: 0; padding: 0; list-style: none; }
+.ds-auth-facts > li { display: flex; align-items: flex-start; gap: var(--ds-space-3); color: var(--ds-muted); font-size: var(--ds-text-sm); line-height: 1.55; }
+.ds-auth-facts > li > .icon { flex-shrink: 0; margin-top: 2px; color: var(--ds-accent); }
+@media (min-width: 960px) {
+  .ds-auth { grid-template-columns: minmax(0, 1fr) var(--ds-auth-aside); }
+  .ds-auth-main { padding: var(--ds-space-6) var(--ds-space-10) var(--ds-space-8); }
+  .ds-auth-aside { position: relative; display: grid; place-items: center; padding: var(--ds-space-12); overflow: hidden; background: var(--ds-surface-raised); border-left: 1px solid var(--ds-hairline); }
+}
+
+/* Result state: icon tile, title, one line and actions. Tones: accent (default), danger, neutral. */
+.ds-result { display: grid; justify-items: start; gap: var(--ds-space-3); min-width: 0; }
+.ds-result[data-align='center'] { justify-items: center; text-align: center; }
+.ds-result-tile { display: inline-grid; place-items: center; width: 48px; height: 48px; color: var(--ds-accent); background: var(--ds-surface-raised); border: 1px solid var(--ds-hairline-strong); border-radius: 12px; box-shadow: 0 0 0 6px rgb(119 217 173 / .05); animation: ds-check-pop var(--ds-duration-check) var(--ds-ease-out) both; }
+.ds-result-tile > .icon { width: 22px; height: 22px; }
+.ds-result[data-tone='danger'] .ds-result-tile { color: var(--ds-danger); box-shadow: 0 0 0 6px rgb(240 170 165 / .05); }
+.ds-result[data-tone='neutral'] .ds-result-tile { color: var(--ds-muted); box-shadow: none; }
+.ds-result-title { margin: var(--ds-space-1) 0 0; font-size: var(--ds-text-xl); font-weight: 600; line-height: 1.3; }
+.ds-result-text { max-width: 52ch; margin: 0; color: var(--ds-muted); font-size: var(--ds-text-base); line-height: 1.6; overflow-wrap: anywhere; }
+.ds-result-text strong { color: var(--ds-ink); font-weight: 500; }
+@keyframes ds-check-pop { 0% { opacity: 0; transform: scale(.72); } 60% { opacity: 1; transform: scale(1.06); } 100% { transform: scale(1); } }
+
+/* Centered decision card (device approval, consent). */
+.ds-decision { width: 100%; max-width: 480px; margin-inline: auto; padding: var(--ds-space-8); background: var(--ds-paper); border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-panel); box-shadow: 0 16px 48px rgb(0 0 0 / .28); }
+.ds-decision-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ds-space-2); }
+.ds-decision-actions > :is(button, a) { justify-content: center; min-height: 40px; }
+
+/* Code to compare: large monospace characters on a raised tile. */
+.ds-code-compare { display: grid; justify-items: center; gap: var(--ds-space-2); padding: var(--ds-space-5) var(--ds-space-4); background: var(--ds-surface-raised); border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-card); text-align: center; }
+.ds-code-compare > :first-child { margin: 0; color: var(--ds-muted); font-size: var(--ds-text-sm); }
+.ds-code-compare > :last-child { color: var(--ds-ink); font-family: var(--ds-font-mono); font-size: clamp(26px, 7vw, 34px); font-weight: 600; letter-spacing: .14em; line-height: 1.15; font-variant-numeric: tabular-nums; }
+
+/* Setup checklist: progress bar + steps. A step ticks only when its real check arrives;
+   data-fresh marks a step that completed since the last render and plays the tick once. */
+.ds-checklist { min-width: 0; overflow: hidden; background: var(--ds-paper); border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-card); }
+.ds-checklist-head { display: grid; gap: var(--ds-space-3); padding: var(--ds-space-4) var(--ds-space-5); background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-hairline-strong); }
+.ds-checklist-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-3); color: var(--ds-muted); font-size: var(--ds-text-xs); font-variant-numeric: tabular-nums; }
+.ds-checklist-head .ds-progress { height: 4px; background: var(--ds-hairline-strong); }
+.ds-checklist-head .ds-progress-fill { transition-duration: 600ms; }
+.ds-checklist-steps { display: grid; margin: 0; padding: 0; list-style: none; }
+.ds-checklist-steps > li { display: flex; align-items: center; gap: var(--ds-space-3); min-height: 48px; padding: var(--ds-space-2) var(--ds-space-5); color: var(--ds-muted); font-size: var(--ds-text-sm); }
+.ds-checklist-steps > li + li { border-top: 1px solid var(--ds-hairline); }
+.ds-checklist-steps > li[aria-current='step'] { color: var(--ds-ink); font-weight: 500; background: rgb(119 217 173 / .03); box-shadow: inset 2px 0 0 var(--ds-accent); }
+.ds-checklist-steps > li[data-complete='true'] { color: var(--ds-ink); }
+.ds-check { position: relative; display: inline-grid; place-items: center; flex-shrink: 0; width: 20px; height: 20px; color: var(--ds-muted); border: 1.5px dashed var(--ds-hairline-strong); border-radius: 50%; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+li[aria-current='step'] > .ds-check { color: var(--ds-accent); border: 1.5px solid var(--ds-accent); }
+li[data-complete='true'] > .ds-check { color: var(--ds-accent-ink); background: var(--ds-accent); border: 0; }
+.ds-check > .icon { width: 12px; height: 12px; stroke-width: 3; }
+li[data-fresh='true'] > .ds-check { animation: ds-check-pop var(--ds-duration-check) var(--ds-ease-out) both; }
+li[data-fresh='true'] > .ds-check > .icon path { stroke-dasharray: 24; stroke-dashoffset: 24; animation: ds-check-draw 360ms 160ms var(--ds-ease-out) forwards; }
+@keyframes ds-check-draw { to { stroke-dashoffset: 0; } }
+.ds-checklist-step-state { margin-left: auto; color: var(--ds-muted); font-size: var(--ds-text-xs); font-weight: 400; }
+.ds-checklist-body { display: grid; gap: var(--ds-space-5); min-width: 0; padding: var(--ds-space-5); border-top: 1px solid var(--ds-hairline-strong); }
+.ds-checklist-foot { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ds-space-2) var(--ds-space-4); min-height: 52px; padding: var(--ds-space-2) var(--ds-space-5); color: var(--ds-muted); background: var(--ds-surface-raised); border-top: 1px solid var(--ds-hairline-strong); font-size: var(--ds-text-sm); }
+
+/* Numbered steps with a hairline rail. <ol class="ds-steps"><li><h3>…</h3><p>…</p></li></ol> */
+.ds-steps { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; counter-reset: ds-step; }
+.ds-steps > li { position: relative; display: grid; gap: var(--ds-space-2); min-width: 0; padding: 0 0 var(--ds-space-6) 40px; counter-increment: ds-step; }
+.ds-steps > li:last-child { padding-bottom: 0; }
+.ds-steps > li::before { content: counter(ds-step); position: absolute; top: 0; left: 0; display: grid; place-items: center; width: 24px; height: 24px; color: var(--ds-ink); background: var(--ds-surface-raised); border: 1px solid var(--ds-hairline-strong); border-radius: 50%; font-family: var(--ds-font-mono); font-size: 11px; font-weight: 500; }
+.ds-steps > li:not(:last-child)::after { content: ''; position: absolute; top: 30px; bottom: 6px; left: 12px; width: 1px; background: var(--ds-hairline); }
+.ds-steps > li > :is(h3, h4) { margin: 2px 0 0; color: var(--ds-ink); font-size: var(--ds-text-sm); font-weight: 550; line-height: 1.5; }
+.ds-steps > li > p { margin: 0; color: var(--ds-muted); font-size: var(--ds-text-sm); line-height: 1.6; overflow-wrap: anywhere; }
+
+/* Client tabs: product mark + label, inside .ds-window-tabs. Arrow keys move between tabs. */
+.ds-window-tabs [role='tab'].ds-client-tab { display: inline-flex; align-items: center; gap: var(--ds-space-2); min-height: 42px; font-size: var(--ds-text-sm); }
+.ds-client-tab > .ds-mark { transition: border-color var(--ds-duration-base) var(--ds-ease-out); }
+.ds-client-tab[aria-selected='true'] > .ds-mark { border-color: var(--ds-accent); }
+.ds-client-tab:hover { color: var(--ds-ink); }
+.ds-window-panel { display: grid; gap: var(--ds-space-5); min-width: 0; padding: var(--ds-space-5); }
+.ds-window-panel .ds-command > .ds-code-scroll { background: #0c0e0d; border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-control); font-family: var(--ds-font-mono); }
+.ds-window-panel pre { margin: 0; max-height: 280px; overflow: auto; color: var(--ds-ink); background: #0c0e0d; border: 1px solid var(--ds-hairline-strong); font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); line-height: 1.7; }
+
+@media (max-width: 600px) {
+  .ds-decision { padding: var(--ds-space-5); box-shadow: none; }
+  .ds-decision-actions { grid-template-columns: minmax(0, 1fr); }
+  .ds-checklist-head, .ds-checklist-body, .ds-checklist-foot { padding-inline: var(--ds-space-4); }
+  .ds-checklist-steps > li { padding-inline: var(--ds-space-4); }
+  .ds-window-panel { padding: var(--ds-space-4); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ds-result-tile, li[data-fresh='true'] > .ds-check, li[data-fresh='true'] > .ds-check > .icon path { animation: none !important; stroke-dashoffset: 0; }
+  .ds-checklist-head .ds-progress-fill, .ds-client-tab > .ds-mark { transition: none; }
+}
+@media (forced-colors: active) { .ds-decision, .ds-checklist, .ds-code-compare, .ds-result-tile, .ds-check { border-color: CanvasText; } }
+
+/* ── Step states and sticky action bar (dashboard grammar) ─────────────────
+   Extends .ds-steps: <li data-state="current|complete|upcoming"> rings the
+   active step in mint, fills completed steps and mutes upcoming ones. The
+   action bar is a footer that sticks to the viewport bottom while its section
+   scrolls: a status line on the left, actions on the right. */
+.ds-steps > li[data-state='current']::before { color: var(--ds-accent); border-color: var(--ds-accent); box-shadow: 0 0 0 4px var(--ds-glow-soft); }
+.ds-steps > li[data-state='complete']::before { color: var(--ds-accent-ink); background: var(--ds-accent); border-color: var(--ds-accent); }
+.ds-steps > li[data-state='complete']:not(:last-child)::after { background: linear-gradient(var(--ds-accent), var(--ds-hairline)); opacity: .6; }
+.ds-steps > li[data-state='upcoming']::before { color: var(--ds-muted); }
+.ds-steps > li::before { transition: color var(--ds-duration-base) var(--ds-ease-out), background-color var(--ds-duration-base) var(--ds-ease-out), border-color var(--ds-duration-base) var(--ds-ease-out), box-shadow var(--ds-duration-base) var(--ds-ease-out); }
+.ds-action-bar { position: sticky; bottom: var(--ds-space-3); z-index: 5; display: flex; align-items: center; flex-wrap: wrap; gap: var(--ds-space-2) var(--ds-space-4); min-height: 52px; padding: var(--ds-space-2) var(--ds-space-2) var(--ds-space-2) var(--ds-space-4); background: var(--ds-surface-raised); border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-card); box-shadow: 0 12px 32px rgb(0 0 0 / .4); }
+.ds-action-bar > :first-child:not(.ds-action-bar-actions) { flex: 1; min-width: 12rem; margin: 0; color: var(--ds-muted); font-size: var(--ds-text-sm); }
+.ds-action-bar-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ds-space-2); margin-left: auto; }
+@media (max-width: 600px) { .ds-action-bar { bottom: 0; } .ds-action-bar-actions { width: 100%; justify-content: flex-end; } }
+@media (prefers-reduced-motion: reduce) { .ds-steps > li::before { transition: none; } }
+@media (forced-colors: active) { .ds-action-bar { border-color: CanvasText; } .ds-steps > li[data-state='current']::before { border-color: Highlight; } }

@@ -1,19 +1,35 @@
-/* Computer approval (#device). Layout only; components come from the design system. */
-.device-view { max-width: 640px; gap: var(--ds-space-6); min-width: 0; }
+/* Computer approval (#device). A centered .ds-decision card; components come from the design system. */
+.device-view { gap: var(--ds-space-5); min-width: 0; margin-top: clamp(var(--ds-space-4), 6vh, var(--ds-space-12)); }
 .device-view :is(h1, p) { margin: 0; }
-.device-view .device-heading h1 { font-family: var(--ds-font-sans); font-size: 28px; font-weight: 600; line-height: 1.25; }
+.device-view .device-tile { justify-items: start; }
+.device-view .device-heading h1 { font-family: var(--ds-font-sans); font-size: 24px; font-weight: 600; line-height: 1.25; }
 .device-view .device-heading h1:focus { outline: none; }
-.device-view .device-heading p { max-width: 560px; margin-top: var(--ds-space-2); color: var(--ds-muted); font-size: var(--ds-text-base); line-height: 1.65; }
-.device-entry { max-width: 360px; gap: var(--ds-space-3); }
-.device-entry input { font-family: var(--ds-font-mono); }
-.device-agents { display: flex; flex-wrap: wrap; gap: 0 var(--ds-space-4); margin: 0; padding: 0; list-style: none; }
-.device-agents li { min-width: 0; }
+.device-view .device-heading p { margin-top: var(--ds-space-2); color: var(--ds-muted); font-size: var(--ds-text-base); line-height: 1.6; }
+.device-command { gap: var(--ds-space-2); min-width: 0; }
+.device-command-label { display: inline-flex; align-items: center; gap: var(--ds-space-2); color: var(--ds-muted); font-size: var(--ds-text-xs); }
+.device-command .ds-code-scroll { padding-inline: var(--ds-space-3); color: var(--ds-ink); background: #0c0e0d; border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-control); font-family: var(--ds-font-mono); font-size: var(--ds-text-sm); }
+.device-entry { gap: var(--ds-space-3); }
+.device-entry input { min-height: 48px; font-family: var(--ds-font-mono); font-size: 20px; letter-spacing: .14em; text-align: center; text-transform: uppercase; }
+.device-entry input::placeholder { letter-spacing: .14em; opacity: .45; }
+.device-entry .ds-hint { margin: 0; }
+.device-entry .device-submit { justify-content: center; width: 100%; min-height: 40px; }
+.device-view .ds-confirm-code { justify-items: center; gap: var(--ds-space-2); padding: var(--ds-space-5) var(--ds-space-4); background: var(--ds-surface-raised); border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-card); text-align: center; }
+.device-view .ds-confirm-code-label { color: var(--ds-muted); }
+.device-view .ds-confirm-code-value { font-size: clamp(26px, 7vw, 34px); letter-spacing: .14em; }
+.device-details { margin: 0; }
+.device-agents { display: flex; flex-wrap: wrap; gap: var(--ds-space-2) var(--ds-space-4); margin: 0; padding: 0; list-style: none; }
+.device-agents li { display: inline-flex; align-items: center; gap: var(--ds-space-2); min-width: 0; }
 .device-workspace { gap: var(--ds-space-2); min-width: 0; }
 .device-workspace select { width: 100%; max-width: 320px; }
+.device-grant { display: flex; align-items: flex-start; gap: var(--ds-space-2); padding: var(--ds-space-3); background: var(--ds-surface-raised); border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-card); line-height: 1.55; }
+.device-grant > .icon { flex-shrink: 0; margin-top: 3px; color: var(--ds-accent); }
+.device-actions > button > .icon, .ds-decision-actions > button > .icon { margin-right: var(--ds-space-2); }
+.device-caveat { text-align: center; }
+.device-finish { flex-wrap: wrap; gap: var(--ds-space-2); }
 @media (max-width: 600px) {
-  .device-view .device-heading h1 { font-size: 24px; }
+  .device-view { margin-top: 0; }
   .device-details .ds-evidence-row { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .device-workspace select { max-width: none; }
-  .device-actions > button, .device-entry .ds-row > button { flex: 1 1 100%; }
-  .device-entry { max-width: none; }
+  .device-actions > .primary { order: -1; }
+  .device-finish > :is(button, a) { flex: 1 1 100%; justify-content: center; }
 }

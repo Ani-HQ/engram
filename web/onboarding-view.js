@@ -2,6 +2,13 @@ import { h } from "./profile.js";
 import { onboardingAgents, onboardingProgress, onboardingWriteGuidance, agentConnectionGuide, connectionCheckPrompt, firstMemoryPrompt, recallMemoryPrompt } from "./onboarding-model.js";
 import { workspaceNameForm } from "./workspace-name.js";
 import { memorySetupGuide } from "./memory-usage-view.js";
+import { progressBar } from "./design-system.js";
+import { icon } from "./icons.js";
+
+// Which checks were complete at the last render, per workspace. A step plays its
+// tick only when a check flips from received-false to received-true between two
+// renders, so the animation always follows a real successful agent call.
+const lastChecks = new Map();
 
 const button = (label, action, attrs = {}) => h("button", { type: "button", onclick: action, ...attrs }, label);
 
@@ -82,22 +89,37 @@ export function onboardingGuide({ data, agentId = "", mcp, checking, error, poli
   }
   const nameForm = workspaceNameForm({ session, editor: nameEditor });
   const nameState = nameEditor?.state;
+  const workspaceKey = session?.org?.id ?? "";
+  const previous = lastChecks.get(workspaceKey);
+  if (progress.available) lastChecks.set(workspaceKey, { ...progress.checks });
+  const stepKeys = ["connect", "remember", "recall"];
+  const checklist = h("div", { class: "ds-checklist setup-checklist" },
+    h("div", { class: "ds-checklist-head setup-progress" },
+      h("div", { class: "ds-checklist-meta" }, h("span", {}, "Getting started"), h("span", { class: "ds-tabular" }, checkCount)),
+      // A measured bar only when checks were received; unchecked progress is never shown as zero.
+      !progress.done && (progress.available ? progressBar({ label: "Getting started progress", value: progress.completed, max: steps.length, valueText: checkCount })
+        : checking ? progressBar({ label: "Checking workspace progress", valueText: "Checking received agent calls." }) : null)),
+    !progress.done && h("ol", { class: "ds-checklist-steps setup-steps", "aria-label": "Getting started progress" }, steps.map(([key, label], index) => {
+      const complete = Boolean(progress.checks[key]), current = progress.step === stepKeys[index];
+      const fresh = complete && previous && previous[key] === false;
+      return h("li", { "aria-current": current ? "step" : null, "data-complete": String(complete), "data-fresh": fresh ? "true" : null },
+        h("span", { class: "ds-check", "aria-hidden": "true" }, complete ? icon("check", { size: 12 }) : String(index + 1)),
+        h("span", {}, label),
+        h("span", { class: "ds-checklist-step-state setup-step-state" }, complete ? "Done" : current ? "Next" : ""),
+        h("span", { class: "sr-only" }, complete ? ": complete" : ": pending"));
+    })),
+    !progress.available && h("p", { class: "ds-hint setup-unavailable", role: "status" }, checking ? "Checking successful agent calls received by this workspace." : "Workspace checks are unavailable. You can follow the setup instructions, then check again."),
+    h("div", { class: "ds-checklist-body" }, stage),
+    h("div", { class: "ds-checklist-foot setup-check" },
+      button([icon(checking ? "loader-circle" : "refresh-cw", { size: 14, class: checking ? "ds-spin" : "" }), checking ? "Checking…" : "Check progress"], () => { if (!checking) onCheck(); }, { class: "small", "aria-busy": String(Boolean(checking)), "aria-disabled": String(Boolean(checking)), "aria-describedby": "setup-check-feedback", "data-setup-focus": "check" }),
+      h("p", { id: "setup-check-feedback", class: "ds-hint", role: error ? "alert" : "status", "aria-live": "polite" }, error || (checking ? "Checking activity received by this workspace…" : progress.done ? "All three workspace checks have successful agent calls." : progress.step === "connect" && !connection ? "Choose an agent to see connection instructions." : "After your agent runs the prompt, check progress here. Only successful agent calls complete a step."))));
   return h("section", { class: "setup-guide", "aria-labelledby": "setup-title", "aria-busy": String(Boolean(checking)) },
     h("div", { class: "setup-heading" }, h("div", { class: "ds-heading-group" },
       demo && h("p", { class: "ds-hint setup-demo-note" }, "Local preview. Progress is simulated."),
       h("h2", { id: "setup-title", tabindex: "-1", "data-setup-focus": "title" }, titles[progress.step]),
       h("p", { class: "ds-hint" }, descriptions[progress.step])),
-      button(progress.done ? "Close setup" : "Do this later", onDismiss, { class: "text", "data-setup-focus": "dismiss" })),
-    !progress.done && h("div", { class: "setup-progress ds-stack" },
-      h("p", { class: "ds-hint ds-tabular" }, "Workspace checks: ", checkCount),
-      h("ol", { class: "setup-steps", "aria-label": "Getting started progress" }, steps.map(([key, label], index) => h("li", {
-        "aria-current": progress.step === ["connect", "remember", "recall"][index] ? "step" : null, "data-complete": String(Boolean(progress.checks[key])),
-      }, h("span", {}, label), h("span", { class: "setup-step-state" }, progress.checks[key] ? " · Done" : ""), h("span", { class: "sr-only" }, progress.checks[key] ? ": complete" : ": pending"))))),
-    !progress.available && h("p", { class: "ds-hint", role: "status" }, checking ? "Checking successful agent calls received by this workspace." : "Workspace checks are unavailable. You can follow the setup instructions, then check again."),
-    stage,
-    h("div", { class: "setup-check" },
-      button([checking && h("span", { class: "ds-spinner", "aria-hidden": "true" }), checking ? "Checking…" : "Check progress"], () => { if (!checking) onCheck(); }, { "aria-busy": String(Boolean(checking)), "aria-disabled": String(Boolean(checking)), "aria-describedby": "setup-check-feedback", "data-setup-focus": "check" }),
-      h("p", { id: "setup-check-feedback", class: "ds-hint", role: error ? "alert" : "status", "aria-live": "polite" }, error || (checking ? "Checking activity received by this workspace…" : progress.done ? "All three workspace checks have successful agent calls." : progress.step === "connect" && !connection ? "Choose an agent to see connection instructions." : "After your agent runs the prompt, check progress here. Only successful agent calls complete a step."))),
+      button(progress.done ? "Close setup" : "Do this later", onDismiss, { class: "text small", "data-setup-focus": "dismiss" })),
+    checklist,
     (progress.step !== "connect" || nameForm) && h("div", { class: "setup-options ds-stack" },
       progress.step !== "connect" && disclosure(progress.done ? "completedAgent" : "agentHelp", progress.done ? "Add or repair an agent" : "Agent connection help", agentSetup()),
       nameForm && disclosure("workspaceName", "Workspace name (optional)", nameForm, Boolean(nameState?.busy || nameState?.error || nameState?.feedback || nameState?.draft !== nameState?.name))),

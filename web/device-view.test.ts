@@ -115,7 +115,7 @@ describe("device view", () => {
     expect(find(view, item => item.attrs.class === "ds-confirm-code")!.textContent).toBe("Check this code matches your terminalBCDF-GHJK");
     const text = view.textContent;
     for (const expected of ["Ada's MacBook", "Claude Code", "Codex", "Cursor", "Team memory", "2 minutes ago", "in your name, with read and write access to Team memory", "Choose Deny"]) expect(text).toContain(expected);
-    const [approve, deny] = buttons(view);
+    const [deny, approve] = buttons(view);
     expect([approve.textContent, approve.attrs.class, deny.textContent]).toEqual(["Approve", "primary", "Deny"]);
     approve.fire("click"); deny.fire("click");
     expect([approved, denied]).toEqual([1, 1]);
@@ -130,7 +130,7 @@ describe("device view", () => {
     expect(switched).toEqual(["2"]);
     expect(find(render({ request }), item => item.tag === "select")).toBeUndefined();
     const approving = render({ request, busy: "approve" });
-    expect(buttons(approving).map(item => [item.textContent, item.attrs.disabled])).toEqual([["Approving…", ""], ["Deny", ""]]);
+    expect(buttons(approving).map(item => [item.textContent, item.attrs.disabled])).toEqual([["Deny", ""], ["Approving…", ""]]);
     expect(approving.attrs["aria-busy"]).toBe("true");
     expect(buttons(render({ request, switching: true })).every(item => item.attrs.disabled === "")).toBe(true);
   });
@@ -162,7 +162,7 @@ describe("device view", () => {
     buttons(failed).find(item => item.textContent === "Try again")!.fire("click");
     expect(retried).toBe(1);
     const declined = render({ request, error: "This workspace needs an active Cloud subscription." });
-    expect(declined.textContent).toContain("needs an active Cloud subscription"); expect(buttons(declined)[0].textContent).toBe("Approve");
+    expect(declined.textContent).toContain("needs an active Cloud subscription"); expect(buttons(declined)[1].textContent).toBe("Approve");
     const agent = render({ request, role: "agent" });
     expect(agent.textContent).toContain("Sign in with your own account"); expect(buttons(agent)).toHaveLength(0);
   });

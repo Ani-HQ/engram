@@ -1,3 +1,4 @@
+import { emptyState } from "./design-system.js";
 import { h } from "./profile.js";
 import { icon } from "./icons.js";
 import { relativeTime } from "./activity-view.js";
@@ -11,7 +12,7 @@ const method = value => badge(methodLabel(value));
 export function aiConfiguration(external = {}, { settings = true } = {}) {
   const jev = external.jevConsented === true, other = external.generativeConsented === true || external.consented === true;
   return h("section", { class: "insight-privacy" },
-    h("div", {}, h("strong", {}, "Separate choices for external processing")),
+    h("div", { class: "ds-panel-head insight-privacy-head" }, icon("shield-check", { size: 13 }), h("span", {}, "External processing")),
     h("p", {}, "Local rules and extractive summaries remain available. Each optional provider needs its own applicable permission and server configuration; Jev also needs available access and budget."),
     h("dl", { class: "insight-config" }, h("div", {}, h("dt", {}, "Jev · TypeSafe"), h("dd", {}, `${jev ? "Permission on" : "Permission off"} · ${external.jevConfigured === true ? "server configured" : "not configured"}`)), h("div", {}, h("dt", {}, "Voyage embeddings"), h("dd", {}, `${other ? "Permission on" : "Permission off"} · ${external.embeddingConfigured === true ? "server configured" : "not configured"}`)), h("div", {}, h("dt", {}, "OpenAI briefs"), h("dd", {}, `${other ? "Permission on" : "Permission off"} · ${external.generativeConfigured === true ? "server configured" : "not configured"}`))),
     settings && h("a", { href: "#workspace", class: "insight-settings-link ds-touch-target" }, "Privacy settings"));
@@ -28,7 +29,11 @@ function sources(result, ids, onSource) {
 
 export function attentionResults(data, { onSource, onActivity, onCopy }) {
   const result = data?.result;
-  if (!result) return h("div", { class: "insight-empty" }, h("h2", {}, "Review recorded work"), h("p", {}, "Run checks to find repeated failures, possible overlapping work, and activity awaiting an update. Add a description to find related work and prepare a handoff brief. Each finding links to its source activity."));
+  if (!result) {
+    const node = emptyState({ glyph: icon("badge-check", { size: 22 }), title: "No checks run yet", description: "Run checks to surface repeated failures, overlapping work and activity awaiting an update. Add a description to find related work and draft a handoff. Every finding links to its source.", className: "insight-empty" });
+    node.setAttribute("data-variant", "dashed");
+    return node;
+  }
   const findings = result.insights || [];
   return h("div", { class: "attention-content" },
     h("div", { class: "insight-result-meta" }, h("span", {}, `${findings.length} finding${findings.length === 1 ? "" : "s"}`), h("span", {}, "Latest check · ", relativeTime(result.generatedAt))),

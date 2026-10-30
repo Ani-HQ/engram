@@ -36,7 +36,7 @@ test("a pending workspace export cannot duplicate or download after leaving its 
 test("privacy saves ignore completions after the panel's session becomes stale", async () => {
   let current = true, finish!: (data: any) => void, saves = 0, notices = 0;
   const view = workspacePanel({ session, members: [], invites: [], api: { savePolicies: () => new Promise(resolve => { finish = resolve; }) }, saved: () => saves++, fail() {}, notify: () => notices++, isCurrent: () => current }) as Element;
-  const form = all(view).find(node => node.tag === "form")!;
+  const form = all(view).find(node => node.tag === "form" && node.attrs["data-settings"] === "privacy")!;
   const pending = form.fire("submit"); current = false; finish({ policies: { agentsMayWrite: false } }); await pending;
   expect(saves).toBe(0); expect(notices).toBe(0);
 });
@@ -54,7 +54,7 @@ test("billing cannot redirect an obsolete workspace after an asynchronous portal
 test("privacy saves request focus restoration only while the submitted action still owns focus", async () => {
   const metadata: any[] = [];
   const view = workspacePanel({ session, members: [], invites: [], api: { savePolicies: async () => ({ policies: session.org.policies }) }, saved: (_: any, focus: any) => metadata.push(focus), fail() {}, notify() {} }) as Element;
-  const form = all(view).find(node => node.tag === "form")!, save = control(view, "Save privacy settings");
+  const form = all(view).find(node => node.tag === "form" && node.attrs["data-settings"] === "privacy")!, save = control(view, "Save changes");
   expect(save.attrs["data-account-focus"]).toBe("privacy-save");
   save.focus(); await form.fire("submit");
   new Element("input").focus(); await form.fire("submit");

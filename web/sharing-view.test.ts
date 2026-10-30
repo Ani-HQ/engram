@@ -24,6 +24,7 @@ const all = (node: Element): Element[] => [node,...node.children.flatMap(all)];
 const find = (node: Element, predicate: (value: Element) => boolean) => all(node).find(predicate)!;
 const field = (node: Element, name: string) => find(node, item => item.attrs.name === name);
 const button = (node: Element, text: string) => find(node, item => item.tag === "button" && item.textContent === text);
+const approveButton = (node: Element) => find(node, item => item.tag === "button" && item.textContent.startsWith("Approve"));
 const tick = () => Bun.sleep(0);
 const original = { Node: globalThis.Node, document: globalThis.document };
 beforeEach(() => Object.assign(globalThis, { Node: Element, document: { activeElement: null, createElement: (tag: string) => new Element(tag), createElementNS: (_: string, tag: string) => new Element(tag), createTextNode: (text: string) => new Element("#text", text) } }));
@@ -52,13 +53,13 @@ describe("reviewed selective sharing", () => {
     const view = panel.element as Element; await tick(); await draft(view);
     expect(calls[0].recipient).toEqual({kind:"team",orgId:1});
     expect(all(view).filter(item => item.type === "checkbox").every(item => !item.checked)).toBe(true);
-    expect(button(view,"Share approved text").disabled).toBe(true);
-    expect(view.textContent).toContain("Text match · manual review"); expect(view.textContent).toContain("Everyone authorized in that team");
-    await approve(view, "Use stable IDs."); expect(button(view,"Share approved text").disabled).toBe(false);
-    await button(view,"Share approved text").fire("click");
+    expect(approveButton(view).disabled).toBe(true);
+    expect(view.textContent).toContain("Text match"); expect(view.textContent).toContain("Everyone authorized in that team");
+    await approve(view, "Use stable IDs."); expect(approveButton(view).disabled).toBe(false);
+    await approveButton(view).fire("click");
     expect(calls[1]).toEqual({ previewId:"preview-1", selections:[{id:candidate.id,text:"Use stable IDs."}], acknowledged:true });
-    expect(view.textContent).toContain("Approved snapshot shared with Design team");
-    expect(view.textContent).toContain("New or changed memories were not added"); panel.dispose();
+    expect(view.textContent).toContain("Snapshot shared with Design team");
+    expect(view.textContent).toContain("It won’t pick up new or changed memory"); panel.dispose();
   });
 
   test("instruction edits cancel pending previews and cannot commit an old response", async () => {
@@ -68,7 +69,7 @@ describe("reviewed selective sharing", () => {
     field(view,"instruction").value="Share only deployment notes.";await field(view,"instruction").fire("input");
     finish(preview());await tick();
     expect(all(view).some(item=>item.type==="checkbox")).toBe(false);expect(commits).toBe(0);
-    expect(button(view,"Preview matching text").disabled).toBe(false);panel.dispose();
+    expect(button(view,"Preview excerpts").disabled).toBe(false);panel.dispose();
   });
 
   test("added text is blocked, edits reset acknowledgment, and expired previews require another review", async () => {
@@ -76,18 +77,18 @@ describe("reviewed selective sharing", () => {
     const result={...preview(),expiresAt:new Date(clock+60_000).toISOString()};
     const panel=sharingView({now:()=>clock,api:{sharing:async()=>catalog,sharingPreview:async()=>result,sharingCommit:async()=>{commits++;return{share};}}});
     const view=panel.element as Element;await tick();await draft(view);await approve(view,"Invented unrelated material");
-    expect(button(view,"Share approved text").disabled).toBe(true);
-    await approve(view,"Use stable IDs.");expect(button(view,"Share approved text").disabled).toBe(false);
+    expect(approveButton(view).disabled).toBe(true);
+    await approve(view,"Use stable IDs.");expect(approveButton(view).disabled).toBe(false);
     const editor=all(view).filter(item=>item.tag==="textarea")[1];editor.value="Use stable";await editor.fire("input");
     expect(all(view).filter(item=>item.type==="checkbox")[1].checked).toBe(false);
-    await approve(view,"Use stable IDs.");clock+=60_001;await button(view,"Share approved text").fire("click");
+    await approve(view,"Use stable IDs.");clock+=60_001;await approveButton(view).fire("click");
     expect(commits).toBe(0);expect(view.textContent).toContain("Preview expired");panel.dispose();
   });
 
   test("stale commit failures keep reviewed drafts while preventing a stale retry",async()=>{
     const panel=sharingView({api:{sharing:async()=>catalog,sharingPreview:async()=>preview(),sharingCommit:async()=>{throw Object.assign(new Error("Preview expired. Preview again."),{status:410,code:"preview_expired"});}}});
-    const view=panel.element as Element;await tick();await draft(view);await approve(view,"Use stable IDs.");await button(view,"Share approved text").fire("click");
-    expect(all(view).filter(item=>item.tag==="textarea")[1].value).toBe("Use stable IDs.");expect(button(view,"Share approved text").disabled).toBe(true);
+    const view=panel.element as Element;await tick();await draft(view);await approve(view,"Use stable IDs.");await approveButton(view).fire("click");
+    expect(all(view).filter(item=>item.tag==="textarea")[1].value).toBe("Use stable IDs.");expect(approveButton(view).disabled).toBe(true);
     expect(view.textContent).toContain("Preview expired");panel.dispose();
   });
 
@@ -95,8 +96,8 @@ describe("reviewed selective sharing", () => {
     const token="egs_"+"a".repeat(32), copied:string[]=[];
     const agentShare={...share,recipient:{kind:"agent",name:"Research assistant"}};
     const panel=sharingView({copy:async value=>{copied.push(value);},api:{sharing:async()=>catalog,sharingPreview:async()=>preview(),sharingCommit:async()=>({share:agentShare,credential:{token,mcpUrl:"https://engram.example/mcp/shared"}})}});
-    const view=panel.element as Element;await tick();await draft(view,"agent");expect(view.textContent).toContain("Existing full workspace connections keep their prior access");
-    await approve(view,"Use stable IDs.");await button(view,"Share approved text").fire("click");
+    const view=panel.element as Element;await tick();await draft(view,"agent");expect(view.textContent).toContain("Existing full-workspace connections keep their access");
+    await approve(view,"Use stable IDs.");await approveButton(view).fire("click");
     const secret=find(view,item=>item.attrs["aria-label"]==="Read-only share token");
     expect(secret.type).toBe("password");expect(secret.value).toBe(token);expect(secret.attrs.value).toBeUndefined();expect(copied).toEqual([]);
     await button(view,"Copy token").fire("click");expect(copied).toEqual([token]);
@@ -107,7 +108,7 @@ describe("reviewed selective sharing", () => {
     let finish:(value:any)=>void=()=>{};
     const panel=sharingView({api:{sharing:async()=>catalog,sharingPreview:async()=>preview(),sharingCommit:()=>new Promise(resolve=>finish=resolve)}});
     const view=panel.element as Element;await tick();await draft(view,"agent");await approve(view,"Use stable IDs.");
-    const pending=button(view,"Share approved text").fire("click");panel.dispose();finish({share,credential:{token:"egs_"+"x".repeat(32),mcpUrl:"https://engram.example/mcp/shared"}});await pending;
+    const pending=approveButton(view).fire("click");panel.dispose();finish({share,credential:{token:"egs_"+"x".repeat(32),mcpUrl:"https://engram.example/mcp/shared"}});await pending;
     expect(all(view).some(item=>item.value.startsWith("egs_"))).toBe(false);
     const teamPanel=sharingView({api:{sharing:async()=>({...catalog,sourceKind:"team"})}});
     await tick();expect(teamPanel.element.textContent).toContain("Open team memory");expect((teamPanel.element as Element).querySelector("form")?.hidden).toBe(true);teamPanel.dispose();
@@ -117,7 +118,7 @@ describe("reviewed selective sharing", () => {
     const panel = sharingView({ api: { sharing: async () => catalog } });
     const view = panel.element as Element; await tick();
     expect(view.children[0].tag).toBe("form"); expect(view.children[0].hidden).toBe(false);
-    expect(view.textContent).toContain("Create a share");
+    expect(view.textContent).toContain("Describe the share");
     expect(view.textContent).not.toContain("Share the useful slice"); expect(view.textContent).not.toContain("Review before sharing");
     const help = find(view, item => item.tag === "details");
     expect(help.textContent).toContain("does not understand intent or exclusions");
@@ -131,17 +132,17 @@ describe("reviewed selective sharing", () => {
       sharingPreview:async()=>preview(), sharingCommit:()=>new Promise(resolve=>finishCommit=resolve),
     }});
     const view=panel.element as Element;await tick();await draft(view);await approve(view,"Use stable IDs.");
-    const loading=button(view,"Refresh shares").fire("click");
+    const loading=button(view,"Refresh").fire("click");
     expect(view.textContent).toContain("Loading sharing settings");
-    const committing=button(view,"Share approved text").fire("click");
-    expect(button(view,"Refresh shares").disabled).toBe(true);
+    const committing=approveButton(view).fire("click");
+    expect(button(view,"Refresh").disabled).toBe(true);
     expect(view.textContent).not.toContain("Loading sharing settings");
-    await button(view,"Refresh shares").fire("click");expect(loadCalls).toBe(2);
+    await button(view,"Refresh").fire("click");expect(loadCalls).toBe(2);
     finishCommit({share});await committing;
     finishLoad({...catalog,shares:[]});await loading;
-    expect(view.textContent).toContain("Read approved text · 1 excerpt(s)");
+    expect(view.textContent).toContain("View 1 approved excerpt");
     expect(view.textContent).toContain("Use stable IDs.");
-    expect(button(view,"Refresh shares").disabled).toBe(false);panel.dispose();
+    expect(button(view,"Refresh").disabled).toBe(false);panel.dispose();
   });
 
   for(const operation of ["revoke","rotate"] as const) test("an earlier catalog refresh cannot overwrite "+operation+" and stays disabled until it completes",async()=>{
@@ -152,18 +153,18 @@ describe("reviewed selective sharing", () => {
       revokeSharing:()=>new Promise(resolve=>finishMutation=resolve),rotateSharingToken:()=>new Promise(resolve=>finishMutation=resolve),
     }});
     const view=panel.element as Element;await tick();
-    const loading=button(view,"Refresh shares").fire("click");
-    await button(view,operation==="revoke"?"Revoke sharing":"Replace agent token").fire("click");
-    const mutating=button(view,operation==="revoke"?"Confirm revoke":"Confirm token replacement").fire("click");
-    expect(button(view,"Refresh shares").disabled).toBe(true);
+    const loading=button(view,"Refresh").fire("click");
+    await button(view,operation==="revoke"?"Revoke":"Replace token").fire("click");
+    const mutating=button(view,operation==="revoke"?"Confirm revoke":"Confirm replace").fire("click");
+    expect(button(view,"Refresh").disabled).toBe(true);
     expect(view.textContent).not.toContain("Loading sharing settings");
-    await button(view,"Refresh shares").fire("click");expect(loadCalls).toBe(2);
+    await button(view,"Refresh").fire("click");expect(loadCalls).toBe(2);
     finishMutation(operation==="revoke"?{share:{...grant,revokedAt:new Date().toISOString()}}:{credential:{token:"egs_"+"r".repeat(32),mcpUrl:"https://engram.example/mcp/shared"}});await mutating;
     finishLoad({...catalog,shares:operation==="revoke"?[grant]:[]});await loading;
     expect(view.textContent).toContain(operation==="revoke"?"Revoked":"Example assistant");
-    if(operation==="revoke")expect(view.textContent).not.toContain("Active snapshot");
+    if(operation==="revoke")expect(view.textContent).not.toContain("Active");
     else expect(find(view,item=>item.attrs["aria-label"]==="Read-only share token").value).toBe("egs_"+"r".repeat(32));
-    expect(button(view,"Refresh shares").disabled).toBe(false);panel.dispose();
+    expect(button(view,"Refresh").disabled).toBe(false);panel.dispose();
   });
 });
 
@@ -176,15 +177,15 @@ describe("sharing in a team workspace", () => {
     let finish: (value: any) => void = () => {}, selected = 0, writes = 0;
     const panel = sharingView(teamOptions({ receivedSharing: () => new Promise(resolve => finish = resolve), sharingCommit: () => writes++ }, { role: "owner", onOpenPersonal: async (id: number) => { selected = id; return true; } }));
     const view = panel.element as Element;
-    expect(view.textContent).toContain("Loading received shares"); expect(button(view, "Refresh shares").disabled).toBe(true);
+    expect(view.textContent).toContain("Loading received shares"); expect(button(view, "Refresh").disabled).toBe(true);
     expect(view.querySelector("form")).toBeNull(); expect(view.querySelector("textarea")).toBeNull();
     await button(view, "Share from personal workspace").fire("click"); expect(selected).toBe(2);
     finish({ ...teamCatalog([received("item-1")]), privateSource: "PRIVATE SOURCE MUST NOT RENDER", credential: { token: "PRIVATE TOKEN" } }); await tick();
     expect(view.textContent).toContain("Approved deployment guidance.");
-    expect(view.textContent).not.toContain("PRIVATE"); expect(view.textContent).not.toContain("Revoke sharing"); expect(writes).toBe(0);
+    expect(view.textContent).not.toContain("PRIVATE"); expect(view.textContent).not.toContain("Revoke"); expect(writes).toBe(0);
     expect(find(view, item => item.tag === "a" && item.textContent === "Open team memory").attrs.href).toBe("#memory");
     expect(find(view, item => item.tag === "a" && item.textContent === "Manage people").attrs.href).toBe("#workspace");
-    expect(button(view, "Refresh shares").disabled).toBe(false); panel.dispose();
+    expect(button(view, "Refresh").disabled).toBe(false); panel.dispose();
   });
 
   test("requires an explicit choice between multiple personal workspaces and ignores unknown selections", async () => {
@@ -194,7 +195,7 @@ describe("sharing in a team workspace", () => {
     expect(open.disabled).toBe(true); await open.fire("click"); expect(selected).toEqual([]);
     chooser.value = "999"; await chooser.fire("change"); await open.fire("click"); expect(selected).toEqual([]);
     chooser.value = "3"; await chooser.fire("change"); expect(open.disabled).toBe(false); await open.fire("click"); expect(selected).toEqual([3]);
-    expect(view.textContent).toContain("No received shares available"); panel.dispose();
+    expect(view.textContent).toContain("No shared excerpts yet"); panel.dispose();
   });
 
   test("short approved excerpts are complete without a redundant disclosure and long excerpts can expand", async () => {
@@ -213,7 +214,7 @@ describe("sharing in a team workspace", () => {
     const view = panel.element as Element; await tick();
     expect(view.textContent).toContain("Open team memory");
     expect(view.textContent).not.toContain("Share from personal workspace"); expect(view.textContent).not.toContain("Manage people");
-    expect(view.textContent).toContain("No received shares available"); panel.dispose();
+    expect(view.textContent).toContain("No shared excerpts yet"); panel.dispose();
   });
 
   test("failed personal switches show a retryable error and never claim success", async () => {
@@ -228,18 +229,18 @@ describe("sharing in a team workspace", () => {
     const requests: any[] = [];
     const panel = sharingView(teamOptions({ receivedSharing: async (params: any) => { requests.push(params); return requests.length === 1 ? teamCatalog([received("one")], true) : requests.length === 2 ? teamCatalog([received("one"), received("two", "Second approved excerpt.")]) : teamCatalog([received("current", "Current approved excerpt.")]); } }));
     const view = panel.element as Element; await tick();
-    const more = button(view, "Load more shares"); expect(more.hidden).toBe(false); more.focus(); await more.fire("click");
+    const more = button(view, "Load more"); expect(more.hidden).toBe(false); more.focus(); await more.fire("click");
     expect(requests).toEqual([{ limit: 25, offset: 0 }, { limit: 25, offset: 1 }]);
     expect(view.textContent).toContain("Showing 2 approved excerpts."); expect(more.hidden).toBe(true);
     expect((document.activeElement as any).textContent).toBe("Memory excerpt");
-    await button(view, "Refresh shares").fire("click"); expect(requests[2]).toEqual({ limit: 25, offset: 0 });
+    await button(view, "Refresh").fire("click"); expect(requests[2]).toEqual({ limit: 25, offset: 0 });
     expect(view.textContent).toContain("Current approved excerpt."); expect(view.textContent).not.toContain("Second approved excerpt."); panel.dispose();
   });
 
   test("load-more failures keep received items and retry the same offset", async () => {
     const requests: any[] = [];
     const panel = sharingView(teamOptions({ receivedSharing: async (params: any) => { requests.push(params); if (requests.length === 1) return teamCatalog([received("one")], true); if (requests.length === 2) throw new Error("Received shares are unavailable."); return teamCatalog([received("two", "Recovered excerpt.")]); } }));
-    const view = panel.element as Element; await tick(); await button(view, "Load more shares").fire("click");
+    const view = panel.element as Element; await tick(); await button(view, "Load more").fire("click");
     expect(view.textContent).toContain("Received shares are unavailable."); expect(view.textContent).toContain("Approved deployment guidance.");
     await button(view, "Try again").fire("click"); expect(requests[2]).toEqual({ limit: 25, offset: 1 }); expect(view.textContent).toContain("Recovered excerpt."); panel.dispose();
   });
@@ -259,6 +260,6 @@ describe("sharing in a team workspace", () => {
     const panel = sharingView(teamOptions({ receivedSharing: async () => ++calls === 1 ? { sourceKind: "personal", received: [received("private", "PRIVATE PERSONAL CONTENT")], more: false } : teamCatalog() }));
     const view = panel.element as Element; await tick();
     expect(view.textContent).not.toContain("PRIVATE PERSONAL CONTENT"); expect(view.textContent).toContain("could not be read");
-    await button(view, "Try again").fire("click"); expect(view.textContent).toContain("No received shares available"); panel.dispose();
+    await button(view, "Try again").fire("click"); expect(view.textContent).toContain("No shared excerpts yet"); panel.dispose();
   });
 });

@@ -256,3 +256,28 @@ details[open] > summary > .disclosure-chevron { transform: rotate(180deg); }
   .activity-list-footer .activity-key-hint { display: none; }
   .workspace .activity-switcher { display: flex; overflow-x: auto; max-width: 100%; }
 }
+
+/* Checks: bordered query card, dashed empty state, external-processing panel. */
+.activity-checks .insight-privacy { overflow: hidden; margin-top: var(--ds-space-8); padding: 0; border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-card); }
+.activity-checks .insight-privacy-head { gap: var(--ds-space-2); }
+.activity-checks .insight-privacy > p { margin: 0; padding: var(--ds-space-4) var(--ds-space-4) 0; color: var(--ds-muted); font-size: var(--ds-text-sm); }
+.activity-checks .insight-config { display: grid; margin: var(--ds-space-4) 0 0; }
+.activity-checks .insight-config > div { display: flex; justify-content: space-between; gap: var(--ds-space-4); padding: var(--ds-space-3) var(--ds-space-4); border-top: 1px solid var(--ds-hairline); }
+.activity-checks .insight-config dt { color: var(--ds-ink); font-size: var(--ds-text-sm); }
+.activity-checks .insight-config dd { margin: 0; color: var(--ds-muted); font-size: var(--ds-text-sm); }
+.activity-checks .insight-settings-link { display: flex; padding: var(--ds-space-3) var(--ds-space-4); background: var(--ds-surface-raised); border-top: 1px solid var(--ds-hairline-strong); font-size: var(--ds-text-xs); }
+.activity-checks .insight-empty { margin-top: var(--ds-space-6); }
+.activity-checks .insight-card { padding: var(--ds-space-4); border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-card); }
+
+/* Handoffs: segmented status, toolbar, bordered task cards. */
+.handoffs-view .handoffs-intro { padding: var(--ds-space-5); margin-bottom: var(--ds-space-5); background: var(--ds-surface-raised); border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-card); }
+.handoffs-view .handoffs-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ds-space-2); margin-bottom: var(--ds-space-4); }
+.handoffs-view .handoffs-toolbar .activity-switcher { margin: 0; }
+.handoffs-view .handoffs-toolbar .search-field { flex: 1; max-width: 420px; }
+.handoffs-results { display: grid; gap: 0; overflow: hidden; border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-card); }
+.handoffs-results:empty, .handoffs-results:has(> .ds-empty), .handoffs-results:has(> .ds-loading), .handoffs-results:has(> .notice) { border: 0; }
+.handoffs-results > .handoff-card { padding: var(--ds-space-4); transition: background-color var(--ds-duration-fast) var(--ds-ease-out); }
+.handoffs-results > .handoff-card + .handoff-card { border-top: 1px solid var(--ds-hairline); }
+@media (hover: hover) { .handoffs-results > .handoff-card:hover { background: var(--ds-surface-raised); } }
+.handoff-next > span:first-child { color: var(--ds-muted); font-family: var(--ds-font-mono); font-size: var(--ds-mono-label); letter-spacing: .04em; text-transform: uppercase; margin-right: var(--ds-space-2); }
+.handoffs-empty[data-variant='dashed'], .handoffs-empty { border: 1px dashed var(--ds-hairline-strong); border-radius: var(--ds-radius-card); }

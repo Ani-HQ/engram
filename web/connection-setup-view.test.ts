@@ -16,9 +16,10 @@ class Element {
 const nodes = (node: Element): Element[] => [node, ...node.children.flatMap(nodes)];
 const find = (node: Element, predicate: (item: Element) => boolean) => nodes(node).find(predicate)!;
 const focus = (node: Element, key: string) => find(node, item => item.attrs["data-connection-focus"] === key);
-const disclosure = (node: Element, key: "key" | "help" | "prompt") => focus(node, `${key}-toggle`).parentNode!;
+const tab = (node: Element) => focus(node, "help");
+const disclosure = (node: Element, key: "key" | "prompt") => focus(node, `${key}-toggle`).parentNode!;
 const original = { Node: globalThis.Node, document: globalThis.document };
-beforeEach(() => Object.assign(globalThis, { Node: Element, document: { createElement: (tag: string) => new Element(tag), createTextNode: (text: string) => new Element("#text", text) } }));
+beforeEach(() => Object.assign(globalThis, { Node: Element, document: { createElement: (tag: string) => new Element(tag), createElementNS: (_: string, tag: string) => new Element(tag), createTextNode: (text: string) => new Element("#text", text) } }));
 afterEach(() => Object.assign(globalThis, original));
 const endpoint = "https://engram.example/custom/mcp";
 const render = (options: Record<string, unknown> = {}) => connectionSetupView({ endpoint, ...options }) as Element;
@@ -31,12 +32,13 @@ describe("generic connection composer", () => {
     expect(find(view, node => node.attrs.id === "detail-title").textContent).toBe("Connect an agent");
     expect(find(view, node => node.tag === "code").textContent).toBe(endpoint);
     expect(copied).toEqual([
-      { label: "Copy setup prompt", value: connectionSetupPrompt(endpoint), attrs: { class: "primary small", "data-connection-focus": "prompt" } },
       { label: "Copy endpoint", value: endpoint, attrs: { class: "small", "data-connection-focus": "endpoint" } },
+      { label: "Copy setup prompt", value: connectionSetupPrompt(endpoint), attrs: { class: "primary small", "data-connection-focus": "prompt" } },
     ]);
-    expect(view.children[1].attrs.class).toContain("connection-setup-endpoint");
-    expect(disclosure(view, "key").open).toBe(false); expect(disclosure(view, "help").open).toBe(false); expect(disclosure(view, "prompt").open).toBe(false);
-    expect(focus(view, "help").attrs.required).toBeUndefined(); expect(focus(view, "help").value).toBe("");
+    expect(find(view, node => node.attrs.class?.includes("connection-setup-endpoint"))).toBeDefined();
+    expect(disclosure(view, "key").open).toBe(false); expect(disclosure(view, "prompt").open).toBe(false);
+    expect(tab(view).attrs).toMatchObject({ role: "tab", "aria-selected": "true", id: "connection-tab-any" });
+    expect(nodes(view).filter(node => node.attrs.role === "tab")).toHaveLength(connectionAgents.length + 1);
     expect(view.textContent).toContain("Copy this setup prompt into your agent");
     expect(view.textContent).toContain("refresh Connections to see its client name when available");
     focus(view, "refresh").fire("click"); expect(refreshes).toBe(1);
@@ -50,7 +52,7 @@ describe("generic connection composer", () => {
       return { view, prompt: copied.find(item => item.label === "Copy setup prompt")!.value };
     };
     const plain = copies({});
-    const withHelp = copies({ helpAgentId: "codex", helpExpanded: true, draft: { name: "Do not copy this name", harness: "cursor", sourceLabel: "Do not copy this source", token: "eng_NOT_A_PROMPT" } });
+    const withHelp = copies({ draft: { name: "Do not copy this name", harness: "cursor", sourceLabel: "Do not copy this source", token: "eng_NOT_A_PROMPT" } });
     expect(withHelp.prompt).toBe(plain.prompt); expect(plain.prompt).toBe(connectionSetupPrompt(endpoint, workspace));
     const preview = find(withHelp.view, node => node.tag === "pre" && node.attrs["aria-label"] === "Connection setup prompt");
     expect(preview.textContent).toBe(withHelp.prompt); expect(preview.attrs).toMatchObject({ tabindex: "0", role: "region" });
@@ -73,7 +75,7 @@ describe("generic connection composer", () => {
   test("selecting optional help has no effect on key drafts or credential payloads", () => {
     const chosen: string[] = [], drafts: unknown[] = [], submitted: unknown[] = [];
     const view = render({ helpExpanded: true, draft: { name: "Personal computer", canWrite: false }, onHelpChoose: (value: string) => chosen.push(value), onDraft: (value: unknown) => drafts.push(value), onSubmit: (value: unknown) => submitted.push(value) });
-    focus(view, "help").value = "codex"; focus(view, "help").fire("change");
+    focus(view, "help-codex").fire("click"); tab(view).fire("click");
     expect(chosen).toEqual(["codex"]); expect(drafts).toEqual([]);
     find(view, node => node.tag === "form").fire("submit");
     expect(submitted).toEqual([{ name: "Personal computer", canWrite: false }]);
@@ -88,7 +90,7 @@ describe("generic connection composer", () => {
       expect(nodes(view).filter(node => node.tag === "form")).toHaveLength(1);
       expect(nodes(view).some(node => node.tag === "pre" && node.attrs["aria-label"]?.includes("MCP configuration example"))).toBe(false);
       expect(disclosure(view, "key").open).toBe(false);
-      expect(focus(view, "help").value).toBe(helpAgentId);
+      expect(tab(view).attrs.id).toBe(`connection-tab-${helpAgentId}`);
     }
   });
 
@@ -109,21 +111,21 @@ describe("generic connection composer", () => {
     expect(new Set(connectionAgents.map(agent => agent.id)).size).toBe(connectionAgents.length);
     expect(connectionAgents.at(-1)?.id).toBe("other");
     const view = render({ helpAgentId: "hermes" });
-    expect(focus(view, "help").value).toBe("hermes");
-    expect(nodes(view).filter(node => node.tag === "select")).toHaveLength(2);
+    expect(tab(view).attrs.id).toBe("connection-tab-hermes");
+    expect(nodes(view).filter(node => node.tag === "select")).toHaveLength(1);
     expect(nodes(view).filter(node => node.tag === "select" && node.attrs.required !== undefined)).toHaveLength(0);
-    expect(disclosure(view, "help").open).toBe(false);
+    expect(nodes(view).filter(node => node.attrs["aria-selected"] === "true")).toHaveLength(1);
   });
 
   test("disclosure callbacks preserve independently controlled open states", () => {
-    const keyStates: boolean[] = [], helpStates: boolean[] = [];
-    const view = render({ keyExpanded: true, helpExpanded: false, onKeyToggle: (value: boolean) => keyStates.push(value), onHelpToggle: (value: boolean) => helpStates.push(value) });
-    const key = disclosure(view, "key"), help = disclosure(view, "help");
-    expect(key.open).toBe(true); expect(help.open).toBe(false);
-    key.open = false; key.fire("toggle"); help.open = true; help.fire("toggle");
-    expect(keyStates).toEqual([false]); expect(helpStates).toEqual([true]);
-    const rerendered = render({ keyExpanded: keyStates.at(-1), helpExpanded: helpStates.at(-1) });
-    expect(disclosure(rerendered, "key").open).toBe(false); expect(disclosure(rerendered, "help").open).toBe(true);
+    const keyStates: boolean[] = [];
+    const view = render({ keyExpanded: true, onKeyToggle: (value: boolean) => keyStates.push(value) });
+    const key = disclosure(view, "key");
+    expect(key.open).toBe(true);
+    key.open = false; key.fire("toggle");
+    expect(keyStates).toEqual([false]);
+    const rerendered = render({ keyExpanded: keyStates.at(-1) });
+    expect(disclosure(rerendered, "key").open).toBe(false);
   });
 
   test("retains drafts and submits only when native validation succeeds", () => {
@@ -139,8 +141,8 @@ describe("generic connection composer", () => {
 
   test("queued disclosure events from a replaced dialog cannot overwrite current open state", () => {
     const events: boolean[] = [];
-    const view = render({ keyExpanded: true, helpExpanded: true, onKeyToggle: (value: boolean) => events.push(value), onHelpToggle: (value: boolean) => events.push(value) });
-    for (const key of ["key", "help"] as const) {
+    const view = render({ keyExpanded: true, onKeyToggle: (value: boolean) => events.push(value) });
+    for (const key of ["key"] as const) {
       const section = disclosure(view, key);
       section.isConnected = false; section.open = false; section.fire("toggle");
     }
@@ -155,7 +157,7 @@ describe("generic connection composer", () => {
     expect(focus(view, "help").attrs.disabled).toBe(""); expect(focus(view, "name").attrs.readonly).toBe("");
     expect(focus(view, "permission").attrs.disabled).toBe(""); expect(focus(view, "submit").attrs.disabled).toBe(""); expect(focus(view, "refresh").attrs.disabled).toBe("");
     expect(find(view, node => node.attrs.role === "status").textContent).toContain("Creating access key");
-    focus(view, "help").fire("change"); focus(view, "name").fire("input"); focus(view, "permission").fire("change"); focus(view, "refresh").fire("click");
+    focus(view, "help-codex").fire("click"); focus(view, "name").fire("input"); focus(view, "permission").fire("change"); focus(view, "refresh").fire("click");
     find(view, node => node.tag === "form").fire("submit"); expect(calls).toBe(0);
   });
 
@@ -163,7 +165,7 @@ describe("generic connection composer", () => {
     const view = render({ helpAgentId: "cursor", draft: { name: "My project", canWrite: false }, error: "The key could not be created. Try again." });
     expect(disclosure(view, "key").open).toBe(true);
     expect(find(view, node => node.attrs.role === "alert").textContent).toContain("could not be created");
-    expect(focus(view, "help").value).toBe("cursor"); expect(focus(view, "name").value).toBe("My project"); expect(focus(view, "permission").value).toBe("read");
+    expect(tab(view).attrs.id).toBe("connection-tab-cursor"); expect(focus(view, "name").value).toBe("My project"); expect(focus(view, "permission").value).toBe("read");
     expect(focus(view, "name").attrs["aria-describedby"]).toContain("connection-create-feedback"); expect(focus(view, "submit").attrs.disabled).toBeUndefined();
   });
 
@@ -181,10 +183,23 @@ describe("generic connection composer", () => {
   test("missing or unrecognized help does not block the generic flow or expose workflow setup", () => {
     for (const helpAgentId of ["", "unknown-product"]) {
       const view = render({ helpAgentId });
-      expect(focus(view, "help").value).toBe("");
+      expect(tab(view).attrs.id).toBe("connection-tab-any");
       expect(nodes(view).some(node => node.tag === "form")).toBe(true);
       expect(find(view, node => node.tag === "code").textContent).toBe(endpoint);
       for (const text of ["Private skills", "Copy skill setup prompt", "npx", "Copy save prompt", "Set up or repair memory workflow", "Copy connection check"]) expect(view.textContent).not.toContain(text);
     }
+  });
+  test("client tabs carry product marks and arrow keys choose the next client", () => {
+    const chosen: string[] = [];
+    const view = render({ helpAgentId: "codex", onHelpChoose: (value: string) => chosen.push(value) });
+    const tabs = nodes(view).filter(node => node.attrs.role === "tab");
+    expect(tabs[0].textContent).toBe("Any agent");
+    expect(tabs.every(item => item.children[0]?.attrs.class?.includes("ds-mark"))).toBe(true);
+    expect(tabs.filter(item => item.attrs.tabindex === "0").map(item => item.attrs.id)).toEqual(["connection-tab-codex"]);
+    const list = find(view, node => node.attrs.role === "tablist");
+    for (const key of ["ArrowRight", "ArrowLeft", "Home", "End", "a"]) list.events.keydown({ key, preventDefault() {} });
+    const index = connectionAgents.findIndex(agent => agent.id === "codex") + 1;
+    expect(chosen).toEqual([connectionAgents[index].id, connectionAgents[index - 2].id, "", "other"]);
+    expect(find(view, node => node.attrs.role === "tabpanel").attrs["aria-labelledby"]).toBe("connection-tab-codex");
   });
 });

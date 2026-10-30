@@ -23,7 +23,7 @@
         <div class="ds-heading-group">
           <h1 id="gallery-title">Clear, alive, honest.</h1>
           <p>One sans typeface, a small palette, real product logos, one scalable icon pack and functional motion. These are the shared tokens and primitives behind every Engram surface.</p>
-          <div class="ds-row"><a class="ds-button primary" href="#components">Explore components</a><a class="ds-button" href="#identity">Logos, icons and motion</a><a class="ds-button" href="#marketing-kit">Marketing kit</a></div>
+          <div class="ds-row"><a class="ds-button primary" href="#components">Explore components</a><a class="ds-button" href="#shell">App shell</a><a class="ds-button" href="#identity">Logos, icons and motion</a><a class="ds-button" href="#marketing-kit">Marketing kit</a></div>
         </div>
         <h2 class="ds-gallery-card-title ds-gallery-rules-title" id="do-not-use">Rules</h2>
         <ul class="ds-gallery-rules" aria-labelledby="do-not-use">
@@ -66,6 +66,18 @@
         <div class="ds-gallery-section-heading"><h2 id="logo-list-title">Every name intact.</h2><p>The complete local catalog as a static, wrapping list: each mark beside its visible name. One-color marks use <code>data-tone="mono"</code> so they read on the dark canvas; colored marks are shown unchanged. No frames, tiles or motion.</p></div>
         <ul class="ds-logo-list" id="gallery-logo-list" role="list" aria-label="Agent product examples"></ul>
         <p class="ds-hint ds-gallery-week-example">These marks do not establish setup support, a connection or an endorsement.</p>
+      </section>
+      <section id="shell" class="ds-gallery-section" aria-labelledby="shell-title">
+        <div class="ds-gallery-section-heading"><div class="ds-heading-group"><h2 id="shell-title">A dashboard you already know how to use.</h2></div><p>The app shell grammar, modeled on developer dashboards: pills, toasts, banners, switches, bordered panel lists with mono headers, skeleton rows and a command palette. Fixed examples only.</p></div>
+        <div class="ds-gallery-identity">
+          <h3 class="ds-gallery-card-title">Pills and keys</h3><div class="ds-row ds-gallery-identity-row" id="shell-pills"></div>
+          <h3 class="ds-gallery-card-title">Feedback</h3><div class="ds-row"><button type="button" class="ds-button" id="shell-toast">Show a toast</button><button type="button" class="ds-button" id="shell-toast-error">Show an error toast</button><button type="button" class="ds-button" id="shell-palette">Open command menu</button><label class="ds-row"><input type="checkbox" class="ds-switch" checked> Switch</label></div>
+          <div id="shell-banner"></div>
+          <h3 class="ds-gallery-card-title">Panel list</h3>
+          <div class="ds-panel-list"><div class="ds-panel-head"><span>Page</span></div><div class="ds-row-hover ds-gallery-row">Production deployments need approval</div><div class="ds-row-hover ds-gallery-row">Keep action evidence explicit</div><div class="ds-panel-foot">2 pages</div></div>
+          <h3 class="ds-gallery-card-title">Loading</h3>
+          <div class="ds-panel-list" role="status" aria-label="Loading example"><div class="ds-panel-head"><span>Loading…</span></div><div class="ds-skeleton-row" aria-hidden="true"><span></span><span></span><span></span><span></span></div><div class="ds-skeleton-row" aria-hidden="true"><span></span><span></span><span></span><span></span></div></div>
+        </div>
       </section>
       <section id="identity" class="ds-gallery-section" aria-labelledby="identity-title">
         <div class="ds-gallery-section-heading"><div class="ds-heading-group"><h2 id="identity-title">Real logos. Live, but honest.</h2></div><p>Every agent and tool mark is a vendored SVG listed in <code>brand-catalog.js</code>, shown in a tile with <code>identityMark()</code>. Presence describes connection state only: a pulse means a task report is running, never that work happened. Icons come from one pinned Lucide release (<code>scripts/vendor-lucide.ts</code>). Fixed examples only.</p></div>

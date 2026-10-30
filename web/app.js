@@ -3,7 +3,7 @@ import { icon } from "./icons.js";
 import { profileCard, profileSkeleton, updateProfileCard, updateProfileTimes } from "./profile.js";
 import { createProfilePresentationEditor, profilePresentationChanged, profilePresentationValue } from "./profile-presentation-editor.js";
 import { createProfilePhotoEditor, profilePhotoChanged, profilePhotoUpdate } from "./profile-photo-editor.js";
-import { billingPanel, workspacePanel, workspacePending, provisioningPanel } from "./account.js";
+import { billingPanel, workspacePanel, workspacePending, provisioningPanel, settingsSkeleton } from "./account.js";
 import { watchPublicActivity } from "./live-activity.js";
 import { activityFeed, activityFilters, activitySkeleton, activityDetail, activityDetailHeader, refreshActivityTimes } from "./activity-view.js";
 import { activityDestination, activityHref, activitySections } from "./activity-navigation.js";
@@ -154,8 +154,10 @@ function copyButton(label, value, attrs = {}) {
   return node;
 }
 function busy(button, label, pending) { button.disabled = pending; button.setAttribute('aria-busy', String(pending)); button.replaceChildren(...(pending ? [el("span", { class: "ds-spinner", "aria-hidden": "true" }), label] : [label])); }
-function skeletonRows(count = 5, label = "Loading workspace…") {
-  return loadingState({ label, lines: count });
+function skeletonRows(count = 5, label = "Loading…") {
+  return el("div", { class: "ds-panel-list ds-skeleton-panel", role: "status", "aria-live": "polite", "aria-busy": "true" },
+    el("div", { class: "ds-panel-head" }, el("span", { class: "ds-spinner", "aria-hidden": "true" }), el("span", {}, label)),
+    Array.from({ length: Math.max(1, Math.min(8, count)) }, () => el("div", { class: "ds-skeleton-row", "aria-hidden": "true" }, el("span"), el("span"), el("span"), el("span"))));
 }
 const option = (value, label) => el("option", { value }, label);
 function select(label, value, options, change, attrs = {}) {
@@ -873,7 +875,7 @@ async function openInsightSource(id, actionId) {
   }
 }
 function memoryView() {
-  const tabs = el("div", { class: "memory-tabs", role: "group", "aria-label": "Memory views" }, ["saved", "review"].map(tab => button(tab === "saved" ? "Saved memory" : "Review proposals", () => { if (state.memoryTab === tab) return; state.memoryTab = tab; state.error = ""; state.more = false; ++generation; writeRoute(); render(); loadView(); }, { "aria-pressed": String(state.memoryTab === tab) })));
+  const tabs = el("div", { class: "memory-tabs", role: "group", "aria-label": "Memory views" }, ["saved", "review"].map(tab => button([icon(tab === "saved" ? "file-text" : "inbox", { size: 15 }), tab === "saved" ? "Saved memory" : "Review proposals"], () => { if (state.memoryTab === tab) return; state.memoryTab = tab; state.error = ""; state.more = false; ++generation; writeRoute(); render(); loadView(); }, { "aria-pressed": String(state.memoryTab === tab) })));
   if (state.memoryTab === "review") return [heading("Memory", "Review proposed relationships and organization before they change shared memory."), tabs,
     el("div", { class: "filters" }, select("Review state", state.reviewState, [["pending", "Pending"], ["deferred", "Deferred"], ["applied", "Applied"], ["rejected", "Rejected"]], value => { state.reviewState = value; writeRoute(); loadReviews(); })),
     el("div", { id: "review-results", class: "ds-results", "aria-busy": String(state.loading) }, reviewResults())];
@@ -883,14 +885,21 @@ function memoryView() {
     el("div", { id: "memory-results", class: "ds-results", "aria-busy": String(state.loading) }, memoryResults())];
 }
 function memoryResults() {
-  return [state.error && notice(state.error, loadMemories),
-    ...state.memories.map(memory => button([
-            el("span", { class: "memory-icon", "aria-hidden": "true" }, icon(memory.type === "shared-context" ? "share-2" : "file-text", { size: 17 })),
-            el("span", { class: "memory-row-copy" }, el("strong", { class: "action-title" }, memory.title || memory.slug), memory.type === "shared-context" && statusLabel("Approved snapshot · read-only"), el("span", { class: "muted" }, memory.snippet || (memory.type === "shared-context" ? "An approved excerpt shared with this workspace." : memory.slug))),
+  const rows = state.memories.map(memory => button([
+      el("span", { class: "memory-icon", "aria-hidden": "true" }, icon(memory.type === "shared-context" ? "share-2" : "file-text", { size: 16 })),
+      el("span", { class: "memory-row-copy" }, el("span", { class: "memory-row-title" }, el("strong", { class: "action-title" }, memory.title || memory.slug), memory.type === "shared-context" && pill("Read only", { tone: "accent" })),
+        el("span", { class: "muted" }, memory.snippet || (memory.type === "shared-context" ? "An approved excerpt shared with this workspace." : memory.slug))),
       memory.updated_at && el("span", { class: "memory-date" }, day(memory.updated_at)),
-    ], () => memoryDetail(memory.slug), { class: "memory-row ds-row-hover" })),
-    !state.memories.length && !state.error && (state.loading ? skeletonRows(4) : state.memoryQuery ? empty("No matching memory", "Try another search or clear it to see your saved memory.", button("Clear search", () => { state.memoryQuery = ""; const search = document.querySelector('input[aria-label="Search memory"]'); if (search) { search.value = ""; search.focus(); } loadMemories(); })) : empty("Keep the good bits.", "Save a decision, preference, or project detail here. Your connected agents can pick it up later.", state.session.canWrite !== false && button("Add your first memory", captureMemory))),
-    state.more && button(state.loading ? "Loading…" : "Load more", () => loadMemories({ append: true }), { class: "small", disabled: state.loading })];
+      icon("chevron-right", { size: 15, class: "memory-row-chevron" }),
+    ], () => memoryDetail(memory.slug), { class: "memory-row ds-row-hover" }));
+  const panel = rows.length && el("div", { class: "ds-panel-list memory-panel" },
+    el("div", { class: "ds-panel-head", "aria-hidden": "true" }, el("span", {}, "Page"), el("span", {}, "Updated")),
+    el("div", { class: "memory-rows" }, rows),
+    el("div", { class: "ds-panel-foot" }, el("span", {}, `${state.memories.length} ${state.memories.length === 1 ? "page" : "pages"}${state.more ? " shown" : ""}`),
+      state.more && button(state.loading ? [icon("loader-circle", { size: 14, class: "spin" }), "Loading…"] : "Load more", () => loadMemories({ append: true }), { class: "small", disabled: state.loading })));
+  return [state.error && notice(state.error, loadMemories), panel,
+    !state.memories.length && !state.error && (state.loading ? skeletonRows(5, "Loading memory…") : state.memoryQuery ? empty("No results found", `Nothing matches “${state.memoryQuery}”. Try another search, or clear it to see every page.`, button("Clear search", () => { state.memoryQuery = ""; const search = document.querySelector('input[aria-label="Search memory"]'); if (search) { search.value = ""; search.focus(); } loadMemories(); }), "search")
+      : empty("No memory yet", "Save a decision, preference or project detail. Every connected agent can recall it later.", state.session.canWrite !== false && button([icon("plus", { size: 14 }), "Add your first memory"], captureMemory, { class: "small" }), "brain"))];
 }
 function refreshMemoryResults() {
   const target = document.querySelector("#memory-results");
@@ -1058,8 +1067,9 @@ async function decideDevice(action) {
 }
 function connectComputerPanel() {
   const command = installCommand(location.origin);
-  return el("section", { class: "connect-computer", "aria-labelledby": "connect-computer-title" },
-    el("div", { class: "ds-stack" },
+  return el("section", { class: "connect-computer ds-panel-list", "aria-labelledby": "connect-computer-title" },
+    el("div", { class: "ds-panel-head" }, icon("terminal", { size: 13 }), el("span", {}, "Quick setup")),
+    el("div", { class: "ds-stack connect-computer-body" },
       markStack(["claude", "codex", "cursor", "openclaw", "hermesagent", "amp", "devin"].map(brand => identityMark(brandIcon(brand, { size: 16 }), { size: "md" })), { max: 7, label: "Claude Code, Codex, Cursor, OpenClaw, Hermes Agent, Amp and Devin CLI" }),
       el("div", { class: "ds-heading-group" }, el("h2", { id: "connect-computer-title" }, "Connect this computer"),
         el("p", { class: "ds-hint" }, "Run this in a terminal and approve in your browser. It connects Claude Code, Codex, Cursor, OpenClaw, Hermes Agent, Amp and Devin CLI on this computer in one step, desktop apps included.")),
@@ -1164,7 +1174,7 @@ function openConnectionDialog() {
     selectControls.update();
     if (focusKey) content.querySelector(`[data-connection-focus="${focusKey}"]`)?.focus({ preventScroll: true });
   };
-  editor.render(editor.draft.keyExpanded ? "name" : "prompt");
+  editor.render(editor.draft.keyExpanded ? "name" : editor.draft.helpAgentId ? "help" : "prompt");
 }
 
 function taskReportingHelp() {
@@ -1379,9 +1389,10 @@ function showcaseView() {
   const name = el("input", { name: "displayName", autocomplete: "name", value: draft.displayName, placeholder: "Your name", maxlength: 80, "aria-describedby": "showcase-name-error" });
   const slug = el("input", { name: "slug", value: draft.slug, autocomplete: "off", autocapitalize: "none", spellcheck: "false", placeholder: "your-name", required: true, minlength: 3, maxlength: 48, pattern: "(?=.{3,48}$)[a-z0-9]+(?:-[a-z0-9]+)*", "aria-describedby": "slug-hint showcase-slug-error" });
   const bio = el("textarea", { name: "bio", maxlength: 160, rows: 3, placeholder: "A line about you and the work your agents do.", "aria-describedby": "bio-hint showcase-bio-error" }, draft.bio);
-  const showActivity = el("input", { type: "checkbox", name: "showActivity", checked: Boolean(draft.showActivity), "aria-describedby": "activity-sharing-note" });
-  const feedback = el("div", { id: "showcase-feedback", role: "status", "aria-live": "polite", tabindex: -1, class: "form-feedback" });
-  const save = el("button", { type: "submit", class: "primary", "data-showcase-focus": "save", "aria-describedby": "showcase-feedback" }, icon("check", { size: 15 }), "Save changes");
+  const showActivity = el("input", { type: "checkbox", class: "ds-switch", role: "switch", id: "showcase-show-activity", name: "showActivity", checked: Boolean(draft.showActivity), "aria-describedby": "activity-sharing-note" });
+  const feedback = el("p", { id: "showcase-feedback", role: "status", "aria-live": "polite", tabindex: -1, class: "ds-settings-note form-feedback" });
+  const save = el("button", { type: "submit", class: "primary small", "data-showcase-focus": "save", "aria-describedby": "showcase-feedback" }, "Save changes");
+  const cancel = button("Cancel", () => { if (pending || !isCurrent()) return; state.showcaseDraft = { ...saved }; render(); }, { class: "small", disabled: true });
   let pending = false;
   const isCurrent = () => !sessionMutation && authEpoch === epoch && state.session?.org.id === workspaceId && state.view === "showcase" && form.isConnected;
   const setFieldError = (control, errorNode, message = "") => {
@@ -1407,12 +1418,18 @@ function showcaseView() {
     if (!presentation.validate()) { setFeedback("Check your highlight fields before saving.", true); return false; }
     setFeedback(""); return true;
   };
-  const publish = button([icon(saved.published ? "eye-off" : "globe", { size: 15 }), saved.published ? "Unpublish" : "Publish profile"], async () => {
+  // Publishing is immediate: the switch saves the reviewed draft as public, or makes the profile private.
+  const publishState = el("span", { class: "showcase-publish-state", "aria-hidden": "true" }, saved.published ? "Published" : "Unpublished");
+  const publish = el("input", { type: "checkbox", class: "ds-switch", role: "switch", id: "showcase-published", checked: Boolean(saved.published), "data-showcase-focus": "publish", "aria-describedby": "showcase-visibility-note showcase-feedback" });
+  publish.addEventListener("change", async () => {
+    publish.checked = Boolean(saved.published);
     if (pending || !isCurrent()) return;
     update();
     if (!saved.published && !validate()) return;
+    publishState.replaceChildren(el("span", { class: "ds-spinner", "aria-hidden": "true" }), saved.published ? "Unpublishing…" : "Publishing…");
     await persistShowcase(!saved.published, publish, feedback, saved.published ? saved : state.showcaseDraft, controller);
-  }, { class: saved.published ? "small" : "primary small", "data-showcase-focus": "publish", "aria-describedby": "showcase-feedback" });
+    if (publishState.isConnected) publishState.replaceChildren(saved.published ? "Published" : "Unpublished");
+  });
   const preview = el("div", { class: "profile-preview-content" }, showcasePreview());
   const presentation = createProfilePresentationEditor({ profile: draft, isCurrent, onChange: () => { setFeedback(""); update(); } });
   const photo = profilePhotoEditor = createProfilePhotoEditor({ photo: draft.photo ?? null, isCurrent, onChange: () => { setFeedback(""); update(); } });
@@ -1425,46 +1442,57 @@ function showcaseView() {
     const count = document.querySelector("#bio-hint"); if (count) count.textContent = `${bio.value.length} / 160`;
     const changedAddress = document.querySelector("#slug-change-hint"); if (changedAddress) changedAddress.hidden = !(saved.published && slug.value !== saved.slug);
     const permalink = document.querySelector("#profile-permalink"); if (permalink && !saved.published) permalink.textContent = `${location.origin}/u/${slug.value || "your-name"}`;
-    const previewStatus = document.querySelector(".preview-label > span"); if (previewStatus) previewStatus.textContent = Boolean(showActivity.checked) !== Boolean(saved.showActivity) ? "Unsaved sharing preview" : hasChanges(state.showcaseDraft) ? "Unsaved preview" : "What others will see";
+    const previewStatus = document.querySelector(".showcase-preview-status"); if (previewStatus) previewStatus.textContent = Boolean(showActivity.checked) !== Boolean(saved.showActivity) ? "Unsaved sharing preview" : hasChanges(state.showcaseDraft) ? "Unsaved preview" : "What others will see";
     save.disabled = photo.isBusy() || !hasChanges(state.showcaseDraft);
+    cancel.disabled = !hasChanges(state.showcaseDraft);
   };
   for (const [control, errorNode] of [[name, nameError], [slug, slugError], [bio, bioError]]) control.addEventListener("input", () => { if (!pending && isCurrent()) { setFieldError(control, errorNode); setFeedback(""); } });
   [name, slug, bio, showActivity].forEach(node => node.addEventListener("input", update));
-  save.disabled = !hasChanges(draft);
+  save.disabled = !hasChanges(draft); cancel.disabled = !hasChanges(draft);
   const controller = {
     workspaceId, epoch, isCurrent,
-    setPending(value) { if (pending === value) return; pending = value; form.setAttribute("aria-busy", String(value)); for (const control of [name, slug, bio, showActivity, save, publish]) control.disabled = value; presentation.setPending(value); photo.setPending(value); if (!value) update(); },
+    setPending(value) { if (pending === value) return; pending = value; form.setAttribute("aria-busy", String(value)); for (const control of [name, slug, bio, showActivity, save, cancel, publish]) control.disabled = value; presentation.setPending(value); photo.setPending(value); if (!value) update(); },
     error(message, focus = true) { setFeedback(message, true); if (message === "That showcase address is already taken") { setFieldError(slug, slugError, "This profile address is already taken. Choose another address."); if (focus) slug.focus(); } else if (focus) feedback.focus(); },
   };
-  const form = el("form", { class: "showcase-form stack", novalidate: true, onsubmit: async event => { event.preventDefault(); if (pending || !isCurrent()) return; update(); if (validate()) await persistShowcase(saved.published, save, feedback, state.showcaseDraft, controller); } },
-    presentation.layoutElement,
-    photo.element,
-    field("Display name", name), nameError,
-    field("Profile URL", el("div", { class: "slug-field" }, el("span", {}, "/u/"), slug)),
-    el("p", { id: "slug-hint", class: "field-hint" }, "3–48 lowercase letters or numbers, with single hyphens between them."), slugError,
-    el("p", { id: "slug-change-hint", class: "field-hint", hidden: true }, "Changing this address makes the old link unavailable."),
-    field("About you", bio), el("p", { class: "field-hint counter", id: "bio-hint" }, `${bio.value.length} / 160`), bioError,
-    presentation.element,
-    el("label", { class: "ds-option" }, showActivity, el("span", {}, el("strong", {}, "Share a redacted activity stream"), el("small", { id: "activity-sharing-note" }, "Show agent products, services, broad action labels, status, and receipt times. Task text, repository and document names, URLs, and personal agent aliases stay private."))),
-    el("p", { class: "field-hint" }, "Off hides the activity stream. Counts, broad categories, and any highlights you write can still appear on a published profile. Review the preview before saving; saved changes to a published profile become public."), feedback,
-    el("div", { class: "form-actions" }, save, el("span", { class: "field-hint" }, saved.published ? "Changes update your public page." : "Saving keeps your profile private.")));
+  const sectionCard = (id, title, description, ...body) => el("section", { class: "ds-settings-card", "aria-labelledby": id }, el("header", { class: "ds-settings-head" }, el("div", {}, el("h2", { id }, title), el("p", {}, description))), body);
+  const settingRow = (label, help, control, forId) => el("div", { class: "ds-settings-row" }, el("div", { class: "ds-settings-label" }, forId ? el("label", { for: forId }, label) : el("span", {}, label), help), el("div", { class: "ds-settings-control" }, control));
+  name.id = "showcase-display-name"; slug.id = "showcase-slug"; bio.id = "showcase-bio";
+  const form = el("form", { class: "showcase-form ds-settings", novalidate: true, onsubmit: async event => { event.preventDefault(); if (pending || !isCurrent()) return; update(); if (validate()) await persistShowcase(saved.published, save, feedback, state.showcaseDraft, controller); } },
+    sectionCard("showcase-profile-title", "Profile", "How you appear on your public page.",
+      el("div", { class: "ds-settings-row-full" }, photo.element),
+      settingRow("Display name", null, [name, nameError], "showcase-display-name"),
+      settingRow("Profile URL", el("p", { id: "slug-hint", class: "ds-settings-help" }, "3–48 lowercase letters or numbers, with single hyphens between them."), [el("div", { class: "slug-field" }, el("span", {}, "/u/"), slug), slugError, el("p", { id: "slug-change-hint", class: "field-hint", hidden: true }, "Changing this address makes the old link unavailable.")], "showcase-slug"),
+      settingRow("About you", el("p", { class: "ds-settings-help counter", id: "bio-hint" }, `${bio.value.length} / 160`), [bio, bioError], "showcase-bio")),
+    sectionCard("showcase-layout-title", "Layout & highlights", "Choose how the page reads and what you pin to it.",
+      el("div", { class: "ds-settings-row-full" }, presentation.layoutElement),
+      el("div", { class: "ds-settings-row-full" }, presentation.element)),
+    sectionCard("showcase-activity-title", "Activity sharing", "What the profile shows about your agents’ work.",
+      settingRow("Share a redacted activity stream", el("p", { class: "ds-settings-help", id: "activity-sharing-note" }, "Show agent products, services, broad action labels, status, and receipt times. Task text, repository and document names, URLs, and personal agent aliases stay private."), showActivity, "showcase-show-activity"),
+      el("div", { class: "ds-settings-row-full" }, el("p", { class: "ds-settings-help" }, "Off hides the activity stream. Counts, broad categories, and any highlights you write can still appear on a published profile. Review the preview before saving; saved changes to a published profile become public.")),
+      el("div", { class: "ds-settings-foot" }, feedback, el("span", { class: "ds-settings-note showcase-save-hint" }, saved.published ? "Changes update your public page." : "Saving keeps your profile private."), cancel, save)));
   const urls = state.showcase.urls;
   return [
-    heading("Public profile", "A live window into your agents’ work, with private details left out.", publish),
+    heading("Public profile", "A live window into your agents’ work, with private details left out.", pill(saved.published ? "Published" : "Unpublished", { tone: saved.published ? "success" : "neutral" })),
     state.error && notice(state.error),
     el("div", { class: "showcase-layout" },
-      el("div", { class: "showcase-controls" },
-        el("section", { class: "visibility-panel" }, el("div", { class: "visibility-title" }, icon(saved.published ? "globe" : "eye-off", { size: 17 }), el("strong", {}, saved.published ? "Your profile is public" : "Only you can see this"), el("span", { class: "visibility-badge" }, saved.published ? "Published" : "Draft")), el("p", {}, `Shows recorded activity from ${state.session.org.name}. ${saved.showActivity ? "Agent products and broad action labels are included." : "The activity stream is off; counts and broad categories can appear."} ${saved.highlights?.length ? "Your saved highlights are included when published. " : ""}Private task text and resource names are never added automatically.`)),
+      el("div", { class: "showcase-controls ds-settings" },
+        el("section", { class: "ds-settings-card visibility-panel", "aria-labelledby": "showcase-visibility-title" },
+          el("header", { class: "ds-settings-head" }, el("div", {}, el("h2", { id: "showcase-visibility-title" }, "Visibility"), el("p", {}, saved.published ? "Anyone with the link can see this profile." : "Only you can see this profile."))),
+          el("div", { class: "ds-settings-row" },
+            el("div", { class: "ds-settings-label" }, el("label", { for: "showcase-published" }, "Publish profile"), el("p", { class: "ds-settings-help", id: "showcase-visibility-note" }, `Shows recorded activity from ${state.session.org.name}. ${saved.showActivity ? "Agent products and broad action labels are included." : "The activity stream is off; counts and broad categories can appear."} ${saved.highlights?.length ? "Your saved highlights are included when published. " : ""}Private task text and resource names are never added automatically.`)),
+            el("div", { class: "ds-settings-control" }, el("span", { class: "ds-settings-switch" }, publish, publishState)))),
         form,
-        el("section", { class: "share-links section" }, el("h3", {}, "Share anywhere"), el("p", {}, "Share the live profile link, or connect the same updates to your website."),
+        el("section", { class: "ds-settings-card share-links", "aria-labelledby": "showcase-share-title" }, el("header", { class: "ds-settings-head" }, el("div", {}, el("h2", { id: "showcase-share-title" }, "Share anywhere"), el("p", {}, "Share the live profile link, or connect the same updates to your website."))), el("div", { class: "ds-settings-row-full share-links-body" },
           el("div", { class: "share-link-row" }, el("span", { class: "share-link-label" }, icon("link", { size: 14 }), "Profile"), el("code", { id: "profile-permalink", class: "ds-code-scroll", tabindex: "0", role: "region", "aria-label": "Profile URL. Scroll horizontally to read." }, publicUrl), copyButton("Copy", () => state.showcase.urls.page, { disabled: !saved.published, "aria-label": "Copy profile URL" })),
           saved.published && el("div", { class: "share-link-row" }, el("span", { class: "share-link-label" }, icon("code", { size: 14 }), "JSON"), el("code", { class: "ds-code-scroll", tabindex: "0", role: "region", "aria-label": "JSON URL. Scroll horizontally to read." }, urls.json), copyButton("Copy", urls.json, { "aria-label": "Copy JSON URL" })),
           saved.published && el("div", { class: "share-link-row" }, el("span", { class: "share-link-label" }, icon("radio", { size: 14 }), "Live API"), el("code", { class: "ds-code-scroll", tabindex: "0", role: "region", "aria-label": "Live API URL. Scroll horizontally to read." }, urls.stream || `${urls.json}/stream`), copyButton("Copy", urls.stream || `${urls.json}/stream`, { "aria-label": "Copy live API URL" })),
           saved.published && el("div", { class: "profile-link-actions" }, el("a", { href: urls.page, target: "_blank", rel: "noopener", class: "button-link" }, "Open profile"), el("a", { href: urls.card, target: "_blank", rel: "noopener", class: "button-link" }, icon("share-2", { size: 14 }), "Social card")),
           !saved.published && el("p", { class: "field-hint" }, "Publish to activate the profile, JSON endpoint, and live stream. Unpublishing disables all three."),
           saved.published && el("details", {}, el("summary", {}, "Live website embed"), el("p", { class: "detail-note" }, "Paste this into your website for live counts, or use EventSource in your own design. JSON and the stream follow the sharing scope saved above."), el("pre", {}, liveEmbed(urls.stream || `${urls.json}/stream`)), copyButton("Copy live embed", liveEmbed(urls.stream || `${urls.json}/stream`))),
-          saved.published && el("details", {}, el("summary", {}, "Image card embed"), el("p", { class: "detail-note" }, "A scalable snapshot for pages that do not run JavaScript."), el("pre", {}, `<a href="${urls.page}">\n  <img src="${urls.json}/card.svg"\n       alt="My agent activity on Engram" />\n</a>`), copyButton("Copy image embed", `<a href="${urls.page}"><img src="${urls.json}/card.svg" alt="My agent activity on Engram" /></a>`)))),
-      el("div", { class: "showcase-preview" }, el("div", { class: "preview-label" }, icon("eye", { size: 14 }), "Public preview", el("span", {}, "What others will see")), preview)),
+          saved.published && el("details", {}, el("summary", {}, "Image card embed"), el("p", { class: "detail-note" }, "A scalable snapshot for pages that do not run JavaScript."), el("pre", {}, `<a href="${urls.page}">\n  <img src="${urls.json}/card.svg"\n       alt="My agent activity on Engram" />\n</a>`), copyButton("Copy image embed", `<a href="${urls.page}"><img src="${urls.json}/card.svg" alt="My agent activity on Engram" /></a>`))))),
+      el("aside", { class: "showcase-preview ds-preview-panel", "aria-label": "Public preview" },
+        el("div", { class: "ds-panel-head" }, el("span", { class: "preview-label" }, icon("eye", { size: 13 }), "Preview"), el("span", { class: "showcase-preview-status" }, "What others will see")),
+        el("div", { class: "ds-preview-body" }, preview))),
   ];
 }
 function liveEmbed(streamUrl) {
@@ -1645,7 +1673,7 @@ function accountView() {
   const title = billing ? "Plan & billing" : "Workspace";
   const description = billing ? "Your current plan, access, and subscription details. All in one place." : "A shared space with clear boundaries. Manage people, permissions, and processing.";
   if (!["owner", "member"].includes(state.session.role) || (billing && state.session.role !== "owner")) return [heading(title, description), empty("Managed by your workspace owner", "Sign in with your own account to manage this workspace.")];
-  if (!state.account || state.account.view !== state.view) return [heading(title, description), state.error ? notice(state.error, loadAccount) : skeletonRows(3)];
+  if (!state.account || state.account.view !== state.view) return [heading(title, description), state.error ? notice(state.error, loadAccount) : settingsSkeleton(billing ? 2 : 3)];
   const fail = error => { if (workspaceId === state.session?.org.id && error instanceof AuthError) expired("Your session expired. Please sign in again."); };
   const notify = message => { if (workspaceId === state.session?.org.id) toast(message); };
   const scopedApi = workspaceApi(workspaceId);
@@ -1661,9 +1689,9 @@ function accountView() {
     state.account.jev = result;
     state.session.org.policies.jevProcessing = result.enabled === true;
     if (state.account.external) state.account.external.jevConsented = result.enabled === true;
-    toast("Jev settings saved"); render();
+    toast("Settings saved"); render();
   } });
-  return [heading(title, description), billing ? billingPanel({ billing: state.account.billing, catalog: state.account.catalog, jev: state.account.jev, jevError: state.account.jevError, api: scopedApi, notify, fail, refresh: loadAccount, isCurrent: isPanelCurrent }) : [workspacePanel({ session: state.session, members: state.account.members, invites: state.account.invites, api: scopedApi, notify, fail, isCurrent, saved: (policies, feedback) => { if (isCurrent()) { keepAccountFocus(feedback); state.session.org.policies = policies; loadAccount(); } } }), jevSettingsPanel?.element, signupAdmin?.element, state.account.external && aiConfiguration(state.account.external, { settings: false })]];
+  return [heading(title, description), billing ? billingPanel({ billing: state.account.billing, catalog: state.account.catalog, jev: state.account.jev, jevError: state.account.jevError, api: scopedApi, notify, fail, refresh: loadAccount, isCurrent: isPanelCurrent }) : [workspacePanel({ session: state.session, members: state.account.members, invites: state.account.invites, api: scopedApi, notify, fail, isCurrent, renamed: org => { if (isCurrent() && applyWorkspaceName(state.session, org)) render(); }, saved: (policies, feedback) => { if (isCurrent()) { keepAccountFocus(feedback); state.session.org.policies = policies; loadAccount(); } } }), jevSettingsPanel?.element, signupAdmin?.element, state.account.external && aiConfiguration(state.account.external, { settings: false })]];
 }
 async function loadAccount() {
   if (!["owner", "member"].includes(state.session.role) || (state.view === "billing" && state.session.role !== "owner")) return;

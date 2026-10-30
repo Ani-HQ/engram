@@ -20,8 +20,8 @@ export function renderOAuthAuthorizePage(parsed: OAuthAuthorizeViewParams, messa
     hidden("response_type", "code"),
   ].join("");
   const feedback = link
-    ? `<p id="oauth-feedback" class="oauth-feedback" role="status">Local mailer is off. Open <a href="${escapeHtml(link)}">this sign-in link</a> to continue.</p>`
-    : message ? `<p id="oauth-feedback" class="oauth-feedback" role="status">${escapeHtml(message)}</p>` : "";
+    ? `<p id="oauth-feedback" class="oauth-feedback" role="status"><span class="ds-icon" data-icon="mail" aria-hidden="true"></span><span>Local mailer is off. Open <a href="${escapeHtml(link)}">this sign-in link</a> to continue.</span></p>`
+    : message ? `<p id="oauth-feedback" class="oauth-feedback" role="status"><span class="ds-icon" data-icon="info" aria-hidden="true"></span><span>${escapeHtml(message)}</span></p>` : "";
   const html = `<!doctype html>
 <html lang="en" data-design-system="signal">
 <head>
@@ -37,26 +37,38 @@ export function renderOAuthAuthorizePage(parsed: OAuthAuthorizeViewParams, messa
   <link rel="stylesheet" href="/oauth.css">
 </head>
 <body class="oauth-surface">
-  <main class="oauth-page">
-    <section class="oauth-card" aria-labelledby="oauth-title">
-      <a class="oauth-brand" href="/" aria-label="Engram home"><img src="/brand/engram-mark.svg" alt="" width="36" height="36"><span>engram</span></a>
-      <header class="oauth-heading">
-        <p class="oauth-context">Agent connection</p>
-        <h1 id="oauth-title">Connect to Engram</h1>
-        <p id="oauth-description" class="oauth-description">Sign in with your workspace email. We’ll email you a link to continue.</p>
-      </header>
-      ${feedback}
-      <form method="post" class="oauth-form">
-        ${fields}
-        <div class="oauth-field">
-          <label for="oauth-email">Email address</label>
-          <input id="oauth-email" type="email" name="email" autocomplete="email" inputmode="email" spellcheck="false" required placeholder="you@example.com" aria-describedby="oauth-description${feedback ? " oauth-feedback" : ""}">
-        </div>
-        <button type="submit" class="ds-button primary">Email a sign-in link</button>
-      </form>
-      <p class="oauth-reassurance">Your existing workspace permissions still apply.</p>
-    </section>
-    <footer class="oauth-footer"><span>Shared memory for your agents.</span><a href="/privacy">Privacy</a></footer>
+  <main class="ds-auth oauth-page">
+    <div class="ds-auth-main">
+      <a class="ds-auth-brand oauth-brand" href="/" aria-label="Engram home"><img src="/brand/engram-mark.svg" alt="" width="24" height="24"><span>engram</span></a>
+      <section class="ds-auth-body oauth-card" aria-labelledby="oauth-title">
+        <header class="ds-auth-heading oauth-heading">
+          <p class="oauth-context"><span class="ds-icon" data-icon="plug" aria-hidden="true"></span>Agent connection</p>
+          <h1 id="oauth-title" class="ds-auth-title">Connect to Engram</h1>
+          <p id="oauth-description" class="ds-auth-subtitle oauth-description">Sign in with your workspace email. We’ll email you a link to continue.</p>
+        </header>
+        ${feedback}
+        <form method="post" class="oauth-form">
+          ${fields}
+          <div class="oauth-field">
+            <label for="oauth-email">Email address</label>
+            <input id="oauth-email" type="email" name="email" autocomplete="email" inputmode="email" spellcheck="false" required placeholder="you@example.com" aria-describedby="oauth-description${feedback ? " oauth-feedback" : ""}">
+          </div>
+          <button type="submit" class="ds-button primary">Send sign-in link</button>
+        </form>
+        <p class="oauth-reassurance"><span class="ds-icon" data-icon="shield-check" aria-hidden="true"></span>Your existing workspace permissions still apply.</p>
+      </section>
+      <footer class="ds-auth-legal oauth-footer"><p>By continuing, you acknowledge Engram’s <a href="/privacy">Privacy Policy</a>.</p></footer>
+    </div>
+    <aside class="ds-auth-aside ds-dotgrid" aria-label="About Engram">
+      <div class="ds-auth-statement">
+        <p>A shared drive for your agents’ context. <span>Save a decision in one agent, recall it in another.</span></p>
+        <ul class="ds-auth-facts">
+          <li><span class="ds-icon" data-icon="plug" aria-hidden="true"></span>Agents connect over MCP and act within your workspace permissions.</li>
+          <li><span class="ds-icon" data-icon="brain" aria-hidden="true"></span>Memory pages, decisions and a readable history of work in one console.</li>
+          <li><span class="ds-icon" data-icon="key-round" aria-hidden="true"></span>Every connection is listed in the console for you to review.</li>
+        </ul>
+      </div>
+    </aside>
   </main>
 </body>
 </html>`;
