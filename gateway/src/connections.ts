@@ -57,6 +57,22 @@ const CLIENT_SOURCES: Record<string, { harness: string; label: string }> = {
   "hermes": { harness: "hermes", label: "Hermes" },
   "hermes agent": { harness: "hermes", label: "Hermes" },
 };
+// A hosted sign-in can only finish on its provider's site, so that site is
+// stronger evidence than the self-reported client name (Grok Bot registers as
+// "Cursor"). The name refines the label only within the same provider.
+const HOSTED_PROVIDERS: Record<string, { harnesses: string[]; source: { harness: string; label: string } }> = {
+  claude: { harnesses: ["claude", "claude-code"], source: { harness: "claude", label: "Claude" } },
+  chatgpt: { harnesses: ["chatgpt", "codex"], source: { harness: "chatgpt", label: "ChatGPT" } },
+  grok: { harnesses: ["grok", "grok-bot"], source: { harness: "grok", label: "Grok" } },
+};
+function oauthSource(clientName: unknown, clientHost: unknown) {
+  const key = String(clientName ?? "").trim().toLowerCase();
+  const named = Object.hasOwn(CLIENT_SOURCES, key) ? CLIENT_SOURCES[key] : undefined;
+  const hosted = typeof clientHost === "string" && Object.hasOwn(HOSTED_PROVIDERS, clientHost) ? HOSTED_PROVIDERS[clientHost] : undefined;
+  if (!hosted) return { source: named, overridden: false };
+  if (named && hosted.harnesses.includes(named.harness)) return { source: named, overridden: false };
+  return { source: hosted.source, overridden: true };
+}
 const HARNESS_LABELS: Record<string, string> = Object.fromEntries(Object.values(CLIENT_SOURCES).map(value => [value.harness, value.label]));
 function safeText(value: unknown, max = 100): string | null { return typeof value === "string" && value.trim() ? redactSecrets(value.trim()).slice(0, max) : null; }
 function date(value: unknown): string | null { if (!value) return null; const parsed = new Date(value as string); return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null; }
@@ -71,10 +87,10 @@ export class ConnectionError extends Error { constructor(message: string, public
 function mapConnection(row: any, orgId: number): Connection {
   const oauth = row.kind === "oauth";
   const agent = oauth ? oauthActorName({ sub: String(row.email), client_id: String(row.client_id) }) : String(row.name);
-  const clientLabel = String(row.client_name ?? "").trim().toLowerCase();
-  const source = oauth && Object.hasOwn(CLIENT_SOURCES, clientLabel) ? CLIENT_SOURCES[clientLabel] : undefined;
+  const resolved = oauth ? oauthSource(row.client_name, row.client_host) : { source: undefined, overridden: false };
+  const source = resolved.source;
   const harness = oauth ? source?.harness ?? null : safeText(row.harness, 80);
-  const sourceLabel = oauth ? safeText(row.client_name) : safeText(row.source_label);
+  const sourceLabel = oauth ? (resolved.overridden ? source!.label : safeText(row.client_name)) : safeText(row.source_label);
   const name = oauth ? sourceLabel ?? "OAuth connection" : safeText(row.name, 200) ?? "API connection";
   const id = oauth ? oauthConnectionId(orgId, row.email, row.client_id) : `token:${row.id}`;
   const status: ConnectionStatus = ["authorized", "revoked", "membership_removed"].includes(row.status) ? row.status : "expired";
@@ -83,7 +99,7 @@ function mapConnection(row: any, orgId: number): Connection {
     id, kind: oauth ? "oauth" : "token", name,
     displayName: oauth ? source?.label ?? "OAuth connection" : sourceLabel ?? (harness && Object.hasOwn(HARNESS_LABELS, harness) ? HARNESS_LABELS[harness] : null) ?? name,
     agent, harness, sourceLabel, status, canWrite,
-    client: connectionClient(oauth ? [row.client_name] : row.client_names),
+    client: connectionClient(oauth ? [resolved.overridden ? source!.label : row.client_name] : row.client_names),
     createdAt: date(row.created_at)!, archivedAt: date(row.archived_at), lastAuthenticatedAt: oauth ? null : date(row.last_authenticated_at),
     lastContactAt: date(row.last_contact_at), lastMemoryAt: date(row.last_memory_at), lastTaskReportAt: date(row.last_task_report_at),
     lastSuccessfulContactAt: date(row.last_successful_contact_at), lastSuccessfulMemoryAt: date(row.last_successful_memory_at),
@@ -104,7 +120,8 @@ export async function listConnections(token: TokenRecord, db: postgres.Sql = sql
         NULL::text AS email, NULL::text AS client_id, NULL::text AS client_name, NULL::text AS scope,
         t.harness, t.source_label, t.client_names, t.can_write, t.created_at, t.last_used_at AS last_authenticated_at, l.archived_at,
         CASE WHEN t.issuer_kind = 'member' AND (m.id IS NULL OR m.role NOT IN ('owner', 'member')) THEN 'membership_removed'
-          WHEN t.revoked_at IS NOT NULL THEN 'revoked' ELSE 'authorized' END AS status
+          WHEN t.revoked_at IS NOT NULL THEN 'revoked' ELSE 'authorized' END AS status,
+        NULL::text AS client_host
       FROM tokens t LEFT JOIN org_members m ON m.id = t.issued_by_member_id
         AND m.org_id = t.org_id AND m.email = t.issued_by_email
       LEFT JOIN connection_lifecycle l ON l.org_id = t.org_id AND l.kind = 'token' AND l.token_id = t.id
@@ -117,7 +134,12 @@ export async function listConnections(token: TokenRecord, db: postgres.Sql = sql
           WHEN r.membership_id IS NULL THEN 'expired'
           WHEN m.id <> r.membership_id THEN 'membership_removed'
           WHEN r.revoked_at IS NOT NULL THEN 'revoked'
-          WHEN r.expires_at <= ${now.toISOString()}::timestamptz THEN 'expired' ELSE 'authorized' END AS status
+          WHEN r.expires_at <= ${now.toISOString()}::timestamptz THEN 'expired' ELSE 'authorized' END AS status,
+        -- Only the hosted provider is derived here; callback URLs never leave the query.
+        CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements_text(c.redirect_uris) AS u(value) WHERE u.value ~ '^https://(www\.)?(claude\.ai|claude\.com)/') THEN 'claude'
+          WHEN EXISTS (SELECT 1 FROM jsonb_array_elements_text(c.redirect_uris) AS u(value) WHERE u.value ~ '^https://(chatgpt\.com|chat\.openai\.com)/') THEN 'chatgpt'
+          WHEN EXISTS (SELECT 1 FROM jsonb_array_elements_text(c.redirect_uris) AS u(value) WHERE u.value ~ '^https://(x\.ai|grok\.com|www\.grok\.com)/') THEN 'grok'
+          END AS client_host
       FROM oauth_refresh_tokens r
       LEFT JOIN org_members m ON m.org_id = r.org_id AND m.email = r.email
       LEFT JOIN oauth_clients c ON c.client_id = r.client_id
@@ -128,7 +150,7 @@ export async function listConnections(token: TokenRecord, db: postgres.Sql = sql
       FROM oauth_grants
     ), inventory AS (
       SELECT * FROM token_connections
-      UNION ALL SELECT id, kind, name, email, client_id, client_name, scope, harness, source_label, client_names, can_write, created_at, last_authenticated_at, archived_at, status
+      UNION ALL SELECT id, kind, name, email, client_id, client_name, scope, harness, source_label, client_names, can_write, created_at, last_authenticated_at, archived_at, status, client_host
       FROM oauth_ranked WHERE grant_rank = 1
     )
     SELECT * FROM inventory ORDER BY (archived_at IS NOT NULL), created_at DESC, kind, id DESC LIMIT ${CONNECTION_LIMIT + 1}`;
