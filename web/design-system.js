@@ -392,3 +392,122 @@ export function flashNew(elements = []) {
     element.addEventListener('animationend', () => element.classList.remove('ds-flash'), { once: true });
   }
 }
+
+// ── App shell (dashboard grammar) ────────────────────────────────────────────
+// Pills, toasts, route progress, banners and a command palette. Text only, no
+// markup parsing; icons come from the caller (icon()) so this module stays dependency-free.
+const pillTones = new Set(['neutral', 'accent', 'warning', 'danger', 'success']);
+/** A small uppercase pill for a fixed category ("Team", "New", "Read only"). Never a status claim. */
+export function pill(text, { tone = 'neutral', className = '' } = {}) {
+  const node = document.createElement('span');
+  node.setAttribute('class', ['ds-pill', className].filter(Boolean).join(' '));
+  node.setAttribute('data-tone', pillTones.has(tone) ? tone : 'neutral');
+  node.textContent = String(text);
+  return node;
+}
+
+let toastRegion = null;
+function region() {
+  if (toastRegion?.isConnected) return toastRegion;
+  toastRegion = document.createElement('div');
+  toastRegion.setAttribute('class', 'ds-toast-region');
+  toastRegion.setAttribute('role', 'region'); toastRegion.setAttribute('aria-label', 'Notifications');
+  document.body.append(toastRegion);
+  return toastRegion;
+}
+/** Top-right toast. tone: success | danger | info. Optional action { label, run }. Max three on screen. */
+export function showToast(message, { tone = 'success', glyph = null, action = null, duration = 4200 } = {}) {
+  const host = region();
+  const item = document.createElement('div');
+  item.setAttribute('class', 'ds-toast-item'); item.setAttribute('data-tone', tone);
+  item.setAttribute('role', tone === 'danger' ? 'alert' : 'status');
+  if (glyph instanceof Node) { const mark = document.createElement('span'); mark.setAttribute('class', 'ds-toast-icon'); mark.append(glyph); item.append(mark); }
+  const text = document.createElement('span'); text.setAttribute('class', 'ds-toast-text'); text.textContent = String(message); item.append(text);
+  const dismiss = () => { if (!item.isConnected) return; item.setAttribute('data-leaving', 'true'); setTimeout(() => item.remove(), 180); };
+  if (action?.label && typeof action.run === 'function') {
+    const control = document.createElement('button'); control.type = 'button'; control.setAttribute('class', 'ds-toast-action'); control.textContent = String(action.label);
+    control.addEventListener('click', () => { action.run(); dismiss(); }); item.append(control);
+  }
+  const close = document.createElement('button'); close.type = 'button'; close.setAttribute('class', 'ds-toast-close'); close.setAttribute('aria-label', 'Dismiss notification'); close.textContent = '×';
+  close.addEventListener('click', dismiss); item.append(close);
+  const bar = document.createElement('span'); bar.setAttribute('class', 'ds-toast-timer'); bar.setAttribute('aria-hidden', 'true'); bar.style.setProperty('--ds-toast-duration', `${Math.max(1000, duration)}ms`); item.append(bar);
+  host.prepend(item);
+  while (host.children.length > 3) host.lastElementChild.remove();
+  let timer = setTimeout(dismiss, duration);
+  item.addEventListener('pointerenter', () => { clearTimeout(timer); item.setAttribute('data-paused', 'true'); });
+  item.addEventListener('pointerleave', () => { item.removeAttribute('data-paused'); timer = setTimeout(dismiss, 1600); });
+  return dismiss;
+}
+
+/** A thin progress bar at the top of the viewport while a view's data loads. */
+export const routeProgress = (() => {
+  let bar = null, pending = 0, doneTimer;
+  const ensure = () => { if (bar?.isConnected) return bar; bar = document.createElement('div'); bar.setAttribute('class', 'ds-route-progress'); bar.setAttribute('aria-hidden', 'true'); document.body.append(bar); return bar; };
+  return {
+    start() { pending += 1; clearTimeout(doneTimer); const node = ensure(); node.removeAttribute('data-done'); node.setAttribute('data-active', 'true'); },
+    done() { pending = Math.max(0, pending - 1); if (pending) return; const node = ensure(); node.setAttribute('data-done', 'true'); doneTimer = setTimeout(() => node.removeAttribute('data-active'), 320); },
+  };
+})();
+
+/** A dismissible banner: icon tile, title, description, optional action. */
+export function banner({ glyph = null, title = '', description = '', action = null, onDismiss = null, tone = 'neutral' } = {}) {
+  const node = document.createElement('div'); node.setAttribute('class', 'ds-banner'); node.setAttribute('data-tone', tone);
+  if (glyph instanceof Node) { const tile = document.createElement('span'); tile.setAttribute('class', 'ds-banner-icon'); tile.append(glyph); node.append(tile); }
+  const copy = document.createElement('div'); copy.setAttribute('class', 'ds-banner-copy');
+  const heading = document.createElement('strong'); heading.textContent = String(title); copy.append(heading);
+  if (description) { const text = document.createElement('span'); text.textContent = String(description); copy.append(text); }
+  node.append(copy);
+  if (action instanceof Node) node.append(action);
+  if (typeof onDismiss === 'function') {
+    const close = document.createElement('button'); close.type = 'button'; close.setAttribute('class', 'ds-banner-close'); close.setAttribute('aria-label', 'Dismiss'); close.textContent = '×';
+    close.addEventListener('click', () => { node.remove(); onDismiss(); }); node.append(close);
+  }
+  return node;
+}
+
+/** ⌘K palette. groups: [{ label, items: [{ label, hint, glyph, keywords, run }] }]. Returns { open, close }. */
+export function commandPalette(groups = [], { placeholder = 'Type a command or search…' } = {}) {
+  const dialog = document.createElement('dialog'); dialog.setAttribute('class', 'ds-palette'); dialog.setAttribute('aria-label', 'Command menu');
+  const search = document.createElement('div'); search.setAttribute('class', 'ds-palette-search');
+  const input = document.createElement('input'); input.type = 'text'; input.placeholder = placeholder; input.setAttribute('aria-label', 'Search commands'); input.setAttribute('role', 'combobox'); input.setAttribute('aria-expanded', 'true'); input.setAttribute('aria-controls', 'ds-palette-list'); input.autocomplete = 'off'; input.spellcheck = false;
+  const esc = document.createElement('kbd'); esc.textContent = 'Esc';
+  search.append(input, esc);
+  const list = document.createElement('div'); list.id = 'ds-palette-list'; list.setAttribute('class', 'ds-palette-list'); list.setAttribute('role', 'listbox');
+  const footer = document.createElement('div'); footer.setAttribute('class', 'ds-palette-footer');
+  footer.textContent = '↑↓ to move · Enter to select · Esc to close';
+  dialog.append(search, list, footer);
+  let options = [], active = 0;
+  const select = index => { active = Math.max(0, Math.min(options.length - 1, index)); options.forEach((option, i) => option.setAttribute('aria-selected', String(i === active))); options[active]?.scrollIntoView({ block: 'nearest' }); if (options[active]) input.setAttribute('aria-activedescendant', options[active].id); };
+  const run = option => { const item = option?.__item; if (!item) return; close(); item.run(); };
+  function renderList() {
+    const query = input.value.trim().toLowerCase();
+    list.replaceChildren(); options = [];
+    for (const group of groups) {
+      const matches = group.items.filter(item => !query || `${item.label} ${item.keywords || ''}`.toLowerCase().includes(query));
+      if (!matches.length) continue;
+      const label = document.createElement('div'); label.setAttribute('class', 'ds-palette-group'); label.textContent = group.label; list.append(label);
+      for (const item of matches) {
+        const option = document.createElement('div'); option.id = `ds-palette-option-${options.length}`;
+        option.setAttribute('class', 'ds-palette-option'); option.setAttribute('role', 'option'); option.__item = item;
+        if (item.glyph instanceof Node) { const mark = document.createElement('span'); mark.setAttribute('class', 'ds-palette-icon'); mark.append(item.glyph.cloneNode(true)); option.append(mark); }
+        const text = document.createElement('span'); text.textContent = item.label; option.append(text);
+        if (item.hint) { const hint = document.createElement('kbd'); hint.textContent = item.hint; option.append(hint); }
+        option.addEventListener('pointermove', () => select(options.indexOf(option)));
+        option.addEventListener('click', () => run(option));
+        list.append(option); options.push(option);
+      }
+    }
+    if (!options.length) { const none = document.createElement('p'); none.setAttribute('class', 'ds-palette-empty'); none.textContent = `No results for “${input.value.trim()}”`; list.append(none); }
+    select(0);
+  }
+  input.addEventListener('input', renderList);
+  input.addEventListener('keydown', event => {
+    if (event.key === 'ArrowDown') { event.preventDefault(); select(active + 1); }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); select(active - 1); }
+    else if (event.key === 'Enter') { event.preventDefault(); run(options[active]); }
+  });
+  dialog.addEventListener('click', event => { if (event.target === dialog) close(); });
+  function open() { if (!dialog.isConnected) document.body.append(dialog); input.value = ''; renderList(); if (!dialog.open) dialog.showModal(); input.focus(); }
+  function close() { if (dialog.open) dialog.close(); }
+  return { open, close, element: dialog, setGroups(next) { groups = next; if (dialog.open) renderList(); } };
+}

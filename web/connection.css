@@ -90,3 +90,13 @@
 .connect-computer .ds-mark-stack > .ds-mark { box-shadow: none; }
 .connect-computer .ds-mark-stack > .ds-mark + .ds-mark { margin-left: 0; }
 .connect-computer .ds-mark-stack { margin-bottom: var(--ds-space-1); }
+
+/* Your agents: a segmented card panel (dashboard "Get connected" grammar). */
+.agent-overview:not(.is-loading, .unavailable) { overflow: hidden; border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-card); }
+.agent-overview:not(.is-loading, .unavailable) > .agent-overview-heading { align-items: center; min-height: var(--ds-panel-head); margin: 0; padding: 0 var(--ds-space-4); background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-hairline-strong); }
+.agent-overview-heading h2 { color: var(--ds-muted); font-family: var(--ds-font-mono); font-size: var(--ds-mono-label) !important; font-weight: 500 !important; letter-spacing: .04em; text-transform: uppercase; }
+.agent-overview-heading span { font-size: var(--ds-text-xs) !important; }
+.agent-overview .agent-presence-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0; }
+.workspace .agent-overview .agent-presence { width: 100%; margin: 0; padding: var(--ds-space-4); border-radius: 0; box-shadow: inset -1px -1px 0 var(--ds-hairline); }
+.workspace .agent-overview .agent-presence[aria-pressed="true"] { box-shadow: inset -1px -1px 0 var(--ds-hairline), inset 0 -2px 0 var(--ds-accent); }
+.agent-overview .agent-overview-note { margin: 0; padding: var(--ds-space-3) var(--ds-space-4); background: var(--ds-surface-raised); border-top: 1px solid var(--ds-hairline-strong); font-size: var(--ds-text-xs); }

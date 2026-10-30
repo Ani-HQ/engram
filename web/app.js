@@ -26,7 +26,7 @@ import { signupView } from "./signup-view.js";
 import { signupAdminPanel } from "./signup-admin.js";
 import { sharingView } from "./sharing-view.js";
 import { handoffsView } from "./handoffs-view.js";
-import { loadingState, observeLoadingMotion, observeSelects, emptyState, identityMark, markStack } from "./design-system.js";
+import { loadingState, observeLoadingMotion, observeSelects, emptyState, identityMark, markStack, pill, commandPalette, showToast, routeProgress, banner } from "./design-system.js";
 import { statusLabel } from "./status-label.js";
 import { createJevSettingsPanel } from "./jev-settings.js";
 import { deviceView } from "./device-view.js";
@@ -35,6 +35,30 @@ import { createAccessClock, friendAccessCard, friendAccessPresentation } from ".
 import { applyWorkspaceName, createWorkspaceNameEditor, captureSetupFocus, restoreSetupFocus } from "./workspace-name.js";
 
 const root = document.querySelector("#app");
+const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || "");
+const palette = commandPalette([], { placeholder: "Search pages and actions…" });
+/** ⌘K commands for the current session. Every entry runs an existing app action. */
+function paletteGroups() {
+  if (!state.session) return [];
+  const go = (hash, label, glyph, keywords = "") => ({ label, glyph: icon(glyph, { size: 16 }), keywords, run: () => { location.hash = hash; } });
+  const pages = [go("activity", "Activity", "activity", "history tasks timeline"), go("memory", "Memory", "brain", "pages decisions"), go("connect", "Connections", "plug", "agents keys")];
+  if (["owner", "member"].includes(state.session.role)) pages.push(go("sharing", "Sharing", "share-2", "team excerpts"), go("workspace", "Workspace settings", "settings-2", "members"));
+  if (state.session.role === "owner") pages.push(go("showcase", "Public profile", "globe"), go("billing", "Plan & billing", "credit-card", "subscription"));
+  const actions = [];
+  if (["owner", "member"].includes(state.session.role)) actions.push({ label: "Connect an agent", glyph: icon("plug-zap", { size: 16 }), keywords: "new key setup", run: () => { location.hash = "connect"; setTimeout(() => beginConnection(), 0); } });
+  if (state.session.canWrite !== false) actions.push({ label: "Add a memory", glyph: icon("plus", { size: 16 }), keywords: "remember save", run: () => captureMemory() });
+  actions.push({ label: "Search activity", glyph: icon("search", { size: 16 }), keywords: "find", run: () => { location.hash = "activity"; setTimeout(() => document.querySelector(".search")?.focus(), 50); } },
+    { label: "Copy setup command", glyph: icon("terminal", { size: 16 }), keywords: "npx install cli", run: async () => { if (await copy(installCommand(location.origin))) showToast("Setup command copied", { glyph: icon("check", { size: 15 }) }); } });
+  if (setupState()) actions.push({ label: "Open getting started", glyph: icon("circle-play", { size: 16 }), run: () => openSetup() });
+  const orgs = (state.session.orgs || []).filter(org => org.id !== state.session.org.id);
+  const groups = [{ label: "Pages", items: pages }, { label: "Actions", items: actions }];
+  if (orgs.length) groups.push({ label: "Switch workspace", items: orgs.map(org => ({ label: org.name, glyph: icon(org.kind === "personal" ? "user" : "users", { size: 16 }), keywords: "workspace org", run: () => switchOrg(String(org.id)) })) });
+  groups.push({ label: "Help", items: [
+    { label: "Help & support", glyph: icon("life-buoy", { size: 16 }), run: () => window.open("/support", "_blank", "noopener") },
+    { label: "What’s new", glyph: icon("megaphone", { size: 16 }), keywords: "changelog", run: () => window.open("/changelog", "_blank", "noopener") },
+    { label: "Sign out", glyph: icon("log-out", { size: 16 }), run: () => signOut() }] });
+  return groups;
+}
 const state = {
   session: null, view: "activity", activityTab: "history", activityKind: "all", activities: [], activityStats: {}, checkedAt: null, freshIds: new Set(), agents: [], tools: [], memories: [], tokens: [],
   connections: null, connectionError: "", connectionFetchedAt: 0, connectionList: "current",
@@ -146,11 +170,9 @@ function date(value, options) {
   return Number.isNaN(parsed.valueOf()) ? "—" : new Intl.DateTimeFormat(undefined, options).format(parsed);
 }
 function errorMessage(error) { return error instanceof Error ? error.message : "Something went wrong. Please try again."; }
-function toast(message) {
-  document.querySelector(".toast")?.remove();
-  const node = el("div", { class: "toast ds-toast", role: "status", "aria-live": "polite" }, message);
-  document.body.append(node);
-  setTimeout(() => node.remove(), 3500);
+function toast(message, { tone, action } = {}) {
+  const failed = tone === "danger" || (!tone && /^(could not|couldn’t|can’t|cannot|unable|failed|something went wrong)/i.test(String(message)));
+  showToast(message, { tone: failed ? "danger" : tone || "success", glyph: icon(failed ? "circle-alert" : tone === "info" ? "info" : "circle-check", { size: 16 }), action });
 }
 async function copy(value) {
   try { await navigator.clipboard.writeText(value); announcements.textContent = "Copied to clipboard"; return true; }
@@ -190,9 +212,11 @@ function showDetail(title, body, { activity = false, memory = false, reporting =
     if (target) { if (!restoreCloseFocus) target.setAttribute("tabindex", "-1"); target.focus({ preventScroll: true }); }
   }
 }
-function empty(title, description, action, glyph = "activity") { return emptyState({ glyph: icon(glyph, { size: 22 }), title, description, action, className: "empty" }); }
+function empty(title, description, action, glyph = "activity") { const node = emptyState({ glyph: icon(glyph, { size: 22 }), title, description, action, className: "empty" }); node.setAttribute("data-variant", "dashed"); return node; }
+const docsFor = { activity: "/how-it-works#activity", memory: "/how-it-works#remember", connect: "/how-it-works#connections", device: "/how-it-works#connections", sharing: "/how-it-works#sharing", showcase: "/support", workspace: "/support", billing: "/pricing" };
 function heading(title, description, side) {
-  return el("div", { class: "page-heading" }, el("div", { class: "ds-heading-group" }, el("h1", {}, title), el("p", {}, description)), side);
+  const docs = docsFor[state.view] && el("a", { class: "button-link small page-docs", href: docsFor[state.view], target: "_blank", rel: "noopener" }, icon("book-open", { size: 14 }), "Docs");
+  return el("div", { class: "page-heading" }, el("div", { class: "ds-heading-group" }, el("h1", {}, title), el("p", {}, description)), el("div", { class: "page-heading-actions" }, docs, side));
 }
 function notice(message, retry) {
   return el("div", { class: "notice", role: "alert" }, message, retry && button("Try again", retry, { class: "text small" }));
@@ -342,8 +366,8 @@ function render() {
   if (state.session.role === "owner") navigation.push(["showcase", "Public profile", "globe"]);
   if (["owner", "member"].includes(state.session.role)) navigation.push(["workspace", "Workspace", "settings-2"]);
   if (state.session.role === "owner") navigation.push(["billing", "Plan & billing", "file-text"]);
-  const workspaceKind = state.session.org.kind === "personal" ? "Personal workspace" : "Team workspace";
-  const navigationLink = ([key, label, name]) => el("a", { href: `#${key}`, "aria-current": state.view === key ? "page" : null, onclick: () => { if (navigationOpen) { setNavigationOpen(false); document.querySelector('#main')?.focus({ preventScroll: true }); } } }, icon(name, { size: 16 }), el("span", {}, label));
+  const titles = { device: "Connect a computer", activity: "Activity", memory: "Memory", connect: "Connections", sharing: "Sharing", showcase: "Public profile", workspace: "Workspace", billing: "Plan & billing" };
+  const navigationLink = ([key, label, name]) => el("a", { href: `#${key}`, "aria-current": state.view === key ? "page" : null, onclick: () => { if (navigationOpen) { setNavigationOpen(false); document.querySelector('#main')?.focus({ preventScroll: true }); } } }, icon(name, { size: 18 }), el("span", {}, label));
   const workspaceNavigation = navigation.filter(([key]) => !["showcase", "workspace", "billing"].includes(key));
   const manageNavigation = navigation.filter(([key]) => ["showcase", "workspace", "billing"].includes(key));
   const content = state.view === "device" ? deviceScreen() : state.view === "activity" ? activityView() : state.view === "memory" ? memoryView() : state.view === "sharing" ? selectiveSharingView() : state.view === "showcase" ? showcaseView() : ["workspace", "billing"].includes(state.view) ? accountView() : connectView();
@@ -352,23 +376,42 @@ function render() {
   root.replaceChildren(
     el("a", { class: "ds-button ds-skip-link", href: "#main", onclick: event => { event.preventDefault(); const main = document.querySelector("#main"); main?.focus(); main?.scrollIntoView(); } }, "Skip to content"),
     ...(state.demo ? [el("div", { class: "demo" }, "Local preview", el("span", {}, "Sample data. No connected accounts are being monitored."))] : []),
-    el("div", { class: "app-shell" },
-      el("aside", { class: "sidebar", "aria-label": "Workspace navigation", "data-navigation-open": String(navigationOpen) },
-        el("a", { class: "wordmark", href: "#activity", "aria-label": "engram home" }, el("img", { class: "brand-mark", src: "/brand/engram-mark.svg", width: 27, height: 27, alt: "" }), "engram"),
-        el("div", { class: "workspace-picker" }, el("span", { class: "workspace-initial", "aria-hidden": "true" }, state.session.org.name.slice(0, 1).toUpperCase()), select("Workspace", String(state.session.org.id), orgs.map(org => [String(org.id), org.name]), switchOrg, { "data-select-variant": "embedded" })),
-        iconButton(navigationOpen ? "x" : "menu", "Navigation", () => setNavigationOpen(!navigationOpen), { class: "ds-icon-button ds-disclosure-toggle mobile-navigation-toggle", "aria-controls": "workspace-navigation", "aria-expanded": String(navigationOpen) }),
-        el("nav", { class: "nav", id: "workspace-navigation", "aria-label": "Main navigation" },
-          el("div", { class: "nav-group" }, el("span", { class: "nav-group-label" }, "Workspace"), workspaceNavigation.map(navigationLink)),
-          manageNavigation.length > 0 && el("div", { class: "nav-group" }, el("span", { class: "nav-group-label" }, "Manage"), manageNavigation.map(navigationLink))),
-        el("div", { class: "sidebar-bottom" },
-          el("a", { class: "workspace-note", href: "/privacy" }, icon("shield-check", { size: 14 }), "Privacy & data"),
-          el("div", { class: "sidebar-account" },
-            el("div", { class: "sidebar-account-copy" }, el("span", { title: state.session.email || state.session.name }, state.session.email || state.session.name), el("small", {}, `${state.session.role.slice(0, 1).toUpperCase()}${state.session.role.slice(1)}`))),
-          button([icon("log-out", { size: 15 }), "Sign out"], signOut, { class: "text" }))),
+    el("header", { class: "ds-topbar app-bar" },
+      iconButton(navigationOpen ? "x" : "menu", "Navigation", () => setNavigationOpen(!navigationOpen), { class: "ds-icon-button mobile-navigation-toggle", "aria-controls": "workspace-navigation", "aria-expanded": String(navigationOpen) }),
+      el("a", { class: "topbar-logo", href: "#activity", "aria-label": "engram home" }, el("img", { class: "brand-mark", src: "/brand/engram-mark.svg", width: 22, height: 22, alt: "" })),
+      el("nav", { class: "ds-crumbs", "aria-label": "Breadcrumb" },
+        el("span", { class: "ds-crumb-sep", "aria-hidden": "true" }, "/"),
+        el("div", { class: "ds-crumb workspace-picker", title: "Switch workspace" },
+          el("span", { class: "workspace-initial", "aria-hidden": "true" }, state.session.org.name.slice(0, 1).toUpperCase()),
+          select("Workspace", String(state.session.org.id), orgs.map(org => [String(org.id), org.name]), switchOrg, { "data-select-variant": "embedded" }),
+          pill(state.session.org.kind === "personal" ? "Personal" : "Team")),
+        el("span", { class: "ds-crumb-sep crumb-page-sep", "aria-hidden": "true" }, "/"),
+        el("span", { class: "ds-crumb crumb-page", "aria-current": "page" }, titles[state.view] || "Workspace")),
+      el("div", { class: "topbar-actions" },
+        !["connect", "device"].includes(state.view) && setupState() && button([icon("circle-play", { size: 14 }), "Getting started"], openSetup, { class: "text small setup-resume", "aria-label": "Open getting started guide", "aria-controls": "setup-slot" }),
+        state.session.role === "owner" && state.view !== "showcase" && button([icon("share-2", { size: 14 }), "Share activity"], () => { location.hash = "showcase"; }, { class: "small topbar-share" }),
+        el("a", { class: "button-link small topbar-feedback", href: "mailto:ani@odstdio.com?subject=Engram%20feedback" }, "Feedback"),
+        el("button", { type: "button", class: "ds-search-trigger", onclick: () => palette.open(), "aria-label": "Open command menu", "aria-keyshortcuts": "Meta+K Control+K" }, icon("search", { size: 14 }), el("span", {}, "Search…"), el("kbd", {}, isMac ? "⌘K" : "Ctrl K")),
+        el("a", { class: "ds-topbar-button", href: "/support", target: "_blank", rel: "noopener", "aria-label": "Help and support", title: "Help & support" }, icon("life-buoy", { size: 15 })),
+        el("details", { class: "account-menu" },
+          el("summary", { class: "ds-topbar-button", "aria-label": "Account" }, el("span", { class: "account-initial", "aria-hidden": "true" }, (state.session.email || state.session.name || "E").slice(0, 1).toUpperCase())),
+          el("div", { class: "account-menu-panel", role: "menu" },
+            el("div", { class: "account-menu-head" }, el("strong", { title: state.session.email || state.session.name }, state.session.email || state.session.name), el("span", {}, `${state.session.role.slice(0, 1).toUpperCase()}${state.session.role.slice(1)} · ${state.session.org.name}`)),
+            el("a", { href: "/privacy", role: "menuitem" }, icon("shield-check", { size: 14 }), "Privacy & data"),
+            el("a", { href: "/support", role: "menuitem" }, icon("life-buoy", { size: 14 }), "Help & support"),
+            button([icon("keyboard", { size: 14 }), "Command menu", el("kbd", {}, isMac ? "⌘K" : "Ctrl K")], () => palette.open(), { role: "menuitem" }),
+            button([icon("log-out", { size: 14 }), "Sign out"], signOut, { role: "menuitem", class: "account-sign-out" }))))),
+    el("div", { class: "app-shell", "data-shell": "rail" },
+      el("nav", { class: "ds-rail app-rail", id: "workspace-navigation", "aria-label": "Main navigation", "data-navigation-open": String(navigationOpen) },
+        workspaceNavigation.map(navigationLink),
+        manageNavigation.length > 0 && el("div", { class: "ds-rail-sep", role: "separator" }),
+        manageNavigation.map(navigationLink),
+        el("div", { class: "ds-rail-bottom" },
+          el("a", { href: "/privacy", title: "Privacy & data" }, icon("shield-check", { size: 18 }), el("span", {}, "Privacy & data")),
+          button([icon("log-out", { size: 18 }), el("span", {}, "Sign out")], signOut, { title: "Sign out" }))),
       el("div", { class: "main-column" },
-        el("div", { class: "app-topbar" }, el("div", { class: "breadcrumbs" }, el("span", {}, state.session.org.name), el("span", { class: "workspace-kind" }, workspaceKind)),
-          el("div", { class: "topbar-actions" }, !["connect", "device"].includes(state.view) && setupState() && button("Getting started", openSetup, { class: "text small setup-resume", "aria-label": "Open getting started guide", "aria-controls": "setup-slot" }), state.session.role === "owner" && state.view !== "showcase" && button("Share activity", () => { location.hash = "showcase"; }, { class: "small" }), iconButton("log-out", "Sign out", signOut, { class: "icon-button mobile-signout" }))),
         el("main", { class: "workspace", id: "main", tabindex: -1 }, mainContent))));
+  palette.setGroups(paletteGroups());
   renderFriendAccess();
   if (state.view === "showcase" && state.showcase?.preview) watchPreview();
   setSessionControlsBusy(sessionMutation);
@@ -382,12 +425,12 @@ function render() {
 }
 function setNavigationOpen(open, restoreFocus = false) {
   navigationOpen = Boolean(open);
-  const sidebar = document.querySelector('.sidebar'), toggle = sidebar?.querySelector('.mobile-navigation-toggle');
+  const sidebar = document.querySelector('.app-rail'), toggle = document.querySelector('.mobile-navigation-toggle');
   if (sidebar) sidebar.dataset.navigationOpen = String(navigationOpen);
   if (toggle) { toggle.setAttribute('aria-expanded', String(navigationOpen)); toggle.replaceChildren(icon(navigationOpen ? 'x' : 'menu', { size: 18 })); if (restoreFocus) toggle.focus(); }
 }
 function revealCurrentNavigation() {
-  const nav = document.querySelector(".nav"), active = nav?.querySelector('[aria-current="page"]');
+  const nav = document.querySelector(".app-rail"), active = nav?.querySelector('[aria-current="page"]');
   if (!active || nav.scrollWidth <= nav.clientWidth) return;
   const bounds = nav.getBoundingClientRect(), selected = active.getBoundingClientRect();
   if (selected.left < bounds.left) nav.scrollLeft -= bounds.left - selected.left;
@@ -554,12 +597,14 @@ function activityResults() {
   const memory = state.activityKind === "memory";
   return [
     state.error && notice(state.error, () => loadActivity()),
-    state.activities.length ? activityFeed(state.activities.map(activity => withConnectionIdentity(activity, state.connections?.connections)), { onOpen: openActivity, onFilter: filterActivities, onResource: openActivityResource, kind: state.activityKind, filters: state.filters, freshIds: state.freshIds, animate: state.animateFeed }) : state.loading ? activitySkeleton() : state.error ? null : empty(filtered ? "No matching activity" : state.activityKind === "tasks" ? "No task reports yet" : "Every thread starts somewhere.", filtered ? "Try another search or clear the filters." : state.activityKind === "tasks" ? "Agents report task progress and results here. You can see their recorded memory calls in All activity." : "Ask a connected agent to read or save a memory. Its Engram calls will appear here. External work appears when the agent reports it.",
+    state.activities.length ? el("div", { class: "ds-panel-list activity-panel" },
+      el("div", { class: "ds-panel-head activity-panel-head", "aria-hidden": "true" }, el("span", {}, memory ? "Operation" : "Activity"), el("span", {}, "Status"), el("span", {}, "Updated")),
+      activityFeed(state.activities.map(activity => withConnectionIdentity(activity, state.connections?.connections)), { onOpen: openActivity, onFilter: filterActivities, onResource: openActivityResource, kind: state.activityKind, filters: state.filters, freshIds: state.freshIds, animate: state.animateFeed }),
+      el("div", { class: "ds-panel-foot activity-list-footer" },
+        el("span", {}, `${state.activities.length} ${state.activities.length === 1 ? "activity" : "activities"}${state.more ? " shown" : ""}`),
+        el("span", { class: "activity-key-hint" }, el("kbd", {}, "↑"), el("kbd", {}, "↓"), "to move", el("kbd", {}, "Enter"), "to inspect"),
+        state.more && button(state.loading ? [icon("loader-circle", { size: 14, class: "spin" }), "Loading…"] : "Load more", () => loadActivity({ append: true }), { class: "small", disabled: state.loading }))) : state.loading ? activitySkeleton() : state.error ? null : empty(filtered ? "No results found" : state.activityKind === "tasks" ? "No task reports yet" : "No activity yet", filtered ? "Nothing matches these filters. Try a different search, or clear the filters." : state.activityKind === "tasks" ? "Agents report progress and outcomes here once task reporting is set up. Their memory calls are already in All activity." : "Ask a connected agent to save or recall a memory and its calls show up here. Work in other tools appears when the agent reports it.",
       !filtered && state.activityKind === "tasks" ? el("div", { class: "task-empty-actions" }, button("Set up reporting", taskReportingHelp, { class: "primary" }), button("See all activity", () => changeActivityKind("all"))) : button(filtered ? "Clear filters" : "View connections", () => { if (filtered) clearActivityFilters(); else location.hash = "connect"; })),
-    state.activities.length > 0 && el("div", { class: "activity-list-footer" },
-      el("span", {}, `${state.activities.length} ${state.activities.length === 1 ? "activity" : "activities"}${state.more ? " shown" : ""}`),
-      el("span", { class: "activity-key-hint" }, el("kbd", {}, "↑"), el("kbd", {}, "↓"), "to move", el("kbd", {}, "Enter"), "to inspect"),
-      state.more && button(state.loading ? [icon("loader-circle", { size: 14, class: "spin" }), "Loading…"] : "Load more", () => loadActivity({ append: true }), { class: "small", disabled: state.loading })),
     state.activities.length > 100 && el("div", { class: "activity-history-paused", role: "status" }, icon("pause", { size: 13 }), "Live refresh is paused while you explore older work.", button("Back to latest", () => loadActivity(), { class: "text small" })),
     el("p", { class: "activity-footnote" }, icon("shield-check", { size: 13 }), memory ? "Private to this workspace. These operations were observed by Engram." : "Private to this workspace. Memory calls are recorded by Engram; external work comes from agent reports."),
   ];
@@ -1696,6 +1741,10 @@ async function openAuth(message = "") {
 }
 async function loadView() {
   if (workspacePending(state.session)) { scheduleProvisioning(); return; }
+  routeProgress.start();
+  try { await loadViewData(); } finally { routeProgress.done(); }
+}
+async function loadViewData() {
   if (activityChecksActive()) { if (pendingInsightRun) { pendingInsightRun = false; await runInsights(); } else await loadInsights({ jobId: state.insights?.job?.id }); }
   else if (activityHistoryActive()) await loadActivity();
   else if (activityHandoffsActive()) return;
@@ -1747,6 +1796,7 @@ document.addEventListener("pointerdown", () => { inputMode = "pointer"; document
 document.addEventListener("keydown", event => {
   inputMode = "keyboard"; document.documentElement.dataset.input = inputMode;
   if (event.key === "Escape" && navigationOpen && !dialog.open) { event.preventDefault(); setNavigationOpen(false, true); }
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "k" && state.session && !workspacePending(state.session)) { event.preventDefault(); palette.setGroups(paletteGroups()); palette.open(); }
   if (event.key === "/" && !event.ctrlKey && !event.metaKey && !event.altKey && !dialog.open && !document.activeElement?.isContentEditable && !document.activeElement?.closest('[role="combobox"], [role="listbox"]') && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) {
     const search = document.querySelector(".search"); if (search) { event.preventDefault(); search.focus(); }
   }

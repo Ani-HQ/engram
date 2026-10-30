@@ -218,3 +218,41 @@ details[open] > summary > .disclosure-chevron { transform: rotate(180deg); }
 .work-log-marker { display: grid; place-items: center; width: 22px; height: 22px; margin-top: 1px; background: var(--ds-paper); border-radius: 50%; }
 @media (prefers-reduced-motion: reduce) { .disclosure-chevron { transition: none; } }
 .handoff-author { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ── Dashboard grammar: bordered activity panel, segmented filters, toolbar ── */
+.activity-panel { margin-top: var(--ds-space-4); }
+.activity-panel-head > span:first-child { flex: 1; }
+.activity-panel-head > span:nth-child(2) { width: 150px; text-align: right; }
+.activity-panel-head > span:nth-child(3) { width: 72px; text-align: right; }
+.activity-panel .activity-feed { display: grid; }
+.activity-panel .activity-section-title { position: sticky; top: var(--ds-topbar-height); z-index: 2; margin: 0; padding: 6px var(--ds-space-4); background: var(--ds-paper); border-bottom: 1px solid var(--ds-hairline); }
+.activity-panel .activity-section-title:not(:first-child) { border-top: 1px solid var(--ds-hairline-strong); }
+.activity-panel .activity-section-title h2 { color: var(--ds-muted); font-family: var(--ds-font-mono); font-size: var(--ds-mono-label); font-weight: 500; letter-spacing: .04em; text-transform: uppercase; }
+.activity-panel .activity-row.ds-row-hover { margin: 0; padding: var(--ds-space-4); border-radius: 0; }
+.activity-panel .activity-row + .activity-row { border-top: 1px solid var(--ds-hairline); }
+.activity-panel .activity-row-aside { display: grid; grid-template-columns: 150px 72px; align-items: start; text-align: right; }
+.activity-panel .activity-row-aside > .activity-status { justify-self: end; }
+.activity-panel .activity-row.is-running { box-shadow: inset 2px 0 0 var(--ds-accent); }
+.activity-list-footer.ds-panel-foot { justify-content: space-between; margin: 0; }
+.activity-list-footer.ds-panel-foot button { min-height: 26px; }
+.activity-skeleton .ds-panel-head { font-family: var(--ds-font-mono); }
+/* Status filter as a segmented control with counts. */
+.workspace .activity-switcher { display: inline-flex; gap: 0; padding: 2px; margin-bottom: var(--ds-space-4); background: var(--ds-surface-raised); border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-control); }
+:is(.workspace, .detail) .activity-switcher .activity-filter-tab { min-height: 28px; padding: 0 10px; border-radius: 4px; font-size: var(--ds-text-sm); font-weight: 450; transition: background-color var(--ds-duration-fast) var(--ds-ease-out), color var(--ds-duration-fast) var(--ds-ease-out); }
+:is(.workspace, .detail) .activity-switcher .activity-filter-tab[aria-pressed="true"] { color: var(--ds-ink); background: var(--ds-paper); font-weight: 500; box-shadow: 0 0 0 1px var(--ds-hairline-strong); }
+.activity-switcher .filter-count { padding: 0 5px; margin-left: 2px; color: var(--ds-muted); background: var(--ds-paper); border-radius: 4px; font-size: var(--ds-text-xs); }
+.activity-switcher .activity-filter-tab[aria-pressed="true"] .filter-count { background: var(--ds-surface-raised); color: var(--ds-ink); }
+/* Kind tabs: underline tabs on a hairline. */
+.workspace .activity-kind-switcher { gap: var(--ds-space-5); margin-bottom: var(--ds-space-5); padding-bottom: 6px; border-bottom: 1px solid var(--ds-hairline); }
+.workspace .activity-kind-switcher .ds-tab-underline::after { bottom: -7px; }
+/* Toolbar: compact controls, dashboard sizing. */
+.workspace .activity-search-filters { align-items: center; }
+.workspace .activity-search-filters .search-field :is(input, .search) { min-height: 34px; font-size: var(--ds-text-sm); }
+.workspace .activity-search-filters .ds-select-trigger, .workspace .activity-search-filters select { min-height: 34px; font-size: var(--ds-text-sm); }
+.workspace .activity-intent-button { min-height: 34px; }
+@media (max-width: 700px) {
+  .activity-panel-head > span:not(:first-child) { display: none; }
+  .activity-panel .activity-row-aside { grid-template-columns: auto auto; gap: var(--ds-space-3); text-align: left; }
+  .activity-list-footer .activity-key-hint { display: none; }
+  .workspace .activity-switcher { display: flex; overflow-x: auto; max-width: 100%; }
+}
