@@ -107,6 +107,10 @@ Defined in the "Marketing kit" section of `web/design-system.css`, arranged by `
 
 Tokens: `--ds-hairline`, `--ds-hairline-strong`, `--ds-surface-raised`, `--ds-glow`, `--ds-glow-soft`, `--ds-dot`, `--ds-reveal-distance`, `--ds-duration-reveal`. Example content in mockups (pages, terminals, share lists) is labeled as an example and describes real behavior.
 
+## Public profile (`/u/<slug>`)
+
+Composed in `web/profile.js` and `web/showcase.css` from the marketing kit: a `.ds-dotgrid` hero (avatar, `@slug`, a presence pill that pulses only while an agent has a fresh running report, share actions), then hairline cards. "Recently building with" shows `markStack` product marks taken only from the public event stream, so it is empty when the owner keeps activity private. Totals use `.ds-stat`. The 12-week chart uses one accent at four strengths, square-root scaled to the profile's busiest day, and streak facts (current, longest, best day) derived from the same public UTC daily counts. On phones the chart fits the width (24px+ day targets) instead of scrolling. The social card (`renderShowcaseCard`) follows the same chart and streak rules.
+
 ## Files and adoption
 
 - `web/design-system.css`: semantic tokens, native primitives, reusable components, motion, accessibility, and the isolated gallery layout.

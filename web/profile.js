@@ -1,5 +1,6 @@
 import { agentVisual, providerVisual, visualIcon } from "./tooling.js";
-import { profileAvatar, statusText } from "./design-system.js";
+import { identityMark, markStack, profileAvatar, statusText } from "./design-system.js";
+import { icon } from "./icons.js";
 import { statusLabel } from "./status-label.js";
 
 export function h(tag, attrs = {}, ...children) {
@@ -14,8 +15,42 @@ export function h(tag, attrs = {}, ...children) {
 }
 const number = value => new Intl.NumberFormat().format(value || 0);
 const setText = (node, value) => { if (node.textContent !== value) node.textContent = value; };
+const dayLabel = date => new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
+// Derived only from the public 12-week daily counts (UTC days). Today may still
+// be in progress, so a streak that ended yesterday is still current.
+export function activityRhythm(daily = []) {
+  let longest = 0, run = 0, best = null;
+  for (const day of daily) {
+    run = day.count > 0 ? run + 1 : 0; longest = Math.max(longest, run);
+    if (day.count > 0 && (!best || day.count > best.count)) best = day;
+  }
+  let current = 0, index = daily.length - 1;
+  if (index >= 0 && !(daily[index].count > 0)) index--;
+  while (index >= 0 && daily[index].count > 0) { current++; index--; }
+  return { current, longest, best };
+}
+const dayCount = value => `${number(value)} ${value === 1 ? "day" : "days"}`;
+function rhythmFacts(daily) {
+  const { current, longest, best } = activityRhythm(daily);
+  return [
+    ["current", "flame", "Current streak", dayCount(current), current > 0],
+    ["longest", "zap", "Longest streak", dayCount(longest), false],
+    ["best", "trophy", best ? `Best day · ${dayLabel(best.date)}` : "Best day", best ? `${number(best.count)} ${best.count === 1 ? "action" : "actions"}` : "None yet", false],
+  ];
+}
+function updateRhythm(section, daily) {
+  for (const [key, , label, value, hot] of rhythmFacts(daily)) {
+    const fact = section.querySelector(`[data-rhythm="${key}"]`);
+    if (!fact) continue;
+    setText(fact.querySelector(".profile-rhythm-value"), value);
+    setText(fact.querySelector(".profile-rhythm-label"), label);
+    fact.dataset.hot = String(hot);
+  }
+}
 const categories = { code: ["Code"], files: ["Files"], email: ["Email"], calendar: ["Calendar"], cloud: ["Cloud"], browser: ["Browser"], data: ["Data"], memory: ["Memory"], other: ["Other tools"] };
 
+// Square-root scaling keeps ordinary days visible next to one very busy day.
+const cellLevel = (count, maximum) => count > 0 ? Math.min(4, Math.max(1, Math.ceil(Math.sqrt(count / maximum) * 4))) : 0;
 export function contributionGrid(daily = [], { headingTag = "h3" } = {}) {
   const maximum = Math.max(1, ...daily.map(day => day.count));
   const count = daily.reduce((sum, day) => sum + day.count, 0);
@@ -27,7 +62,7 @@ export function contributionGrid(daily = [], { headingTag = "h3" } = {}) {
       grid.dataset.selectedDate = day.date;
       live.textContent = event.currentTarget.getAttribute("aria-label");
     };
-    return h("button", { type: "button", class: `contribution-cell level-${day.count ? Math.max(1, Math.ceil(day.count / maximum * 4)) : 0}`, "data-date": day.date, tabindex: index === daily.length - 1 ? "0" : "-1", title: label, "aria-label": label, onclick: showDay, onfocus: showDay });
+    return h("button", { type: "button", class: `contribution-cell level-${cellLevel(day.count, maximum)}`, "data-date": day.date, tabindex: index === daily.length - 1 ? "0" : "-1", title: label, "aria-label": label, onclick: showDay, onfocus: showDay });
   });
   const grid = h("div", { class: "contribution-grid", role: "group", "aria-label": "Daily activity for the last 12 weeks. Use arrow keys to explore.", onkeydown: event => {
     const current = cells.indexOf(document.activeElement);
@@ -46,14 +81,18 @@ export function contributionGrid(daily = [], { headingTag = "h3" } = {}) {
     const previous = daily[(index - 1) * 7]?.date;
     return h("span", {}, date && (index === 0 || date.slice(0, 7) !== previous?.slice(0, 7)) ? new Intl.DateTimeFormat(undefined, { month: "short", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`)) : "");
   });
-  return h("section", { class: "contributions" },
-    h("div", { class: "profile-section-heading" }, h(headingTag, {}, "The work adds up."), h("span", {}, "Last 12 weeks")),
-    h("div", { class: "contribution-viewport", role: "region", "aria-label": "Daily activity chart. Swipe or use arrow keys to explore dates." },
+  const section = h("section", { class: "contributions" },
+    h("div", { class: "profile-section-heading" }, h(headingTag, {}, "Shipping rhythm"), h("span", {}, "Last 12 weeks")),
+    h("ul", { class: "profile-rhythm", role: "list", "aria-label": "Streaks in the last 12 weeks, UTC days" }, rhythmFacts(daily).map(([key, glyph, label, value, hot]) =>
+      h("li", { class: "profile-rhythm-fact", "data-rhythm": key, "data-hot": String(hot) }, h("span", { class: "profile-rhythm-icon", "aria-hidden": "true" }, icon(glyph, { size: 16 })),
+        h("span", { class: "profile-rhythm-copy" }, h("strong", { class: "profile-rhythm-value" }, value), h("span", { class: "profile-rhythm-label" }, label))))),
+    h("div", { class: "contribution-viewport", role: "region", "aria-label": "Daily activity chart. Tap a day or use arrow keys to explore dates." },
       h("div", { class: "contribution-chart" },
         h("div", { class: "contribution-months", "aria-hidden": "true" }, months),
         h("div", { class: "contribution-layout" }, h("div", { class: "contribution-weekdays", "aria-hidden": "true" }, weekLabels), grid))),
-    h("p", { class: "contribution-explore" }, "Swipe or use arrow keys to explore dates."),
-    h("div", { class: "contribution-footer" }, live, h("div", { class: "contribution-legend", "aria-hidden": "true" }, h("span", { class: "contribution-cell level-0" }), "No activity", h("span", { class: "contribution-cell level-1" }), "Activity")));
+    h("p", { class: "contribution-explore" }, "Tap a day or use arrow keys to explore dates."),
+    h("div", { class: "contribution-footer" }, live, h("div", { class: "contribution-legend", "aria-hidden": "true" }, "Less", [0, 1, 2, 3, 4].map(level => h("span", { class: `contribution-cell level-${level}` })), "More")));
+  return section;
 }
 
 const eventStates = {
@@ -159,7 +198,8 @@ function updateActivityStream(section, activity, timing = { now: Date.now(), fre
 }
 export function updateProfileTimes(card, now = Date.now()) {
   card.querySelectorAll("[data-public-time]").forEach(node => {
-    const label = relativeTime(node.dataset.publicTime, now);
+    const relative = relativeTime(node.dataset.publicTime, now);
+    const label = node.closest(".profile-presence") ? relative.toLowerCase() : relative;
     if (node.textContent !== label) node.textContent = label;
   });
   const clock = profileClocks.get(card);
@@ -173,48 +213,57 @@ export function profileCard(data, { compact = false } = {}) {
   const { profile, stats, tools = [], daily = [] } = data;
   const headingTag = compact ? "h3" : "h2";
   const card = h("article", { class: `public-profile${compact ? " compact" : ""}`, "data-tools": JSON.stringify(tools) },
-    h("header", { class: "profile-identity ds-heading-group" },
+    h("header", { class: `profile-identity ds-heading-group${compact ? "" : " ds-dotgrid"}` },
       h("div", { class: "profile-identity-top" }, h("div", { class: "profile-identity-photo" }),
         h("div", { class: "profile-identity-copy ds-heading-group" },
-          h(compact ? "h2" : "h1", {}, profile.displayName || "Your public profile"))),
-      h("p", {}, profile.bio || "A small window into the work across my agents.")),
+          h(compact ? "h2" : "h1", {}, profile.displayName || "Your public profile"),
+          h("div", { class: "profile-handle" }, h("span", { class: "profile-slug" }), h("span", { class: "profile-presence", "data-state": "quiet" })))),
+      h("p", {}, profile.bio || "A small window into the work across my agents."),
+      h("div", { class: "profile-crew", hidden: true }, h("span", { class: "profile-crew-label" }, "Recently building with"), h("span", { class: "profile-crew-marks" })),
+      h("div", { class: "profile-actions" })),
     h("div", { class: "profile-main" },
       h("section", { class: "profile-desk", "aria-label": "The public desk" },
-        h("div", { class: "profile-section-heading" }, h(headingTag, {}, "On the desk."), h("span", {}, "Fresh signals")),
+        h("div", { class: "profile-section-heading" }, h(headingTag, {}, "Right now"), h("span", {}, "Last 15 minutes")),
         liveActivity(data.live, { headingTag }),
         h("div", { class: "profile-desk-state" }),
         h("ol", { class: "profile-stage-list", role: "list", "aria-label": "Fresh running actions" })),
       h("section", { class: "profile-overview", "aria-label": "Activity overview" },
-        h("div", { class: "profile-statistics", "aria-label": "All-time activity totals" }, [["totalActions", stats.totalActions === 1 ? "Action" : "Actions", stats.totalActions], ["activeAgents", stats.activeAgents === 1 ? "Agent" : "Agents", stats.activeAgents], ["activeDays", stats.activeDays === 1 ? "Active day" : "Active days", stats.activeDays]].map(([key, label, value]) => h("div", {}, h("strong", { "data-public-stat": key }, number(value)), h("span", { "data-public-label": key }, label)))),
+        h("div", { class: "profile-statistics", "aria-label": "All-time activity totals" }, [["totalActions", stats.totalActions === 1 ? "Action" : "Actions", stats.totalActions], ["activeAgents", stats.activeAgents === 1 ? "Agent" : "Agents", stats.activeAgents], ["activeDays", stats.activeDays === 1 ? "Active day" : "Active days", stats.activeDays]].map(([key, label, value]) => h("div", { class: "ds-stat" }, h("strong", { class: "ds-stat-value", "data-public-stat": key }, number(value)), h("span", { class: "ds-stat-label", "data-public-label": key }, label)))),
         contributionGrid(daily, { headingTag })),
       h("section", { class: "profile-highlights", "aria-label": "Owner-selected highlights" },
-        h("div", { class: "profile-section-heading" }, h(headingTag, { tabindex: "-1" }, "Selected work."), h("span", {}, "Chosen by the owner")),
+        h("div", { class: "profile-section-heading" }, h(headingTag, { tabindex: "-1" }, "Pinned work"), h("span", {}, "Chosen by the owner")),
         h("div", { class: "profile-highlight-list" }),
         h("div", { class: "profile-highlight-empty" }, h("strong", {}, "Nothing pinned here yet."), h("p", {}, "This space is ready for the notes and links the owner chooses to share."))),
       categorySummary(tools, headingTag)),
-    h("details", { class: "profile-receipts" }, h("summary", {}, "Peek at the recent receipts", h("span", { class: "profile-receipt-count" })), activityStream(data.activity, { headingTag })),
-    h("details", { class: "profile-history" }, h("summary", {}, "Across the tools", h("span", {}, "All categories")), profileTools(tools, headingTag)),
+    h("details", { class: "profile-receipts" }, h("summary", {}, h("span", { class: "profile-summary-title" }, "Recent activity"), h("span", { class: "profile-receipt-count" })), activityStream(data.activity, { headingTag })),
+    h("details", { class: "profile-history" }, h("summary", {}, h("span", { class: "profile-summary-title" }, "Every tool category"), h("span", {}, "All time")), profileTools(tools, headingTag)),
     h("footer", { class: "profile-footnote" }, h("p", {}, privacyText(data.activity?.enabled === true, profileHighlights(profile).length > 0))));
   const checkedAt = Date.parse(data.live?.checkedAt);
   if (Number.isFinite(checkedAt)) profileClocks.set(card, { serverNow: checkedAt, receivedAt: Date.now() });
   updateProfilePhoto(card, profile);
   updateActivityStream(card.querySelector(".public-stream"), data.activity, eventTiming(data));
   updatePresentation(card, data);
+  updateIdentityExtras(card, data);
   return card;
 }
 
 function categorySummary(tools, headingTag) {
   const section = h("section", { class: "profile-category-summary" },
-    h("div", { class: "profile-section-heading" }, h(headingTag, { tabindex: "-1" }, "A feel for the work."), h("span", {}, "Top categories · all time")),
+    h("div", { class: "profile-section-heading" }, h(headingTag, { tabindex: "-1" }, "Where the work goes"), h("span", {}, "Top categories · all time")),
     h("div", { class: "profile-category-list" }));
   updateCategories(section, tools);
   return section;
 }
 function updateCategories(section, tools) {
   const top = [...tools].filter(tool => tool.count > 0).sort((a, b) => b.count - a.count || String(a.category).localeCompare(String(b.category))).slice(0, 3);
+  const total = tools.reduce((sum, tool) => sum + (tool.count > 0 ? tool.count : 0), 0);
   section.querySelector(".profile-category-list").replaceChildren(...(top.length ? top.map(tool => {
     const [label] = categories[tool.category] || categories.other;
-    return h("div", { class: "profile-category" }, h("strong", {}, number(tool.count)), h("span", {}, `${label} ${tool.count === 1 ? "action" : "actions"}`));
+    const share = total ? Math.round(tool.count / total * 100) : 0;
+    const fill = h("span", { class: "profile-category-fill" });
+    fill.style?.setProperty?.("--share", `${Math.max(share, 2)}%`);
+    return h("div", { class: "profile-category" }, h("strong", {}, number(tool.count)), h("span", {}, `${label} ${tool.count === 1 ? "action" : "actions"}`),
+      h("span", { class: "profile-category-bar", role: "img", "aria-label": `${share}% of all actions` }, fill), h("span", { class: "profile-category-share", "aria-hidden": "true" }, `${share}%`));
   }) : [h("p", { class: "profile-empty-note" }, "No action counts yet.")]));
 }
 function profileHighlights(profile = {}) {
@@ -295,6 +344,37 @@ function updateDesk(section, data) {
   });
   for (const row of rows.values()) row.remove();
 }
+// The crew shows product marks from the public event stream only, so it stays
+// empty when the owner has not shared activity. Marks are labels, not proof.
+function updateIdentityExtras(card, data) {
+  const slug = card.querySelector(".profile-slug");
+  setText(slug, data.profile?.slug ? `@${data.profile.slug}` : "");
+  slug.hidden = !data.profile?.slug;
+  const presence = card.querySelector(".profile-presence"), live = data.live || {};
+  const state = live.workingAgents > 0 ? "working" : live.recentlyActiveAgents > 0 ? "recent" : live.lastActivityAt ? "quiet" : "none";
+  const signature = `${state}:${live.workingAgents}:${live.lastActivityAt}`;
+  if (presence.dataset.signature !== signature) {
+    presence.dataset.state = state; presence.dataset.signature = signature; presence.hidden = state === "none";
+    const dot = h("span", { class: "profile-presence-dot", "aria-hidden": "true" });
+    const words = value => document.createTextNode(value);
+    if (state === "working") presence.replaceChildren(dot, words(`${number(live.workingAgents)} ${live.workingAgents === 1 ? "agent" : "agents"} working now`));
+    else if (state === "recent") presence.replaceChildren(dot, words("Active in the last 15 minutes"));
+    else if (state === "quiet") presence.replaceChildren(dot, words("Last active "), h("time", { datetime: live.lastActivityAt, title: exactTime(live.lastActivityAt), "data-public-time": live.lastActivityAt }, relativeTime(live.lastActivityAt, Date.parse(live.checkedAt) || Date.now()).toLowerCase()));
+    else presence.replaceChildren();
+  }
+  const products = [];
+  for (const event of streamEvents(data.activity)) {
+    const product = event.agent?.product;
+    if (product && product !== "other" && !products.includes(product)) products.push(product);
+  }
+  const crew = card.querySelector(".profile-crew"), marks = crew.querySelector(".profile-crew-marks");
+  if (marks.dataset.products !== products.join(",")) {
+    marks.dataset.products = products.join(",");
+    const visuals = products.map(product => agentVisual("", { harness: product, publicSafe: true }));
+    marks.replaceChildren(...(visuals.length ? [markStack(visuals.map(visual => identityMark(visualIcon(visual, { size: 20 }), { size: "md", label: visual.label })), { max: 6, label: `Recently active agents: ${visuals.map(visual => visual.label).join(", ")}` })] : []));
+  }
+  crew.hidden = !products.length;
+}
 function updatePresentation(card, data) {
   const layout = data.profile.layout === "field-notes" ? "field-notes" : "studio";
   const main = card.querySelector(".profile-main");
@@ -328,7 +408,7 @@ export function liveActivity(live = {}, { headingTag = "h3" } = {}) {
     h("p", { class: "live-stale", hidden: !stale }, staleText(stale)));
 }
 
-const staleText = count => `${number(count)} running ${count === 1 ? "action has" : "actions have"} no recent update and ${count === 1 ? "is" : "are"} excluded from working now.`;
+const staleText = count => `${number(count)} older running ${count === 1 ? "report has" : "reports have"} gone quiet and ${count === 1 ? "isn’t" : "aren’t"} counted as working.`;
 
 // Update numbers in place so live snapshots never steal keyboard focus or reset
 // the date a visitor is exploring on the contribution chart.
@@ -340,6 +420,7 @@ export function updateProfileCard(card, data) {
   } else profileClocks.delete(card);
   updateActivityStream(card.querySelector(".public-stream"), data.activity, eventTiming(data));
   updatePresentation(card, data);
+  updateIdentityExtras(card, data);
   updateProfileTimes(card);
   card.querySelector(".profile-footnote p").textContent = privacyText(data.activity?.enabled === true, profileHighlights(profile).length > 0);
   const text = (node, value) => { if (node.textContent !== value) node.textContent = value; };
@@ -371,9 +452,10 @@ export function updateProfileCard(card, data) {
   for (const [index, cell] of [...grid.children].entries()) {
     const day = daily[index]; if (!day) continue;
     const label = `${number(day.count)} ${day.count === 1 ? "action" : "actions"} on ${new Intl.DateTimeFormat(undefined, { dateStyle: "long", timeZone: "UTC" }).format(new Date(`${day.date}T12:00:00Z`))}`;
-    cell.className = `contribution-cell level-${day.count ? Math.max(1, Math.ceil(day.count / maximum * 4)) : 0}`;
+    cell.className = `contribution-cell level-${cellLevel(day.count, maximum)}`;
     cell.title = label; cell.setAttribute("aria-label", label);
   }
+  updateRhythm(grid.closest(".contributions"), daily);
   const selected = [...grid.children].find(node => node.dataset.date === grid.dataset.selectedDate);
   text(card.querySelector(".contribution-caption"), selected ? selected.getAttribute("aria-label") : `${number(total)} actions in the last 12 weeks`);
   const tools = JSON.stringify(data.tools || []);

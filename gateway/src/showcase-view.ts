@@ -199,25 +199,51 @@ export function renderUnavailableShowcasePage(): string {
   return `<!doctype html><html lang="en" data-design-system="signal"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Profile unavailable · engram</title><link rel="stylesheet" href="/design-system.css"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/showcase.css"><link rel="stylesheet" href="/app-theme.css"></head><body><main class="public-unavailable"><a class="wordmark" href="/">engram</a><h1>Nothing public here yet.</h1><p>This profile is private, unavailable, or has moved.</p><a class="button-link" href="/">Back to engram</a></main></body></html>`;
 }
 
+// Mirrors activityRhythm() in web/profile.js: UTC days, and a streak that ended
+// yesterday still counts because today may be in progress.
+function currentStreak(daily: { count: number }[]): number {
+  let index = daily.length - 1, streak = 0;
+  if (index >= 0 && !(daily[index].count > 0)) index--;
+  while (index >= 0 && daily[index].count > 0) { streak++; index--; }
+  return streak;
+}
+
 export function renderShowcaseCard(activity: PublicActivity): string {
   const { profile, stats, daily } = activity;
   const escape = escapeShowcaseHtml;
   const name = profile.displayName || profile.slug;
-  const shortName = Array.from(name).length > 45 ? Array.from(name).slice(0, 44).join("") + "…" : name;
+  const shortName = Array.from(name).length > 40 ? Array.from(name).slice(0, 39).join("") + "…" : name;
   const actions = stats.totalActions.toLocaleString("en-US");
-  const fittedSize = (text: string, maximum: number) => {
-    const units = Array.from(text).reduce((width, char) => width + (/[^\u0000-\u00ff]/.test(char) ? 1.15 : /[MW@%]/.test(char) ? 1 : /[il.,' ]/.test(char) ? 0.32 : /[A-Z0-9]/.test(char) ? 0.7 : 0.6), 0);
-    return Math.min(maximum, 500 / Math.max(1, units));
+  const fittedSize = (text: string, maximum: number, width = 520) => {
+    const units = Array.from(text).reduce((sum, char) => sum + (/[^\u0000-\u00ff]/.test(char) ? 1.15 : /[MW@%]/.test(char) ? 1 : /[il.,' ]/.test(char) ? 0.32 : /[A-Z0-9]/.test(char) ? 0.7 : 0.6), 0);
+    return Math.min(maximum, width / Math.max(1, units));
   };
   const paper = designColor("paper"), ink = designColor("ink"), surface = designColor("surface"), muted = designColor("muted"), accent = designColor("accent");
-  // One color: a day with activity is accent, an empty day is the surface. Counts stay in the text.
-  const cells = daily.map((day, i) => `<rect x="${650 + Math.floor(i / 7) * 34}" y="${202 + (i % 7) * 34}" width="26" height="26" rx="4" fill="${day.count ? accent : surface}"/>`).join("");
+  // One accent at four strengths, square-root scaled like the page; counts stay in the text.
+  const maximum = Math.max(1, ...daily.map(day => day.count));
+  const strength = [0, 0.3, 0.52, 0.76, 1];
+  const cells = daily.map((day, i) => {
+    const level = day.count > 0 ? Math.min(4, Math.max(1, Math.ceil(Math.sqrt(day.count / maximum) * 4))) : 0;
+    const x = 668 + Math.floor(i / 7) * 38, y = 176 + (i % 7) * 38;
+    return `<rect x="${x}" y="${y}" width="31" height="31" rx="5" fill="${surface}"/>${level ? `<rect x="${x}" y="${y}" width="31" height="31" rx="5" fill="${accent}" fill-opacity="${strength[level]}"/>` : ""}`;
+  }).join("");
+  const streak = currentStreak(daily);
+  const agents = stats.activeAgents, days = stats.activeDays;
+  const summary = `across ${agents.toLocaleString("en-US")} ${agents === 1 ? "agent" : "agents"} · ${days.toLocaleString("en-US")} active ${days === 1 ? "day" : "days"}`;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="${escape(name)} agent activity">
-<rect width="1200" height="630" fill="${paper}"/>
-<g font-family="Inter, Arial, sans-serif" fill="${ink}"><text x="78" y="109" font-size="26" font-weight="600">engram</text>
-<text x="78" y="201" font-size="17" fill="${muted}">Agent activity</text><text x="78" y="254" font-size="${fittedSize(shortName, 39)}" font-weight="600">${escape(shortName)}</text>
-<text x="78" y="363" font-size="${fittedSize(actions, 76)}" font-weight="600">${actions}</text><text x="81" y="398" font-size="20" fill="${muted}">actions across ${stats.activeAgents.toLocaleString("en-US")} agents</text>
-<text x="78" y="554" font-size="17" fill="${muted}">${escape(profile.slug)}</text><text x="650" y="492" font-size="16" fill="${muted}">The last 12 weeks</text></g>${cells}</svg>`;
+<defs><radialGradient id="glow" cx="0.2" cy="0" r="0.8"><stop offset="0" stop-color="${accent}" stop-opacity="0.16"/><stop offset="1" stop-color="${accent}" stop-opacity="0"/></radialGradient>
+<pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.2" fill="${ink}" fill-opacity="0.07"/></pattern></defs>
+<rect width="1200" height="630" fill="${paper}"/><rect width="1200" height="630" fill="url(#dots)"/><rect width="1200" height="630" fill="url(#glow)"/>
+<g font-family="Inter, Arial, sans-serif" fill="${ink}">
+<g transform="translate(78 74) scale(0.5)"><rect width="64" height="64" rx="15" fill="#171717"/><path d="M12 33h9l6-17 10 32 6-15h9" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></g><text x="124" y="103" font-size="26" font-weight="600">engram</text>
+<text x="78" y="230" font-size="${fittedSize(shortName, 56)}" font-weight="600">${escape(shortName)}</text>
+<text x="80" y="272" font-size="22" fill="${muted}">@${escape(profile.slug)}</text>
+<text x="76" y="400" font-size="${fittedSize(actions, 96, 480)}" font-weight="600">${actions}</text>
+<text x="80" y="440" font-size="22" fill="${muted}">agent actions</text>
+<text x="80" y="472" font-size="22" fill="${muted}">${escape(summary)}</text>
+${streak ? `<rect x="78" y="512" width="${Math.round(196 + String(streak).length * 13)}" height="44" rx="22" fill="${accent}" fill-opacity="0.12" stroke="${accent}" stroke-opacity="0.45"/><circle cx="104" cy="534" r="5" fill="${accent}"/><text x="120" y="542" font-size="20" font-weight="600" fill="${accent}">${streak}-day streak</text>` : ""}
+<text x="668" y="150" font-size="18" fill="${muted}">The last 12 weeks</text></g>${cells}
+</svg>`;
 }
 
 export async function renderShowcasePng(activity: PublicActivity): Promise<Buffer> {
