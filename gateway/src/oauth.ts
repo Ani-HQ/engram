@@ -93,9 +93,13 @@ export function corsHeaders(): HeadersInit {
   };
 }
 
+// MCP clients request exactly the scope named in this challenge. Name the same
+// default the authorization server grants, or every connector signs in read only.
+export const DEFAULT_CONNECTOR_SCOPE = "openid email offline_access memory:read memory:write";
+
 export function wwwAuthenticate(host: string, extra?: string): string {
   const metadata = `${host.replace(/\/$/, "")}/.well-known/oauth-protected-resource`;
-  const parts = [`Bearer resource_metadata="${metadata}"`, `scope="memory:read"`];
+  const parts = [`Bearer resource_metadata="${metadata}"`, `scope="${DEFAULT_CONNECTOR_SCOPE}"`];
   if (extra) parts.push(extra);
   return parts.join(", ");
 }
