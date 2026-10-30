@@ -3,6 +3,7 @@ import { parseAttribution, recordSiteEvent } from "./site-analytics";
 import { config } from "./config";
 import type postgres from "postgres";
 import { agentOnboardingChecks, handleConnectionsApi } from "./connections";
+import { handleAgentIdentitiesApi } from "./agent-identity";
 import { parseReportedSource } from "./agent-source";
 import { sql } from "./db";
 import {
@@ -173,6 +174,7 @@ export async function handleOrgApi(
     return Response.json(await onboardingState(org));
   }
   if (url.pathname === "/api/connections") return handleConnectionsApi(req, token);
+  if (url.pathname === "/api/agent-identities") return handleAgentIdentitiesApi(req, token);
   if (req.method === "GET" && url.pathname === "/api/tokens") {
     if (!isConsolePerson(token)) return forbidden();
     return Response.json({ tokens: await listTokens(org.id), mcp: mcpUrlFrom(req) });

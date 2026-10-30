@@ -1,4 +1,5 @@
 // Nothing outside the curated gbrain allowlist ever reaches the child.
+import { AgentIdentityError, setAgentIdentity } from "./agent-identity";
 import type { TokenRecord } from "./auth";
 import { audit } from "./audit";
 import { ActionError, listActions, recordAction } from "./actions";
@@ -45,7 +46,7 @@ const CONTINUATION = new Set<string>(CONTINUATION_TOOLS);
 // engram's own verbs. They are not gbrain tools: each one is a small script over
 // the allowlisted primitives, so an agent gets one obvious way to write and one
 // obvious way to read instead of seven ways to do either.
-const SYNTHETIC_TOOLS = new Set(["whoami", "remember", "recall", "record_action", "list_actions", ...CONTINUATION_TOOLS]);
+const SYNTHETIC_TOOLS = new Set(["whoami", "set_identity", "remember", "recall", "record_action", "list_actions", ...CONTINUATION_TOOLS]);
 
 // Response caps are enforced here, not suggested in a description, so an agent
 // cannot blow up its own context by asking for more.
@@ -141,6 +142,7 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   add_link: "Link one page to another.",
   add_timeline_entry: "Add a dated event to an existing page's timeline.",
   whoami: "Show this token's identity.",
+  set_identity: "Set the name and logo Engram shows for you, if you are a custom agent. Shown as self-described; owners can override or lock it.",
   remember: "Save a decision, correction, or handoff to shared memory. Groups under a topic when given.",
   recall: "Search shared memory. Returns up to 5 short snippets.",
   record_action: "Report a tool action, result, and resource. Engram assigns your identity and labels this as reported evidence.",
@@ -205,6 +207,18 @@ function syntheticToolDefs(): any[] {
       name: "whoami",
       description: TOOL_DESCRIPTIONS.whoami,
       inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "set_identity",
+      description: TOOL_DESCRIPTIONS.set_identity,
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          name: { type: "string", maxLength: 60, description: "Display name, at most 60 characters. Empty string clears it." },
+          logo: { type: "string", maxLength: 700_000, description: "data:image/png;base64 square PNG, 64-512 px, up to 512 KB. Empty string clears it." },
+        },
+      },
     },
     {
       name: "remember",
@@ -368,7 +382,7 @@ function continuationToolDefs(): any[] {
 }
 
 // Tools served entirely by the gateway: available even when the engine is not.
-const ENGINE_FREE = new Set(["whoami", "record_action", "list_actions", ...CONTINUATION_TOOLS]);
+const ENGINE_FREE = new Set(["whoami", "set_identity", "record_action", "list_actions", ...CONTINUATION_TOOLS]);
 let engineFreeDefs: any[] | null = null;
 export function ENGINE_FREE_TOOLS(): any[] {
   return engineFreeDefs ??= syntheticToolDefs().filter(tool => ENGINE_FREE.has(tool.name));
@@ -804,6 +818,22 @@ async function callToolUnbounded(
         text: JSON.stringify({ token: token.name }),
       }],
     };
+  }
+
+  if (name === "set_identity") {
+    const summary = redactSecrets(`name=${typeof args?.name === "string" ? JSON.stringify(truncate(args.name, 60)) : "unchanged"} logo=${typeof args?.logo === "string" ? (args.logo ? "set" : "cleared") : "unchanged"}`);
+    try {
+      const result = await setAgentIdentity(actor, args ?? {});
+      await audit(actor.name, name, summary, "ok", null);
+      return jsonResult(result);
+    } catch (error) {
+      if (error instanceof AgentIdentityError) {
+        await audit(actor.name, name, summary, error.status === 409 || error.status === 403 ? "denied" : "error", null);
+        return toolError(error.message);
+      }
+      await audit(actor.name, name, summary, "error", null);
+      throw error;
+    }
   }
 
   if (name === "record_action" || name === "list_actions") {

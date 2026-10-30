@@ -39,10 +39,10 @@ describe("workspace connection inventory",()=>{
     expect(result.connections[0]).toMatchObject({ successfulMemoryCalls:1,lastSuccessfulMemoryAt:"2026-10-23T10:05:00.000Z",lastSuccessfulContactAt:"2026-10-24T11:30:00.000Z" });
     expect(result.connections[1]).toMatchObject({ successfulMemoryCalls:0,lastSuccessfulMemoryAt:null,lastSuccessfulContactAt:"2026-10-24T11:59:00.000Z" });
     expect(JSON.stringify(result)).not.toContain('"running"');
-    expect(store.calls).toHaveLength(4);
-    expect(store.calls[1].values).toEqual([7,["mac-codex",store.oauthAgent]]);
-    expect(store.calls[2].values).toEqual([7,["mac-codex",store.oauthAgent]]);
-    expect(store.calls[3].values).toEqual([7,["mac-codex",store.oauthAgent]]);
+    expect(store.calls).toHaveLength(5);
+    for (const index of [1,2,3,4]) expect(store.calls[index].values).toEqual([7,["mac-codex",store.oauthAgent]]);
+    expect(store.calls[4].query).toContain("FROM agent_identities WHERE org_id =");
+    expect(result.identities).toEqual([]);
     expect(result.connections[0].memoryUse).toMatchObject({available:false,responseBytes:null,estimatedTokens:null});
   });
   test("SQL scopes every grant and contact source and excludes temporary smoke credentials and private auth material",async()=>{

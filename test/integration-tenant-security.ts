@@ -78,6 +78,7 @@ try {
   await denied(() => sql`SELECT rolpassword FROM pg_authid`, "Gateway cannot read PostgreSQL password verifiers");
   await denied(() => sql`UPDATE engram_schema_state SET version = 1`, "Runtime cannot forge the provisioner's schema readiness version");
   await denied(() => sql`UPDATE engram_schema_state SET client_identity_version = 1`, "Runtime cannot forge additive client-identification readiness");
+  await denied(() => sql`UPDATE engram_schema_state SET agent_identity_version = 1`, "Runtime cannot forge additive agent-identity readiness");
   equal((await sql`SELECT count(*)::int AS n FROM workspace_complimentary_access`)[0].n >= 0, true, "Restricted runtime can read complimentary entitlement state");
   await denied(() => sql`INSERT INTO workspace_complimentary_access (id,org_id,owner_member_id) VALUES (gen_random_uuid(),1,0)`, "Runtime cannot grant complimentary access");
   await denied(() => sql`UPDATE workspace_complimentary_access SET revoked_at=now() WHERE org_id=1`, "Runtime cannot revoke complimentary access");

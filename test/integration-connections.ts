@@ -7,6 +7,8 @@ import { oauthActorName } from "../gateway/src/oauth";
 import { DEFAULT_POLICIES, normalizeToken } from "../gateway/src/policies";
 import { onboardingStep } from "../gateway/src/orgs";
 import { recordMcpUsage } from "../gateway/src/memory-usage";
+import { listAgentIdentities, setAgentIdentity } from "../gateway/src/agent-identity";
+import { deflateSync } from "node:zlib";
 
 // Invoked only by integration-postgres.ts after its disposable-database guard.
 export async function checkConnections(db: postgres.Sql): Promise<number> {
@@ -66,6 +68,22 @@ export async function checkConnections(db: postgres.Sql): Promise<number> {
   equal(result.connections.find(value=>value.name==='inventory-revoked')?.status,"revoked","Retired credentials remain visible with their reconnect reason");
   equal(result.connections.find(value=>value.name==='inventory-removed-member')?.status,"membership_removed","Stale member-issued credentials cannot appear authorized");
   equal(result.connections.some(value=>value.name.startsWith('operator-candidate-smoke-')),false,"Temporary operator smoke credentials are omitted");
+  // Self-described identity: stored per workspace and actor, shown only to that workspace, refused when locked.
+  const crcTable=Array.from({length:256},(_,n)=>{let c=n;for(let k=0;k<8;k++)c=c&1?0xedb88320^(c>>>1):c>>>1;return c>>>0;});
+  const crc=(b:Buffer)=>{let c=0xffffffff;for(const x of b)c=crcTable[(c^x)&255]^(c>>>8);return(c^0xffffffff)>>>0;};
+  const chunk=(k:string,c:Buffer)=>{const body=Buffer.concat([Buffer.from(k,"ascii"),c]),out=Buffer.alloc(body.length+8);out.writeUInt32BE(c.length,0);body.copy(out,4);out.writeUInt32BE(crc(body),out.length-4);return out;};
+  const ihdr=Buffer.alloc(13);ihdr.writeUInt32BE(64,0);ihdr.writeUInt32BE(64,4);ihdr[8]=8;ihdr[9]=6;
+  const logo="data:image/png;base64,"+Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk("IHDR",ihdr),chunk("IDAT",deflateSync(Buffer.concat(Array.from({length:64},()=>Buffer.concat([Buffer.from([0]),Buffer.alloc(256,200)]))))),chunk("IEND",Buffer.alloc(0))]).toString("base64");
+  const saved=await setAgentIdentity(agent,{name:"Fleet VM",logo},db);
+  equal(saved.shown,{name:"Fleet VM",logo:true,source:"agent"},"A connected agent can describe itself with a name and logo");
+  const described=(await listConnections(owner,db,now)).identities.find(value=>value.agent==='inventory-api');
+  equal([described?.name,described?.source,described?.logo?.startsWith("data:image/png;base64,")],["Fleet VM","agent",true],"The workspace inventory returns the self-described identity");
+  equal((await listAgentIdentities(normalizeToken({name:"other-owner",orgId:3,role:"owner",kind:"session",email:"o@example.test"}),db)).length,0,"Another workspace never sees the identity, even with the same agent name");
+  await db`UPDATE agent_identities SET locked=true WHERE org_id=2 AND actor_name='inventory-api'`;
+  let refused="";try{await setAgentIdentity(agent,{name:"Renamed"},db);}catch(error){refused=(error as Error).message;}
+  equal(refused.includes("locked"),true,"A locked identity refuses agent changes");
+  equal((await listAgentIdentities(owner,db))[0]?.name,"Fleet VM","A refused change leaves the stored identity unchanged");
+  await db`DELETE FROM agent_identities WHERE org_id=2`;
   const oauth=result.connections.filter(value=>value.kind==='oauth');
   equal(oauth.length,5,"OAuth clients are bound to workspace grants and duplicate refresh credentials become one connection");
   const codex=oauth.find(value=>value.agent===oauthAgent)!;

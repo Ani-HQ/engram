@@ -7,7 +7,8 @@ import { billingPanel, workspacePanel, workspacePending, provisioningPanel, sett
 import { watchPublicActivity } from "./live-activity.js";
 import { activityFeed, activityFilters, activitySkeleton, activityDetail, activityDetailHeader, refreshActivityTimes } from "./activity-view.js";
 import { activityDestination, activityHref, activitySections } from "./activity-navigation.js";
-import { agentVisual, visualIcon, agentSources, toolVisual, brandIcon } from "./tooling.js";
+import { agentVisual, visualIcon, agentSources, toolVisual, brandIcon, setAgentIdentities, agentIdentity } from "./tooling.js";
+import { agentIdentitySection } from "./agent-identity-editor.js";
 import { activityKind as normalizeActivityKind, connectionClient, connectionIdentity, withConnectionIdentity } from "./connection-model.js";
 import { agentOverview, connectionInventory } from "./connection-view.js";
 import { connectionAgents, connectionSetupView } from "./connection-setup-view.js";
@@ -653,7 +654,7 @@ async function loadActivity({ append = false, quiet = false } = {}) {
     const previousIdentity = JSON.stringify(state.connections), previousConnectionError = state.connectionError;
     if (inventoryDue) {
       state.connectionFetchedAt = Date.now();
-      if (inventory.status === "fulfilled") { state.connections = inventory.value; state.connectionError = ""; }
+      if (inventory.status === "fulfilled") { state.connections = inventory.value; setAgentIdentities(state.connections?.identities); state.connectionError = ""; }
       else { if (inventory.reason instanceof AuthError) throw inventory.reason; state.connectionError = errorMessage(inventory.reason); }
     }
     if (feed.status === "rejected") throw feed.reason;
@@ -1195,9 +1196,17 @@ function connectionHelp(connection) {
   const endpoint = state.mcp || `${location.origin}/mcp`;
   showDetail(owner ? "Manage connection" : archived ? "Archived connection" : reconnect ? "Reconnect agent" : "Connection details", [
     el("div", { class: "detail-tool-icon" }, visualIcon(agentVisual(connection.agent, { ...connection, harness: connection.harness || connectionClient(connection).harness || "other" }), { size: 26 })),
-    el("h2", { id: "detail-title" }, connection.displayName || connection.name || "Agent connection"),
+    el("h2", { id: "detail-title" }, agentIdentity(connection.agent)?.name || connection.displayName || connection.name || "Agent connection"),
     el("p", { class: "detail-note", title: connectionClient(connection).detail }, `Client: ${connectionClient(connection).label}`),
     el("p", { class: "detail-note" }, archived ? "This connection is archived and disconnected. Its memory and activity stay available. Restore it to the current list, then reconnect separately when you need it." : reconnect ? "This authorization no longer grants access. Reconnect in the agent, or replace its access key." : connection.status === "authorized" ? "This authorization can access Engram. Activity appears when the agent makes memory calls or reports its work." : "This connection's access could not be verified. Refresh Connections to check its current status."),
+    !archived && agentIdentitySection(connection, { owner, save: body => workspaceApi(workspaceId).saveAgentIdentity(body), onSaved: identity => {
+      if (workspaceId !== state.session?.org.id || epoch !== authEpoch || !state.connections) return;
+      const others = (state.connections.identities || []).filter(row => !(row.agent === identity.agent && row.kind === identity.kind));
+      state.connections = { ...state.connections, identities: identity.source || identity.locked ? [...others, identity] : others };
+      setAgentIdentities(state.connections.identities);
+      toast(identity.source ? "Name and logo saved" : "Reset to the detected name and logo");
+      render(); connectionHelp(connection);
+    } }),
     owner && el("section", { class: "connection-management stack", "aria-label": "Manage connection" },
       el("h3", {}, "Connection actions"),
       pending && el("p", { class: "detail-note", role: "status" }, el("span", { class: "ds-spinner", "aria-hidden": "true" }), "Updating this connection… Refresh Connections to check the result."),
@@ -1317,7 +1326,7 @@ async function loadConnections() {
     const canInspect = ["owner", "member"].includes(state.session.role);
     const [tokens, inventory] = await Promise.allSettled([canInspect ? api.tokens(workspaceId) : Promise.resolve({ tokens: [], mcp: `${location.origin}/mcp` }), canInspect ? api.connections(workspaceId) : Promise.resolve(null)]);
     if (requestId !== generation || state.view !== "connect" || workspaceId !== state.session?.org.id) return;
-    if (inventory.status === "fulfilled") { state.connections = inventory.value; state.connectionError = ""; state.connectionFetchedAt = Date.now(); }
+    if (inventory.status === "fulfilled") { state.connections = inventory.value; setAgentIdentities(state.connections?.identities); state.connectionError = ""; state.connectionFetchedAt = Date.now(); }
     else { if (inventory.reason instanceof AuthError) throw inventory.reason; state.connectionError = errorMessage(inventory.reason); }
     if (tokens.status === "rejected") throw tokens.reason;
     state.tokens = tokens.value.tokens ?? []; state.mcp = tokens.value.mcp || `${location.origin}/mcp`;
@@ -1630,7 +1639,7 @@ async function switchOrg(orgId) {
   try {
     const session = await api.switchOrg(Number(orgId));
     if (epoch !== authEpoch) return false;
-    state.session = session; state.activities = []; state.activityStats = {}; state.freshIds = new Set(); state.memories = []; state.tokens = []; state.connections = null; state.connectionError = ""; state.connectionFetchedAt = 0; state.connectionList = "current"; connectionDraft = null; connectionFocusPending = null; state.agents = []; state.tools = []; state.showcase = null; state.showcaseDraft = null; state.insights = null; state.insightsQuery = ""; state.insightsActivityId = ""; state.insightBusy = false; state.insightError = ""; state.reviews = []; state.reviewMore = false; pendingInsightRun = false; Object.keys(state.filters).forEach(key => state.filters[key] = ""); writeRoute(); render(); await loadView();
+    state.session = session; state.activities = []; state.activityStats = {}; state.freshIds = new Set(); state.memories = []; state.tokens = []; state.connections = null; setAgentIdentities([]); state.connectionError = ""; state.connectionFetchedAt = 0; state.connectionList = "current"; connectionDraft = null; connectionFocusPending = null; state.agents = []; state.tools = []; state.showcase = null; state.showcaseDraft = null; state.insights = null; state.insightsQuery = ""; state.insightsActivityId = ""; state.insightBusy = false; state.insightError = ""; state.reviews = []; state.reviewMore = false; pendingInsightRun = false; Object.keys(state.filters).forEach(key => state.filters[key] = ""); writeRoute(); render(); await loadView();
     return true;
   } catch (error) {
     if (epoch !== authEpoch) return false;
@@ -1727,7 +1736,7 @@ function expired(message = "") {
   previewWatcher?.stop(); previewWatcher = null;
   state.account = null;
   clearTimeout(provisioningTimer); ++provisioningAttempt; provisioningChecking = false; provisioningError = "";
-  clearTimeout(searchTimer); clearTimeout(insightTimer); ++generation; closeDetail(); state.session = null; state.activities = []; state.activityStats = {}; state.freshIds = new Set(); state.memories = []; state.tokens = []; state.connections = null; state.connectionError = ""; state.connectionFetchedAt = 0; state.connectionList = "current"; connectionDraft = null; connectionFocusPending = null; state.agents = []; state.tools = []; state.showcase = null; state.showcaseDraft = null; state.insights = null; state.insightsQuery = ""; state.insightsActivityId = ""; state.insightBusy = false; state.insightError = ""; state.reviews = []; pendingInsightRun = false; renderAuth("email", message);
+  clearTimeout(searchTimer); clearTimeout(insightTimer); ++generation; closeDetail(); state.session = null; state.activities = []; state.activityStats = {}; state.freshIds = new Set(); state.memories = []; state.tokens = []; state.connections = null; setAgentIdentities([]); state.connectionError = ""; state.connectionFetchedAt = 0; state.connectionList = "current"; connectionDraft = null; connectionFocusPending = null; state.agents = []; state.tools = []; state.showcase = null; state.showcaseDraft = null; state.insights = null; state.insightsQuery = ""; state.insightsActivityId = ""; state.insightBusy = false; state.insightError = ""; state.reviews = []; pendingInsightRun = false; renderAuth("email", message);
 }
 function renderAuth(mode = "email", message = "") {
   mode = signupAuthMode(mode, signupPolicy);

@@ -100,3 +100,37 @@ The additive migration adds bounded `tokens.client_names` and the separate
 `client_identity_version` readiness marker. Existing schema-version contracts
 and credential source fields remain intact. The provisioner applies this schema
 before the new restricted runtime can start.
+
+## Agent names and logos
+
+A custom agent (a fleet VM, a home-built bot) has no vendored product mark, so
+the app shows its credential name and a generated face. The agent can describe
+itself with the `set_identity` MCP tool:
+
+```json
+{ "name": "Fleet VM", "logo": "data:image/png;base64,..." }
+```
+
+`name` is at most 60 characters; control characters and secrets are stripped.
+`logo` is a square PNG data URL of 64, 128, 256 or 512 px, 8-bit RGB or RGBA,
+up to 512 KB. The gateway validates every chunk, re-encodes the pixels through
+its renderer and stores a 64 px PNG, so no source metadata, SVG or remote URL is
+kept. Pass an empty string to clear either field. The tool needs no memory
+write scope or paid entitlement, and it is served when the engine is down.
+
+The identity is stored per workspace and authenticated actor (`agent_identities`,
+keyed by org, credential kind and actor name), never by caller-supplied names.
+`/api/connections` returns it as `identities`, and the app shows it wherever the
+agent appears, labeled **Self-described**. It is a display hint the agent
+reported: it does not verify the product, model or person behind a credential.
+Public activity pages never show it.
+
+A workspace owner can rename the agent, replace or remove its logo, reset to the
+detected mark, or lock the identity from the connection's detail panel
+(`POST /api/agent-identities` with the connection ID). An owner's choice is
+shown instead of the agent's, labeled **Set by owner**, and the agent's report
+is kept underneath. A locked identity makes `set_identity` fail without changes.
+Reset clears both the owner's choice and the agent's report and keeps the lock.
+
+The additive migration adds the `agent_identities` table and the separate
+`agent_identity_version` readiness marker.
