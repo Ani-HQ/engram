@@ -463,6 +463,8 @@ html[data-design-system] :where(input, select, textarea)[aria-invalid='true'] { 
 html[data-design-system] :where(input, select, textarea):disabled, html[data-design-system] :where(input, textarea)[readonly] { background: var(--ds-paper); }
 html[data-design-system] :focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 3px; box-shadow: none; }
 html[data-design-system] :where(button, .button, .button-link, input, select, textarea):focus-visible { transition: none; transform: none; }
+/* Text fields show one ring: the accent border, never an outline around it. */
+html[data-design-system] :where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file'], [type='color'], .ds-switch), select, textarea):focus-visible { outline: none; border-color: var(--ds-accent); box-shadow: 0 0 0 1px var(--ds-accent); }
 html[data-design-system][data-input='keyboard'] :where(button, .button, .button-link, dialog, .toast) { transition: none; }
 html[data-design-system][data-input='keyboard'] :where(button, .button, .button-link, .ds-button), html[data-design-system] :where(button, .button, .button-link, .ds-button):focus-visible { transition: none !important; transform: none !important; }
 @media (hover: hover) and (pointer: fine) {
@@ -1176,6 +1178,7 @@ html[data-design-system] .ds-palette-search input { min-height: 48px; padding: 0
 .ds-settings-label { display: grid; gap: var(--ds-space-1); min-width: 0; }
 .ds-settings-label > :is(label, strong, span:first-child) { color: var(--ds-ink); font-size: var(--ds-text-sm); font-weight: 500; line-height: 1.5; }
 .ds-settings-help { margin: 0; color: var(--ds-muted); font-size: var(--ds-text-sm); line-height: 1.6; }
+.ds-settings-help[role='alert'] { color: var(--ds-danger); }
 .ds-settings-control { display: grid; gap: var(--ds-space-2); justify-items: start; min-width: 0; overflow-wrap: anywhere; }
 .ds-settings-control > :is(input:not([type='checkbox']):not([type='radio']), select, textarea, .ds-command, .ds-progress) { justify-self: stretch; width: 100%; }
 .ds-settings-value { color: var(--ds-ink); font-size: var(--ds-text-sm); line-height: 1.6; font-variant-numeric: tabular-nums; }

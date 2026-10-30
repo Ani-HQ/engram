@@ -27,6 +27,7 @@ import {
   listMembers,
   removeMember,
   cancelInvites,
+  InviteError,
   listMemberships,
   mcpUrlFrom,
   memberInOrg,
@@ -473,8 +474,12 @@ async function postInvite(req: Request, token: TokenRecord, org: Org): Promise<R
     const result = loginLinkResponse(delivery, invite.url);
     return Response.json({ email, role, ...result.body }, { status: result.status });
   } catch (e) {
+    if (e instanceof InviteError) {
+      const hint = e.code === "signup_invite_required" && await canManageSignupInvites(token).catch(() => false) ? " Create one under Early access invitations, then send this invite again." : "";
+      return Response.json({ error: e.message + hint, code: e.code }, { status: e.status });
+    }
     console.error("[org] invite failed:", failureCode(e));
-    return Response.json({ error: "could not invite" }, { status: 400 });
+    return Response.json({ error: "The invitation could not be created. Please try again." }, { status: 400 });
   }
 }
 

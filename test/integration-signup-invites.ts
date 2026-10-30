@@ -213,7 +213,7 @@ export async function checkSignupInvites(db: postgres.Sql): Promise<number> {
     const oldRaw = `inv_${randomBytes(24).toString("base64url")}`;
     await db`INSERT INTO invites (email, role, sha256_hash, created_by, expires_at, pending_name) VALUES (${`${prefix}-old@example.test`}, 'owner', ${sha256(oldRaw)}, 'signup', now()+interval '1 day', 'Old public signup')`;
     equal(await acceptInvite(oldRaw, db), null, "Old ungated pending signup links cannot bypass private admission");
-    await assert.rejects(() => createInvite(1, `${prefix}-team-new@example.test`, "member", operatorEmail, "https://signup.example"), /verification are required/); checks++;
+    await assert.rejects(() => createInvite(1, `${prefix}-team-new@example.test`, "member", operatorEmail, "https://signup.example"), (error: any) => error?.code === "signup_invite_required" && /early access invitation/.test(error.message)); checks++;
     const teamRaw = `inv_${randomBytes(24).toString("base64url")}`;
     await db`INSERT INTO invites (org_id, email, role, sha256_hash, created_by, expires_at) VALUES (1, ${`${prefix}-team-new@example.test`}, 'member', ${sha256(teamRaw)}, 'legacy-owner', now()+interval '1 day')`;
     equal(await acceptInvite(teamRaw, db), null, "Old team invitations cannot create a first-time account");
