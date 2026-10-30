@@ -19,6 +19,15 @@
 .connection-list-filter { width:100%; max-width:280px; margin-top:var(--ds-space-5); }
 .connection-management { margin:var(--ds-space-5) 0; gap:var(--ds-space-3); }
 .connection-management > :is(h3,.detail-note) { margin:0; }
+.agent-identity { margin:var(--ds-space-5) 0; gap:var(--ds-space-3); }
+.agent-identity :is(h3,.detail-note) { margin:0; }
+.agent-identity-head { display:flex; align-items:center; gap:var(--ds-space-2); }
+.agent-identity-preview { display:flex; align-items:center; gap:var(--ds-space-3); padding:var(--ds-space-3); background:var(--ds-surface-raised); border:1px solid var(--ds-hairline); border-radius:var(--ds-radius-card); }
+.agent-identity-copy { display:grid; gap:2px; min-width:0; }
+.agent-identity-copy > strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.agent-identity-lock { display:flex; align-items:flex-start; gap:var(--ds-space-3); cursor:pointer; }
+.agent-identity-lock > span { display:grid; gap:2px; }
+.connection-name .connection-identity { margin-right:var(--ds-space-2); vertical-align:middle; }
 .connection-inventory>section+section { margin-top:var(--ds-space-8); }
 .connection-section-title { display:flex; align-items:center; gap:7px; margin-bottom:7px; }
 .connection-section-title h3 { font-size:var(--ds-text-base); font-weight:600; }

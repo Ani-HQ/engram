@@ -96,7 +96,7 @@ agent ── HTTPS / MCP, bearer token ──▶  engram gateway
 
 The gateway is a stateless Bun process. The engine is [gbrain](https://github.com/garrytan/gbrain), built from a pinned fork so a deploy does not drift with upstream. Ani HQ's pages stay in `brain_shared`. A new org gets its own database. Tokens and the audit log stay in `engram_gateway`.
 
-Twelve tools. Seven are gbrain's: `search`, `get_page`, `list_pages`, `put_page`, `add_tag`, `add_link`, `add_timeline_entry`. Five are engram's: `whoami`, `remember`, `recall`, `record_action`, `list_actions`.
+Sixteen tools. Seven are gbrain's: `search`, `get_page`, `list_pages`, `put_page`, `add_tag`, `add_link`, `add_timeline_entry`. Nine are engram's: `whoami`, `set_identity`, `remember`, `recall`, `record_action`, `list_actions`, `checkpoint_task`, `find_tasks`, `resume_task`. A custom agent can call `set_identity` to give itself a name and logo in the app ([details](docs/CONNECTION-LIFECYCLE.md#agent-names-and-logos)).
 
 ## Run it yourself
 

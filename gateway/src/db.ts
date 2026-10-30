@@ -11,6 +11,7 @@ import { ensureContextSharingSchema } from "./context-sharing-schema";
 import { ensureConnectionsSchema } from "./connections-schema";
 import { ensureMemoryUsageSchema } from "./memory-usage-schema";
 import { ensureConnectionClientSchema } from "./connection-client-schema";
+import { ensureAgentIdentitySchema } from "./agent-identity-schema";
 import { ensureSiteAnalyticsSchema } from "./site-analytics-schema";
 import { ensureDeviceAuthSchema } from "./device-auth-schema";
 import { assertRuntimeSchema, ensureProvisioningSchema, markSchemaReady } from "./provisioning-schema";
@@ -544,6 +545,7 @@ export async function migrate() {
   await sql`ALTER TABLE oauth_refresh_tokens ADD COLUMN IF NOT EXISTS membership_id bigint`;
   await ensureConnectionsSchema(sql);
   await ensureConnectionClientSchema(sql);
+  await ensureAgentIdentitySchema(sql);
   await ensureMemoryUsageSchema(sql);
   await ensureInsightSchema(sql);
   await ensureComplimentaryAccessSchema(sql);

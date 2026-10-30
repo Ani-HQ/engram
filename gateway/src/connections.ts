@@ -8,6 +8,7 @@ import { hasOauthScope, isHuman, normalizeToken, type TokenRecord } from "./poli
 import { redactSecrets } from "./redact";
 import { mapMemoryUse, type MemoryUse } from "./memory-usage";
 import { connectionClient, type ConnectionClient } from "./connection-client";
+import { mapAgentIdentity, type AgentIdentity } from "./agent-identity";
 
 export type ConnectionStatus = "authorized" | "expired" | "revoked" | "membership_removed";
 export interface Connection {
@@ -95,6 +96,7 @@ export async function listConnections(token: TokenRecord, db: postgres.Sql = sql
   const actor = authorize(token);
   // Select only display/authorization metadata. Never fetch hashes, raw bearer
   // values, authorization codes, callback URLs or unrelated global clients.
+  let identities: AgentIdentity[] = [];
   const rows = await db.begin("isolation level repeatable read read only", async tx => {
     const inventory = await tx`
     WITH token_connections AS (
@@ -135,7 +137,7 @@ export async function listConnections(token: TokenRecord, db: postgres.Sql = sql
     // case. A fixed pair of batched receipt queries avoids N per-row queries.
     const agents = page.map(row => row.kind === "oauth" ? oauthActorName({ sub: String(row.email), client_id: String(row.client_id) }) : String(row.name));
     if (!agents.length) return inventory;
-    const [observed, reported, measured] = await Promise.all([
+    const [observed, reported, measured, described] = await Promise.all([
       tx`SELECT token_name AS agent, max(ts) AS contact_at,
           max(ts) FILTER (WHERE outcome = 'ok') AS successful_contact_at,
           max(ts) FILTER (WHERE tool NOT IN ('whoami', 'list_actions', 'record_action')) AS last_memory_at,
@@ -157,7 +159,11 @@ export async function listConnections(token: TokenRecord, db: postgres.Sql = sql
             'check', integration_check) ORDER BY updated_at DESC))[1] AS integration_data
         FROM memory_connection_usage WHERE org_id = ${actor.orgId} AND actor_name = ANY(${agents})
           AND actor_kind IN ('token', 'oauth') GROUP BY actor_kind, actor_name`,
+      // Names and logos agents reported about themselves, or an owner chose.
+      tx`SELECT * FROM agent_identities WHERE org_id = ${actor.orgId} AND actor_name = ANY(${agents})
+        AND (reported_name IS NOT NULL OR reported_logo_png IS NOT NULL OR owner_name IS NOT NULL OR owner_logo_png IS NOT NULL OR locked)`,
     ]);
+    identities = described.map(mapAgentIdentity);
     const memory = new Map(observed.map(row => [row.agent, row]));
     const reports = new Map(reported.map(row => [row.agent, row]));
     const usage = new Map(measured.map(row => [`${row.actor_kind}:${row.actor_name}`, row]));
@@ -172,7 +178,7 @@ export async function listConnections(token: TokenRecord, db: postgres.Sql = sql
         memory_use: usage.get(`${row.kind}:${agents[index]}`) };
     });
   });
-  return { connections: rows.slice(0, CONNECTION_LIMIT).map(row => mapConnection(row, actor.orgId)), more: rows.length > CONNECTION_LIMIT, limit: CONNECTION_LIMIT, checkedAt: now.toISOString(), recentWindowSeconds: 900 };
+  return { connections: rows.slice(0, CONNECTION_LIMIT).map(row => mapConnection(row, actor.orgId)), identities, more: rows.length > CONNECTION_LIMIT, limit: CONNECTION_LIMIT, checkedAt: now.toISOString(), recentWindowSeconds: 900 };
 }
 
 export type ConnectionAction = "archive" | "restore" | "delete";
