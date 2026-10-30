@@ -122,8 +122,31 @@ function initials(value) {
     : Array.from(parts[0]).slice(0, 2).join('')).toUpperCase();
 }
 
+// Names and logos an agent reported about itself through set_identity, or a
+// workspace owner chose. Keyed by the authenticated agent name. Display hints
+// only, and never used on public pages.
+const customIdentities = new Map();
+export function setAgentIdentities(list = []) {
+  customIdentities.clear();
+  for (const identity of Array.isArray(list) ? list : []) {
+    if (typeof identity?.agent !== 'string' || !(identity.name || identity.logo || identity.locked)) continue;
+    const logo = typeof identity.logo === 'string' && /^data:image\/png;base64,[A-Za-z0-9+/]+=*$/.test(identity.logo) ? identity.logo : null;
+    customIdentities.set(identity.agent, { ...identity, name: text(identity.name) || null, logo });
+  }
+}
+export function agentIdentity(name) { return customIdentities.get(text(name)) ?? null; }
+
 /** A display hint, not a verification badge or proof of the connected product. */
-export function agentVisual(name, { harness, sourceLabel, publicSafe = false } = {}) {
+export function agentVisual(name, options = {}) {
+  const visual = detectedAgentVisual(name, options);
+  const custom = options.publicSafe ? null : customIdentities.get(text(name));
+  if (!custom?.name && !custom?.logo) return visual;
+  const { avatar, ...rest } = visual;
+  return { ...(custom.logo ? { ...rest, brand: null, logo: custom.logo } : visual), label: custom.name || visual.label, custom: custom.source || 'agent' };
+}
+
+/** The mark detected from the connection alone, ignoring any custom identity. */
+export function detectedAgentVisual(name, { harness, sourceLabel, publicSafe = false } = {}) {
   const original = text(name) || 'Agent';
   const displayName = publicSafe ? 'Agent' : original;
   const source = text(harness).toLowerCase();
@@ -182,6 +205,14 @@ export function brandIcon(brand, { size = 16, class: className = '', label } = {
 
 /** Known products keep their source logo. Unknown agents get a local Beam face. */
 export function visualIcon(visual, options) {
+  if (visual?.logo) {
+    const { size = 16, class: className = '', label } = options || {};
+    const image = document.createElement('img');
+    image.src = visual.logo; image.width = size; image.height = size; image.alt = label || ''; image.draggable = false;
+    image.className = ['icon', 'agent-logo', className].filter(Boolean).join(' ');
+    if (!label) image.setAttribute('aria-hidden', 'true');
+    return image;
+  }
   if (visual?.brand) return brandIcon(visual.brand, options);
   if (visual?.avatar?.style === 'beam') return agentAvatar(visual.avatar.seed, options);
   return icon(visual?.icon || 'plug', options);

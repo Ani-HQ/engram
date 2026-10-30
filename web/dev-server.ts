@@ -15,7 +15,8 @@ import { analyzeActions, logicalActivityId } from "../gateway/src/insights-engin
 import { reviewPlan } from "./insight-model.js";
 import { createShowcaseStreamManager } from "../gateway/src/showcase-stream";
 import { ShowcaseError, SHOWCASE_PAYLOAD_LIMIT, parseShowcaseInput, publicActivitySnapshot, renderShowcaseCard, renderShowcasePage, renderShowcasePng, renderUnavailableShowcasePage, showcaseCategory, showcaseUrls, validShowcaseSlug, type ShowcaseProfile } from "../gateway/src/showcase-view";
-import { normalizeProfilePhoto, showcasePhotoUrl } from "../gateway/src/showcase-photo";
+import { normalizeProfilePhoto, normalizeSquarePng, showcasePhotoUrl } from "../gateway/src/showcase-photo";
+import { Resvg } from "@resvg/resvg-js";
 
 // The standalone demo uses parser code only. Its in-memory handlers never call
 // database/provider operations, and a local preview cannot inherit hosted DB
@@ -49,6 +50,8 @@ let actions = sampleActions.map((action: any) => ({ ...action,
   occurredAt: new Date(Date.parse(action.occurredAt) + sampleTimeShift).toISOString(),
   recordedAt: new Date(Date.parse(action.recordedAt) + sampleTimeShift).toISOString(),
 }));
+// A custom agent on a build VM that described itself with set_identity.
+actions.push({ id: "demo-action-fleet", agent: "fleet-vm", tool: "shell.exec", summary: "Ran the nightly dependency audit", resource: "engram/package.json", status: "completed", evidence: "reported", runId: "run-fleet-audit", occurredAt: new Date(Date.now() - 95_000).toISOString(), recordedAt: new Date(Date.now() - 95_000).toISOString(), detail: "Sample report: no vulnerable versions found.", approach: null, actionKey: null, eventId: null, harness: null, sourceKind: "reported", taskTitle: "Nightly dependency audit", currentStep: null });
 const actionWorkspaces = new Map<string, number>(actions.map((action: any) => [action.id, session.org.id]));
 const details = new Map([[detailFixture.page.slug, detailFixture]]);
 const forgotten = new Map<string, any>();
@@ -111,12 +114,21 @@ const demoSession = () => ({ ...session, access: demoAccess(), capabilities: { m
 const tokens: any[] = [
   { id: 1, orgId: 1, name: "codex", harness: "codex", sourceLabel: null, canWrite: true, createdAt: "2026-10-20T09:00:00.000Z", revokedAt: null, lastUsedAt: "2026-10-21T09:42:00.000Z", issuerKind: "member", issuedBy: session.email },
   { id: 2, orgId: 1, name: "mac-claude", harness: "claude-code", sourceLabel: null, canWrite: true, createdAt: "2026-10-19T09:00:00.000Z", revokedAt: null, lastUsedAt: "2026-10-21T09:38:00.000Z", issuerKind: "member", issuedBy: session.email },
+  { id: 4, orgId: 1, name: "fleet-vm", harness: null, sourceLabel: null, canWrite: true, createdAt: "2026-10-21T08:00:00.000Z", revokedAt: null, lastUsedAt: "2026-10-21T09:40:00.000Z", issuerKind: "member", issuedBy: session.email },
   { id: 3, orgId: 1, name: "old-laptop", harness: null, sourceLabel: null, canWrite: false, createdAt: "2026-10-18T09:00:00.000Z", revokedAt: "2026-10-20T08:00:00.000Z", lastUsedAt: "2026-10-19T12:00:00.000Z", issuerKind: "member", issuedBy: session.email },
 ];
 // These are sign-in metadata fixtures, never usable OAuth grants or secrets.
 const oauthConnections = [{ orgId: 1, email: session.email, clientId: "demo-chatgpt", name: "ChatGPT", harness: "chatgpt", sourceLabel: "ChatGPT", status: "authorized", canWrite: true, createdAt: "2026-10-20T12:00:00.000Z" }];
 const demoHarnessLabels: Record<string, string> = { codex: "Codex", claude: "Claude", "claude-code": "Claude Code", chatgpt: "ChatGPT", cursor: "Cursor", grok: "Grok", "grok-bot": "GrokBot", openclaw: "OpenClaw", hermes: "Hermes" };
 const connectionLifecycle = new Map<string, { archivedAt: string | null; deletedAt: string | null }>();
+// Demo agent identities, keyed by workspace and agent name. Mirrors gateway/src/agent-identity.ts.
+const demoFleetLogo = "data:image/png;base64," + Buffer.from(new Resvg(`<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" fill="#f2994a"/><path d="M14 44 L32 14 L50 44 Z" fill="#1c1c1c"/><circle cx="32" cy="36" r="5" fill="#f2994a"/></svg>`, { font: { loadSystemFonts: false } }).render().asPng()).toString("base64");
+const demoIdentities = new Map<string, any>([["1:fleet-vm", { agent: "fleet-vm", kind: "token", reportedName: "Fleet VM", reportedLogo: demoFleetLogo, reportedAt: "2026-10-21T09:40:00.000Z", ownerName: null, ownerLogo: null, locked: false }]]);
+function demoIdentity(row: any) {
+  const name = row.ownerName ?? row.reportedName ?? null, logo = row.ownerLogo ?? row.reportedLogo ?? null;
+  return { agent: row.agent, kind: row.kind, name, logo, source: row.ownerName || row.ownerLogo ? "owner" : name || logo ? "agent" : null, locked: row.locked, reportedName: row.reportedName, reportedLogo: Boolean(row.reportedLogo), reportedAt: row.reportedAt, ownerName: row.ownerName, ownerLogo: Boolean(row.ownerLogo) };
+}
+const demoWorkspaceIdentities = (workspaceId: number) => [...demoIdentities.entries()].filter(([key]) => key.startsWith(`${workspaceId}:`)).map(([, row]) => demoIdentity(row)).filter(row => row.source || row.locked);
 const demoOauthConnectionId = (connection: typeof oauthConnections[number]) => `oauth:${createHash("sha256").update(JSON.stringify([connection.orgId, connection.email, connection.clientId])).digest("hex")}`;
 // Fixed, explicitly simulated client metadata for visual review. These entries
 // are independent of manually chosen sources and recorded activity receipts.
@@ -392,7 +404,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   if (url.pathname === "/api/connections") {
     const headers = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
     if (!["owner", "member"].includes(session.role)) return json({ error: "forbidden" }, 403, headers);
-    if (req.method === "GET") return json(demoConnections(workspaceId), 200, headers);
+    if (req.method === "GET") return json({ ...demoConnections(workspaceId), identities: demoWorkspaceIdentities(workspaceId) }, 200, headers);
     if (req.method !== "POST") return json({ error: "method not allowed" }, 405, { ...headers, Allow: "GET, POST" });
     if (session.role !== "owner" || req.headers.get("x-engram-console") !== "1" || (req.headers.get("origin") && req.headers.get("origin") !== url.origin)) return json({ error: "Only workspace owners can manage connections." }, 403, headers);
     if (!expectedWorkspace) return json({ error: "Select a workspace before managing connections." }, 400, headers);
@@ -413,6 +425,26 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
       : { ...previous, archivedAt: null };
     connectionLifecycle.set(key, lifecycle);
     return json({ ok: true, id: body.id, action: body.action, ...lifecycle }, 200, headers);
+  }
+  if (url.pathname === "/api/agent-identities") {
+    const headers = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
+    if (!["owner", "member"].includes(session.role)) return json({ error: "forbidden" }, 403, headers);
+    if (req.method === "GET") return json({ identities: demoWorkspaceIdentities(workspaceId) }, 200, headers);
+    if (session.role !== "owner" || req.headers.get("x-engram-console") !== "1") return json({ error: "Only a workspace owner can change an agent's name and logo" }, 403, headers);
+    const body = await bodyObject(req);
+    const connection = demoConnections(workspaceId).connections.find((row: any) => row.id === body?.id);
+    if (!connection) return json({ error: "Connection not found" }, 404, headers);
+    const key = `${workspaceId}:${connection.agent}`;
+    const row = demoIdentities.get(key) ?? { agent: connection.agent, kind: connection.kind, reportedName: null, reportedLogo: null, reportedAt: null, ownerName: null, ownerLogo: null, locked: false };
+    if (body.reset === true) Object.assign(row, { reportedName: null, reportedLogo: null, reportedAt: null, ownerName: null, ownerLogo: null });
+    if (typeof body.name === "string") { const name = body.name.replace(/\s+/g, " ").trim(); if ([...name].length > 60) return json({ error: "Name must be at most 60 characters" }, 400, headers); row.ownerName = name || null; }
+    if (typeof body.logo === "string") {
+      if (!body.logo) row.ownerLogo = null;
+      else { try { row.ownerLogo = (await normalizeSquarePng(body.logo, [64, 128, 256, 512], 64)).dataUrl; } catch { return json({ error: "Logos must be a square PNG data URL (64, 128, 256, 512 px, 8-bit RGB or RGBA, up to 512 KB)." }, 400, headers); } }
+    }
+    if (typeof body.locked === "boolean") row.locked = body.locked;
+    demoIdentities.set(key, row);
+    return json({ identity: demoIdentity(row) }, 200, headers);
   }
   if (route === "GET /api/tokens") return json({ tokens: workspaceTokens(workspaceId).map(({ id: _, orgId: __, ...token }) => token), mcp: `${url.origin}/mcp` });
   if (route === "POST /api/tokens") {

@@ -222,7 +222,7 @@ describe("local activity demo", () => {
     const data = await (await request("/api/actions")).json();
     expect(session.demo).toBe(true);
     expect(data.demo).toBe(true);
-    expect(data.actions).toHaveLength(15);
+    expect(data.actions).toHaveLength(16);
     expect(data.more).toBe(false);
     expect(data.agents).toContain("codex");
     expect(data.tools).toContain("email.create_draft");
@@ -235,7 +235,8 @@ describe("local activity demo", () => {
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(data).toMatchObject({ demo: true, more: false, limit: 200, recentWindowSeconds: 900 });
     expect(Number.isFinite(Date.parse(data.checkedAt))).toBe(true);
-    expect(data.connections).toHaveLength(4);
+    expect(data.connections).toHaveLength(5);
+    expect(data.identities).toEqual([expect.objectContaining({ agent: "fleet-vm", name: "Fleet VM", source: "agent", locked: false })]);
     const receipts = (await (await request("/api/actions")).json()).actions;
     const codex = data.connections.find((row: any) => row.agent === "codex");
     const own = receipts.filter((row: any) => row.agent === "codex");
@@ -283,8 +284,8 @@ describe("local activity demo", () => {
     const data = await response.json();
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(data.demo).toBe(true);
-    expect(data.activities).toHaveLength(7);
-    expect(data.stats).toEqual({ running: 1, completed: 5, failed: 1, total: 7 });
+    expect(data.activities).toHaveLength(8);
+    expect(data.stats).toEqual({ running: 1, completed: 6, failed: 1, total: 8 });
     expect(data.freshnessSeconds).toBe(900);
     const working = data.activities.find((activity: any) => activity.id === "run:run-engram-ui");
     expect(working.summary).toBe("Design and build the Engram activity experience");
@@ -304,7 +305,7 @@ describe("local activity demo", () => {
   test("separates tasks from memory receipts without dropping nested task steps", async () => {
     const tasks = await (await request("/api/activities?kind=tasks")).json();
     const memories = await (await request("/api/activities?kind=memory")).json();
-    expect(tasks.activities).toHaveLength(4);
+    expect(tasks.activities).toHaveLength(5);
     expect(memories.activities).toHaveLength(3);
     expect(tasks.activities.find((row: any) => row.runId === "run-action-capture").actionCount).toBe(5);
     expect(memories.activities.every((row: any) => row.evidence === "observed")).toBe(true);
@@ -323,7 +324,7 @@ describe("local activity demo", () => {
     const failures = await (await request("/api/activities?status=failed")).json();
     expect(failures.activities).toHaveLength(1);
     expect(failures.activities[0].summary).toBe("Investigate and recover the preview worker");
-    expect(failures.stats).toEqual({ running: 1, completed: 5, failed: 1, total: 7 });
+    expect(failures.stats).toEqual({ running: 1, completed: 6, failed: 1, total: 8 });
     expect((await request("/api/activities?status=unknown")).status).toBe(400);
     expect((await request("/api/activities/run%3Amissing")).status).toBe(404);
     expect((await request("/api/activities/%ZZ")).status).toBe(400);

@@ -5,6 +5,7 @@ import { audit, provenance, provenanceFor, recentActivity } from "./audit";
 import { ActionError, listActions, recordAction } from "./actions";
 import { handleActivitiesApi } from "./activities";
 import { handleConnectionsApi } from "./connections";
+import { handleAgentIdentitiesApi } from "./agent-identity";
 import { authenticateSecret, type TokenRecord } from "./auth";
 import { brainClient, ensureBrain } from "./brain";
 import {
@@ -309,6 +310,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   else if (url.pathname === "/api/showcase") route = (req, _url, actor) => handleShowcaseApi(req, actor);
   else if (["GET", "POST"].includes(req.method) && url.pathname === "/api/actions") route = actionsResponse;
   else if (url.pathname === "/api/connections") route = (req, _url, actor) => handleConnectionsApi(req, actor);
+  else if (url.pathname === "/api/agent-identities") route = (req, _url, actor) => handleAgentIdentitiesApi(req, actor);
   else if (url.pathname === "/api/activities" || url.pathname.startsWith("/api/activities/")) route = (req, _url, actor) => handleActivitiesApi(req, actor);
   else if (url.pathname === "/api/insights") route = (req, _url, actor) => handleInsightsApi(req, actor);
   else if (isTasksPath(url.pathname)) route = (req, _url, actor) => handleTasksApi(req, actor);
@@ -361,7 +363,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   // storage, the memory engine, or a paid content-write entitlement.
   if (workspaceMetadata) return await handleOrgApi(req, url, actor, storedOrg) ?? Response.json({ error: "not found" }, { status: 404 });
   const org = ["/api/search", "/api/page", "/api/pages", "/api/capture", "/api/insights"].includes(url.pathname) ? await processingOrg(storedOrg, actor) : storedOrg;
-  const lightweight = deviceApproval || isTasksPath(url.pathname) || url.pathname === "/api/sharing" || url.pathname.startsWith("/api/sharing/") || url.pathname === "/api/activities" || url.pathname.startsWith("/api/activities/") || url.pathname === "/api/insights" || ["/api/jev", "/api/actions", "/api/showcase", "/api/billing", "/api/billing/checkout", "/api/billing/portal", "/api/policies", "/api/tokens", "/api/connections", "/api/tokens/write", "/api/tokens/source", "/api/tokens/revoke", "/api/members", "/api/invites", "/api/wiring", "/api/me", "/api/onboarding"].includes(url.pathname);
+  const lightweight = deviceApproval || isTasksPath(url.pathname) || url.pathname === "/api/sharing" || url.pathname.startsWith("/api/sharing/") || url.pathname === "/api/activities" || url.pathname.startsWith("/api/activities/") || url.pathname === "/api/insights" || ["/api/jev", "/api/actions", "/api/showcase", "/api/billing", "/api/billing/checkout", "/api/billing/portal", "/api/policies", "/api/tokens", "/api/connections", "/api/agent-identities", "/api/tokens/write", "/api/tokens/source", "/api/tokens/revoke", "/api/members", "/api/invites", "/api/wiring", "/api/me", "/api/onboarding"].includes(url.pathname);
   return withOrg(org, actor, async () => {
     if (url.pathname === "/api/billing" || url.pathname.startsWith("/api/billing/")) return handleBillingApi(req, actor);
     // Keep reads, billing recovery, revocation, privacy controls, deletion and

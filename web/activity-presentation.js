@@ -1,5 +1,6 @@
 // Display only recorded metadata. These helpers never infer a goal or an outcome.
 import { resourceIdentity } from "./resource-model.js";
+import { agentIdentity } from "./tooling.js";
 const text = value => typeof value === "string" ? value.trim() : "";
 const memoryTools = {
   remember: "Save memory", recall: "Search memory", search: "Search memory",
@@ -14,8 +15,9 @@ function memoryTool(tool) {
     && Object.hasOwn(memoryTools, operation) ? operation : null;
 }
 export function memoryToolLabel(tool) { return memoryTools[memoryTool(tool)] || null; }
-/** Friendly connection labels never replace the authenticated identity. */
-export function contributorName(agent) { return text(agent?.displayName) || text(agent?.name) || "Agent"; }
+/** Friendly connection labels never replace the authenticated identity. A
+ * self-described or owner-chosen name comes first; the agent name stays in titles. */
+export function contributorName(agent) { return agentIdentity(agent?.name)?.name || text(agent?.displayName) || text(agent?.name) || "Agent"; }
 function words(value) {
   const name = text(value).replace(/\.(?:md|markdown)$/i, "").replace(/[_-]+/g, " ");
   return name ? name[0].toUpperCase() + name.slice(1) : "Resource";

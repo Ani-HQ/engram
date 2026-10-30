@@ -2,8 +2,8 @@ import { h } from "./profile.js";
 import { relativeTime } from "./activity-view.js";
 import { connectionClient, connectionState, connectionSummary, currentConnections, lastConnectionContact } from "./connection-model.js";
 import { taskReportingStatus } from "./task-reporting-model.js";
-import { agentVisual, visualIcon } from "./tooling.js";
-import { identityMark, staggerIn } from "./design-system.js";
+import { agentIdentity, agentVisual, visualIcon } from "./tooling.js";
+import { identityMark, pill, staggerIn } from "./design-system.js";
 
 const presenceFor = state => ({ recent: "recent", ready: "quiet", quiet: "quiet", reconnect: "reconnect" })[state] || "";
 /** The connected product's mark with its connection presence. A display hint, never proof of setup. */
@@ -14,7 +14,15 @@ export function connectionMark(connection, state, size = "md") {
 
 const button = (children, action, attrs = {}) => h("button", { type: "button", onclick: action, ...attrs }, children);
 const count = value => new Intl.NumberFormat().format(Number(value) || 0);
-const name = connection => connection.displayName || connection.name || "Agent";
+const name = connection => agentIdentity(connection.agent)?.name || connection.displayName || connection.name || "Agent";
+/** Marks a name or logo that came from the agent itself, or from an owner. */
+export function identityNote(connection) {
+  const custom = agentIdentity(connection?.agent);
+  if (!custom?.source) return null;
+  const note = pill(custom.source === "owner" ? "Set by owner" : "Self-described", { className: "connection-identity" });
+  note.title = custom.source === "owner" ? "Name or logo chosen by a workspace owner" : "Name or logo reported by the agent itself. Not verified.";
+  return note;
+}
 const time = value => h("time", { datetime: value, "data-relative-time": value, title: new Date(value).toLocaleString() }, relativeTime(value));
 
 export function agentOverview(data, { onManage, onFilter, selectedAgent = "", error = "", now = Date.now() } = {}) {
@@ -45,7 +53,7 @@ export function connectionInventory(data, { actions, onInspect, list = "current"
     const reporting = taskReportingStatus(connection);
     return h("article", { class: `connection-row ds-row-hover ${state.state}`, "data-connection-id": connection.id },
       connectionMark(connection, state, "lg"),
-      h("div", { class: "connection-copy" }, h("div", { class: "connection-name" }, h("strong", {}, name(connection)), " ", h("span", { class: `connection-state status-label ${state.state}`, "data-tone": state.state === "reconnect" ? "danger" : "neutral", title: state.explanation }, state.label)),
+      h("div", { class: "connection-copy" }, h("div", { class: "connection-name" }, h("strong", {}, name(connection)), " ", identityNote(connection), h("span", { class: `connection-state status-label ${state.state}`, "data-tone": state.state === "reconnect" ? "danger" : "neutral", title: state.explanation }, state.label)),
         h("p", { title: connectionClient(connection).detail }, connection.kind === "oauth" ? "Sign-in" : "Access key", connection.kind === "token" && connection.name !== name(connection) ? ` · ${connection.name}` : "", ` · Client: ${connectionClient(connection).label}`),
         h("p", { class: "connection-counts" }, state.lastContactAt ? ["Last contact ", time(state.lastContactAt)] : "No agent calls recorded yet", ` · ${count(connection.memoryCalls)} memory ${Number(connection.memoryCalls) === 1 ? "call" : "calls"} · ${count(connection.taskReports)} task ${Number(connection.taskReports) === 1 ? "report" : "reports"} · `, h("span", { class: "connection-reporting-state", title: reporting.detail }, reporting.label)),
         connection.archivedAt && h("p", {}, "Archived ", time(connection.archivedAt))),

@@ -26,17 +26,26 @@ function pngChunk(kind: string, content: Buffer): Buffer {
   return chunk;
 }
 
+export interface NormalizedPng { bytes: Buffer; digest: string; dataUrl: string }
+
 /** A browser-prepared square PNG only. No SVG, remote URL, or unbounded decode. */
-export async function normalizeProfilePhoto(value: string): Promise<{ bytes: Buffer; digest: string; dataUrl: string }> {
-  try {
-    if (!value.startsWith(PROFILE_PHOTO_DATA_PREFIX)) throw new Error("format");
+export async function normalizeProfilePhoto(value: string): Promise<NormalizedPng> {
+  try { return await normalizeSquarePng(value, [PROFILE_PHOTO_SIZE], PROFILE_PHOTO_SIZE); }
+  catch { throw new ShowcaseError("Choose a valid 256 × 256 PNG profile photo, up to 512 KB"); }
+}
+
+/** Decode a strict square PNG of one of `sizes`, then re-encode it at `output`
+ * pixels through the native renderer. Throws a plain Error on any problem. */
+export async function normalizeSquarePng(value: string, sizes: number[], output: number): Promise<NormalizedPng> {
+  {
+    if (typeof value !== "string" || !value.startsWith(PROFILE_PHOTO_DATA_PREFIX)) throw new Error("format");
     const encoded = value.slice(PROFILE_PHOTO_DATA_PREFIX.length);
     if (encoded.length > Math.ceil(PROFILE_PHOTO_MAX_BYTES / 3) * 4 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) throw new Error("encoding");
     const bytes = Buffer.from(encoded, "base64");
     if (bytes.length > PROFILE_PHOTO_MAX_BYTES || bytes.length < 57 || !bytes.subarray(0, 8).equals(PNG_SIGNATURE) || bytes.toString("base64") !== encoded) throw new Error("size");
     const compressed: Buffer[] = [];
     let headerChunk: Buffer | undefined, transparency: Buffer | undefined;
-    let offset = 8, header = false, palette = false, ended = false, dataEnded = false, channels = 4;
+    let offset = 8, header = false, palette = false, ended = false, dataEnded = false, channels = 4, size = 0;
     while (offset < bytes.length) {
       if (offset + 12 > bytes.length || ended) throw new Error("truncated");
       const length = bytes.readUInt32BE(offset), end = offset + 12 + length;
@@ -46,8 +55,8 @@ export async function normalizeProfilePhoto(value: string): Promise<{ bytes: Buf
       const content = bytes.subarray(offset + 8, end - 4);
       if (!header && kind !== "IHDR") throw new Error("header");
       if (kind === "IHDR") {
-        if (header || length !== 13 || content.readUInt32BE(0) !== PROFILE_PHOTO_SIZE || content.readUInt32BE(4) !== PROFILE_PHOTO_SIZE || content[8] !== 8 || ![2, 6].includes(content[9]) || content[10] || content[11] || content[12]) throw new Error("dimensions");
-        header = true; channels = content[9] === 2 ? 3 : 4; headerChunk = bytes.subarray(offset, end);
+        if (header || length !== 13 || !sizes.includes(content.readUInt32BE(0)) || content.readUInt32BE(4) !== content.readUInt32BE(0) || content[8] !== 8 || ![2, 6].includes(content[9]) || content[10] || content[11] || content[12]) throw new Error("dimensions");
+        header = true; size = content.readUInt32BE(0); channels = content[9] === 2 ? 3 : 4; headerChunk = bytes.subarray(offset, end);
       } else if (kind === "IDAT") {
         if (dataEnded) throw new Error("data order");
         compressed.push(content);
@@ -71,20 +80,18 @@ export async function normalizeProfilePhoto(value: string): Promise<{ bytes: Buf
       offset = end;
     }
     if (!ended) throw new Error("incomplete");
-    const stride = PROFILE_PHOTO_SIZE * channels + 1;
-    const raw = inflateSync(Buffer.concat(compressed), { maxOutputLength: PROFILE_PHOTO_SIZE * stride });
-    if (raw.length !== PROFILE_PHOTO_SIZE * stride) throw new Error("pixel size");
-    for (let row = 0; row < PROFILE_PHOTO_SIZE; row++) if (raw[row * stride] > 4) throw new Error("filter");
+    const stride = size * channels + 1;
+    const raw = inflateSync(Buffer.concat(compressed), { maxOutputLength: size * stride });
+    if (raw.length !== size * stride) throw new Error("pixel size");
+    for (let row = 0; row < size; row++) if (raw[row * stride] > 4) throw new Error("filter");
     // Feed a canonical, complete PNG to the native decoder. Original chunk
     // metadata, palette hints, compression framing, and duplicate ancillary
     // chunks cannot turn a valid pixel buffer into a silently blank rendering.
     const png = Buffer.concat([PNG_SIGNATURE, headerChunk!, ...(transparency ? [transparency] : []), pngChunk("IDAT", deflateSync(raw)), pngChunk("IEND", Buffer.alloc(0))]).toString("base64");
-    const rendered = await renderAsync(`<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><image href="data:image/png;base64,${png}" width="256" height="256"/></svg>`, { font: { loadSystemFonts: false }, logLevel: "off" });
+    const rendered = await renderAsync(`<svg xmlns="http://www.w3.org/2000/svg" width="${output}" height="${output}"><image href="data:image/png;base64,${png}" width="${output}" height="${output}"/></svg>`, { font: { loadSystemFonts: false }, logLevel: "off" });
     const normalized = rendered.asPng();
     if (normalized.length > PROFILE_PHOTO_MAX_BYTES) throw new Error("output size");
     return { bytes: normalized, digest: createHash("sha256").update(normalized).digest("hex"), dataUrl: PROFILE_PHOTO_DATA_PREFIX + normalized.toString("base64") };
-  } catch {
-    throw new ShowcaseError("Choose a valid 256 × 256 PNG profile photo, up to 512 KB");
   }
 }
 

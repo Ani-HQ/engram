@@ -258,7 +258,7 @@ window.addEventListener('pageshow', event => { if (event.persisted) gallerySelec
 // Identity, icons and motion: every vendored brand mark, presence, status, icons, empty state and live rows.
 import { identityMark, markStack, emptyState, staggerIn, flashNew } from './design-system.js';
 import { brandCatalog } from './brand-catalog.js';
-import { brandIcon } from './tooling.js';
+import { brandIcon, detectedAgentVisual } from './tooling.js';
 import { ICON_NAMES } from './icons.js';
 {
   const wall = document.getElementById('identity-brand-wall');
@@ -272,6 +272,18 @@ import { ICON_NAMES } from './icons.js';
     const item = document.createElement('div'), copy = document.createElement('span'); copy.textContent = label;
     item.className = 'ds-gallery-presence'; item.append(identityMark(brandIcon(brand, { size: 22 }), { size: 'lg', presence: state }), copy); return item;
   }));
+  // A custom agent's own logo (set_identity) fills the tile and carries a source pill.
+  const custom = document.getElementById('identity-custom');
+  if (custom) {
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 64;
+    const context = canvas.getContext('2d');
+    if (context) { context.fillStyle = '#f2994a'; context.fillRect(0, 0, 64, 64); context.fillStyle = '#1c1c1c'; context.beginPath(); context.moveTo(14, 44); context.lineTo(32, 14); context.lineTo(50, 44); context.closePath(); context.fill(); }
+    custom.replaceChildren(...[[visualIcon({ logo: canvas.toDataURL('image/png') }, { size: 22 }), 'Fleet VM', 'Self-described'], [visualIcon({ logo: canvas.toDataURL('image/png') }, { size: 22 }), 'Build box', 'Set by owner'], [visualIcon(detectedAgentVisual('fleet-vm'), { size: 22 }), 'fleet-vm', '']].map(([node, label, source]) => {
+      const item = document.createElement('div'), copy = document.createElement('span'); copy.textContent = label;
+      item.className = 'ds-gallery-presence'; item.append(identityMark(node, { size: 'lg' }), copy);
+      if (source) item.append(pill(source)); return item;
+    }));
+  }
   document.getElementById('identity-stack')?.replaceChildren(markStack(['claude', 'codex', 'cursor', 'gemini', 'amp'].map(id => identityMark(brandIcon(id, { size: 14 }), { size: 'sm' })), { max: 3, label: 'Five contributors' }));
   const statuses = document.getElementById('identity-status');
   statuses?.replaceChildren(...[['running', 'loader-circle', 'In progress'], ['completed', 'circle-check', 'Completed'], ['failed', 'circle-alert', 'Needs attention'], ['stale', 'clock', 'Awaiting update']].map(([state, glyph, label]) => {

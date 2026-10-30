@@ -8,7 +8,7 @@ Public pages use the **Marketing kit** below: a developer-platform language mode
 
 ## Rules (app and public)
 
-1. **Real marks only.** An agent or tool appears as its vendored logo from `brand-catalog.js` (or an inline mark in `tooling.js`), inside `identityMark()`. Unknown agents get the local Beam avatar. Never hotlink, recolor or redraw a brand mark; a mark is a display hint, never proof of setup.
+1. **Real marks only.** An agent or tool appears as its vendored logo from `brand-catalog.js` (or an inline mark in `tooling.js`), inside `identityMark()`. Unknown agents get the local Beam avatar. A custom agent may show its own self-described logo, always labeled with its source. Never hotlink, recolor or redraw a brand mark; a mark is a display hint, never proof of setup.
 2. **One icon pack.** Icons are Lucide, vendored from one pinned release by `scripts/vendor-lucide.ts`: `icon()` in JS, `.ds-icon[data-icon]` in CSS. Add an icon by adding its name to the script's list and running it. No other icon sets, emoji or hand-drawn glyphs.
 3. **Truthful state.** Presence describes connection state: a solid dot for seen recently, quiet or reconnect, and a pulse only while a task report is running. Observed (eye) and Reported (speech) evidence keep distinct icons. Status always pairs an icon with words; color alone never carries meaning.
 4. **Functional motion.** Entrance stagger on a fresh list, a flash on rows that arrived since the last refresh, spinners only while a request or report is pending, chevrons that turn with their disclosure. No motion on repeat renders, no ornamental loops in the app (the empty-state orbit is the one quiet exception), and everything stops for reduced motion.
@@ -48,6 +48,8 @@ Defined in `web/design-system.css` ("Identity and motion") and `web/design-syste
 | `.ds-row-hover` | Row hover surface. |
 | `.ds-tab-underline` | Mint underline that grows under the pressed or selected tab. |
 | `.ds-spin` | Rotation for a pending-state icon. |
+
+Custom agents: an agent with no vendored mark can describe itself with the `set_identity` MCP tool (a name and a square PNG logo, re-encoded server side at 64 px). `setAgentIdentities()` in `tooling.js` loads the workspace's identities from `/api/connections`; `agentVisual()` then returns `{ logo, label, custom }` and `visualIcon()` renders the logo as `img.agent-logo`, which fills the `identityMark()` tile. Always pair a custom name or logo with a `pill()` that says where it came from ("Self-described" or "Set by owner"); it is a display hint, never verification. Owners edit it in the connection detail panel (`web/agent-identity-editor.js`). Public pages never show custom identities (`publicSafe`). Gallery: `#identity`, "Custom agents".
 
 Brand marks: `web/vendor/brands/manifest.json` records each mark's file, tone (`color` or `mono`), source and license. `bun scripts/brand-catalog.ts` regenerates `web/brand-catalog.js` and the hashed provenance in `catalog-sources.json`; tests verify hashes and SVG safety. Mono files use `fill="currentColor"` and render lightened via `data-tone="mono"`.
 
