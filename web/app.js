@@ -21,7 +21,7 @@ import { memoryUsagePanel } from "./memory-usage-view.js";
 import { aiConfiguration, attentionResults } from "./insights-view.js";
 import { confidenceLabel, reviewAllowed, reviewPlan } from "./insight-model.js";
 import { onboardingGuide } from "./onboarding-view.js";
-import { accessKeyConfiguration, onboardingProgress, shouldOfferOnboarding, createOnboardingReader } from "./onboarding-model.js";
+import { accessKeyConfiguration, connectionSetupPromptWithKey, maskAccessKey, onboardingProgress, shouldOfferOnboarding, createOnboardingReader } from "./onboarding-model.js";
 import { parseInviteEntry, parseSignupPolicy, signupAuthMode, signupEntryMode, emailLinkRecovery } from "./signup-model.js";
 import { signupView } from "./signup-view.js";
 import { signupAdminPanel } from "./signup-admin.js";
@@ -1349,23 +1349,39 @@ async function loadConnections() {
 function tokenDetail(data, helpAgentId = "") {
   const secret = el("input", { type: "password", class: "connection-secret", value: data.token, readonly: true, autocomplete: "off", spellcheck: "false", "aria-label": "New access key" });
   const reveal = button("Show key", () => { const shown = secret.type === "text"; secret.type = shown ? "password" : "text"; reveal.textContent = shown ? "Show key" : "Hide key"; reveal.setAttribute("aria-pressed", String(!shown)); }, { class: "small", "aria-pressed": "false" });
-  const formats = [["other", "MCP JSON"], ["codex", "Codex · TOML"], ["vscode", "VS Code · JSON"], ["claude-code", "Claude Code · JSON"], ["github-copilot", "GitHub Copilot · JSON"], ["gemini-cli", "Gemini CLI · JSON"], ["opencode", "OpenCode · JSON"], ["openclaw", "OpenClaw · JSON"]];
+  const formats = [["other", "Any client · MCP JSON"], ["claude-code", "Claude Code · JSON"], ["codex", "Codex · TOML"], ["cursor", "Cursor · JSON"], ["vscode", "VS Code · JSON"], ["github-copilot", "GitHub Copilot · JSON"], ["gemini-cli", "Gemini CLI · JSON"], ["opencode", "OpenCode · JSON"], ["openclaw", "OpenClaw · JSON"]];
   const selected = formats.some(([id]) => id === helpAgentId) ? helpAgentId : "other";
-  const preview = el("pre", { tabindex: "0" }, accessKeyConfiguration(selected, data.mcp));
-  const format = select("Configuration format", selected, formats, () => { preview.textContent = accessKeyConfiguration(format.value, data.mcp); });
+  const workspace = state.session?.org ? { id: state.session.org.id, name: state.session.org.name } : null;
+  const masked = maskAccessKey(data.token);
+  const showMasked = text => text.split(data.token).join(masked);
+  const fullPrompt = () => connectionSetupPromptWithKey(data.mcp, workspace, secret.value, format.value);
+  // Previews never show the key; the copy buttons carry it in full.
+  const promptPreview = el("pre", { tabindex: "0", role: "region", "aria-label": "Setup prompt preview, key hidden" });
+  const configPreview = el("pre", { tabindex: "0", role: "region", "aria-label": "Configuration preview, key hidden" });
+  const format = select("Client", selected, formats, () => refresh());
+  const refresh = () => { promptPreview.textContent = showMasked(fullPrompt() || ""); configPreview.textContent = showMasked(accessKeyConfiguration(format.value, data.mcp, secret.value)); };
+  const panels = {
+    prompt: el("div", { class: "ds-stack connection-ready-panel", id: "ready-panel-prompt", role: "tabpanel", "aria-labelledby": "ready-tab-prompt" },
+      el("p", { class: "ds-hint" }, "Paste this into the agent. It adds Engram with your key and checks the connection. The key will be in that agent’s chat history; use the configuration file instead to keep it out."),
+      el("div", { class: "ds-row" }, copyButton("Copy setup prompt with key", () => fullPrompt() || "", { class: "primary small", "data-connection-focus": "ready-prompt" })),
+      el("details", { class: "connection-setup-disclosure" }, el("summary", {}, "Review prompt"), promptPreview)),
+    config: el("div", { class: "ds-stack connection-ready-panel", id: "ready-panel-config", role: "tabpanel", "aria-labelledby": "ready-tab-config", hidden: true },
+      el("p", { class: "ds-hint" }, "Add this to the client’s MCP configuration file, then reload the agent. Formats vary by client; choosing one does not label the connection."),
+      configPreview,
+      el("div", { class: "ds-row" }, copyButton("Copy configuration with key", () => accessKeyConfiguration(format.value, data.mcp, secret.value), { class: "primary small" }))),
+  };
+  const tabs = [["prompt", "Setup prompt"], ["config", "Configuration file"]].map(([id, label]) => el("button", { type: "button", role: "tab", class: "ds-client-tab", id: `ready-tab-${id}`, "aria-controls": `ready-panel-${id}`, "aria-selected": String(id === "prompt"), tabindex: id === "prompt" ? "0" : "-1", onclick: () => choose(id) }, icon(id === "prompt" ? "message-square" : "file-text", { size: 14 }), el("span", {}, label)));
+  const choose = (id, focus = false) => { for (const tab of tabs) { const on = tab.id === `ready-tab-${id}`; tab.setAttribute("aria-selected", String(on)); tab.tabIndex = on ? 0 : -1; if (on && focus) tab.focus(); } panels.prompt.hidden = id !== "prompt"; panels.config.hidden = id !== "config"; };
+  const tablist = el("div", { class: "ds-window-tabs connection-tabs", role: "tablist", "aria-label": "Ready to paste", onkeydown: event => { if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) { event.preventDefault(); choose(panels.prompt.hidden ? "prompt" : "config", true); } } }, tabs);
+  refresh();
   showDetail("Connect an agent", el("div", { class: "connection-result ds-stack" },
     el("div", { class: "ds-heading-group" }, el("h2", { id: "detail-title" }, data.name),
       el("p", { class: "ds-hint" }, `Copy this key now. It is only shown once. Its permission is ${data.canWrite === false ? "read only" : "read and write"}; workspace policy and hosted plan access also apply.`)),
     el("div", { class: "connection-secret-row" }, secret, reveal),
-    el("div", { class: "ds-row" }, copyButton("Copy access key", data.token, { class: "primary small" })),
-    el("h3", {}, "Add Engram in your agent’s MCP settings"),
-    el("p", { class: "ds-hint" }, "Use this endpoint and the key above as the bearer token. Creating a key grants access; contact is recorded after the agent calls Engram."),
-    el("code", { class: "ds-code-scroll", tabindex: "0", role: "region", "aria-label": "MCP endpoint. Scroll horizontally to read." }, data.mcp),
-    el("div", { class: "ds-row" }, copyButton("Copy endpoint", data.mcp, { class: "small" })),
-    el("details", { class: "connection-install" }, el("summary", {}, "MCP configuration"),
-      el("p", { class: "ds-hint" }, "Optional examples for clients that accept a configuration file. Changing the format does not label the connection. The copy button includes the key."),
-      field("Configuration format", format), preview,
-      copyButton("Copy configuration with key", () => accessKeyConfiguration(format.value, data.mcp, secret.value), { class: "small" })),
+    el("div", { class: "ds-row" }, copyButton("Copy access key", data.token, { class: "small" }), copyButton("Copy endpoint", data.mcp, { class: "small" })),
+    el("h3", {}, "Ready to paste"),
+    field("Client", format),
+    el("div", { class: "ds-window connection-window connection-ready" }, tablist, el("div", { class: "ds-window-panel" }, panels.prompt, panels.config)),
     el("p", { class: "ds-hint" }, "Reload the agent after updating its settings, then refresh Connections. Its client name appears when the app supplies one."),
     el("div", { class: "ds-row" }, button("Done", () => { closeDetail(); loadConnections(); }, { class: "small" })),
   ), { returnTo: '[data-connect-action]' });
