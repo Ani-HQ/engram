@@ -420,14 +420,17 @@ describe("public activity projection", () => {
     const query = calls[1];
     expect(query.query).toContain("UNION ALL");
     expect(query.query).toContain("FROM action_events WHERE org_id");
-    expect(query.query).toContain("FROM audit_log WHERE org_id");
+    expect(query.query).toContain("FROM audit_log LEFT JOIN tokens registered_source");
+    expect(query.query).toContain("WHERE audit_log.org_id");
     expect(query.query).toContain("'list_actions', 'record_action', 'whoami'");
     expect(query.query).toContain("AT TIME ZONE 'UTC'");
     expect(query.values).toEqual([7, 7, "2026-10-21T23:48:00.000Z", "2026-07-31T00:00:00.000Z", "2026-10-23T00:00:00.000Z"]);
     expect(query.query).toContain("row_number() OVER");
     expect(query.query).toContain("recorded_at >= bounds.recent_cutoff");
     expect(result?.live).toEqual({ workingAgents: 1, recentlyActiveAgents: 2, completedAgents: 3, failedAgents: 1, workingActions: 1, staleActions: 1, lastActivityAt: "2026-10-22T00:02:00.000Z", checkedAt: now.toISOString(), freshnessSeconds: 900 });
-    for (const privateColumn of ["summary", "resource", "detail", "approach", "run_id", "arg_summary", "task_title", "current_step", "harness", "source_label"]) expect(query.query).not.toContain(privateColumn);
+    // harness is read only to group agents by product; it leaves through the allowlist below.
+    for (const privateColumn of ["summary", "resource", "detail", "approach", "run_id", "arg_summary", "task_title", "current_step", "source_label"]) expect(query.query).not.toContain(privateColumn);
+    expect(query.query).toContain("mode() WITHIN GROUP (ORDER BY lower(harness))");
     for (const secret of ["private task", "private-agent", "private.example", "private-method-secret", "secret-run", "email", "published", "org_id"]) {
       if (secret === "email") continue; // "email" is an intentionally broad tool category.
       expect(JSON.stringify(result)).not.toContain(secret);
@@ -444,6 +447,21 @@ describe("public activity projection", () => {
     expect(result.updatedAt).toBeNull();
     expect(JSON.stringify(result)).not.toContain("private_tool_name");
     expect(publicActivitySnapshot(profile, {}, now).stats.totalActions).toBe(0);
+  });
+
+  test("lists agents by known product only and never by name", () => {
+    const result = publicActivitySnapshot(profile, { ...aggregate, products: [
+      { product: "claude-code", agents: "5", actions: "600" }, { product: "codex", agents: 3, actions: 400 },
+      { product: "private-harness-name", agents: 2, actions: 9 }, { product: "other", agents: 1, actions: 1 },
+      { product: "cursor", agents: 0, actions: 0 }, { product: "constructor", agents: 4, actions: 4 },
+    ] }, now);
+    expect(result.agents).toEqual([
+      { product: "claude-code", label: "Claude Code", agents: 5, actions: 600 },
+      { product: "codex", label: "Codex", agents: 3, actions: 400 },
+      { product: "other", label: "Agent", agents: 7, actions: 14 },
+    ]);
+    expect(JSON.stringify(result)).not.toContain("private-harness-name");
+    expect(publicActivitySnapshot(profile, {}, now).agents).toEqual([]);
   });
 
   test("uses only generic tool categories", () => {
