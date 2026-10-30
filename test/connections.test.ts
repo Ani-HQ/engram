@@ -58,7 +58,7 @@ describe("workspace connection inventory",()=>{
     expect(inventory.query).toContain("PARTITION BY email, client_id");
     expect(inventory.query).toContain("status = 'authorized'");
     for(const call of store.calls){
-      expect(call.query).not.toMatch(/sha256_hash|redirect_uri|code_challenge/);
+      expect(call.query).not.toMatch(/sha256_hash|code_challenge|\bredirect_uri\b|c\.redirect_uris\s*(?:,|AS\b)/);
       expect(call.query).not.toMatch(/\b(?:INSERT|UPDATE|DELETE|ALTER|CREATE|DROP)\b/);
     }
     expect(store.calls[1].query).toContain("tool NOT IN ('whoami', 'list_actions', 'record_action')");
@@ -80,6 +80,22 @@ describe("workspace connection inventory",()=>{
     const result=await listConnections(owner,store.db,now);
     expect(result.connections[0]).toMatchObject({id:"token:1",agent:"mac-codex",displayName:"Laptop",harness:"codex",sourceLabel:"Laptop",client:{state:"multiple",label:"Multiple clients",harness:null}});
     expect(result.connections[1].client).toEqual({state:"unknown",label:null,harness:null});
+  });
+  test("a hosted sign-in is named by the provider it finished on, not a mismatched self-reported name",async()=>{
+    const cases:[string,string|null,string,string][]=[
+      ["Cursor","grok","Grok","grok"],
+      ["GrokBot","grok","GrokBot","grok-bot"],
+      ["Codex","claude","Claude","claude"],
+      ["Claude","claude","Claude","claude"],
+      ["Cursor",null,"Cursor","cursor"],
+    ];
+    for(const [clientName,host,label,harness] of cases){
+      const store=database();
+      Object.assign(store.rows[1],{client_name:clientName,client_host:host});
+      const connection=(await listConnections(owner,store.db,now)).connections[1];
+      expect(connection).toMatchObject({displayName:label,harness,sourceLabel:label,name:label});
+      expect(connection.client.label?.replace(/ /g,"")).toBe(label);
+    }
   });
   test("denies non-human delegated and mismatched workspace access before querying",async()=>{
     const store=database();
