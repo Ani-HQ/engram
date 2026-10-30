@@ -243,7 +243,8 @@ describe("proxy tool surface", () => {
     expect(readonly.content[0].text).toContain("denied");
     const oauth = await callTool({ ...token, kind: "oauth", scopes: ["memory:read"] }, "record_action", input);
     expect(oauth.isError).toBe(true);
-    expect(oauth.content[0].text).toContain("denied");
+    expect(oauth.content[0].text).toMatch(/^denied: record_action is not allowed for this token\. This sign-in has read-only access\./);
+    expect(readonly.content[0].text).toBe("denied: record_action is not allowed for this token");
     expect(forwardedCalls).toEqual([]);
   });
 

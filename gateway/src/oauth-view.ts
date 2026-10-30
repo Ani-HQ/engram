@@ -19,6 +19,11 @@ export function renderOAuthAuthorizePage(parsed: OAuthAuthorizeViewParams, messa
     hidden("scope", parsed.scope),
     hidden("response_type", "code"),
   ].join("");
+  const scopes = parsed.scope.split(/\s+/).filter(Boolean);
+  const readOnly = scopes.some(scope => scope.startsWith("memory:")) && !scopes.includes("memory:write");
+  const access = readOnly
+    ? `<p id="oauth-access" class="ds-notice" data-tone="warning" role="note">This app is asking for read-only access. It will be able to recall memory but not save it.</p>`
+    : "";
   const feedback = link
     ? `<p id="oauth-feedback" class="oauth-feedback" role="status"><span class="ds-icon" data-icon="mail" aria-hidden="true"></span><span>Local mailer is off. Open <a href="${escapeHtml(link)}">this sign-in link</a> to continue.</span></p>`
     : message ? `<p id="oauth-feedback" class="oauth-feedback" role="status"><span class="ds-icon" data-icon="info" aria-hidden="true"></span><span>${escapeHtml(message)}</span></p>` : "";
@@ -55,6 +60,7 @@ export function renderOAuthAuthorizePage(parsed: OAuthAuthorizeViewParams, messa
           </div>
           <button type="submit" class="ds-button primary">Send sign-in link</button>
         </form>
+        ${access}
         <p class="oauth-reassurance"><span class="ds-icon" data-icon="shield-check" aria-hidden="true"></span>Your existing workspace permissions still apply.</p>
       </section>
       <footer class="ds-auth-legal oauth-footer"><p>By continuing, you acknowledge Engram’s <a href="/privacy">Privacy Policy</a>.</p></footer>

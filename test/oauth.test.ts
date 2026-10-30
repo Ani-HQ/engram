@@ -38,6 +38,7 @@ describe("oauth discovery paths", () => {
     expect(oauthEnabled()).toBe(true);
     const header = wwwAuthenticate("https://engram.example");
     expect(header).toContain('resource_metadata="https://engram.example/.well-known/oauth-protected-resource"');
+    expect(header).toContain('scope="openid email offline_access memory:read memory:write"');
     const resource = protectedResourceMetadata("https://engram.example");
     expect(resource.resource).toBe("https://engram.example/mcp");
     expect(resource.authorization_servers).toEqual(["https://engram.example"]);

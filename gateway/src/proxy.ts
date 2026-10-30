@@ -781,7 +781,11 @@ async function callToolUnbounded(
 
   if (served && (!canUseTool(actor, name, policies) || (writing && !hasOauthScope(actor, "memory:write")))) {
     await audit(actor.name, name, CONTINUATION.has(name) ? continuationAuditSummary(forwardedArgs) : summarizeArgs(forwardedArgs), "denied", argSlug);
-    return toolError(`denied: ${name} is not allowed for this token`);
+    // Keep the exact base text: installed shims match it to detect denials.
+    const signInReadOnly = writing && canUseTool(actor, name, policies) && !hasOauthScope(actor, "memory:write");
+    return toolError(signInReadOnly
+      ? `denied: ${name} is not allowed for this token. This sign-in has read-only access. Ask the workspace owner to delete this connection in Engram Connections, then sign in again to allow saving.`
+      : `denied: ${name} is not allowed for this token`);
   }
   if (served && writing) {
     try { await requireHostedWriteAccess(actor); }

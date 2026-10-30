@@ -24,6 +24,13 @@ describe("OAuth sign-in presentation", () => {
     expect(html).toContain("Your existing workspace permissions still apply.");
   });
 
+  test("says when an app asks for read-only access", async () => {
+    expect(await renderOAuthAuthorizePage(params).text()).toContain("This app is asking for read-only access.");
+    for (const scope of ["openid email offline_access memory:read memory:write", "openid email"]) {
+      expect(await renderOAuthAuthorizePage({ ...params, scope }).text()).not.toContain("read-only access");
+    }
+  });
+
   test("escapes every hidden value and feedback without interpreting markup", async () => {
     const hostile = `a&<>"' onfocus="alert(1)`;
     const escaped = "a&amp;&lt;&gt;&quot;&#39; onfocus=&quot;alert(1)";

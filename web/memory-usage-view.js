@@ -98,5 +98,7 @@ export function memorySetupGuide(connection = {}, { copyControl, endpoint, open 
         h('p', { class: 'ds-hint' }, providerManaged ? 'This agent’s provider manages its connectors and persistent instructions. Connect Engram in the provider’s MCP settings using the workspace endpoint.' : 'Choose a supported local runtime in guided setup, or connect this agent through its MCP settings.'),
         h('p', { class: 'ds-hint' }, 'A local installer cannot enable hooks in a cloud agent. Persistent memory use depends on the provider’s supported workflow; MCP access alone does not enable it.'),
         h('p', { class: 'ds-hint' }, 'No documented automatic workflow installer is available for this client. Agent guidance remains model-chosen, and ordinary MCP reads have a per-response limit.')),
-    connection.canWrite === false && h('p', { class: 'ds-notice', 'data-tone': 'warning' }, 'This connection is read only. Saving memories and reporting work require write access.'));
+    connection.canWrite === false && h('p', { class: 'ds-notice', 'data-tone': 'warning' }, connection.kind === 'oauth'
+      ? 'This sign-in is read only, so the agent cannot save memories or report work. Delete this connection, then sign in again from the agent to allow saving.'
+      : 'This connection is read only. Saving memories and reporting work require write access.'));
 }
