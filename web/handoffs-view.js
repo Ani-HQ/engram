@@ -1,5 +1,6 @@
 import { h } from "./profile.js";
-import { evidenceList, loadingState, taskRecord } from "./design-system.js";
+import { evidenceList, loadingState, taskRecord, identityMark, emptyState as dsEmpty } from "./design-system.js";
+import { agentVisual, visualIcon } from "./tooling.js";
 import { icon } from "./icons.js";
 import { relativeTime } from "./activity-view.js";
 import { statusLabel } from "./status-label.js";
@@ -55,7 +56,7 @@ export function handoffsView({ api, role, canWrite = true, copyControl, fail = (
       refresh),
     results, h("div", { class: "form-actions handoffs-more" }, loadMore), announce);
 
-  const empty = (title, text, action) => h("div", { class: "empty handoffs-empty" }, h("h2", {}, title), h("p", {}, text), action);
+  const empty = (title, text, action) => dsEmpty({ glyph: icon("route", { size: 22 }), title, description: text, action, className: "empty handoffs-empty" });
   function emptyState() {
     if (q) return empty(`No tasks match “${q}”`, "Try other words from the title, objective or next step.",
       button("Clear search", () => { search.value = ""; q = ""; load(); search.focus(); }, { class: "small" }));
@@ -82,7 +83,7 @@ export function handoffsView({ api, role, canWrite = true, copyControl, fail = (
       latest?.next && h("p", { class: "handoff-next" }, h("span", {}, "Next"), latest.next),
       h("div", { class: "handoff-meta" },
         latest ? [
-          h("span", { class: "handoff-author", title: latest.savedBy }, latest.savedBy),
+          h("span", { class: "handoff-author", title: latest.savedBy }, identityMark(visualIcon(agentVisual(latest.savedBy, { harness: latest.harness, sourceLabel: latest.reportedSource }), { size: 14 }), { size: "xs" }), latest.savedBy),
           latest.reportedSource && h("span", { title: "Reported source, not a verified identity" }, `via ${latest.reportedSource}`),
           h("span", {}, TRIGGERS[latest.trigger] || "Saved"),
           h("time", { datetime: latest.savedAt, title: exact(latest.savedAt), "data-relative-time": latest.savedAt }, relativeTime(latest.savedAt)),

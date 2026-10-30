@@ -2,24 +2,38 @@
 
 This is the authority for frontend visual and interaction decisions. Read this document and inspect the local `/design-system` gallery before changing an app view, public page, graphic, interaction, or loading state. The repository [frontend contract](../AGENTS.md) requires every future frontend change to consume or extend this system. The canonical pulse logo is unchanged.
 
-The app direction is plain, quiet and confident: one sans typeface (local Inter) at normal letter-spacing, generous whitespace, few colors and no decoration. Content is separated by space, not by rules, borders or ornaments. Nothing visual may look like evidence that an agent connected, saved memory, or completed work.
+The app direction is clear, alive and honest: one sans typeface (local Inter) at normal letter-spacing, generous whitespace and a small palette, with real product logos, one scalable icon pack and functional motion. Agents appear as their actual marks (`identityMark()`), status reads as an icon plus words, and motion marks arrival, live state or pending work. Nothing visual may look like evidence that an agent connected, saved memory, or completed work.
 
-Public pages use the **Marketing kit** below: a developer-platform language modeled on Supabase's site, with Engram's own mint accent, pulse mark and copy. It adds hairline containers, a cursor spotlight, terminal windows, a dot-grid glow, an announcement pill, header menus and scroll reveal. The app keeps the plain grammar and the "Do not use" list.
+Public pages use the **Marketing kit** below: a developer-platform language modeled on Supabase's site, with Engram's own mint accent, pulse mark and copy. Both surfaces share the **Identity, icons and motion** primitives.
 
-## Do not use (app)
+## Rules (app and public)
 
-These ten patterns are removed from the app. Do not add them to app views. Public pages may use the marketing kit's pill, kicker, hairline and window patterns instead; they still never use italics, serif type, negative letter-spacing or section numbering.
+1. **Real marks only.** An agent or tool appears as its vendored logo from `brand-catalog.js` (or an inline mark in `tooling.js`), inside `identityMark()`. Unknown agents get the local Beam avatar. Never hotlink, recolor or redraw a brand mark; a mark is a display hint, never proof of setup.
+2. **One icon pack.** Icons are Lucide, vendored from one pinned release by `scripts/vendor-lucide.ts`: `icon()` in JS, `.ds-icon[data-icon]` in CSS. Add an icon by adding its name to the script's list and running it. No other icon sets, emoji or hand-drawn glyphs.
+3. **Truthful state.** Presence describes connection state: a solid dot for seen recently, quiet or reconnect, and a pulse only while a task report is running. Observed (eye) and Reported (speech) evidence keep distinct icons. Status always pairs an icon with words; color alone never carries meaning.
+4. **Functional motion.** Entrance stagger on a fresh list, a flash on rows that arrived since the last refresh, spinners only while a request or report is pending, chevrons that turn with their disclosure. No motion on repeat renders, no ornamental loops in the app (the empty-state orbit is the one quiet exception), and everything stops for reduced motion.
+5. **Italics, serif and tracking.** No italics or serif type; `letter-spacing` is never negative.
+6. **Section numbering.** No "01 /" decorations; a genuinely ordered list of steps may be a plain `<ol>`.
+7. **Containers.** App rows are separated by space and a hover surface (`ds-row-hover`); hairline tiles are for marks, icons and code. Public pages may use the marketing kit's hairline cards.
+8. **No faux evidence.** Mockups, demos and gallery examples are labeled as examples and describe real behavior.
 
-1. **Tags.** No badges, pills, chips, stickers or label tags ("New", "Beta", kind labels). State the information as plain text in the normal text style, or drop it if it is redundant.
-2. **Italicized words.** No italics, and no accent-colored "highlighted" words in headlines. A headline is one color.
-3. **Serif display type or negative kerning.** Inter only; no Instrument Serif or other serif. `letter-spacing` is never negative, and uppercase labels get no wide tracking.
-4. **Over-detailed UI.** No decorative illustrations, faux interface mockups, glow, grain or gradient effects, ornamental animation or heavy shadows. Keep fewer elements per section and only functional motion.
-5. **Dividers.** No `<hr>`, no border-top/bottom section separators, no rule lines between list items. Use spacing.
-6. **Extra color shades and opacities.** Use only the core palette below. No opacity-based text or surface variants, `color-mix` tints, rgba overlays or multiple accent shades.
-7. **Containers with borders.** No bordered cards, panels or sections. Group with whitespace, or at most one flat surface fill with no border. Exception for usability: form inputs, selects, choice controls and focus indicators keep a visible boundary, and buttons keep a clear shape.
-8. **Diagrams.** No decorative diagrams, connection canvases, SVG motifs or animated "context in motion" compositions. Say it in a sentence or a list.
-9. **Code breadcrumbs.** No monospace, uppercase, slash-separated or path-like labels ("CONNECTION DIAGRAM / CANVAS LAYER", kickers, file-path captions). If a label is needed, use a normal sans heading. Monospace is only for code and commands a person copies.
-10. **Section numbering.** No "01 /", "02 —" or "Step 1" decorations. A genuinely ordered list of steps may be a plain `<ol>`.
+## Identity, icons and motion
+
+Defined in `web/design-system.css` ("Identity and motion") and `web/design-system.js`, shown in the gallery under `#identity`.
+
+| Primitive | Use |
+| --- | --- |
+| `identityMark(node, { size, presence, label })` | A logo or avatar in a rounded hairline tile. Sizes `xs/sm/md/lg/xl` (18/22/28/40/56px). `presence`: `recent`, `working` (pulses), `quiet`, `reconnect`. |
+| `markStack(marks, { max, label })` | Overlapping contributor marks with a `+n` overflow. |
+| `.ds-status-icon[data-state]` | Status icon plus words: `running` spins, `completed`, `failed`, `stale`, `unknown`. |
+| `emptyState({ glyph, title, description, action })` | Empty state with a glowing icon tile and slow orbit dots. |
+| `staggerIn(container, selector)` / `.ds-stagger` | Entrance stagger for a fresh list (first 24 children). |
+| `flashNew(elements)` / `.ds-flash` | Highlight rows that arrived since the last refresh. |
+| `.ds-row-hover` | Row hover surface. |
+| `.ds-tab-underline` | Mint underline that grows under the pressed or selected tab. |
+| `.ds-spin` | Rotation for a pending-state icon. |
+
+Brand marks: `web/vendor/brands/manifest.json` records each mark's file, tone (`color` or `mono`), source and license. `bun scripts/brand-catalog.ts` regenerates `web/brand-catalog.js` and the hashed provenance in `catalog-sources.json`; tests verify hashes and SVG safety. Mono files use `fill="currentColor"` and render lightened via `data-tone="mono"`.
 
 ## Marketing kit (public pages)
 

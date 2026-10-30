@@ -7,7 +7,7 @@ import { billingPanel, workspacePanel, workspacePending, provisioningPanel } fro
 import { watchPublicActivity } from "./live-activity.js";
 import { activityFeed, activityFilters, activitySkeleton, activityDetail, activityDetailHeader, refreshActivityTimes } from "./activity-view.js";
 import { activityDestination, activityHref, activitySections } from "./activity-navigation.js";
-import { agentVisual, visualIcon, agentSources, toolVisual } from "./tooling.js";
+import { agentVisual, visualIcon, agentSources, toolVisual, brandIcon } from "./tooling.js";
 import { activityKind as normalizeActivityKind, connectionClient, connectionIdentity, withConnectionIdentity } from "./connection-model.js";
 import { agentOverview, connectionInventory } from "./connection-view.js";
 import { connectionAgents, connectionSetupView } from "./connection-setup-view.js";
@@ -26,7 +26,7 @@ import { signupView } from "./signup-view.js";
 import { signupAdminPanel } from "./signup-admin.js";
 import { sharingView } from "./sharing-view.js";
 import { handoffsView } from "./handoffs-view.js";
-import { loadingState, observeLoadingMotion, observeSelects } from "./design-system.js";
+import { loadingState, observeLoadingMotion, observeSelects, emptyState, identityMark, markStack } from "./design-system.js";
 import { statusLabel } from "./status-label.js";
 import { createJevSettingsPanel } from "./jev-settings.js";
 import { deviceView } from "./device-view.js";
@@ -114,7 +114,7 @@ function iconButton(name, label, action, attrs = {}) {
 }
 function copyButton(label, value, attrs = {}) {
   let copying = false, resetTimer;
-  const node = button(label, async () => {
+  const node = button([icon("copy", { size: 14 }), label], async () => {
     if (copying) return;
     copying = true; clearTimeout(resetTimer); node.setAttribute('aria-busy', 'true'); node.setAttribute('aria-disabled', 'true');
     node.replaceChildren(el('span', { class: 'ds-spinner', 'aria-hidden': 'true' }), 'Copying…');
@@ -122,7 +122,7 @@ function copyButton(label, value, attrs = {}) {
     copying = false; node.removeAttribute('aria-busy'); node.removeAttribute('aria-disabled');
     if (!node.isConnected) return;
     if (copied) {
-      node.dataset.feedback = 'success'; node.replaceChildren("Copied");
+      node.dataset.feedback = 'success'; node.replaceChildren(icon("check", { size: 14, class: 'ds-feedback-icon' }), "Copied");
       resetTimer = setTimeout(() => { if (node.isConnected) { node.replaceChildren(...original); delete node.dataset.feedback; } }, 2000);
     } else node.replaceChildren(...original);
   }, { class: "small", ...attrs });
@@ -190,7 +190,7 @@ function showDetail(title, body, { activity = false, memory = false, reporting =
     if (target) { if (!restoreCloseFocus) target.setAttribute("tabindex", "-1"); target.focus({ preventScroll: true }); }
   }
 }
-function empty(title, description, action) { return el("div", { class: "empty" }, el("h2", {}, title), el("p", {}, description), action); }
+function empty(title, description, action, glyph = "activity") { return emptyState({ glyph: icon(glyph, { size: 22 }), title, description, action, className: "empty" }); }
 function heading(title, description, side) {
   return el("div", { class: "page-heading" }, el("div", { class: "ds-heading-group" }, el("h1", {}, title), el("p", {}, description)), side);
 }
@@ -343,7 +343,7 @@ function render() {
   if (["owner", "member"].includes(state.session.role)) navigation.push(["workspace", "Workspace", "settings-2"]);
   if (state.session.role === "owner") navigation.push(["billing", "Plan & billing", "file-text"]);
   const workspaceKind = state.session.org.kind === "personal" ? "Personal workspace" : "Team workspace";
-  const navigationLink = ([key, label, name]) => el("a", { href: `#${key}`, "aria-current": state.view === key ? "page" : null, onclick: () => { if (navigationOpen) { setNavigationOpen(false); document.querySelector('#main')?.focus({ preventScroll: true }); } } }, el("span", {}, label));
+  const navigationLink = ([key, label, name]) => el("a", { href: `#${key}`, "aria-current": state.view === key ? "page" : null, onclick: () => { if (navigationOpen) { setNavigationOpen(false); document.querySelector('#main')?.focus({ preventScroll: true }); } } }, icon(name, { size: 16 }), el("span", {}, label));
   const workspaceNavigation = navigation.filter(([key]) => !["showcase", "workspace", "billing"].includes(key));
   const manageNavigation = navigation.filter(([key]) => ["showcase", "workspace", "billing"].includes(key));
   const content = state.view === "device" ? deviceScreen() : state.view === "activity" ? activityView() : state.view === "memory" ? memoryView() : state.view === "sharing" ? selectiveSharingView() : state.view === "showcase" ? showcaseView() : ["workspace", "billing"].includes(state.view) ? accountView() : connectView();
@@ -355,16 +355,16 @@ function render() {
     el("div", { class: "app-shell" },
       el("aside", { class: "sidebar", "aria-label": "Workspace navigation", "data-navigation-open": String(navigationOpen) },
         el("a", { class: "wordmark", href: "#activity", "aria-label": "engram home" }, el("img", { class: "brand-mark", src: "/brand/engram-mark.svg", width: 27, height: 27, alt: "" }), "engram"),
-        el("div", { class: "workspace-picker" }, select("Workspace", String(state.session.org.id), orgs.map(org => [String(org.id), org.name]), switchOrg, { "data-select-variant": "embedded" })),
+        el("div", { class: "workspace-picker" }, el("span", { class: "workspace-initial", "aria-hidden": "true" }, state.session.org.name.slice(0, 1).toUpperCase()), select("Workspace", String(state.session.org.id), orgs.map(org => [String(org.id), org.name]), switchOrg, { "data-select-variant": "embedded" })),
         iconButton(navigationOpen ? "x" : "menu", "Navigation", () => setNavigationOpen(!navigationOpen), { class: "ds-icon-button ds-disclosure-toggle mobile-navigation-toggle", "aria-controls": "workspace-navigation", "aria-expanded": String(navigationOpen) }),
         el("nav", { class: "nav", id: "workspace-navigation", "aria-label": "Main navigation" },
           el("div", { class: "nav-group" }, el("span", { class: "nav-group-label" }, "Workspace"), workspaceNavigation.map(navigationLink)),
           manageNavigation.length > 0 && el("div", { class: "nav-group" }, el("span", { class: "nav-group-label" }, "Manage"), manageNavigation.map(navigationLink))),
         el("div", { class: "sidebar-bottom" },
-          el("a", { class: "workspace-note", href: "/privacy" }, "Privacy & data"),
+          el("a", { class: "workspace-note", href: "/privacy" }, icon("shield-check", { size: 14 }), "Privacy & data"),
           el("div", { class: "sidebar-account" },
             el("div", { class: "sidebar-account-copy" }, el("span", { title: state.session.email || state.session.name }, state.session.email || state.session.name), el("small", {}, `${state.session.role.slice(0, 1).toUpperCase()}${state.session.role.slice(1)}`))),
-          button("Sign out", signOut, { class: "text" }))),
+          button([icon("log-out", { size: 15 }), "Sign out"], signOut, { class: "text" }))),
       el("div", { class: "main-column" },
         el("div", { class: "app-topbar" }, el("div", { class: "breadcrumbs" }, el("span", {}, state.session.org.name), el("span", { class: "workspace-kind" }, workspaceKind)),
           el("div", { class: "topbar-actions" }, !["connect", "device"].includes(state.view) && setupState() && button("Getting started", openSetup, { class: "text small setup-resume", "aria-label": "Open getting started guide", "aria-controls": "setup-slot" }), state.session.role === "owner" && state.view !== "showcase" && button("Share activity", () => { location.hash = "showcase"; }, { class: "small" }), iconButton("log-out", "Sign out", signOut, { class: "icon-button mobile-signout" }))),
@@ -461,7 +461,7 @@ function activityView() {
   const description = checking ? "Review recorded work for loose ends, find related activity, and prepare a handoff."
     : memory ? "Memory calls recorded by Engram in this workspace." : state.activityKind === "tasks" ? "Steps, progress, and outcomes reported by your agents." : "Memory calls and agent-reported work across this workspace.";
   return [heading("Activity", description, !checking && el("div", { class: "activity-refresh-controls" },
-    el("span", { class: "activity-refresh-label" }, state.activities.length > 100 ? "History view · Updates paused" : "Auto-updates every 5s"),
+    el("span", { class: "activity-refresh-label" }, state.activities.length <= 100 && el("span", { class: "activity-refresh-dot", "aria-hidden": "true" }), state.activities.length > 100 ? "History view · Updates paused" : "Auto-updates every 5s"),
     iconButton("refresh-cw", "Refresh activity", () => loadActivity(), { id: "activity-refresh" }))),
     activitySections({ tab: state.activityTab, ...activitySectionHrefs() }),
     checking ? el("section", { class: "activity-checks", "aria-label": "Activity checks" }, activityChecksView()) : activityHistoryView(),
@@ -480,10 +480,10 @@ function activityHistoryView() {
   return [
     el("div", { id: "activity-agent-overview" }, activityAgents()),
     el("div", { class: "activity-kind-switcher", role: "group", "aria-label": "Activity type" },
-      [["all", "All activity"], ["tasks", "Tasks"], ["memory", "Memory"]].map(([kind, label]) => button(label, () => changeActivityKind(kind), { "aria-pressed": String(state.activityKind === kind), "data-activity-kind": kind }))),
+      [["all", "All activity", "activity"], ["tasks", "Tasks", "layers"], ["memory", "Memory", "brain"]].map(([kind, label, mark]) => button([icon(mark, { size: 15 }), label], () => changeActivityKind(kind), { class: "ds-tab-underline", "aria-pressed": String(state.activityKind === kind), "data-activity-kind": kind }))),
     activityFilters(state.activityStats, state.filters.status, value => filterActivities("status", value)),
     el("div", { class: "filters activity-search-filters" }, el("div", { class: "search-field" }, icon("search", { size: 16 }), search, el("kbd", {}, "/")),
-      button("Search by intent", () => launchInsights({ q: state.filters.q }), { class: "small activity-intent-button", title: "Find related work; text matching is used when model processing is unavailable" }),
+      button([icon("sparkles", { size: 13 }), "Search by intent"], () => launchInsights({ q: state.filters.q }), { class: "small activity-intent-button", title: "Find related work; text matching is used when model processing is unavailable" }),
       el("span", { class: "filter-spacer" }),
       select("Filter by agent", state.filters.agent, [["", "All agents"], ...state.agents.map(agent => [agent, agentLabel(agent)])], value => filterActivities("agent", value)),
       select("Filter by tool", state.filters.tool, [["", "All tools"], ...state.tools.map(tool => [tool, toolLabel(tool)])], value => filterActivities("tool", value))),
@@ -554,14 +554,14 @@ function activityResults() {
   const memory = state.activityKind === "memory";
   return [
     state.error && notice(state.error, () => loadActivity()),
-    state.activities.length ? activityFeed(state.activities.map(activity => withConnectionIdentity(activity, state.connections?.connections)), { onOpen: openActivity, onFilter: filterActivities, onResource: openActivityResource, kind: state.activityKind, filters: state.filters, freshIds: state.freshIds }) : state.loading ? activitySkeleton() : state.error ? null : empty(filtered ? "No matching activity" : state.activityKind === "tasks" ? "No task reports yet" : "Every thread starts somewhere.", filtered ? "Try another search or clear the filters." : state.activityKind === "tasks" ? "Agents report task progress and results here. You can see their recorded memory calls in All activity." : "Ask a connected agent to read or save a memory. Its Engram calls will appear here. External work appears when the agent reports it.",
+    state.activities.length ? activityFeed(state.activities.map(activity => withConnectionIdentity(activity, state.connections?.connections)), { onOpen: openActivity, onFilter: filterActivities, onResource: openActivityResource, kind: state.activityKind, filters: state.filters, freshIds: state.freshIds, animate: state.animateFeed }) : state.loading ? activitySkeleton() : state.error ? null : empty(filtered ? "No matching activity" : state.activityKind === "tasks" ? "No task reports yet" : "Every thread starts somewhere.", filtered ? "Try another search or clear the filters." : state.activityKind === "tasks" ? "Agents report task progress and results here. You can see their recorded memory calls in All activity." : "Ask a connected agent to read or save a memory. Its Engram calls will appear here. External work appears when the agent reports it.",
       !filtered && state.activityKind === "tasks" ? el("div", { class: "task-empty-actions" }, button("Set up reporting", taskReportingHelp, { class: "primary" }), button("See all activity", () => changeActivityKind("all"))) : button(filtered ? "Clear filters" : "View connections", () => { if (filtered) clearActivityFilters(); else location.hash = "connect"; })),
     state.activities.length > 0 && el("div", { class: "activity-list-footer" },
       el("span", {}, `${state.activities.length} ${state.activities.length === 1 ? "activity" : "activities"}${state.more ? " shown" : ""}`),
       el("span", { class: "activity-key-hint" }, el("kbd", {}, "↑"), el("kbd", {}, "↓"), "to move", el("kbd", {}, "Enter"), "to inspect"),
       state.more && button(state.loading ? [icon("loader-circle", { size: 14, class: "spin" }), "Loading…"] : "Load more", () => loadActivity({ append: true }), { class: "small", disabled: state.loading })),
-    state.activities.length > 100 && el("div", { class: "activity-history-paused", role: "status" }, "Live refresh is paused while you explore older work.", button("Back to latest", () => loadActivity(), { class: "text small" })),
-    el("p", { class: "activity-footnote" }, memory ? "Private to this workspace. These operations were observed by Engram." : "Private to this workspace. Memory calls are recorded by Engram; external work comes from agent reports."),
+    state.activities.length > 100 && el("div", { class: "activity-history-paused", role: "status" }, icon("pause", { size: 13 }), "Live refresh is paused while you explore older work.", button("Back to latest", () => loadActivity(), { class: "text small" })),
+    el("p", { class: "activity-footnote" }, icon("shield-check", { size: 13 }), memory ? "Private to this workspace. These operations were observed by Engram." : "Private to this workspace. Memory calls are recorded by Engram; external work comes from agent reports."),
   ];
 }
 function refreshActivityResults() {
@@ -576,6 +576,7 @@ function refreshActivityResults() {
   const focusedIndex = card ? [...target.querySelectorAll(".activity-card")].indexOf(card) : -1;
   if (target) {
     target.replaceChildren(...activityResults().flat(Infinity).filter(Boolean)); target.setAttribute("aria-busy", String(state.loading));
+    if (!state.loading) { state.freshIds = new Set(); state.animateFeed = false; }
     if (focusedId && focusKey) {
       const cards = [...target.querySelectorAll(".activity-card")];
       const nextCard = cards.find(node => node.dataset.activityId === focusedId);
@@ -586,7 +587,7 @@ function refreshActivityResults() {
     }
   }
   const refreshLabel = document.querySelector(".activity-refresh-label");
-  if (refreshLabel) refreshLabel.replaceChildren(el("span", { class: "activity-refresh-dot", "aria-hidden": "true" }), state.activities.length > 100 ? "History view · Updates paused" : "Auto-updates every 5s");
+  if (refreshLabel) refreshLabel.replaceChildren(...[state.activities.length <= 100 && el("span", { class: "activity-refresh-dot", "aria-hidden": "true" }), state.activities.length > 100 ? "History view · Updates paused" : "Auto-updates every 5s"].filter(Boolean));
   syncActivityControls();
 }
 async function loadActivity({ append = false, quiet = false } = {}) {
@@ -615,7 +616,9 @@ async function loadActivity({ append = false, quiet = false } = {}) {
     const identitiesChanged = previousIdentity !== JSON.stringify(state.connections);
     changed = JSON.stringify(state.activities) !== JSON.stringify(next) || identitiesChanged || previousConnectionError !== state.connectionError || Boolean(state.error);
     state.activities = [...new Map(next.map(activity => [activity.id, activity])).values()];
-    state.freshIds = new Set(state.activities.filter(activity => !existingIds.has(activity.id)).map(activity => activity.id));
+    // Live refreshes flash genuinely new rows; a fresh load staggers the list in instead.
+    state.freshIds = quiet && existingIds.size ? new Set(state.activities.filter(activity => !existingIds.has(activity.id)).map(activity => activity.id)) : new Set();
+    state.animateFeed = !quiet && !append;
     state.agents = data.agents ?? []; state.tools = data.tools ?? []; state.more = Boolean(data.more); state.demo ||= Boolean(data.demo); state.error = "";
     state.activityStats = data.stats || {}; state.checkedAt = data.checkedAt;
     if (!quiet) announcements.textContent = `${state.activities.length} ${state.activities.length === 1 ? "activity" : "activities"} loaded`;
@@ -662,9 +665,9 @@ function openActivity(activity, tab = "overview") {
     panel,
     el("div", { class: "activity-detail-footer" },
       el("span", { id: "activity-detail-connection" }, activity.status === "running" ? "Updates every 5s" : "Activity log"),
-      el("details", { class: "activity-options" }, el("summary", {}, "More options"),
+      el("details", { class: "activity-options" }, el("summary", {}, icon("ellipsis", { size: 16 }), "More options"),
         el("div", { class: "activity-options-menu" },
-          button("Create handoff", () => launchInsights({ activityId: activity.id }), { class: "small", disabled: state.session.canWrite === false }),
+          button([icon("file-text", { size: 13 }), "Create handoff"], () => launchInsights({ activityId: activity.id }), { class: "small", disabled: state.session.canWrite === false }),
           copyButton("Copy technical record", () => JSON.stringify(currentActivity?.data || activity, null, 2))))),
   ], { activity: true });
   renderActivityPanel(); fetchActivityDetail();
@@ -746,7 +749,7 @@ function activityChecksView() {
     oninput: event => { state.insightsQuery = event.target.value; writeRoute(); } });
   const run = el("button", { type: "submit", class: "primary large", disabled: checking || readOnly, 'aria-busy': String(checking) }, icon(checking ? "loader-circle" : "layers", { size: 14, class: checking ? "spin" : "" }), checking ? "Checking…" : "Run checks");
   return [
-    state.insightsActivityId && el("div", { class: "insight-scope" }, "One activity selected", button("Check all activity", () => {
+    state.insightsActivityId && el("div", { class: "insight-scope" }, icon("layers", { size: 13 }), "One activity selected", button("Check all activity", () => {
       if (checking) return;
       clearTimeout(insightTimer); ++generation; state.insightsActivityId = ""; state.insights = null; state.insightError = ""; writeRoute(); render();
       document.querySelector("#activity-check-query")?.focus({ preventScroll: true });
@@ -829,7 +832,7 @@ function memoryView() {
   if (state.memoryTab === "review") return [heading("Memory", "Review proposed relationships and organization before they change shared memory."), tabs,
     el("div", { class: "filters" }, select("Review state", state.reviewState, [["pending", "Pending"], ["deferred", "Deferred"], ["applied", "Applied"], ["rejected", "Rejected"]], value => { state.reviewState = value; writeRoute(); loadReviews(); })),
     el("div", { id: "review-results", class: "ds-results", "aria-busy": String(state.loading) }, reviewResults())];
-  return [heading("Memory", "Decisions, preferences, and project context saved in this workspace.", state.session.canWrite !== false && button("Add memory", captureMemory, { class: "primary small" })),
+  return [heading("Memory", "Decisions, preferences, and project context saved in this workspace.", state.session.canWrite !== false && button([icon("plus", { size: 15 }), "Add memory"], captureMemory, { class: "primary small" })),
     tabs,
     el("div", { class: "filters" }, el("div", { class: "search-field memory-search" }, icon("search", { size: 16 }), el("input", { type: "search", class: "search", placeholder: "Search memory…", "aria-label": "Search memory", value: state.memoryQuery, oninput: event => { state.memoryQuery = event.target.value; clearTimeout(searchTimer); searchTimer = setTimeout(loadMemories, 250); } }), el("kbd", {}, "/"))),
     el("div", { id: "memory-results", class: "ds-results", "aria-busy": String(state.loading) }, memoryResults())];
@@ -837,9 +840,10 @@ function memoryView() {
 function memoryResults() {
   return [state.error && notice(state.error, loadMemories),
     ...state.memories.map(memory => button([
+            el("span", { class: "memory-icon", "aria-hidden": "true" }, icon(memory.type === "shared-context" ? "share-2" : "file-text", { size: 17 })),
             el("span", { class: "memory-row-copy" }, el("strong", { class: "action-title" }, memory.title || memory.slug), memory.type === "shared-context" && statusLabel("Approved snapshot · read-only"), el("span", { class: "muted" }, memory.snippet || (memory.type === "shared-context" ? "An approved excerpt shared with this workspace." : memory.slug))),
       memory.updated_at && el("span", { class: "memory-date" }, day(memory.updated_at)),
-    ], () => memoryDetail(memory.slug), { class: "memory-row" })),
+    ], () => memoryDetail(memory.slug), { class: "memory-row ds-row-hover" })),
     !state.memories.length && !state.error && (state.loading ? skeletonRows(4) : state.memoryQuery ? empty("No matching memory", "Try another search or clear it to see your saved memory.", button("Clear search", () => { state.memoryQuery = ""; const search = document.querySelector('input[aria-label="Search memory"]'); if (search) { search.value = ""; search.focus(); } loadMemories(); })) : empty("Keep the good bits.", "Save a decision, preference, or project detail here. Your connected agents can pick it up later.", state.session.canWrite !== false && button("Add your first memory", captureMemory))),
     state.more && button(state.loading ? "Loading…" : "Load more", () => loadMemories({ append: true }), { class: "small", disabled: state.loading })];
 }
@@ -1011,6 +1015,7 @@ function connectComputerPanel() {
   const command = installCommand(location.origin);
   return el("section", { class: "connect-computer", "aria-labelledby": "connect-computer-title" },
     el("div", { class: "ds-stack" },
+      markStack(["claude", "codex", "cursor", "openclaw", "hermesagent", "amp", "devin"].map(brand => identityMark(brandIcon(brand, { size: 16 }), { size: "md" })), { max: 7, label: "Claude Code, Codex, Cursor, OpenClaw, Hermes Agent, Amp and Devin CLI" }),
       el("div", { class: "ds-heading-group" }, el("h2", { id: "connect-computer-title" }, "Connect this computer"),
         el("p", { class: "ds-hint" }, "Run this in a terminal and approve in your browser. It connects Claude Code, Codex, Cursor, OpenClaw, Hermes Agent, Amp and Devin CLI on this computer in one step, desktop apps included.")),
       el("div", { class: "ds-command" },
@@ -1025,8 +1030,8 @@ function connectView() {
   return el("div", { class: "connect-layout" },
     heading("Connections", "Connect an agent and manage its access to this workspace.",
       el("div", { class: "ds-row connection-page-actions" },
-        button("Refresh", loadConnections, { class: "small", "aria-label": "Refresh connections", disabled: state.loading }),
-        canConnect && button("Connect an agent", () => beginConnection(), { class: "primary small", "data-connect-action": "true" }))),
+        button([icon("refresh-cw", { size: 14, class: state.loading ? "spin" : "" }), "Refresh"], loadConnections, { class: "small", "aria-label": "Refresh connections", disabled: state.loading }),
+        canConnect && button([icon("plug-zap", { size: 14 }), "Connect an agent"], () => beginConnection(), { class: "primary small", "data-connect-action": "true" }))),
     canConnect && connectComputerPanel(),
     state.error && notice(state.error, loadConnections),
     state.connectionError && notice("Connection status could not load. Refresh to try again.", loadConnections),
@@ -1331,7 +1336,7 @@ function showcaseView() {
   const bio = el("textarea", { name: "bio", maxlength: 160, rows: 3, placeholder: "A line about you and the work your agents do.", "aria-describedby": "bio-hint showcase-bio-error" }, draft.bio);
   const showActivity = el("input", { type: "checkbox", name: "showActivity", checked: Boolean(draft.showActivity), "aria-describedby": "activity-sharing-note" });
   const feedback = el("div", { id: "showcase-feedback", role: "status", "aria-live": "polite", tabindex: -1, class: "form-feedback" });
-  const save = el("button", { type: "submit", class: "primary", "data-showcase-focus": "save", "aria-describedby": "showcase-feedback" }, "Save changes");
+  const save = el("button", { type: "submit", class: "primary", "data-showcase-focus": "save", "aria-describedby": "showcase-feedback" }, icon("check", { size: 15 }), "Save changes");
   let pending = false;
   const isCurrent = () => !sessionMutation && authEpoch === epoch && state.session?.org.id === workspaceId && state.view === "showcase" && form.isConnected;
   const setFieldError = (control, errorNode, message = "") => {
@@ -1407,14 +1412,14 @@ function showcaseView() {
         el("section", { class: "visibility-panel" }, el("div", { class: "visibility-title" }, icon(saved.published ? "globe" : "eye-off", { size: 17 }), el("strong", {}, saved.published ? "Your profile is public" : "Only you can see this"), el("span", { class: "visibility-badge" }, saved.published ? "Published" : "Draft")), el("p", {}, `Shows recorded activity from ${state.session.org.name}. ${saved.showActivity ? "Agent products and broad action labels are included." : "The activity stream is off; counts and broad categories can appear."} ${saved.highlights?.length ? "Your saved highlights are included when published. " : ""}Private task text and resource names are never added automatically.`)),
         form,
         el("section", { class: "share-links section" }, el("h3", {}, "Share anywhere"), el("p", {}, "Share the live profile link, or connect the same updates to your website."),
-          el("div", { class: "share-link-row" }, el("span", { class: "share-link-label" }, "Profile"), el("code", { id: "profile-permalink", class: "ds-code-scroll", tabindex: "0", role: "region", "aria-label": "Profile URL. Scroll horizontally to read." }, publicUrl), copyButton("Copy", () => state.showcase.urls.page, { disabled: !saved.published, "aria-label": "Copy profile URL" })),
-          saved.published && el("div", { class: "share-link-row" }, el("span", { class: "share-link-label" }, "JSON"), el("code", { class: "ds-code-scroll", tabindex: "0", role: "region", "aria-label": "JSON URL. Scroll horizontally to read." }, urls.json), copyButton("Copy", urls.json, { "aria-label": "Copy JSON URL" })),
-          saved.published && el("div", { class: "share-link-row" }, el("span", { class: "share-link-label" }, "Live API"), el("code", { class: "ds-code-scroll", tabindex: "0", role: "region", "aria-label": "Live API URL. Scroll horizontally to read." }, urls.stream || `${urls.json}/stream`), copyButton("Copy", urls.stream || `${urls.json}/stream`, { "aria-label": "Copy live API URL" })),
-          saved.published && el("div", { class: "profile-link-actions" }, el("a", { href: urls.page, target: "_blank", rel: "noopener", class: "button-link" }, "Open profile"), el("a", { href: urls.card, target: "_blank", rel: "noopener", class: "button-link" }, "Social card")),
+          el("div", { class: "share-link-row" }, el("span", { class: "share-link-label" }, icon("link", { size: 14 }), "Profile"), el("code", { id: "profile-permalink", class: "ds-code-scroll", tabindex: "0", role: "region", "aria-label": "Profile URL. Scroll horizontally to read." }, publicUrl), copyButton("Copy", () => state.showcase.urls.page, { disabled: !saved.published, "aria-label": "Copy profile URL" })),
+          saved.published && el("div", { class: "share-link-row" }, el("span", { class: "share-link-label" }, icon("code", { size: 14 }), "JSON"), el("code", { class: "ds-code-scroll", tabindex: "0", role: "region", "aria-label": "JSON URL. Scroll horizontally to read." }, urls.json), copyButton("Copy", urls.json, { "aria-label": "Copy JSON URL" })),
+          saved.published && el("div", { class: "share-link-row" }, el("span", { class: "share-link-label" }, icon("radio", { size: 14 }), "Live API"), el("code", { class: "ds-code-scroll", tabindex: "0", role: "region", "aria-label": "Live API URL. Scroll horizontally to read." }, urls.stream || `${urls.json}/stream`), copyButton("Copy", urls.stream || `${urls.json}/stream`, { "aria-label": "Copy live API URL" })),
+          saved.published && el("div", { class: "profile-link-actions" }, el("a", { href: urls.page, target: "_blank", rel: "noopener", class: "button-link" }, "Open profile"), el("a", { href: urls.card, target: "_blank", rel: "noopener", class: "button-link" }, icon("share-2", { size: 14 }), "Social card")),
           !saved.published && el("p", { class: "field-hint" }, "Publish to activate the profile, JSON endpoint, and live stream. Unpublishing disables all three."),
           saved.published && el("details", {}, el("summary", {}, "Live website embed"), el("p", { class: "detail-note" }, "Paste this into your website for live counts, or use EventSource in your own design. JSON and the stream follow the sharing scope saved above."), el("pre", {}, liveEmbed(urls.stream || `${urls.json}/stream`)), copyButton("Copy live embed", liveEmbed(urls.stream || `${urls.json}/stream`))),
           saved.published && el("details", {}, el("summary", {}, "Image card embed"), el("p", { class: "detail-note" }, "A scalable snapshot for pages that do not run JavaScript."), el("pre", {}, `<a href="${urls.page}">\n  <img src="${urls.json}/card.svg"\n       alt="My agent activity on Engram" />\n</a>`), copyButton("Copy image embed", `<a href="${urls.page}"><img src="${urls.json}/card.svg" alt="My agent activity on Engram" /></a>`)))),
-      el("div", { class: "showcase-preview" }, el("div", { class: "preview-label" }, "Public preview", el("span", {}, "What others will see")), preview)),
+      el("div", { class: "showcase-preview" }, el("div", { class: "preview-label" }, icon("eye", { size: 14 }), "Public preview", el("span", {}, "What others will see")), preview)),
   ];
 }
 function liveEmbed(streamUrl) {

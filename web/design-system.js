@@ -336,3 +336,59 @@ export function profileLayoutPreview(layout = 'studio') {
   }
   return svg;
 }
+
+// ── Identity and motion ──────────────────────────────────────────────────────
+const presences = new Set(['recent', 'working', 'quiet', 'reconnect']);
+const markSizes = new Set(['xs', 'sm', 'md', 'lg', 'xl']);
+/** A product or agent mark in a tile. `content` is a node from visualIcon()/icon().
+ * Presence is a display of connection state the caller already knows; it never
+ * claims work happened. 'working' animates only while a report is running. */
+export function identityMark(content, { size = 'md', presence = '', label = '', className = '' } = {}) {
+  const mark = document.createElement('span');
+  mark.setAttribute('class', ['ds-mark', typeof className === 'string' ? className : ''].filter(Boolean).join(' '));
+  mark.setAttribute('data-size', markSizes.has(size) ? size : 'md');
+  if (presences.has(presence)) mark.setAttribute('data-presence', presence);
+  if (label) { mark.setAttribute('role', 'img'); mark.setAttribute('aria-label', String(label)); mark.title = String(label); }
+  else mark.setAttribute('aria-hidden', 'true');
+  if (content instanceof Node) mark.append(content);
+  return mark;
+}
+
+/** A row of overlapping marks, e.g. the agents that contributed to one activity. */
+export function markStack(marks = [], { max = 3, label = '' } = {}) {
+  const stack = document.createElement('span'); stack.setAttribute('class', 'ds-mark-stack');
+  if (label) { stack.setAttribute('role', 'img'); stack.setAttribute('aria-label', String(label)); }
+  for (const mark of marks.slice(0, max)) stack.append(mark);
+  if (marks.length > max) { const more = document.createElement('span'); more.setAttribute('class', 'ds-mark ds-mark-more'); more.setAttribute('data-size', marks[0]?.getAttribute('data-size') || 'sm'); more.textContent = `+${marks.length - max}`; stack.append(more); }
+  return stack;
+}
+
+/** An empty state with a quiet graphic: one icon in a glowing tile with orbit dots. */
+export function emptyState({ glyph, title, description = '', action = null, className = '' } = {}) {
+  const wrapper = document.createElement('div'); wrapper.setAttribute('class', ['ds-empty', className].filter(Boolean).join(' '));
+  const art = document.createElement('div'); art.setAttribute('class', 'ds-empty-art'); art.setAttribute('aria-hidden', 'true');
+  for (let index = 0; index < 3; index++) { const dot = document.createElement('span'); dot.setAttribute('class', 'ds-empty-orbit'); art.append(dot); }
+  const tile = document.createElement('span'); tile.setAttribute('class', 'ds-empty-tile'); if (glyph instanceof Node) tile.append(glyph); art.append(tile);
+  const heading = document.createElement('h2'); heading.setAttribute('class', 'ds-empty-title'); heading.textContent = String(title || '');
+  wrapper.append(art, heading);
+  if (description) { const copy = document.createElement('p'); copy.setAttribute('class', 'ds-empty-description'); copy.textContent = String(description); wrapper.append(copy); }
+  if (action instanceof Node) wrapper.append(action);
+  return wrapper;
+}
+
+/** Stagger the entrance of a container's children (first 24). CSS handles reduced motion. */
+export function staggerIn(container, selector = ':scope > *') {
+  if (typeof container?.querySelectorAll !== 'function') return container;
+  container.classList?.add('ds-stagger');
+  [...container.querySelectorAll(selector)].slice(0, 24).forEach((child, index) => child.style.setProperty('--ds-i', String(index)));
+  return container;
+}
+
+/** Briefly highlight elements that are new since the last render, e.g. live activity. */
+export function flashNew(elements = []) {
+  for (const element of elements) {
+    if (typeof element?.classList?.add !== 'function') continue;
+    element.classList.remove('ds-flash'); void element.offsetWidth; element.classList.add('ds-flash');
+    element.addEventListener('animationend', () => element.classList.remove('ds-flash'), { once: true });
+  }
+}

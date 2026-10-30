@@ -188,3 +188,33 @@
   .handoff-card-heading h3 { flex:none; }
   .handoffs-view .form-actions > * { flex:1 1 auto; }
 }
+
+/* Identity, icons and motion (design-system identityMark, ds-status-icon, ds-row-hover). */
+:is(.workspace, .detail) .activity-agent-chip { gap: 6px; }
+:is(.workspace, .detail) .activity-tool-chip { gap: 5px; }
+.activity-tool-chip > :is(svg, img) { flex-shrink: 0; width: 13px; height: 13px; opacity: .9; }
+.activity-tool-chip > svg.icon:not(.brand-icon) { color: var(--ds-muted); }
+.activity-row.ds-row-hover { margin-inline: calc(var(--ds-space-3) * -1); padding-inline: var(--ds-space-3); }
+.activity-status.ds-status-icon > span { min-width: 0; }
+.activity-status.running { color: var(--ds-ink); }
+.activity-evidence { display: inline-flex; align-items: center; gap: 4px; }
+.activity-evidence > .icon { opacity: .8; }
+.activity-evidence[data-evidence='observed'] > .icon { color: var(--ds-success); opacity: 1; }
+.activity-detail-meta > span, .activity-stale-note { display: inline-flex; align-items: center; gap: 6px; }
+.activity-source-note { display: flex; align-items: flex-start; gap: var(--ds-space-2); }
+.activity-source-note > .icon { flex-shrink: 0; margin-top: 4px; color: var(--ds-muted); }
+.activity-steps-expander > summary { align-items: center; cursor: pointer; }
+.activity-steps-expander > summary > .icon:first-child { color: var(--ds-accent); }
+.work-log-details > summary { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; list-style: none; color: var(--ds-muted); font-size: var(--ds-text-sm); }
+.work-log-details > summary::-webkit-details-marker { display: none; }
+.disclosure-chevron { transition: transform var(--ds-duration-base) var(--ds-ease-out); }
+details[open] > summary > .disclosure-chevron { transform: rotate(180deg); }
+.approach-author { display: inline-flex; align-items: center; gap: 6px; }
+.work-log-agent { display: inline-flex; align-items: center; gap: 6px; }
+/* Steps read as a timeline: a status icon on a hairline rail. */
+.work-log-list { position: relative; }
+.work-log-step { position: relative; display: grid; grid-template-columns: 22px minmax(0, 1fr); column-gap: var(--ds-space-3); }
+.work-log-step:not(:last-child)::before { content: ''; position: absolute; top: 24px; bottom: calc(var(--ds-space-6) * -1 + 4px); left: 10px; width: 1px; background: var(--ds-hairline-strong); }
+.work-log-marker { display: grid; place-items: center; width: 22px; height: 22px; margin-top: 1px; background: var(--ds-paper); border-radius: 50%; }
+@media (prefers-reduced-motion: reduce) { .disclosure-chevron { transition: none; } }
+.handoff-author { display: inline-flex; align-items: center; gap: 6px; }
