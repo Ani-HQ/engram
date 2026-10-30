@@ -23,6 +23,10 @@
 .activity-section-title h2 { color:var(--ds-muted); font-size:var(--ds-text-sm); font-weight:450; }
 .activity-card { min-width:0; }
 .activity-row { display:grid; grid-template-columns:minmax(0,1fr) max-content; gap:var(--ds-space-6); padding:var(--ds-space-4) 0; margin:0; border:0; border-radius:0; background:transparent; box-shadow:none; }
+/* The whole row is the hit area for its open button; inner controls stay on top. */
+.workspace .activity-row:has(.activity-open) { position:relative; transition:background-color var(--ds-duration-fast) var(--ds-ease-out); }
+.workspace .activity-row .activity-open::after { content:""; position:absolute; inset:0; }
+.workspace .activity-row :is(button, a, summary):not(.activity-open) { position:relative; z-index:1; }
 .activity-row-main { min-width:0; }
 .workspace .activity-row .activity-open { display:flex; justify-content:flex-start; width:fit-content; max-width:100%; min-height:28px; padding:0; margin:0; border:0; border-radius:var(--ds-radius-control); background:transparent; box-shadow:none; text-align:left; }
 .activity-title { color:var(--ds-ink); font-size:var(--ds-text-base); font-weight:500; line-height:1.6; overflow-wrap:anywhere; }
@@ -33,7 +37,7 @@
 :is(.workspace, .detail) :is(.activity-agent-chip, .activity-tool-chip, .activity-more-agents, .activity-resource) { display:inline-flex; align-items:center; gap:var(--ds-space-1); min-width:0; min-height:28px; padding:0; border:0; border-radius:var(--ds-radius-control); background:transparent; box-shadow:none; color:var(--ds-muted); font-size:var(--ds-text-sm); font-weight:450; }
 :is(.workspace, .detail) :is(.activity-agent-chip, .activity-tool-chip)[aria-pressed="true"] { color:var(--ds-ink); font-weight:600; }
 .activity-agent-chip > span, .activity-tool-chip > span, .activity-resource-label { max-width:200px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
-:is(.workspace, .detail) button.activity-resource { color:var(--ds-ink); text-decoration:underline; text-decoration-color:var(--ds-muted); text-underline-offset:.2em; }
+:is(.workspace, .detail) button.activity-resource { color:var(--ds-ink); }
 .activity-row-query { max-width:270px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .activity-evidence, .activity-step-count, .activity-tool-overflow { color:var(--ds-muted); white-space:nowrap; }
 .activity-row-aside { display:grid; justify-items:end; align-content:start; gap:var(--ds-space-1); min-width:0; padding-top:var(--ds-space-1); font-size:var(--ds-text-sm); }
@@ -107,9 +111,10 @@
 .activity-compact-receipt { margin-top:var(--ds-space-6); }
 .work-log-note { margin-top:var(--ds-space-6); color:var(--ds-muted); font-size:var(--ds-text-sm); line-height:1.7; }
 @media (hover:hover) and (pointer:fine) {
-  .workspace .activity-row .activity-open:hover:not(:disabled) .activity-title { text-decoration:underline; text-underline-offset:.2em; }
-  :is(.workspace, .detail) :is(.activity-kind-switcher button, .activity-filter-tab, .activity-agent-chip, .activity-tool-chip, .activity-more-agents, .activity-resource, .activity-filter-chip):hover:not(:disabled) { color:var(--ds-ink); background:transparent; }
-  .activity-options > summary:hover, .work-log-details > summary:hover, .activity-steps-expander > summary:hover { color:var(--ds-ink); background:transparent; }
+  .workspace .activity-row .activity-open:hover:not(:disabled) { background:transparent; }
+  .workspace .activity-row:has(.activity-open:hover) { background:var(--ds-hover-bg); }
+  :is(.workspace, .detail) :is(.activity-kind-switcher button, .activity-filter-tab, .activity-agent-chip, .activity-tool-chip, .activity-more-agents, .activity-resource, .activity-filter-chip):hover:not(:disabled) { color:var(--ds-ink); background:var(--ds-hover-bg); border-color:transparent; }
+  .activity-options > summary:hover, .work-log-details > summary:hover, .activity-steps-expander > summary:hover { color:var(--ds-ink); background:var(--ds-hover-bg); }
 }
 @media (max-width:1100px) {
   .activity-search-filters .search-field { flex-basis:auto; max-width:none; }

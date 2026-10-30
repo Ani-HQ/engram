@@ -69,7 +69,7 @@
 .signup-auth .signup-promise { display: flex; align-items: flex-start; gap: var(--ds-space-2); margin: 0; padding: var(--ds-space-3); color: var(--ds-muted); background: var(--ds-surface-raised); border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-card); font-size: var(--ds-text-sm); line-height: 1.55; }
 .signup-auth .signup-promise > .icon { flex-shrink: 0; margin-top: 3px; color: var(--ds-accent); }
 .signup-auth .auth-switch { justify-content: center; margin: 0; color: var(--ds-muted); font-size: var(--ds-text-sm); }
-.signup-auth .auth-switch button.text { color: var(--ds-ink); font-size: var(--ds-text-sm); text-decoration: underline; text-underline-offset: 3px; }
+.signup-auth .auth-switch button.text { color: var(--ds-ink); font-size: var(--ds-text-sm); text-decoration: none; }
 .signup-auth .auth-invite-request { margin: 0; color: var(--ds-muted); font-size: var(--ds-text-sm); text-align: center; }
 .signup-auth .auth-invite-request a { color: var(--ds-ink); }
 .signup-auth .auth-links { margin: 0; padding: 0; border: 0; font-size: var(--ds-text-xs); }

@@ -7,7 +7,7 @@
 .task-reporting-setup-action > .icon { margin-right:var(--ds-space-2); }
 .task-reporting-steps { margin:0; }
 .task-reporting-step > p { max-width:60ch; }
-.task-reporting-setup button.task-reporting-link { display:inline-flex; align-items:center; justify-self:start; min-height:32px; padding:0; font-size:var(--ds-text-sm); color:var(--ds-ink); border:0; background:transparent; box-shadow:none; text-decoration:underline; text-underline-offset:.2em; }
+.task-reporting-setup button.task-reporting-link { display:inline-flex; align-items:center; justify-self:start; min-height:32px; padding:0; font-size:var(--ds-text-sm); color:var(--ds-ink); border:0; background:transparent; box-shadow:none; text-decoration:none; }
 .task-reporting-instructions { margin:0; border:1px solid var(--ds-hairline-strong); border-radius:var(--ds-radius-card); overflow:hidden; }
 .task-reporting-instructions>summary { display:flex; align-items:center; gap:var(--ds-space-2); min-height:44px; padding:0 var(--ds-space-4); list-style:none; color:var(--ds-ink); background:var(--ds-surface-raised); font-size:var(--ds-text-sm); cursor:pointer; }
 .task-reporting-instructions>summary::-webkit-details-marker { display:none; }

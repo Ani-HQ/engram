@@ -17,6 +17,22 @@ Public pages use the **Marketing kit** below: a developer-platform language mode
 7. **Containers.** App rows are separated by space and a hover surface (`ds-row-hover`); hairline tiles are for marks, icons and code. Public pages may use the marketing kit's hairline cards.
 8. **No faux evidence.** Mockups, demos and gallery examples are labeled as examples and describe real behavior.
 
+## Interaction states
+
+Hover, press and selection follow one grammar (tokens in `:root`, rules in the button section of `web/design-system.css`):
+
+| State | Treatment |
+| --- | --- |
+| Hover, outline button | `--ds-hover-bg` tint and `--ds-hover-border` edge. Never a white (`--ds-ink`) border. |
+| Hover, text button, tab, chip | `--ds-hover-bg` tint and the label moves to `--ds-ink`. No border appears. |
+| Hover, row | The whole row takes `--ds-hover-bg` (`.ds-row-hover`). When a row has one open button, that button's `::after` covers the row and inner controls sit above it. |
+| Hover, primary / danger | `--ds-accent-hover`; danger takes `--ds-danger-hover-bg`. |
+| Press | `scale(.985)` plus `--ds-press-bg` (`--ds-accent-press` for primary). No opacity flash. |
+| Selected | `--ds-selected-bg`, or the mint tab underline. Never an underlined label. |
+| Inline link in prose | A faint underline (38% of the text color) that firms up on hover. |
+
+Buttons and button-styled links never underline, at rest or on hover. Color, background and border changes use `--ds-duration-fast`. `test/hover-states.test.ts` fails if a stylesheet underlines on `:hover` again.
+
 ## Identity, icons and motion
 
 Defined in `web/design-system.css` ("Identity and motion") and `web/design-system.js`, shown in the gallery under `#identity`.

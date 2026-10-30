@@ -107,7 +107,7 @@ kbd { color: var(--ds-muted); border: 0; background: transparent; }
 .empty h2, .insight-empty h2 { color: var(--ds-ink); font-family: var(--ds-font-sans); font-size: var(--ds-text-lg); font-weight: 600; }
 .empty p, .insight-empty p { max-width: 520px; margin: var(--ds-space-2) 0 var(--ds-space-5); font-size: var(--ds-text-base); line-height: 1.65; }
 .notice { padding: 0; margin-bottom: var(--ds-space-6); color: var(--ds-danger); background: transparent; border: 0; border-radius: 0; font-size: var(--ds-text-base); }
-.notice button.text { color: var(--ds-ink); text-decoration: underline; }
+.notice button.text { color: var(--ds-ink); }
 .toast { color: var(--ds-inverse-ink); background: var(--ds-inverse); border: 0; border-radius: var(--ds-radius-control); box-shadow: none; font-size: var(--ds-text-sm); }
 .endpoint { padding: var(--ds-space-3) var(--ds-space-4); background: var(--ds-surface); border: 0; border-radius: var(--ds-radius-control); }
 .connect-layout { max-width: 880px; }
@@ -189,12 +189,11 @@ kbd { color: var(--ds-muted); border: 0; background: transparent; }
 
 @media (hover: hover) and (pointer: fine) {
   .nav a:hover { color: var(--ds-ink); background: transparent; }
-  .workspace .memory-row:hover, .workspace .review-row:hover { background: transparent; }
-  .workspace .memory-row:hover strong, .workspace .review-row:hover strong { text-decoration: underline; text-underline-offset: .2em; }
-  .workspace .memory-tabs button:hover:not(:disabled) { color: var(--ds-ink); background: transparent; }
-  .memory-entry > summary:hover, .memory-related-link:hover, .task-reporting-instructions > summary:hover { color: var(--ds-ink); background: transparent; }
-  .task-reporting-setup .task-reporting-connection:hover { background: transparent; }
-  .auth-switch button.text:hover { background: transparent; color: var(--ds-ink); text-decoration: underline; }
+  .workspace .memory-row:hover, .workspace .review-row:hover { background: var(--ds-hover-bg); }
+  .workspace .memory-tabs button:hover:not(:disabled) { color: var(--ds-ink); background: var(--ds-hover-bg); }
+  .memory-entry > summary:hover, .memory-related-link:hover, .task-reporting-instructions > summary:hover { color: var(--ds-ink); background: var(--ds-hover-bg); }
+  .task-reporting-setup .task-reporting-connection:hover { background: var(--ds-hover-bg); }
+  .auth-switch button.text:hover { background: transparent; color: var(--ds-ink); }
 }
 @media (max-width: 1100px) {
   .filters > .ds-select { flex: 1; width: 0; min-width: 0; max-width: none; }
@@ -314,8 +313,8 @@ html[data-design-system] .ds-skeleton::after { display: none; }
 
 /* ── Dashboard shell: top bar, icon rail, main column (design-system App shell) ── */
 .app-bar { gap: var(--ds-space-2); }
-.app-bar .topbar-logo { display: inline-grid; place-items: center; width: 28px; height: 28px; flex-shrink: 0; border-radius: 7px; }
-.app-bar .topbar-logo:hover { background: var(--ds-surface-raised); }
+.app-bar .topbar-logo { text-decoration: none; display: inline-grid; place-items: center; width: 28px; height: 28px; flex-shrink: 0; border-radius: 7px; }
+.app-bar .topbar-logo:hover { background: var(--ds-hover-bg); }
 .app-bar .mobile-navigation-toggle { display: none; }
 .app-bar .workspace-picker { gap: var(--ds-space-2); padding-right: 4px; }
 .app-bar .workspace-picker .ds-select, .app-bar .workspace-picker select { min-width: 0; }

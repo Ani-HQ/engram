@@ -147,7 +147,7 @@ summary { cursor: pointer; font-size: var(--ds-text-xs); color: var(--muted); pa
 .auth .detail-note { margin: 0; font-size: var(--ds-text-xs); line-height: 1.75; }
 .auth .detail-note:empty { display: none; }
 .auth-switch { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 10px; margin-top: 20px; text-align: left; font-size: var(--ds-text-xs); color: var(--ds-muted); }
-.auth-switch button.text { justify-content: flex-start; padding: 0; border: 0; border-radius: 0; font-size: var(--ds-text-xs); color: var(--ds-muted); text-decoration: underline; text-underline-offset: 3px; }
+.auth-switch button.text { justify-content: flex-start; padding: 0; border: 0; border-radius: 0; font-size: var(--ds-text-xs); color: var(--ds-muted); text-decoration: none; }
 .auth-switch button.text:hover { background: transparent; color: var(--ds-ink); }
 .auth .auth-links { justify-content: flex-start; flex-wrap: wrap; gap: 22px; margin-top: 22px; font-size: var(--ds-text-xs); color: var(--muted); }
 .auth .auth-links a { display: inline-flex; align-items: center; min-height: 32px; }
