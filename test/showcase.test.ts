@@ -553,6 +553,20 @@ describe("public activity projection", () => {
     expect(svg).not.toContain("private task text");
   });
 
+  test("share card shows the address, product marks and an optional photo, never agent names", () => {
+    const activity = publicActivitySnapshot({ ...profile, displayName: "A long display name that wraps on two lines" }, { ...aggregate, products: [{ product: "claude-code", agents: 2, actions: 9 }, { product: "private-harness", agents: 3, actions: 4 }] }, now);
+    const svg = renderShowcaseCard(activity, { origin: "https://engram.example" });
+    expect(svg).toContain(`engram.example/u/${profile.slug}`);
+    expect(svg).toContain("data:image/svg+xml;base64,");
+    expect(svg).toContain("Claude Code");
+    expect(svg).toContain("+3");
+    expect(svg).not.toContain("private-harness");
+    expect(svg).not.toContain("data:image/png");
+    expect(svg).toMatch(/>A long display name[^<]*<\/text>/);
+    expect(svg).toMatch(/[^…]two lines<\/text>/);
+    expect(renderShowcaseCard(activity, { photo: new Uint8Array([137, 80, 78, 71]) })).toContain("data:image/png;base64,iVBORw");
+  });
+
   test("produces a real 1200×630 PNG using the bundled font", async () => {
     const png = await renderShowcasePng(publicActivitySnapshot(profile, aggregate, now));
     expect([...png.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
