@@ -41,14 +41,16 @@
 
 /* Cards */
 /* Live state and categories share the narrow column beside the 12-week chart. */
-.profile-main { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); grid-template-areas: "desk overview" "categories overview" "pins pins"; grid-template-rows: auto 1fr auto; gap: var(--ds-space-5); align-items: stretch; }
-.public-profile[data-profile-layout='field-notes'] .profile-main { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); grid-template-areas: "pins pins" "overview desk" "overview categories"; grid-template-rows: auto auto 1fr; }
+.profile-main { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); grid-template-areas: "desk overview" "categories overview" "agents agents" "pins pins"; grid-template-rows: auto 1fr auto auto; gap: var(--ds-space-5); align-items: stretch; }
+.public-profile[data-profile-layout='field-notes'] .profile-main { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); grid-template-areas: "pins pins" "overview desk" "overview categories" "agents agents"; grid-template-rows: auto auto 1fr auto; }
 .profile-main > * { min-width: 0; }
 .profile-desk { grid-area: desk; }
 .profile-overview { grid-area: overview; }
 .profile-highlights { grid-area: pins; }
 .profile-category-summary { grid-area: categories; }
-:is(.profile-desk, .profile-overview, .profile-category-summary, .profile-highlight, .profile-receipts, .profile-history) { padding: var(--profile-card-pad); background: var(--ds-surface-raised); border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-panel); }
+.profile-agents { grid-area: agents; }
+.profile-agents[hidden] { display: none; }
+:is(.profile-desk, .profile-overview, .profile-category-summary, .profile-agents, .profile-highlight, .profile-receipts, .profile-history) { padding: var(--profile-card-pad); background: var(--ds-surface-raised); border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-panel); }
 .profile-section-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--ds-space-2) var(--ds-space-3); margin-bottom: var(--ds-space-5); }
 .profile-section-heading :is(h2, h3) { font-size: var(--ds-text-base); font-weight: 600; line-height: 1.4; }
 .profile-section-heading > span { font-size: var(--ds-text-sm); color: var(--ds-muted); }
@@ -135,6 +137,14 @@ html[data-design-system] .public-profile .ds-highlight-actions { margin-top: aut
 .profile-category-share { grid-column: 2; grid-row: 1; color: var(--ds-muted); font-size: var(--ds-text-sm); font-variant-numeric: tabular-nums; }
 .profile-category-bar { grid-column: 1 / -1; grid-row: 3; display: block; height: 6px; margin-top: var(--ds-space-2); border-radius: 999px; background: var(--ds-paper); overflow: hidden; }
 .profile-category-fill { display: block; width: var(--share, 0%); height: 100%; border-radius: inherit; background: var(--ds-accent); }
+/* Agent crew: one tile per product, the agent count is the headline. */
+.profile-agent-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--ds-space-3); margin: 0; padding: 0; list-style: none; }
+.profile-agent { display: flex; align-items: center; gap: var(--ds-space-3); min-width: 0; padding: var(--ds-space-3) var(--ds-space-4); background: var(--ds-paper); border-radius: var(--ds-radius-card); }
+.profile-agent-copy { display: grid; flex: 1; min-width: 0; gap: 2px; }
+.profile-agent-copy > strong { overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.profile-agent-copy > span, .profile-agent-count > span { color: var(--ds-muted); font-size: var(--ds-text-xs); }
+.profile-agent-count { display: grid; justify-items: end; gap: 2px; }
+.profile-agent-count > strong { font-size: var(--ds-text-xl); font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
 .profile-category-list > .profile-empty-note { grid-column: 1 / -1; color: var(--ds-muted); }
 
 /* Disclosures */
@@ -187,6 +197,7 @@ html[data-design-system] .public-profile :is(.public-event-mark, .ds-focus-mark)
 .public-links { display: flex; flex-wrap: wrap; align-items: center; justify-content: end; gap: var(--ds-space-4); font-size: var(--ds-text-sm); color: var(--ds-muted); margin-top: var(--ds-space-6); }
 .public-links > span { margin-right: auto; }
 .public-links a { display: inline-flex; align-items: center; gap: var(--ds-space-2); min-height: 44px; text-underline-offset: .2em; }
+html[data-design-system] .public-links button { display: inline-flex; align-items: center; min-height: 44px; padding: 0; border: 0; color: inherit; font: inherit; line-height: inherit; text-decoration: underline; text-underline-offset: .2em; }
 .public-bottom { max-width: 760px; margin: var(--ds-space-6) auto var(--ds-space-10); padding-inline: var(--ds-space-6); font-size: var(--ds-text-xs); color: var(--ds-muted); text-align: center; line-height: 1.7; }
 .public-showcase-fallback { max-width: 720px; margin: 18vh auto; padding: var(--ds-space-8); }
 .public-showcase-fallback > p:first-child { color: var(--ds-muted); font-size: var(--ds-text-sm); }
@@ -207,8 +218,8 @@ html[data-design-system] .public-profile :is(.public-event-mark, .ds-focus-mark)
 .compact.public-profile { --profile-card-pad: var(--ds-space-4); padding: var(--ds-space-6); border-radius: var(--ds-radius-card); background: var(--ds-surface); }
 .compact .profile-identity { margin: 0 0 var(--ds-space-6); padding: 0; gap: var(--ds-space-4); }
 .compact .profile-identity :is(h1, h2) { font-size: var(--ds-text-2xl); }
-.compact .profile-main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "desk" "overview" "pins" "categories"; grid-template-rows: none; gap: var(--ds-space-4); }
-.public-profile.compact[data-profile-layout='field-notes'] .profile-main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "pins" "overview" "desk" "categories"; grid-template-rows: none; }
+.compact .profile-main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "desk" "overview" "categories" "agents" "pins"; grid-template-rows: none; gap: var(--ds-space-4); }
+.public-profile.compact[data-profile-layout='field-notes'] .profile-main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "pins" "overview" "desk" "categories" "agents"; grid-template-rows: none; }
 .compact .profile-highlight-list { grid-template-columns: minmax(0, 1fr); }
 .compact .profile-statistics .ds-stat-value, .compact .live-metrics strong { font-size: var(--ds-text-xl); }
 .compact .profile-rhythm { grid-template-columns: minmax(0, 1fr); }
@@ -249,8 +260,8 @@ html[data-design-system] :is(.public-profile, .profile-photo-editor) .ds-profile
   html[data-design-system] .public-profile .contribution-grid .contribution-cell:hover { outline: 1px solid var(--ds-ink); outline-offset: 1px; transform: scale(1.15); }
 }
 @media (max-width: 900px) {
-  .profile-main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "desk" "overview" "pins" "categories"; grid-template-rows: none; }
-  .public-profile[data-profile-layout='field-notes'] .profile-main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "pins" "overview" "desk" "categories"; grid-template-rows: none; }
+  .profile-main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "desk" "overview" "categories" "agents" "pins"; grid-template-rows: none; }
+  .public-profile[data-profile-layout='field-notes'] .profile-main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "pins" "overview" "desk" "categories" "agents"; grid-template-rows: none; }
 }
 @media (max-width: 600px) {
   .public-header { padding: var(--ds-space-4); }

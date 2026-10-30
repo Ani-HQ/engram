@@ -91,7 +91,7 @@ export function contributionGrid(daily = [], { headingTag = "h3" } = {}) {
         h("div", { class: "contribution-months", "aria-hidden": "true" }, months),
         h("div", { class: "contribution-layout" }, h("div", { class: "contribution-weekdays", "aria-hidden": "true" }, weekLabels), grid))),
     h("p", { class: "contribution-explore" }, "Tap a day or use arrow keys to explore dates."),
-    h("div", { class: "contribution-footer" }, live, h("div", { class: "contribution-legend", "aria-hidden": "true" }, "Less", [0, 1, 2, 3, 4].map(level => h("span", { class: `contribution-cell level-${level}` })), "More")));
+    h("div", { class: "contribution-footer" }, live, h("div", { class: "contribution-legend", "aria-hidden": "true" }, h("span", {}, "Less"), [0, 1, 2, 3, 4].map(level => h("span", { class: `contribution-cell level-${level}` })), h("span", {}, "More"))));
   return section;
 }
 
@@ -234,7 +234,8 @@ export function profileCard(data, { compact = false } = {}) {
         h("div", { class: "profile-section-heading" }, h(headingTag, { tabindex: "-1" }, "Pinned work"), h("span", {}, "Chosen by the owner")),
         h("div", { class: "profile-highlight-list" }),
         h("div", { class: "profile-highlight-empty" }, h("strong", {}, "Nothing pinned here yet."), h("p", {}, "This space is ready for the notes and links the owner chooses to share."))),
-      categorySummary(tools, headingTag)),
+      categorySummary(tools, headingTag),
+      agentRoster(data.agents, headingTag)),
     h("details", { class: "profile-receipts" }, h("summary", {}, h("span", { class: "profile-summary-title" }, "Recent activity"), h("span", { class: "profile-receipt-count" })), activityStream(data.activity, { headingTag })),
     h("details", { class: "profile-history" }, h("summary", {}, h("span", { class: "profile-summary-title" }, "Every tool category"), h("span", {}, "All time")), profileTools(tools, headingTag)),
     h("footer", { class: "profile-footnote" }, h("p", {}, privacyText(data.activity?.enabled === true, profileHighlights(profile).length > 0))));
@@ -265,6 +266,31 @@ function updateCategories(section, tools) {
     return h("div", { class: "profile-category" }, h("strong", {}, number(tool.count)), h("span", {}, `${label} ${tool.count === 1 ? "action" : "actions"}`),
       h("span", { class: "profile-category-bar", role: "img", "aria-label": `${share}% of all actions` }, fill), h("span", { class: "profile-category-share", "aria-hidden": "true" }, `${share}%`));
   }) : [h("p", { class: "profile-empty-note" }, "No action counts yet.")]));
+}
+// Products only: agent names are private, so each product shows how many agents use it.
+function agentRoster(agents, headingTag) {
+  const section = h("section", { class: "profile-agents", "aria-label": "Connected agents" },
+    h("div", { class: "profile-section-heading" }, h(headingTag, {}, "The agent crew"), h("span", { class: "profile-agents-total" })),
+    h("ul", { class: "profile-agent-list", role: "list" }));
+  updateAgents(section, agents);
+  return section;
+}
+function updateAgents(section, agents) {
+  const list = (Array.isArray(agents) ? agents : []).filter(item => item && typeof item.product === "string" && item.agents > 0);
+  const key = JSON.stringify(list);
+  if (section.dataset.agents === key) return;
+  section.dataset.agents = key;
+  section.hidden = !list.length;
+  const total = list.reduce((sum, item) => sum + item.agents, 0);
+  setText(section.querySelector(".profile-agents-total"), `${number(total)} connected · all time`);
+  section.querySelector(".profile-agent-list").replaceChildren(...list.map(item => {
+    const visual = agentVisual("", { harness: item.product, publicSafe: true });
+    const label = item.product === "other" ? "Other agents" : visual.label;
+    return h("li", { class: "profile-agent" },
+      identityMark(visualIcon(visual, { size: 22 }), { size: "lg" }),
+      h("span", { class: "profile-agent-copy" }, h("strong", {}, label), h("span", {}, `${number(item.actions)} ${item.actions === 1 ? "action" : "actions"}`)),
+      h("span", { class: "profile-agent-count" }, h("strong", {}, number(item.agents)), h("span", {}, item.agents === 1 ? "agent" : "agents")));
+  }));
 }
 function profileHighlights(profile = {}) {
   return (Array.isArray(profile.highlights) ? profile.highlights : []).filter(item => item && typeof item.title === "string" && item.title.trim()).slice(0, 3).map(item => ({ title: item.title.slice(0, 80), body: typeof item.body === "string" ? item.body.slice(0, 600) : "", url: publicLink(item.url) }));
@@ -384,8 +410,8 @@ function updatePresentation(card, data) {
   setText(card.querySelector(".profile-receipt-count"), data.activity?.enabled === true ? `${number(streamEvents(data.activity).length)} recent events` : "Activity labels are private");
   if (card.dataset.profileLayout !== layout) {
     const focus = card.contains(document.activeElement) ? document.activeElement : null;
-    const desk = card.querySelector(".profile-desk"), overview = card.querySelector(".profile-overview"), categories = card.querySelector(".profile-category-summary");
-    main.append(...(layout === "field-notes" ? [highlights, overview, desk, categories] : [desk, overview, highlights, categories]));
+    const desk = card.querySelector(".profile-desk"), overview = card.querySelector(".profile-overview"), categories = card.querySelector(".profile-category-summary"), agents = card.querySelector(".profile-agents");
+    main.append(...(layout === "field-notes" ? [highlights, overview, desk, categories, agents] : [desk, overview, categories, agents, highlights]));
     card.dataset.profileLayout = layout;
     if (focus && document.activeElement !== focus) focus.focus({ preventScroll: true });
   }
@@ -456,6 +482,7 @@ export function updateProfileCard(card, data) {
     cell.title = label; cell.setAttribute("aria-label", label);
   }
   updateRhythm(grid.closest(".contributions"), daily);
+  updateAgents(card.querySelector(".profile-agents"), data.agents);
   const selected = [...grid.children].find(node => node.dataset.date === grid.dataset.selectedDate);
   text(card.querySelector(".contribution-caption"), selected ? selected.getAttribute("aria-label") : `${number(total)} actions in the last 12 weeks`);
   const tools = JSON.stringify(data.tools || []);

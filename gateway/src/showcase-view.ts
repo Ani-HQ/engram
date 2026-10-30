@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { renderAsync } from "@resvg/resvg-js";
-import { publicActivityEvents, type PublicActivityEvent } from "./public-activity";
+import { publicActivityEvents, PRODUCTS, type PublicActivityEvent } from "./public-activity";
 import { designColor } from "./design-tokens";
 
 export type ShowcaseLayout = "studio" | "field-notes";
@@ -29,6 +29,7 @@ export interface PublicActivity {
   };
   daily: { date: string; count: number }[];
   tools: { category: string; count: number }[];
+  agents: { product: string; label: string; agents: number; actions: number }[];
   updatedAt: string | null;
   activity: { enabled: boolean; events: PublicActivityEvent[] };
   live: {
@@ -148,6 +149,14 @@ export function publicActivitySnapshot(profile: ShowcaseProfile, row: any = {}, 
     const category = CATEGORY_SET.has(tool?.category) ? tool.category : "other";
     categories.set(category, (categories.get(category) ?? 0) + count(tool?.count));
   }
+  // Known product keys only; anything else is grouped as "other", never named.
+  const products = new Map<string, { agents: number; actions: number }>();
+  for (const item of Array.isArray(row.products) ? row.products : []) {
+    const key = typeof item?.product === "string" && item.product !== "other" && Object.hasOwn(PRODUCTS, item.product) ? item.product : "other";
+    const total = products.get(key) ?? { agents: 0, actions: 0 };
+    total.agents += count(item?.agents); total.actions += count(item?.actions);
+    products.set(key, total);
+  }
   const last = row.updated_at ? new Date(row.updated_at) : null;
   const received = row.last_activity_at ? new Date(row.last_activity_at) : null;
   return {
@@ -160,6 +169,9 @@ export function publicActivitySnapshot(profile: ShowcaseProfile, row: any = {}, 
     daily,
     tools: [...categories].filter(([, total]) => total > 0).map(([category, total]) => ({ category, count: total }))
       .sort((a, b) => b.count - a.count || a.category.localeCompare(b.category)),
+    agents: [...products].filter(([, total]) => total.agents > 0)
+      .map(([product, total]) => ({ product, label: PRODUCTS[product], ...total }))
+      .sort((a, b) => Number(a.product === "other") - Number(b.product === "other") || b.agents - a.agents || b.actions - a.actions || a.product.localeCompare(b.product)),
     updatedAt: last && Number.isFinite(last.getTime()) ? last.toISOString() : null,
     activity: { enabled: profile.showActivity === true, events: publicActivityEvents(eventSource.rows, { enabled: profile.showActivity === true || eventSource.preview === true, scope: eventSource.scope || "", key: eventSource.key || "", now }) },
     live: {

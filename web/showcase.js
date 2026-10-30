@@ -1,4 +1,4 @@
-import { h, profileCard, profileSkeleton, updateProfileCard, updateProfileTimes } from "./profile.js";
+import { activityRhythm, h, profileCard, profileSkeleton, updateProfileCard, updateProfileTimes } from "./profile.js";
 import { watchPublicActivity } from "./live-activity.js";
 import { observeLoadingMotion } from "./design-system.js";
 import { icon } from "./icons.js";
@@ -43,7 +43,8 @@ function render(data) {
   const share = h("button", { type: "button", class: "ds-button profile-share-copy", onclick: () => copyValue(share, pageUrl, linkLabel, "Profile link copied") }, linkLabel());
   const actions = data.stats?.totalActions || 0, agents = data.stats?.activeAgents || 0;
   const owner = data.profile?.displayName || `@${slug}`;
-  const postText = `${owner} on engram: ${actions.toLocaleString("en-US")} agent actions across ${agents.toLocaleString("en-US")} ${agents === 1 ? "agent" : "agents"}.`;
+  const days = data.stats?.activeDays || 0, streak = activityRhythm(data.daily || []).current;
+  const postText = `${owner} on engram: ${actions.toLocaleString("en-US")} agent actions across ${agents.toLocaleString("en-US")} ${agents === 1 ? "agent" : "agents"} in ${days.toLocaleString("en-US")} active ${days === 1 ? "day" : "days"}.${streak > 1 ? ` ${streak}-day streak.` : ""}`;
   const post = h("a", { class: "ds-button profile-share-x", "data-variant": "primary", href: `https://x.com/intent/post?text=${encodeURIComponent(postText)}&url=${encodeURIComponent(pageUrl)}`, target: "_blank", rel: "noopener noreferrer" }, icon("share-2", { size: 16 }), "Share on X");
   const streamCopy = h("button", { type: "button", class: "text small", onclick: () => copyValue(streamCopy, `${location.origin}${streamUrl}`, "Copy live API", "Live stream URL copied") }, "Copy live API");
   const label = h("span", { role: "status", "aria-live": "polite" }, "Connecting…");

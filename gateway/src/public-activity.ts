@@ -12,7 +12,7 @@ export interface PublicActivityEvent {
   updatedAt: string;
 }
 
-const PRODUCTS: Record<string, string> = {
+export const PRODUCTS: Record<string, string> = {
   codex: "Codex", "claude-code": "Claude Code", claude: "Claude", cursor: "Cursor", chatgpt: "ChatGPT",
   "grok-bot": "Grok Bot", grok: "Grok", "gemini-cli": "Gemini CLI", opencode: "OpenCode", cline: "Cline",
   windsurf: "Windsurf", aider: "Aider", goose: "Goose", amp: "Amp", "github-copilot": "GitHub Copilot",

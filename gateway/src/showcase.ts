@@ -135,6 +135,14 @@ async function getOrgActivitySnapshot(profile: ShowcaseProfile, orgId: number, d
       GROUP BY 1
     ), categories AS (
       SELECT category, count(*) AS count FROM categorized GROUP BY category
+    ), agent_products AS (
+      -- Each agent counts once, under the product it reports most often.
+      -- Agent names stay private; only the product key leaves this query.
+      SELECT agent, mode() WITHIN GROUP (ORDER BY lower(harness)) AS product, count(*) AS actions
+      FROM ledger GROUP BY agent
+    ), products AS (
+      SELECT coalesce(product, 'other') AS product, count(*) AS agents, sum(actions) AS actions
+      FROM agent_products GROUP BY 1
     ) SELECT count(*) AS total_actions,
       count(*) FILTER (WHERE status = 'completed') AS completed_actions,
       count(*) FILTER (WHERE status = 'failed') AS failed_actions,
@@ -150,7 +158,8 @@ async function getOrgActivitySnapshot(profile: ShowcaseProfile, orgId: number, d
       count(*) FILTER (WHERE status = 'running' AND recorded_at < bounds.recent_cutoff) AS stale_actions,
       max(recorded_at) AS last_activity_at,
       (SELECT coalesce(json_agg(days ORDER BY date), '[]'::json) FROM days) AS daily,
-      (SELECT coalesce(json_agg(categories), '[]'::json) FROM categories) AS tools
+      (SELECT coalesce(json_agg(categories), '[]'::json) FROM categories) AS tools,
+      (SELECT coalesce(json_agg(products), '[]'::json) FROM products) AS products
     FROM ledger CROSS JOIN bounds`;
   const events = profile.showActivity === true || preview ? await publicActivityLedger(db, orgId) : [];
   // Receipts may arrive while these reads are pending. Observe after the reads

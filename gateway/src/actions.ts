@@ -285,11 +285,13 @@ export function actionLedger(db: postgres.Sql, orgId: number, options: { aggrega
       FROM action_events WHERE org_id = ${orgId}
     ) latest_reports WHERE action_version = 1`;
   if (options.aggregate) return db`
-    SELECT agent, lower(tool) AS tool, status, occurred_at, recorded_at FROM (${reports}) reports
+    SELECT agent, lower(tool) AS tool, status, occurred_at, recorded_at, harness FROM (${reports}) reports
     WHERE tool NOT IN ('list_actions', 'record_action', 'whoami')
     UNION ALL
-    SELECT token_name, lower(tool), CASE WHEN outcome = 'ok' THEN 'completed' ELSE 'failed' END, ts, ts
-    FROM audit_log WHERE org_id = ${orgId} AND tool NOT IN ('list_actions', 'record_action', 'whoami')`;
+    SELECT token_name, lower(tool), CASE WHEN outcome = 'ok' THEN 'completed' ELSE 'failed' END, ts, ts, registered_source.harness
+    FROM audit_log LEFT JOIN tokens registered_source
+      ON registered_source.org_id = audit_log.org_id AND registered_source.name = audit_log.token_name
+    WHERE audit_log.org_id = ${orgId} AND tool NOT IN ('list_actions', 'record_action', 'whoami')`;
   return db`
     SELECT id, agent, tool, summary, resource, status, evidence, run_id, occurred_at, recorded_at, detail, action_key, event_id, effective_approach AS approach, started_at, first_summary,
            effective_task_title AS task_title, effective_outcome AS outcome,

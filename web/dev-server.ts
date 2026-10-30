@@ -611,6 +611,24 @@ async function handleDemoReview(req: Request, url: URL) {
   return json({ ok: true, item, demo: true }, 200, headers);
 }
 
+// Mirrors the SQL roll-up: each agent counts once, under its most frequent harness.
+function demoAgentProducts(rows: any[]) {
+  const byAgent = new Map<string, { harness: Map<string, number>; actions: number }>();
+  for (const row of rows) {
+    const entry = byAgent.get(row.agent) ?? { harness: new Map(), actions: 0 };
+    entry.actions++;
+    if (row.harness) entry.harness.set(row.harness, (entry.harness.get(row.harness) ?? 0) + 1);
+    byAgent.set(row.agent, entry);
+  }
+  const products = new Map<string, { agents: number; actions: number }>();
+  for (const { harness, actions } of byAgent.values()) {
+    const product = [...harness].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? "other";
+    const total = products.get(product) ?? { agents: 0, actions: 0 };
+    total.agents++; total.actions += actions; products.set(product, total);
+  }
+  return [...products].map(([product, total]) => ({ product, ...total }));
+}
+
 function showcaseActivity(profile: ShowcaseProfile, workspaceId = session.org.id, preview = false) {
   const rows = latestDemoActions(workspaceId).filter((row: any) => !["list_actions", "record_action", "whoami"].includes(row.tool));
   const now = new Date();
@@ -641,6 +659,7 @@ function showcaseActivity(profile: ShowcaseProfile, workspaceId = session.org.id
     last_activity_at: rows.map((row: any) => row.recordedAt).sort().at(-1) || null,
     daily: [...days].map(([date, count]) => ({ date, count })),
     tools: [...categories].map(([category, count]) => ({ category, count })),
+    products: demoAgentProducts(rows),
   }, now, { rows: rows.map((row: any) => ({ id: row.id, agent: row.agent, action_key: row.actionKey, tool: row.tool, resource: row.resource, status: row.status, evidence: row.evidence, recorded_at: row.recordedAt, harness: row.harness })), scope: `demo:${workspaceId}:${profile.slug}`, key: "local-preview-public-activity-key", preview, photoUrl: preview ? profile.photo ?? null : showcasePhotoUrl(profile.slug, showcasePhotos.get(workspaceId)?.digest) });
 }
 

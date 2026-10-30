@@ -402,7 +402,12 @@ describe("local activity demo", () => {
     expect(data.stats.totalActions).toBe(saved.preview.stats.totalActions);
     expect(data.profile).toEqual({ slug: profile.slug, displayName: profile.displayName, bio: profile.bio, layout: "studio", highlights: [], photoUrl: null });
     expect(data).not.toHaveProperty("actions");
-    expect(data).not.toHaveProperty("agents");
+    // Agents appear only as product summaries, never by name.
+    for (const item of data.agents) expect(Object.keys(item).sort()).toEqual(["actions", "agents", "label", "product"]);
+    const names = ((await (await request("/api/actions?limit=200")).json()).agents ?? []) as string[];
+    expect(names.length).toBeGreaterThan(0);
+    const products = new Set(data.agents.map((item: any) => item.product));
+    for (const name of names.filter(name => !products.has(name))) expect(JSON.stringify(data.agents)).not.toContain(`"${name}"`);
     for (const value of ["ada@example.com", "github.create_pull_request", "file://demo-test", "run-job-check"]) expect(JSON.stringify(data)).not.toContain(value);
     const page = await (await request("/u/demo-agents")).text();
     expect(page).toContain('property="og:image"');
