@@ -103,6 +103,11 @@ export async function withOrg<T>(org: ContextOrg, token: TokenRecord, fn: () => 
   return usingOrgPool(org.dataDb, dataSql => runWithContext({ org, token, dataSql }, fn));
 }
 
+// Reasons an owner can act on; the API shows these messages as written.
+export class InviteError extends Error {
+  constructor(message: string, public code: "signup_invite_required" | "personal_workspace", public status = 409) { super(message); }
+}
+
 export class WorkspaceProvisioningError extends Error {
   readonly status = 503;
   readonly code = "workspace_provisioning";
@@ -365,9 +370,9 @@ export async function createInvite(
   const normalized = normalizeEmail(email);
   if (!normalized) throw new Error("email required");
   if (role === "agent") throw new Error("invite a person, not an agent");
-  if (config.signupMode === "invite-only" && !await findMemberByEmail(normalized)) throw new Error("A signup invitation and email verification are required first");
+  if (config.signupMode === "invite-only" && !await findMemberByEmail(normalized)) throw new InviteError(`${normalized} doesn't have an engram account yet. During the closed beta, new people need an early access invitation before they can join a workspace.`, "signup_invite_required");
   const org = await getOrg(orgId);
-  if (org?.kind === "personal") throw new Error("a personal brain has one owner");
+  if (org?.kind === "personal") throw new InviteError("A personal workspace has one owner. Create a team workspace to invite people.", "personal_workspace");
   const raw = `inv_${randomBytes(24).toString("base64url")}`;
   await sql`
     INSERT INTO invites (org_id, email, role, sha256_hash, created_by, expires_at)
