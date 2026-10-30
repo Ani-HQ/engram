@@ -79,7 +79,7 @@ function billingPlans(catalog, { hosted, trial }) {
   const plans = Array.isArray(catalog?.plans) ? catalog.plans : [];
   if (!plans.length) return null;
   return h("section", { class: "account-plans", "aria-labelledby": "account-plans-title" },
-    h("div", { class: "account-subhead" }, h("h2", { id: "account-plans-title" }, "Plans"), link("Compare plans", "/pricing", "text small")),
+    h("div", { class: "account-subhead" }, h("h2", { id: "account-plans-title" }, "Plans"), link("Compare plans", "/pricing", "button-link text small")),
     h("div", { class: "ds-plan-grid" }, plans.map(plan => {
       const cloud = plan.id === "cloud", current = cloud ? hosted : !hosted;
       return h("article", { class: "ds-plan-card", "data-current": current ? "true" : null, "aria-label": `${plan.name}${current ? ", current plan" : ""}` },

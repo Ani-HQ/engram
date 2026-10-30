@@ -10,10 +10,11 @@
 .agent-presence-copy strong { color:var(--ds-ink); font-size:var(--ds-text-base); font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .agent-presence-copy>span { color:var(--ds-muted); font-size:var(--ds-text-sm); }
 .agent-presence.reconnect .agent-presence-copy>span { color:var(--ds-danger); }
-.workspace .agent-presence[aria-pressed="true"] strong { font-weight:650; text-decoration:underline; text-underline-offset:.2em; }
+.workspace .agent-presence[aria-pressed="true"] { background:var(--ds-selected-bg); }
+.workspace .agent-presence[aria-pressed="true"] strong { font-weight:600; }
 .agent-overview-note { display:flex; align-items:center; flex-wrap:wrap; gap:var(--ds-space-2); margin-top:var(--ds-space-3); color:var(--ds-muted); font-size:var(--ds-text-sm); line-height:1.65; }
-.workspace :is(.agent-overview-note, .agent-overview-heading, .agent-overview.unavailable) button { color:var(--ds-ink); text-decoration:underline; text-underline-offset:.2em; }
-@media (hover:hover) and (pointer:fine) { .workspace .agent-presence:hover:not(:disabled) { background:transparent; } .workspace .agent-presence:hover strong { text-decoration:underline; text-underline-offset:.2em; } }
+.workspace :is(.agent-overview-note, .agent-overview-heading, .agent-overview.unavailable) button { color:var(--ds-ink); }
+@media (hover:hover) and (pointer:fine) { .workspace .agent-presence:hover:not(:disabled) { background:var(--ds-hover-bg); } }
 @media (max-width:580px) { .agent-presence-list { gap:0 var(--ds-space-6); } }
 .connection-inventory { margin:var(--ds-space-8) 0; }
 .connection-list-filter { width:100%; max-width:280px; margin-top:var(--ds-space-5); }
