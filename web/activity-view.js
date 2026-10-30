@@ -1,5 +1,7 @@
 import { h } from "./profile.js";
 import { agentVisual, toolVisual, visualIcon } from "./tooling.js";
+import { icon } from "./icons.js";
+import { identityMark, staggerIn } from "./design-system.js";
 import { activityPresentation, actionPresentation, resourcePresentation, chronologicalActions, contributorName } from "./activity-presentation.js";
 
 const plural = (count, word) => `${count} ${count === 1 ? word : word === "approach" ? "approaches" : `${word}s`}`;
@@ -34,12 +36,14 @@ export function activityStatus(activity, { compact = false } = {}) {
   const state = ["running", "failed", "completed"].includes(activity.status) ? activity.status : "unknown";
   const stale = state === "running" && !activity.workingActions && activity.staleActions > 0;
   const label = stale ? "Awaiting update" : { running: "In progress", completed: "Completed", failed: "Needs attention", unknown: "Unknown" }[state];
-  return h("span", { class: `activity-status status-label ${state}${stale ? " stale" : ""}${compact ? " compact" : ""}`, "data-tone": state === "failed" ? "danger" : "neutral", title: label }, label);
+  const glyph = stale ? "clock" : { running: "loader-circle", completed: "circle-check", failed: "circle-alert", unknown: "circle-help" }[state];
+  return h("span", { class: `activity-status status-label ds-status-icon ${state}${stale ? " stale" : ""}${compact ? " compact" : ""}`, "data-state": stale ? "stale" : state, "data-tone": state === "failed" ? "danger" : "neutral", title: label }, icon(glyph, { size: compact ? 13 : 14 }), h("span", {}, label));
 }
 export function agentAvatar(name, { working = false, size = "", label = false, harness, sourceLabel, displayName } = {}) {
   const visual = agentVisual(name, { harness, sourceLabel });
-  return h("span", { class: `activity-avatar ${size}`, title: displayName && displayName !== name ? `${displayName} · ${name}` : name, "aria-hidden": label ? null : "true" },
-    visualIcon(visual, { size: size === "large" ? 19 : size === "row" ? 18 : 14 }));
+  const mark = identityMark(visualIcon(visual, { size: size === "large" ? 24 : size === "row" ? 18 : 15 }), { size: size === "large" ? "lg" : size === "row" ? "md" : "sm", presence: working ? "working" : "", className: `activity-avatar ${size}` });
+  mark.title = displayName && displayName !== name ? `${displayName} · ${name}` : name;
+  return mark;
 }
 function agentChip(agent, onFilter, currentFilter, { avatar = false } = {}) {
   const working = agent.workingActions > 0;
@@ -48,7 +52,7 @@ function agentChip(agent, onFilter, currentFilter, { avatar = false } = {}) {
 }
 function toolChip(tool, onFilter, active = false, extraClass = "") {
   const visual = toolVisual(tool);
-  return button(h("span", {}, visual.label), () => onFilter("tool", active ? "" : tool),
+  return button([visualIcon(visual, { size: 13 }), h("span", {}, visual.label)], () => onFilter("tool", active ? "" : tool),
     { class: `activity-tool-chip ${extraClass}`, title: tool, "aria-label": `Filter by ${tool}`, "aria-pressed": String(active), "data-focus-key": `tool:${tool}` });
 }
 export function activityFilters(stats, selected, onChange) {
@@ -68,7 +72,7 @@ function resourceControl(resource, activity, onResource, { action = null, primar
 }
 function contributorChips(activity, onFilter, filters = {}, limit = 3, onOpen) {
   const agents = activity.agents || [];
-  return agents.length ? h("div", { class: "activity-contributors", "aria-label": "Contributors" }, agents.slice(0, limit).map(agent => agentChip(agent, onFilter, filters.agent)),
+  return agents.length ? h("div", { class: "activity-contributors", "aria-label": "Contributors" }, agents.slice(0, limit).map(agent => agentChip(agent, onFilter, filters.agent, { avatar: true })),
     agents.length > limit && (onOpen ? button(`+${agents.length - limit}`, () => onOpen(activity), { class: "activity-more-agents", "aria-label": `View all ${agents.length} contributors` }) : h("span", { class: "activity-more-agents" }, `+${agents.length - limit}`))) : null;
 }
 function reportLead(lead, className = "") {
@@ -79,18 +83,18 @@ export function activityCard(activity, { onOpen, onFilter, onResource, filters =
   const tools = (activity.tools || []).filter(tool => { const visual = toolVisual(tool), key = `${visual.brand || visual.icon}:${visual.label}`; if (seen.has(key)) return false; seen.add(key); return true; });
   const agents = activity.agents || [], memory = presentation.kind === "memory";
   const context = !memory && presentation.lead;
-  return h("article", { class: `activity-card activity-row activity-${presentation.kind}${activity.status === "running" ? " is-running" : ""}${context ? " has-context" : ""}`, "data-activity-id": activity.id },
+  return h("article", { class: `activity-card activity-row ds-row-hover activity-${presentation.kind}${activity.status === "running" ? " is-running" : ""}${context ? " has-context" : ""}`, "data-activity-id": activity.id },
     h("div", { class: "activity-row-main" },
       button([h("span", { class: "activity-title" }, presentation.title)], () => onOpen?.(activity),
         { class: "activity-open", "data-open-activity": activity.id, "data-focus-key": `open:${activity.id}`, "aria-label": `Open ${memory ? "memory operation" : presentation.kind}: ${presentation.title}` }),
       context && h("p", { class: "activity-row-context" }, h("span", { class: "activity-context-label" }, `${context.label} · `), context.text),
       h("div", { class: "activity-row-meta" },
-        agents.length > 0 && h("div", { class: "activity-row-contributors", "aria-label": "Contributors" }, agents.slice(0, 2).map(agent => agentChip(agent, onFilter, filters.agent, { avatar: false })), agents.length > 2 && button(`+${agents.length - 2}`, () => onOpen?.(activity), { class: "activity-more-agents", "aria-label": `View all ${agents.length} contributors` })),
+        agents.length > 0 && h("div", { class: "activity-row-contributors", "aria-label": "Contributors" }, agents.slice(0, 2).map(agent => agentChip(agent, onFilter, filters.agent, { avatar: true })), agents.length > 2 && button(`+${agents.length - 2}`, () => onOpen?.(activity), { class: "activity-more-agents", "aria-label": `View all ${agents.length} contributors` })),
         presentation.memoryContext?.query && h("span", { class: "activity-row-query", title: presentation.memoryContext.query }, `“${presentation.memoryContext.query}”`),
         presentation.primaryResource && (!memory || !presentation.memoryContext?.query) && resourceControl(presentation.primaryResource, activity, onResource, { concise: presentation.title.includes(`“${presentation.primaryResource.label}”`) }),
         tools.length > 0 && h("div", { class: "activity-tools", "aria-label": "Tools used" }, tools.slice(0, memory ? 1 : 2).map(tool => toolChip(tool, onFilter || (() => {}), filters.tool === tool)), tools.length > (memory ? 1 : 2) && h("span", { class: "activity-tool-overflow" }, `+${tools.length - (memory ? 1 : 2)}`)),
         activity.actionCount > 1 && h("span", { class: "activity-step-count" }, plural(activity.actionCount, "step")),
-        h("span", { class: "activity-evidence", title: presentation.evidence }, activity.evidence === "observed" ? "Observed" : activity.evidence === "mixed" ? "Mixed evidence" : "Reported"))),
+        h("span", { class: "activity-evidence", "data-evidence": activity.evidence || "reported", title: presentation.evidence }, icon(activity.evidence === "observed" ? "eye" : activity.evidence === "mixed" ? "layers" : "message-square", { size: 12 }), activity.evidence === "observed" ? "Observed" : activity.evidence === "mixed" ? "Mixed evidence" : "Reported"))),
     h("div", { class: "activity-row-aside" }, activityStatus(activity, { compact: true }), h("time", { datetime: activity.updatedAt, title: exactTime(activity.updatedAt), "data-relative-time": activity.updatedAt }, relativeTime(activity.updatedAt))));
 }
 export function activityFeed(activities, options = {}) {
@@ -100,22 +104,27 @@ export function activityFeed(activities, options = {}) {
     const label = dateLabel(activity.updatedAt);
     if (label !== previous) items.push(h("div", { class: "activity-section-title" }, h("h2", {}, label)));
     previous = label;
-    items.push(activityCard(activity, options));
+    const card = activityCard(activity, options);
+    if (options.freshIds?.has?.(activity.id)) card.classList?.add("ds-flash", "is-fresh");
+    items.push(card);
   }
-  return h("div", { class: "activity-feed", "aria-label": "Activity. Use up and down arrow keys to move between activities.", onkeydown: event => {
+  const feed = h("div", { class: "activity-feed", "aria-label": "Activity. Use up and down arrow keys to move between activities.", onkeydown: event => {
     if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key) || !event.target.matches("[data-open-activity]")) return;
     const cards = [...event.currentTarget.querySelectorAll("[data-open-activity]")];
     const current = cards.indexOf(event.target);
     const next = event.key === "Home" ? 0 : event.key === "End" ? cards.length - 1 : Math.max(0, Math.min(cards.length - 1, current + (event.key === "ArrowDown" ? 1 : -1)));
     event.preventDefault(); cards[next]?.focus();
   } }, items);
+  // Entrance only on a fresh list; live refreshes flash new rows instead (app.js).
+  if (options.animate) staggerIn(feed, ":scope > .activity-card");
+  return feed;
 }
 function receipt(action, key) {
   const rows = [["Agent", action.agent], ["Tool", action.tool], ["Evidence", action.evidence === "observed" ? "Observed by Engram" : "Agent-reported"],
     ["Status", action.status], ["Resource", action.resource], ["Run", action.runId], ["Action key", action.actionKey], ["Report ID", action.id],
     ["Started", exactTime(action.startedAt || action.occurredAt)], ["Received", exactTime(action.recordedAt)]];
   return h("details", { class: "work-log-details", "data-disclosure-key": `receipt:${key}` },
-    h("summary", { "data-focus-key": `receipt:${key}` }, "Technical receipt"),
+    h("summary", { "data-focus-key": `receipt:${key}` }, icon("file-text", { size: 13 }), "Technical receipt", icon("chevron-down", { size: 12, class: "disclosure-chevron" })),
     h("dl", { class: "activity-receipt-fields" }, rows.filter(([, value]) => value).map(([label, value]) => [h("dt", {}, label), h("dd", {}, value)])),
     action.detail && h("pre", { class: "activity-receipt-detail" }, action.detail));
 }
@@ -126,9 +135,11 @@ function actionEntry(action, activity, onResource) {
   const stale = action.status === "running" && (!validDate(action.recordedAt) || Date.now() - new Date(action.recordedAt).valueOf() >= 900_000);
   const resource = resourcePresentation(action.resource, { memory: presentation.memory, tool: action.tool }) || presentation.memoryContext?.target;
   const agent = (activity.agents || []).find(agent => agent.name === action.agent) || { name: action.agent };
+  const marker = stale ? "clock" : { running: "loader-circle", failed: "circle-alert", completed: "circle-check" }[action.status] || "circle-help";
   return h("li", { class: `work-log-step ${action.status}${stale ? " stale" : ""}`, "data-log-key": key, "data-action-id": action.id },
+    h("span", { class: "work-log-marker ds-status-icon", "data-state": stale ? "stale" : action.status, "aria-hidden": "true" }, icon(marker, { size: 14 })),
     h("div", { class: "work-log-content" },
-      h("div", { class: "work-log-meta" }, h("span", { class: "work-log-agent", title: action.agent }, contributorName(agent)),
+      h("div", { class: "work-log-meta" }, h("span", { class: "work-log-agent", title: action.agent }, agentAvatar(action.agent, agent), contributorName(agent)),
         h("span", { class: "work-log-meta-end" }, h("span", { class: "work-log-state" }, stale ? "Awaiting update" : { running: "In progress", failed: "Failed", completed: "Completed" }[action.status] || "Unknown"), h("time", { datetime: startedAt, title: exactTime(startedAt) }, clockTime(startedAt)))),
       h("h4", {}, presentation.title),
       presentation.outcome && h("p", { class: "work-log-result" }, presentation.outcome),
@@ -159,14 +170,14 @@ export function activityDetail(activity, { onResource, expandSteps = false } = {
       h("div", { class: "activity-section-heading" }, h("h3", {}, "Method"), h("span", {}, presentation.approaches.every(approach => approach.evidence === "observed") ? "Recorded" : "Agent-reported")),
       h("div", { class: "activity-approaches" }, presentation.approaches.map(approach => {
         const agent = (activity.agents || []).find(agent => agent.name === approach.agent) || { name: approach.agent };
-        return h("div", { class: "approach-card" }, h("div", { class: "approach-author", title: approach.agent }, h("span", {}, contributorName(agent))), h("p", {}, approach.text));
+        return h("div", { class: "approach-card" }, h("div", { class: "approach-author", title: approach.agent }, agentAvatar(approach.agent, agent), h("span", {}, contributorName(agent))), h("p", {}, approach.text));
       }))),
     compact && presentation.actions[0] ? h("div", { class: "activity-compact-receipt", "data-action-id": presentation.actions[0].id, "data-log-key": JSON.stringify([presentation.actions[0].agent, presentation.actions[0].actionKey || presentation.actions[0].id]) },
       receipt(presentation.actions[0], JSON.stringify([presentation.actions[0].agent, presentation.actions[0].actionKey || presentation.actions[0].id])))
       : presentation.actions.length > 0 && h("details", { class: "activity-steps-expander", open: expandSteps, "data-disclosure-key": `steps:${activity.id}`, "data-focus-key": `section:steps:${activity.id}` },
-        h("summary", { "data-focus-key": `steps:${activity.id}` }, h("span", {}, plural(presentation.actions.length, "step")), h("span", { class: "activity-steps-caption" }, "Oldest first")),
+        h("summary", { "data-focus-key": `steps:${activity.id}` }, icon("workflow", { size: 14 }), h("span", {}, plural(presentation.actions.length, "step")), h("span", { class: "activity-steps-caption" }, "Oldest first"), icon("chevron-down", { size: 14, class: "disclosure-chevron" })),
         activityLog(activity, { onResource })),
-    h("div", { class: "activity-source-note" }, h("p", {},
+    h("div", { class: "activity-source-note" }, icon(activity.evidence === "observed" ? "shield-check" : "info", { size: 14 }), h("p", {},
       presentation.evidence, ". ", activity.evidence === "observed" ? "Engram recorded this operation on its own service." : "External actions, outcomes and methods come from agent reports.")));
 }
 // Compatibility for callers while the drawer moves to a single content view.
@@ -176,9 +187,9 @@ export function activityDetailHeader(activity, { onFilter } = {}) {
   return h("div", { class: "activity-detail-intro" },
     h("p", { class: "activity-detail-kicker" }, { task: "Task", action: "Action", memory: "Memory operation" }[presentation.kind], " · ", activityStatus(activity)),
     h("div", { class: "activity-detail-heading" }, h("h2", { id: "detail-title" }, presentation.title), contributorChips(activity, onFilter, {}, Number.MAX_SAFE_INTEGER)),
-    h("div", { class: "activity-detail-meta" }, h("span", {}, "Updated ", h("time", { datetime: activity.updatedAt, "data-relative-time": activity.updatedAt, "data-lowercase": "true" }, relativeTime(activity.updatedAt).toLowerCase())),
+    h("div", { class: "activity-detail-meta" }, h("span", {}, icon("clock", { size: 13 }), "Updated ", h("time", { datetime: activity.updatedAt, "data-relative-time": activity.updatedAt, "data-lowercase": "true" }, relativeTime(activity.updatedAt).toLowerCase())),
       activity.actionCount > 1 && h("span", {}, plural(activity.actionCount, "step"))),
-    activity.staleActions > 0 && h("p", { class: "activity-stale-note" }, "A running report has not been updated in 15 minutes. Its current state is unknown."));
+    activity.staleActions > 0 && h("p", { class: "activity-stale-note" }, icon("clock", { size: 13 }), "A running report has not been updated in 15 minutes. Its current state is unknown."));
 }
 export function refreshActivityTimes(scope = document) {
   for (const node of scope.querySelectorAll("[data-relative-time]")) {

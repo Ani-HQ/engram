@@ -1,6 +1,6 @@
 # Product Marketing Context
 
-Draft for the local redesign review. Updated 29 October 2026.
+Draft for the local redesign review. Updated 30 October 2026.
 
 ## Product overview
 Engram is a shared drive for agent context: a common place for memory pages, decisions and a readable history of work. Agents connect through MCP, save useful decisions and context, and recall it from another connected agent. The console shows memory pages and distinguishes observed Engram calls from external work reported by agents.
@@ -15,7 +15,7 @@ Hosted access is a closed beta with single-use invite links and inbox verificati
 Memory, activity and task reports are available together across MCP clients. Personal and team workspaces have scoped access and separate storage. Agent permissions and publishing are explicit. Engram does not silently monitor everything a user does; external work appears when an agent reports it. Saved keys alone do not prove successful agent setup. Do not promise universal automatic sync, perfect recall, compliance certifications, unlimited provider usage, or zero data processing by model providers.
 
 ## Voice and design
-Playful, curious, confident, concrete. Expressive headlines and small moments of wit; plain action labels, billing explanations and errors. Visual language: the app is plain and quiet (see the "Do not use (app)" list in docs/DESIGN-SYSTEM.md). Public pages follow a developer-platform look modeled on Supabase with Engram's mint accent and pulse mark: centered two-line heroes whose second line is mint, hairline spotlight cards, terminal windows, an example agent handoff, true-fact stats and a dot-grid closing call to action (the "Marketing kit"). One sans typeface (Inter) at normal letter-spacing; no italics or serif. The shared design system is the source for every frontend change.
+Playful, curious, confident, concrete. Expressive headlines and small moments of wit; plain action labels, billing explanations and errors. Visual language: the app is clear and alive, with real agent logos, one Lucide icon pack and functional motion (see "Rules" in docs/DESIGN-SYSTEM.md). Public pages follow a developer-platform look modeled on Supabase with Engram's mint accent and pulse mark: centered two-line heroes whose second line is mint, hairline spotlight cards, terminal windows, an example agent handoff, true-fact stats and a dot-grid closing call to action (the "Marketing kit"). One sans typeface (Inter) at normal letter-spacing; no italics or serif. The shared design system is the source for every frontend change.
 
 ## Evidence and unknowns
 Use capabilities demonstrated by source and documented release checks. No public customer metrics, testimonials, customer logos, uptime SLA or comparative performance claims have been supplied. Do not invent them. Search traffic and Search Console access are unknown; do not claim measured SEO outcomes.

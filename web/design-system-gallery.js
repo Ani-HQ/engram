@@ -30,12 +30,12 @@ const loadingAvatar = profileAvatar({ label: 'Profile image while loading' }); l
 document.getElementById('profile-avatar-loading').append(loadingAvatar);
 document.getElementById('profile-avatar-unavailable').append(profileAvatar({ src: 'data:image/png;base64,invalid', label: 'Unavailable profile image fallback' }));
 document.getElementById('profile-avatar-narrow').append(profileAvatar({ size: 'sm', label: 'Default profile image in a narrow layout' }));
-// Plain product marks: the mark beside its name. One-color SVG marks are drawn in
-// black, so they take data-tone="mono" to read on the dark canvas.
-const monoMark = src => src.endsWith('.svg') && !src.endsWith('/muse.svg');
+// Product marks beside their names. One-color marks (tone "mono") are fill=currentColor
+// files that render black as <img>, so data-tone="mono" lightens them on the dark canvas.
+const monoMark = product => product.tone === 'mono';
 function logoItem(product, tag) {
   const item = document.createElement(tag), logo = document.createElement('img'), name = document.createElement('span');
-  logo.className = 'ds-product-logo'; logo.setAttribute('data-size', '28'); if (monoMark(product.logo)) logo.setAttribute('data-tone', 'mono');
+  logo.className = 'ds-product-logo'; logo.setAttribute('data-size', '28'); if (monoMark(product)) logo.setAttribute('data-tone', 'mono');
   logo.src = product.logo; logo.width = logo.height = 28; logo.alt = ''; name.textContent = product.label;
   item.append(logo, name); return item;
 }
@@ -254,3 +254,38 @@ document.getElementById('select-disabled-preview').addEventListener('change', ev
 let gallerySelects = observeSelects(document.body);
 window.addEventListener('pagehide', () => gallerySelects.dispose());
 window.addEventListener('pageshow', event => { if (event.persisted) gallerySelects = observeSelects(document.body); });
+
+// Identity, icons and motion: every vendored brand mark, presence, status, icons, empty state and live rows.
+import { identityMark, markStack, emptyState, staggerIn, flashNew } from './design-system.js';
+import { brandCatalog } from './brand-catalog.js';
+import { brandIcon } from './tooling.js';
+import { ICON_NAMES } from './icons.js';
+{
+  const wall = document.getElementById('identity-brand-wall');
+  wall?.replaceChildren(...Object.entries(brandCatalog).map(([id, entry]) => {
+    const item = document.createElement('li'), name = document.createElement('span');
+    name.textContent = entry.label; item.title = `${entry.label} · ${entry.tone}`;
+    item.append(identityMark(brandIcon(id, { size: 18 }), { size: 'md' }), name); return item;
+  }));
+  const presence = document.getElementById('identity-presence');
+  presence?.replaceChildren(...[['recent', 'Seen recently', 'claude'], ['working', 'Running report', 'codex'], ['quiet', 'Quiet', 'cursor'], ['reconnect', 'Reconnect needed', 'openai']].map(([state, label, brand]) => {
+    const item = document.createElement('div'), copy = document.createElement('span'); copy.textContent = label;
+    item.className = 'ds-gallery-presence'; item.append(identityMark(brandIcon(brand, { size: 22 }), { size: 'lg', presence: state }), copy); return item;
+  }));
+  document.getElementById('identity-stack')?.replaceChildren(markStack(['claude', 'codex', 'cursor', 'gemini', 'amp'].map(id => identityMark(brandIcon(id, { size: 14 }), { size: 'sm' })), { max: 3, label: 'Five contributors' }));
+  const statuses = document.getElementById('identity-status');
+  statuses?.replaceChildren(...[['running', 'loader-circle', 'In progress'], ['completed', 'circle-check', 'Completed'], ['failed', 'circle-alert', 'Needs attention'], ['stale', 'clock', 'Awaiting update']].map(([state, glyph, label]) => {
+    const item = document.createElement('span'), text = document.createElement('span'); text.textContent = label;
+    item.className = 'ds-status-icon'; item.setAttribute('data-state', state); item.append(icon(glyph, { size: 14 }), text); return item;
+  }));
+  const icons = document.getElementById('identity-icons');
+  icons?.replaceChildren(...ICON_NAMES.map(name => { const item = document.createElement('li'), label = document.createElement('span'); label.textContent = name; item.title = name; item.append(icon(name, { size: 18 }), label); return item; }));
+  document.getElementById('identity-empty')?.replaceChildren(emptyState({ glyph: icon('activity', { size: 22 }), title: 'No activity yet', description: 'Connect an agent and its memory calls appear here.' }));
+  const rows = document.getElementById('identity-rows');
+  const renderRows = () => {
+    rows.replaceChildren(...['Saved a memory', 'Searched memory', 'Opened a pull request (reported)'].map(text => { const row = document.createElement('div'); row.className = 'ds-row-hover ds-gallery-row'; row.textContent = text; return row; }));
+    staggerIn(rows);
+  };
+  if (rows) { renderRows(); document.getElementById('identity-replay')?.addEventListener('click', () => { rows.classList.remove('ds-stagger'); void rows.offsetWidth; renderRows(); }); }
+  document.getElementById('identity-flash')?.addEventListener('click', () => { const row = document.createElement('div'); row.className = 'ds-row-hover ds-gallery-row'; row.textContent = 'New: recalled job retries'; rows.prepend(row); flashNew([row]); });
+}

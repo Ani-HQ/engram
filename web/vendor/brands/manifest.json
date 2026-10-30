@@ -1,0 +1,369 @@
+{
+  "generated": "2026-10-30",
+  "brands": {
+    "claude": {
+      "file": "claude.svg",
+      "tone": "color",
+      "label": "Claude",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/claude-color.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "codex": {
+      "file": "codex.svg",
+      "tone": "color",
+      "label": "Codex",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/codex-color.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "cursor": {
+      "file": "cursor.svg",
+      "tone": "mono",
+      "label": "Cursor",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/cursor.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "openai": {
+      "file": "openai.svg",
+      "tone": "mono",
+      "label": "ChatGPT",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/openai.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "grok": {
+      "file": "grok.svg",
+      "tone": "mono",
+      "label": "Grok",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/grok.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "grok-bot": {
+      "file": "grok-bot.svg",
+      "tone": "mono",
+      "label": "Grok Bot",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/grokbot.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "muse": {
+      "file": "muse.svg",
+      "tone": "color",
+      "label": "Muse",
+      "source": "https://muse.ai/images/favicon/app-squiggle.svg",
+      "license": "Meta trademark; official product asset, no license grant"
+    },
+    "instinct": {
+      "file": "instinct.png",
+      "tone": "color",
+      "label": "Instinct",
+      "source": "https://instinct.com/redesign/favicon.ico",
+      "license": "Instinct trademark; official site icon, no license grant (no SVG published; PNG kept)"
+    },
+    "windsurf": {
+      "file": "windsurf.svg",
+      "tone": "mono",
+      "label": "Windsurf",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/windsurf.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "devin": {
+      "file": "devin.svg",
+      "tone": "color",
+      "label": "Devin",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/devin-color.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "openclaw": {
+      "file": "openclaw.svg",
+      "tone": "color",
+      "label": "OpenClaw",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/openclaw-color.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "hermesagent": {
+      "file": "hermesagent.svg",
+      "tone": "mono",
+      "label": "Hermes Agent",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/hermesagent.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "gemini": {
+      "file": "gemini.svg",
+      "tone": "color",
+      "label": "Gemini",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/gemini-color.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "opencode": {
+      "file": "opencode.svg",
+      "tone": "mono",
+      "label": "OpenCode",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/opencode.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "cline": {
+      "file": "cline.svg",
+      "tone": "mono",
+      "label": "Cline",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/cline.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "goose": {
+      "file": "goose.svg",
+      "tone": "mono",
+      "label": "Goose",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/goose.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "amp": {
+      "file": "amp.svg",
+      "tone": "color",
+      "label": "Amp",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/amp-color.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "githubcopilot": {
+      "file": "githubcopilot.svg",
+      "tone": "mono",
+      "label": "GitHub Copilot",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/githubcopilot.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "vscode": {
+      "file": "vscode.svg",
+      "tone": "color",
+      "label": "VS Code",
+      "source": "https://code.visualstudio.com/assets/branding/visual-studio-code-icons.zip#vscode.svg",
+      "license": "Microsoft trademark; official brand asset (code.visualstudio.com/brand)"
+    },
+    "aider": {
+      "file": "aider.svg",
+      "tone": "mono",
+      "label": "Aider",
+      "source": "https://raw.githubusercontent.com/Aider-AI/aider/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/website/assets/icons/safari-pinned-tab.svg",
+      "license": "Apache-2.0 (Aider-AI/aider repo)"
+    },
+    "typesafe": {
+      "file": "typesafe.svg",
+      "tone": "mono",
+      "label": "TypeSafe AI",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/typesafeai.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "augment": {
+      "file": "augment.svg",
+      "tone": "mono",
+      "label": "Augment Code",
+      "source": "https://www.augmentcode.com/favicon.svg",
+      "license": "Augment Code trademark; official site favicon, no license grant"
+    },
+    "roo": {
+      "file": "roo.svg",
+      "tone": "mono",
+      "label": "Roo Code",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/roocode.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "kilocode": {
+      "file": "kilocode.svg",
+      "tone": "mono",
+      "label": "Kilo Code",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/kilocode.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "qwen": {
+      "file": "qwen.svg",
+      "tone": "color",
+      "label": "Qwen",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/qwen-color.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "kiro": {
+      "file": "kiro.svg",
+      "tone": "color",
+      "label": "Kiro",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/kiro-color.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "zed": {
+      "file": "zed.svg",
+      "tone": "mono",
+      "label": "Zed",
+      "source": "https://unpkg.com/simple-icons@16.36.0/icons/zedindustries.svg",
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    "warp": {
+      "file": "warp.svg",
+      "tone": "color",
+      "label": "Warp",
+      "source": "https://unpkg.com/simple-icons@16.36.0/icons/warp.svg",
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    "junie": {
+      "file": "junie.svg",
+      "tone": "color",
+      "label": "Junie",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/junie-color.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "trae": {
+      "file": "trae.svg",
+      "tone": "color",
+      "label": "TRAE",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/trae-color.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "slack": {
+      "file": "slack.svg",
+      "tone": "mono",
+      "label": "Slack",
+      "source": "https://unpkg.com/simple-icons@11.15.0/icons/slack.svg",
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    "notion": {
+      "file": "notion.svg",
+      "tone": "mono",
+      "label": "Notion",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/notion.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "linear": {
+      "file": "linear.svg",
+      "tone": "color",
+      "label": "Linear",
+      "source": "https://unpkg.com/simple-icons@16.36.0/icons/linear.svg",
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    "googledrive": {
+      "file": "googledrive.svg",
+      "tone": "color",
+      "label": "Google Drive",
+      "source": "https://unpkg.com/simple-icons@16.36.0/icons/googledrive.svg",
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    "googledocs": {
+      "file": "googledocs.svg",
+      "tone": "color",
+      "label": "Google Docs",
+      "source": "https://unpkg.com/simple-icons@16.36.0/icons/googledocs.svg",
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    "googlesheets": {
+      "file": "googlesheets.svg",
+      "tone": "color",
+      "label": "Google Sheets",
+      "source": "https://unpkg.com/simple-icons@16.36.0/icons/googlesheets.svg",
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    "googlechrome": {
+      "file": "googlechrome.svg",
+      "tone": "color",
+      "label": "Google Chrome",
+      "source": "https://unpkg.com/simple-icons@16.36.0/icons/googlechrome.svg",
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    "playwright": {
+      "file": "playwright.svg",
+      "tone": "color",
+      "label": "Playwright",
+      "source": "https://unpkg.com/simple-icons@11.15.0/icons/playwright.svg",
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    "puppeteer": {
+      "file": "puppeteer.svg",
+      "tone": "color",
+      "label": "Puppeteer",
+      "source": "https://unpkg.com/simple-icons@16.36.0/icons/puppeteer.svg",
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    "microsoftedge": {
+      "file": "microsoftedge.svg",
+      "tone": "color",
+      "label": "Microsoft Edge",
+      "source": "https://unpkg.com/simple-icons@11.15.0/icons/microsoftedge.svg",
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    "microsoftoutlook": {
+      "file": "microsoftoutlook.svg",
+      "tone": "color",
+      "label": "Microsoft Outlook",
+      "source": "https://unpkg.com/simple-icons@11.15.0/icons/microsoftoutlook.svg",
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    "dropbox": {
+      "file": "dropbox.svg",
+      "tone": "color",
+      "label": "Dropbox",
+      "source": "https://unpkg.com/simple-icons@16.36.0/icons/dropbox.svg",
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    "postgresql": {
+      "file": "postgresql.svg",
+      "tone": "color",
+      "label": "PostgreSQL",
+      "source": "https://unpkg.com/simple-icons@16.36.0/icons/postgresql.svg",
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    "supabase": {
+      "file": "supabase.svg",
+      "tone": "color",
+      "label": "Supabase",
+      "source": "https://unpkg.com/simple-icons@16.36.0/icons/supabase.svg",
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    "vercel": {
+      "file": "vercel.svg",
+      "tone": "mono",
+      "label": "Vercel",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/vercel.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "safari": {
+      "file": "safari.svg",
+      "tone": "color",
+      "label": "Safari",
+      "source": "https://unpkg.com/simple-icons@16.36.0/icons/safari.svg",
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    "github": {
+      "file": "github.svg",
+      "tone": "mono",
+      "label": "GitHub",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/github.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "git": {
+      "file": "git.svg",
+      "tone": "color",
+      "label": "Git",
+      "source": "https://unpkg.com/simple-icons@16.36.0/icons/git.svg",
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    "docker": {
+      "file": "docker.svg",
+      "tone": "color",
+      "label": "Docker",
+      "source": "https://unpkg.com/simple-icons@16.36.0/icons/docker.svg",
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    "figma": {
+      "file": "figma.svg",
+      "tone": "color",
+      "label": "Figma",
+      "source": "https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/figma-color.svg",
+      "license": "MIT (LobeHub)"
+    },
+    "gmail": {
+      "file": "gmail.svg",
+      "tone": "color",
+      "label": "Gmail",
+      "source": "https://unpkg.com/simple-icons@16.36.0/icons/gmail.svg",
+      "license": "CC0-1.0 (Simple Icons)"
+    },
+    "googlecalendar": {
+      "file": "googlecalendar.svg",
+      "tone": "color",
+      "label": "Google Calendar",
+      "source": "https://unpkg.com/simple-icons@16.36.0/icons/googlecalendar.svg",
+      "license": "CC0-1.0 (Simple Icons)"
+    }
+  }
+}

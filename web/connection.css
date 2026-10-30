@@ -74,3 +74,19 @@
   .connection-page-actions { width: 100%; }
   .connection-page-actions > .primary { flex: 1; }
 }
+
+/* Agent marks (design-system identityMark) in the overview strip and connection rows. */
+.workspace .agent-presence { display: inline-flex; align-items: center; gap: var(--ds-space-3); padding: 6px 10px 6px 6px; margin-left: -6px; border-radius: var(--ds-radius-card); transition: background-color var(--ds-duration-fast) var(--ds-ease-out); }
+.agent-presence-list { gap: var(--ds-space-1) var(--ds-space-4); }
+@media (hover: hover) and (pointer: fine) { .workspace .agent-presence:hover:not(:disabled) { background: var(--ds-surface-raised); } .workspace .agent-presence:hover .ds-mark { border-color: var(--ds-input-border); } }
+.workspace .agent-presence[aria-pressed="true"] { background: var(--ds-surface-raised); }
+.workspace .agent-presence[aria-pressed="true"] .ds-mark { border-color: var(--ds-accent); }
+.agent-presence.recent .agent-presence-copy > span { color: var(--ds-success); }
+.connection-row { align-items: center; padding: var(--ds-space-4) var(--ds-space-3); margin-inline: calc(var(--ds-space-3) * -1); }
+.connection-row > .ds-mark { align-self: flex-start; margin-top: 2px; }
+.connection-copy { flex: 1; min-width: 0; }
+@media (max-width: 580px) { .connection-row > .ds-mark { --size: var(--ds-mark-md); } }
+.connect-computer .ds-mark-stack { gap: 6px; }
+.connect-computer .ds-mark-stack > .ds-mark { box-shadow: none; }
+.connect-computer .ds-mark-stack > .ds-mark + .ds-mark { margin-left: 0; }
+.connect-computer .ds-mark-stack { margin-bottom: var(--ds-space-1); }

@@ -125,3 +125,63 @@ do not claim a tested MCP integration or endorsement.
 every named console source, guided setup client and additional named diagram
 example. Its "MCP support and setup vary by client" caption preserves the
 distinction between an ecosystem product and verified Engram compatibility.
+
+## Brand manifest refresh (30 October 2026)
+
+`manifest.json` lists every brand id, its local file, `tone` ("color" reads on
+the dark #111313 surface as-is; "mono" uses `fill="currentColor"` and must be
+tinted by CSS), label, exact source URL and license. All files load locally;
+none is hotlinked.
+
+Processing for every SVG below: parsed as XML; `<title>`, `<desc>`,
+`<metadata>`, `<style>`, scripts, foreignObject, `<a>`, `on*` attributes and
+non-local `href`s removed; root `width`, `height` and `style` removed so CSS
+sizes the mark; whitespace collapsed; gradient, mask and clip ids prefixed with
+the brand id (for example `openclaw-0`). Path data is unchanged.
+
+- **LobeHub** `@lobehub/icons-static-svg` **1.101.0**, Git commit
+  `aea0ecb0fe1439467219197c52ffaeb579dfe33f`, npm integrity
+  `sha512-Ob6WJOjXauLP/A1qZ9OlPlrncPNbwsIGH+ToFdxWt3APtaaMKtbIBGqJ0/LY2eBeUwTQuG7GpUw9LwPiv7OTdg==`.
+  MIT; see LOBE-LICENSE. Color variants (`<name>-color.svg`): claude, codex,
+  devin, openclaw, gemini, amp, qwen, kiro, junie, trae, figma. Mono variants:
+  cursor, openai (ChatGPT), grok, grok-bot (`grokbot.svg`), windsurf,
+  hermesagent, opencode, cline, goose, githubcopilot, typesafe
+  (`typesafeai.svg`), roo (`roocode.svg`), kilocode, notion, github, vercel.
+  `grok-bot.svg` and `typesafe.svg` are SVG alternatives to the PNGs above,
+  which stay in place. `hermesagent.svg` is about 19 KB because its detailed
+  path data is kept unchanged.
+- **Simple Icons** `simple-icons` **16.36.0**, Git commit
+  `27a47e6540abf45107f0bfe50fd0d1f8e6395263`, npm integrity
+  `sha512-+VNPPkqSOLidFeSgBKUWX4n50WPpDC09hav+BgS26anIF1oQOlGBb8LvwGR+6fYRjo+B6CiKzNBceMPkSVXANQ==`.
+  CC0-1.0; see SIMPLE-ICONS-LICENSE. The package brand hex is set as the root
+  fill when it reaches 3:1 contrast on #111313: linear, googledrive,
+  googledocs, googlesheets, googlechrome, puppeteer, dropbox, postgresql,
+  supabase, safari, git, docker, gmail, googlecalendar and warp. zed
+  (`zedindustries.svg`, #084CCF, 2.6:1) stays mono.
+- **Simple Icons 11.15.0** originals already vendored above (removed from
+  later releases): slack, playwright, microsoftedge, microsoftoutlook. Same
+  processing; playwright (#2EAD33), microsoftedge (#0078D7) and
+  microsoftoutlook (#0078D4) take their 11.15.0 brand hex. Slack's #4A154B
+  (1.3:1) fails on dark, so slack stays mono.
+- **Visual Studio Code** (`vscode.svg`): `vscode.svg` from the official
+  https://code.visualstudio.com/assets/branding/visual-studio-code-icons.zip
+  (README version 2021-06-21; zip SHA-256
+  `04c5292a117bbc619f1ce574cc59b6c5e2e26374d6e64b92619e848612f2d9cb`),
+  linked from https://code.visualstudio.com/brand . Microsoft trademark; the
+  bundled README requires accepting those brand guidelines and says to use the
+  blue icon except where contrast is insufficient. No license grant claimed.
+- **Aider** (`aider.svg`): the official mask icon at
+  https://raw.githubusercontent.com/Aider-AI/aider/5dc9490bb35f9729ef2c95d00a19ccd30c26339c/aider/website/assets/icons/safari-pinned-tab.svg
+  (repository Apache-2.0; no trademark grant claimed). Mono.
+- **Augment Code** (`augment.svg`): the SVG favicon linked by
+  https://www.augmentcode.com/ at https://www.augmentcode.com/favicon.svg .
+  Its light/dark `<style>` is replaced by `fill="currentColor"`; a `viewBox`
+  is added from its 512×512 size. No license grant claimed; trademark stays
+  with Augment. Mono.
+
+Kept unchanged: `muse.svg` (official gradient mark; LobeHub's `muse.svg` is the
+same shape without the gradient) and `instinct.png` (instinct.com publishes no
+SVG mark). Claude and Cursor now also have `claude.svg` and `cursor.svg` here;
+the older files in ../simple-icons/ stay for existing references.
+`catalog-sources.json` still records the hashes of the previous files and needs
+regenerating for the refreshed marks.

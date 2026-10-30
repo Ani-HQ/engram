@@ -2,6 +2,15 @@ import { h } from "./profile.js";
 import { relativeTime } from "./activity-view.js";
 import { connectionClient, connectionState, connectionSummary, currentConnections, lastConnectionContact } from "./connection-model.js";
 import { taskReportingStatus } from "./task-reporting-model.js";
+import { agentVisual, visualIcon } from "./tooling.js";
+import { identityMark, staggerIn } from "./design-system.js";
+
+const presenceFor = state => ({ recent: "recent", ready: "quiet", quiet: "quiet", reconnect: "reconnect" })[state] || "";
+/** The connected product's mark with its connection presence. A display hint, never proof of setup. */
+export function connectionMark(connection, state, size = "md") {
+  const visual = agentVisual(connection.agent, { harness: connection.harness || connectionClient(connection).harness, sourceLabel: connection.sourceLabel });
+  return identityMark(visualIcon(visual, { size: size === "lg" ? 24 : 18 }), { size, presence: presenceFor(state.state) });
+}
 
 const button = (children, action, attrs = {}) => h("button", { type: "button", onclick: action, ...attrs }, children);
 const count = value => new Intl.NumberFormat().format(Number(value) || 0);
@@ -16,12 +25,12 @@ export function agentOverview(data, { onManage, onFilter, selectedAgent = "", er
   return h("aside", { class: "agent-overview", "aria-label": "Agent connections" },
     h("div", { class: "agent-overview-heading" }, h("div", {}, h("h2", {}, "Your agents"), h("span", {}, summary.recent ? `${summary.recent} seen recently` : summary.authorized ? `${summary.authorized} authorized · No recent contact` : connections.length ? "Connections need attention" : "Connect your first agent")),
       button("Connections", onManage, { class: "text small" })),
-    visible.length > 0 && h("div", { class: "agent-presence-list" }, visible.map(connection => {
+    visible.length > 0 && staggerIn(h("div", { class: "agent-presence-list" }, visible.map(connection => {
       const state = connectionState(connection, now, data.recentWindowSeconds);
-      return button(h("span", { class: "agent-presence-copy" }, h("strong", {}, name(connection)), h("span", {}, state.label)),
+      return button([connectionMark(connection, state), h("span", { class: "agent-presence-copy" }, h("strong", {}, name(connection)), h("span", {}, state.label))],
         () => state.state === "reconnect" ? onManage?.(connection) : onFilter?.(connection.agent === selectedAgent ? "" : connection.agent),
         { class: `agent-presence ${state.state}`, title: `${name(connection)} · ${state.explanation}`, "aria-pressed": String(connection.agent === selectedAgent), "data-connection-id": connection.id });
-    })),
+    }))),
     summary.reconnect > 0 && h("div", { class: "agent-overview-note" }, h("span", {}, `${summary.reconnect} ${summary.reconnect === 1 ? "connection needs" : "connections need"} a fresh sign-in or key.`), button("Review", onManage, { class: "text small" })),
     !connections.length && h("p", { class: "agent-overview-note" }, "Connect an agent to start a shared history. Memory calls appear automatically."),
     error && h("p", { class: "agent-overview-note" }, "Connection status could not refresh. Showing the last checked state."),
@@ -34,7 +43,8 @@ export function connectionInventory(data, { actions, onInspect, list = "current"
   const row = connection => {
     const state = connectionState(connection, now, data.recentWindowSeconds);
     const reporting = taskReportingStatus(connection);
-    return h("article", { class: `connection-row ${state.state}`, "data-connection-id": connection.id },
+    return h("article", { class: `connection-row ds-row-hover ${state.state}`, "data-connection-id": connection.id },
+      connectionMark(connection, state, "lg"),
       h("div", { class: "connection-copy" }, h("div", { class: "connection-name" }, h("strong", {}, name(connection)), " ", h("span", { class: `connection-state status-label ${state.state}`, "data-tone": state.state === "reconnect" ? "danger" : "neutral", title: state.explanation }, state.label)),
         h("p", { title: connectionClient(connection).detail }, connection.kind === "oauth" ? "Sign-in" : "Access key", connection.kind === "token" && connection.name !== name(connection) ? ` · ${connection.name}` : "", ` · Client: ${connectionClient(connection).label}`),
         h("p", { class: "connection-counts" }, state.lastContactAt ? ["Last contact ", time(state.lastContactAt)] : "No agent calls recorded yet", ` · ${count(connection.memoryCalls)} memory ${Number(connection.memoryCalls) === 1 ? "call" : "calls"} · ${count(connection.taskReports)} task ${Number(connection.taskReports) === 1 ? "report" : "reports"} · `, h("span", { class: "connection-reporting-state", title: reporting.detail }, reporting.label)),

@@ -188,17 +188,22 @@ describe("local tooling identity", () => {
     }
   }));
 
-  test("vendored additions match their provenance and contain only monochrome local SVG", () => {
+  test("vendored marks match their recorded provenance and are safe local files", () => {
     const sources = JSON.parse(readFileSync(new URL("./vendor/brands/catalog-sources.json", import.meta.url), "utf8"));
-    expect(sources.assets).toHaveLength(19);
+    const manifest = JSON.parse(readFileSync(new URL("./vendor/brands/manifest.json", import.meta.url), "utf8"));
+    expect(sources.format).toBe(2);
+    expect(sources.assets.map((asset: { id: string }) => asset.id).sort()).toEqual(Object.keys(manifest.brands).sort());
     for (const asset of sources.assets) {
-      const svg = readFileSync(new URL(`./vendor/brands/${asset.file}`, import.meta.url), "utf8");
-      expect(createHash("sha256").update(svg).digest("hex")).toBe(asset.sha256);
-      expect(asset.gitHead).toMatch(/^[a-f0-9]{40}$/); expect(asset.integrity).toStartWith("sha512-");
-      expect(svg).toContain('fill="currentColor"');
-      expect(svg).not.toMatch(/<(?:script|foreignObject|image)\b|\bon[a-z]+\s*=|\bhref\s*=/i);
+      const bytes = readFileSync(new URL(`./vendor/brands/${asset.file}`, import.meta.url));
+      expect(createHash("sha256").update(bytes).digest("hex")).toBe(asset.sha256);
+      expect(asset.source).toMatch(/^https:\/\//); expect(asset.license).toBeTruthy();
+      if (!asset.file.endsWith(".svg")) continue;
+      const svg = bytes.toString("utf8");
+      expect(svg).toContain("viewBox");
+      expect(svg).not.toMatch(/<(?:script|foreignObject|image|a)\b|\bon[a-z]+\s*=|\b(?:xlink:)?href\s*=\s*"(?!#)/i);
       for (const reference of svg.matchAll(/url\(([^)]+)\)/g)) expect(reference[1]).toMatch(/^#[a-z0-9_-]+$/i);
-      for (const fill of svg.matchAll(/\bfill="([^"]+)"/g)) expect(["currentColor", "none"]).toContain(fill[1]);
+      if (asset.tone === "mono") expect(svg).toContain('fill="currentColor"');
+      for (const fill of svg.matchAll(/\bfill="([^"]+)"/g)) expect(fill[1]).toMatch(/^(?:currentColor|none|[a-z]+|#[0-9a-f]{3,8}|url\(#[a-z0-9_-]+\))$/i);
     }
   });
 });
