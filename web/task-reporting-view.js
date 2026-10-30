@@ -1,5 +1,8 @@
 import { h } from "./profile.js";
 import { taskReportingStatus, taskReportingSummary } from "./task-reporting-model.js";
+import { identityMark } from "./design-system.js";
+import { icon } from "./icons.js";
+import { agentVisual, visualIcon } from "./tooling.js";
 
 /** Guidance for a connected agent, not an adapter or a promise of capture. */
 export const taskReportingInstructions = `Report real work to this Engram workspace with record_action.
@@ -39,8 +42,7 @@ export function taskReportingSetup(data, { onInspect, onManage, onSetup, copyCon
     ? "Use guided setup to install the workflow for a supported runtime. Reporting remains subject to the agent’s supported lifecycle events."
     : `${summary.withReports ? `${plural(summary.withReports, "connection has", "connections have")} sent task reports.` : "No task reports from write-authorized connections in this list."} Guided setup installs the supported workflow. A received report does not prove every task is captured.`;
 
-  const step = (number, title, detail, action) => h("li", { class: "task-reporting-step" },
-    h("div", { class: "task-reporting-step-copy" }, h("h3", {}, title), h("p", {}, detail), action));
+  const step = (number, title, detail, action) => h("li", { class: "task-reporting-step" }, h("h3", {}, title), h("p", {}, detail), action);
 
   const row = value => {
     const connection = value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -49,32 +51,35 @@ export function taskReportingSetup(data, { onInspect, onManage, onSetup, copyCon
     const identity = text(connection.name);
     const validReports = Number.isSafeInteger(connection.taskReports) && connection.taskReports >= 0;
     const kind = connection.kind === "oauth" ? "Sign-in" : connection.kind === "token" ? "Access key" : "Connection";
+    const client = connection.client?.state === "identified" ? connection.client.harness : undefined;
+    const mark = identityMark(visualIcon(agentVisual(identity || name, { harness: client }), { size: 16 }), { size: "sm" });
     return button([
+      mark,
       h("span", { class: "task-reporting-connection-copy" }, h("strong", {}, name),
         identity && identity !== name && h("span", { class: "task-reporting-identity" }, identity),
         h("span", { class: "task-reporting-connection-meta" }, kind, validReports && ` · ${plural(state.reportCount, "report")} received`)),
-      h("span", { class: "task-reporting-connection-state" }, state.label),
-    ], () => onInspect?.(connection), { class: `task-reporting-connection ${state.state}`, title: state.detail, "aria-label": `${name}: ${state.label}. ${state.detail}` });
+      h("span", { class: "task-reporting-connection-state" }, state.label, icon("chevron-right", { size: 14 })),
+    ], () => onInspect?.(connection), { class: `task-reporting-connection ds-row-hover ${state.state}`, title: state.detail, "aria-label": `${name}: ${state.label}. ${state.detail}` });
   };
 
   return h("section", { class: "task-reporting-setup", "aria-labelledby": "detail-title" },
     h("h2", { id: "detail-title" }, "See what your agents do"),
     h("p", { class: "task-reporting-intro" }, "Tasks appear when an agent sends a work report to Engram. Guided setup connects the agent and installs its supported memory and reporting workflow."),
-    onSetup && button("Set up or repair an agent", onSetup, { class: "primary small" }),
-    h("ol", { class: "task-reporting-steps" },
+    onSetup && button([icon("plug-zap", { size: 14 }), "Set up or repair an agent"], onSetup, { class: "primary small task-reporting-setup-action" }),
+    h("ol", { class: "ds-steps task-reporting-steps" },
       step(1, "Reconnect and refresh tools", reconnectDetail, onManage && button(summary.reconnect ? "Review connections" : "Open Connections", () => onManage(), { class: "text task-reporting-link" })),
       step(2, "Use write access", writeDetail),
       step(3, "Install the supported workflow", reportDetail)),
     h("details", { class: "task-reporting-instructions" },
-      h("summary", {}, h("span", {}, "Advanced: reporting contract")),
+      h("summary", {}, icon("chevron-right", { size: 14, class: "task-reporting-chevron" }), h("span", {}, "Advanced: reporting contract")),
       h("div", { class: "task-reporting-instruction-body" },
         h("div", { class: "task-reporting-instruction-toolbar" }, h("p", {}, "For custom integrations or a deliberate one-task instruction. Guided setup handles supported agent files automatically."), copyControl),
         h("pre", { tabindex: "0", "aria-label": "Task reporting instructions" }, h("code", {}, taskReportingInstructions)))),
-    h("section", { class: "task-reporting-connections", "aria-label": "Task reports by connection" },
-      h("div", { class: "task-reporting-connections-heading" }, h("h3", {}, "Your connections"), summary.available && h("span", {}, plural(summary.total, "connection"))),
+    h("section", { class: "task-reporting-connections ds-panel-list", "aria-label": "Task reports by connection" },
+      h("div", { class: "ds-panel-head task-reporting-connections-heading" }, h("h3", {}, "Your connections"), summary.available && h("span", {}, plural(summary.total, "connection"))),
       connections.slice(0, 6).map(row),
-      !summary.available && h("p", { class: "task-reporting-empty" }, "Connection status could not be checked. The instructions above are still available."),
-      summary.available && !summary.total && h("p", { class: "task-reporting-empty" }, "No connections yet. Open Connections to sign in from an agent or create a dedicated access key."),
-      (connections.length > 6 || summary.more) && h("p", { class: "task-reporting-bounds" }, `Showing ${plural(Math.min(connections.length, 6), "connection")}${summary.more ? " from a limited inventory" : ` of ${count(summary.total)}`}. Open Connections to review more.`)),
+      !summary.available && h("p", { class: "task-reporting-empty" }, icon("wifi-off", { size: 14 }), "Connection status could not be checked. The instructions above are still available."),
+      summary.available && !summary.total && h("p", { class: "task-reporting-empty" }, icon("plug", { size: 14 }), "No connections yet. Open Connections to sign in from an agent or create a dedicated access key."),
+      (connections.length > 6 || summary.more) && h("p", { class: "ds-panel-foot task-reporting-bounds" }, `Showing ${plural(Math.min(connections.length, 6), "connection")}${summary.more ? " from a limited inventory" : ` of ${count(summary.total)}`}. Open Connections to review more.`)),
     h("p", { class: "task-reporting-footnote" }, h("span", {}, "Memory calls appear in the Memory activity feed. A received task report does not verify automatic capture or mean an agent is currently working.")));
 }

@@ -1,4 +1,5 @@
 import { h } from './profile.js';
+import { icon } from './icons.js';
 
 let editorSequence = 0;
 export function profilePresentationValue(profile = {}) {
@@ -49,7 +50,7 @@ export function createProfilePresentationEditor({ profile, onChange = () => {}, 
   const choices = h('fieldset', { class: 'ds-choice-group' }, h('legend', {}, 'Profile layout'),
     h('div', { class: 'profile-layout-options' }, choiceInputs.map(item => item.label)),
     h('p', { class: 'ds-hint' }, 'Try either layout in the preview. Switching keeps your highlights.'));
-  const add = h('button', { type: 'button', class: 'small' }, 'Add highlight');
+  const add = h('button', { type: 'button', class: 'small' }, icon('plus', { size: 14 }), 'Add highlight');
   const refresh = () => {
     entries.forEach((row, index) => {
       row.heading.textContent = `Highlight ${index + 1}`;
@@ -105,8 +106,8 @@ export function createProfilePresentationEditor({ profile, onChange = () => {}, 
   add.addEventListener('click', () => { if (!pending && isCurrent()) append({}, true); });
   initial.highlights.forEach(item => append(item)); refresh();
   const element = h('div', { class: 'profile-presentation-editor ds-stack' }, choices,
-    h('section', { class: 'ds-stack', 'aria-label': 'Profile highlights' },
-      h('div', { class: 'ds-heading-group' }, h('h3', {}, 'A few things worth opening.'), h('p', { class: 'ds-hint' }, 'Write up to three highlights. You choose the words and links; private task text is never filled in for you.')),
+    h('section', { class: 'ds-stack profile-highlight-editor', 'aria-label': 'Profile highlights' },
+      h('div', { class: 'ds-heading-group' }, h('h3', {}, 'Highlights'), h('p', { class: 'ds-hint' }, 'Write up to three highlights. You choose the words and links; private task text is never filled in for you.')),
       h('p', { class: 'ds-hint profile-highlight-public-note' }, 'Highlights become public when your profile is published, even when the activity stream is off. Saving a private profile keeps them private.'), list,
       h('div', { class: 'ds-toolbar' }, add, limit), status));
   return {

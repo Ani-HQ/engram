@@ -12,7 +12,7 @@ class Element {
 function render(props = {}) {
   const original = { Node: globalThis.Node, document: globalThis.document };
   try {
-    Object.assign(globalThis, { Node: Element, document: { createElement: (tag: string) => new Element(tag), createTextNode: (text: string) => new Element("#text", text) } });
+    Object.assign(globalThis, { Node: Element, document: { createElement: (tag: string) => new Element(tag), createElementNS: (_: string, tag: string) => new Element(tag), createTextNode: (text: string) => new Element("#text", text) } });
     return activitySections(props) as Element;
   } finally { Object.assign(globalThis, original); }
 }

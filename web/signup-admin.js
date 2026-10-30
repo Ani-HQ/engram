@@ -1,5 +1,6 @@
 import { h } from "./profile.js";
 import { parseInviteEntry, signupInviteStatus } from "./signup-model.js";
+import { icon } from "./icons.js";
 
 const action = (label, onclick, attrs = {}) => h("button", { type: "button", onclick, ...attrs }, label);
 const date = value => {
@@ -19,7 +20,7 @@ export function signupAdminPanel({ session, api, fail = () => {}, copy, isCurren
   const list = h("div", { class: "signup-invite-list" });
   const pendingLinks = new Map();
   const email = h("input", { type: "email", autocomplete: "email", placeholder: "friend@example.com", maxlength: 254 });
-  const issue = h("button", { type: "submit", class: "small primary" }, "Generate invite link");
+  const issue = h("button", { type: "submit", class: "small primary" }, icon("plus", { size: 14 }), "Create invite link");
   const clearSecret = () => {
     secret = "";
     if (secretInput) { secretInput.value = ""; secretInput.removeAttribute("value"); }
@@ -52,7 +53,7 @@ export function signupAdminPanel({ session, api, fail = () => {}, copy, isCurren
     codeRegion.replaceChildren(h("strong", {}, address ? `Bound to ${address}` : "Single-use link · not bound to an email yet"), h("p", {}, `Copy this ${noun} and share it privately. ${address ? "Only this email address may verify and claim it." : "The first person to verify an email address claims it; entering an email alone does not reserve it."} You can copy an unused invitation's link again from the list below. Generating an invitation does not send an email.`), secretInput,
       h("div", { class: "form-actions" }, reveal, copyCode, action(`Done · clear ${noun}`, clearSecret, { class: "text small" })));
   };
-  const copyLabel = () => ["Copy link"];
+  const copyLabel = () => [icon("link", { size: 14 }), "Copy link"];
   const clearPendingLinks = () => {
     for (const pending of pendingLinks.values()) { pending.button.disabled = false; pending.button.replaceChildren(...copyLabel()); }
     pendingLinks.clear();
@@ -99,12 +100,13 @@ export function signupAdminPanel({ session, api, fail = () => {}, copy, isCurren
         } catch (error) { if (current()) { fail(error); feedback.textContent = error.message || "Revocation could not be confirmed. Refresh and try again."; button.disabled = false; } }
       }, { class: "text small" });
       return h("div", { class: "token-row signup-invite-row" }, h("div", { class: "signup-invite-info" }, h("span", {}, invite.email || "Unbound invitation"), h("small", {}, invite.email ? "Bound to this email" : "First verified email claims it"), h("small", {}, signupInviteStatus(invite)), h("small", {}, invite.redeemedAt ? `Redeemed ${date(invite.redeemedAt)}${invite.accessExpiresAt ? ` · Access ends ${date(invite.accessExpiresAt)}` : ""}` : `Unused invitation expires ${date(invite.expiresAt)}`)), h("div", { class: "signup-invite-actions" }, copyLink, (!invite.revokedAt || pending) && revoke));
-    }) : [h("p", { class: "detail-note" }, "No early access invitations yet.")]), ...(more ? [h("p", { class: "field-hint" }, "Showing the 100 newest invitations. Older invitations are not shown here.")] : []));
+    }) : [h("p", { class: "detail-note" }, "No invitations yet. Create one above to share early access.")]), ...(more ? [h("p", { class: "field-hint" }, "Showing the 100 newest invitations. Older invitations are not shown here.")] : []));
   };
   const refresh = async () => {
     const id = ++request;
     clearPendingLinks();
-    list.replaceChildren(h("p", { role: "status", class: "detail-note" }, "Loading invitations…"));
+    list.replaceChildren(h("p", { role: "status", class: "sr-only" }, "Loading invitations…"),
+      ...[0, 1, 2].map(() => h("div", { class: "ds-skeleton-row", "aria-hidden": "true" }, h("span", {}), h("span", {}), h("span", {}), h("span", {}))));
     try {
       const result = await api.signupInvites();
       if (!current() || id !== request || !panel.open) return;
@@ -114,7 +116,7 @@ export function signupAdminPanel({ session, api, fail = () => {}, copy, isCurren
   const form = h("form", { class: "stack", onsubmit: async event => {
     event.preventDefault(); if (!current() || issue.disabled) return;
     const id = ++request;
-    issue.disabled = true; feedback.textContent = ""; clearSecret();
+    issue.disabled = true; issue.setAttribute("aria-busy", "true"); issue.replaceChildren(icon("loader-circle", { size: 14, class: "ds-spin" }), "Creating link…"); feedback.textContent = ""; clearSecret();
     try {
       const address = email.value.trim(), result = await api.issueSignupInvite(address ? { email: address } : {});
       if (!current() || !panel.open || id !== request) return;
@@ -123,13 +125,13 @@ export function signupAdminPanel({ session, api, fail = () => {}, copy, isCurren
       hasMore = hasMore || updated.length > 100; invites = updated.slice(0, 100); renderList(hasMore);
       showSecret(result.inviteCode, result.invite.email, result.inviteUrl); email.value = ""; feedback.textContent = result.invite.email ? "Invite created. Only the bound email can verify and claim it. The 60-day access period starts after verification." : "Single-use invitation created. The first verified email claims it and starts 60 days of unlimited knowledge transfers. Jev is separate.";
     } catch (error) { if (current() && panel.open && id === request) { fail(error); feedback.textContent = error.message || "The invite could not be created."; } }
-    finally { issue.disabled = false; }
+    finally { issue.disabled = false; issue.removeAttribute("aria-busy"); issue.replaceChildren(icon("plus", { size: 14 }), "Create invite link"); }
   } }, h("label", { class: "field" }, "Bind to an email (optional)", email), h("p", { class: "field-hint" }, "Leave blank for a single-use link the first verified email can claim. Enter an email to restrict the invitation to that address."), issue);
   const panel = h("details", { class: "account-section signup-admin", ontoggle: () => {
     if (!panel.open) { clearSecret(); clearPendingLinks(); ++request; }
     else if (!loaded) refresh();
   } }, h("summary", {}, "Early access invitations"), h("div", { class: "signup-admin-content stack" },
     h("p", { class: "detail-note" }, "Operator access · Friends get 60 days of unlimited knowledge transfers in a personal workspace after email verification, with no card required. Jev has separate permission and usage costs. An unused invitation expires after seven days."), form, codeRegion, feedback,
-    h("div", { class: "form-actions" }, action("Refresh invitations", () => { clearSecret(); refresh(); }, { class: "small" })), list));
+    h("div", { class: "form-actions" }, action([icon("refresh-cw", { size: 14 }), "Refresh invitations"], () => { clearSecret(); refresh(); }, { class: "small" })), list));
   return { element: panel, clearSecrets() { ++request; clearPendingLinks(); clearSecret(); }, dispose() { active = false; ++request; clearPendingLinks(); clearSecret(); email.value = ""; } };
 }

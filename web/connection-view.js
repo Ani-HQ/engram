@@ -52,10 +52,14 @@ export function connectionInventory(data, { actions, onInspect, list = "current"
       h("div", { class: "connection-row-end" },
         actions?.(connection) || button(state.state === "reconnect" ? "Reconnect" : "Details", () => onInspect?.(connection), { class: "text small" })));
   };
+  // Each group is a bordered panel: mono header with a count, hairline rows.
+  const panel = (title, items, tone = "") => h("section", { class: "ds-panel-list connection-panel", "data-tone": tone || null, "aria-label": title },
+    h("div", { class: "ds-panel-head connection-section-title" }, h("h3", {}, title), h("span", { class: "connection-count" }, count(items.length))),
+    staggerIn(h("div", { class: "connection-rows" }, items.map(row))));
   return h("div", { class: "connection-inventory" },
-    list === "archived" ? all.length > 0 && h("section", {}, h("div", { class: "connection-section-title" }, h("h3", {}, "Archived"), h("span", {}, count(all.length))), all.map(row)) : [
-      authorized.length > 0 && h("section", {}, h("div", { class: "connection-section-title" }, h("h3", {}, "Authorized"), h("span", {}, count(authorized.length))), authorized.map(row)),
-      attention.length > 0 && h("section", {}, h("div", { class: "connection-section-title" }, h("h3", {}, "Needs attention"), h("span", {}, count(attention.length))), attention.map(row))],
+    list === "archived" ? all.length > 0 && panel("Archived", all) : [
+      authorized.length > 0 && panel("Authorized", authorized),
+      attention.length > 0 && panel("Needs attention", attention, "danger")],
     !all.length && h("p", { class: "connection-empty" }, list === "archived" ? "No archived connections. Archived connections stay here until you restore or delete them." : "No current connections. Choose Connect an agent to add one, or restore an archived connection."),
     data.more && h("p", { class: "detail-note" }, `Showing the first ${count(data.limit || all.length)} connections. Older connections are omitted from this view.`),
     h("p", { class: "connection-explainer" }, "Authorization confirms access. Last contact records a request received by Engram; it does not mean an agent is currently working. Work outside Engram appears when the agent reports it."));

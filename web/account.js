@@ -2,11 +2,39 @@ import { h } from "./profile.js";
 import { icon } from "./icons.js";
 import { billingPresentation } from "./billing-model.js";
 import { jevUsageSummary } from "./jev-settings.js";
+import { banner, pill } from "./design-system.js";
 
 const action = (label, onclick, attrs = {}) => h("button", { type: "button", onclick, ...attrs }, label);
 const link = (label, href, className = "text") => h("a", { href, class: className }, label);
 const date = value => value ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(value)) : "—";
-const section = (title, description, content) => h("section", { class: "account-section" }, h("div", {}, h("h2", {}, title), h("p", { class: "detail-note" }, description)), content);
+const spinner = () => h("span", { class: "ds-spinner", "aria-hidden": "true" });
+let sequence = 0;
+const uid = name => `account-${name}-${++sequence}`;
+
+/** A bordered settings card: header (title + one-line description), rows, optional footer. */
+export function settingsCard({ title, description = "", side = null, tone = null, label = null }, ...body) {
+  const id = uid("card");
+  return h("section", { class: "ds-settings-card", "data-tone": tone, "aria-labelledby": label ? null : id, "aria-label": label },
+    h("header", { class: "ds-settings-head" }, h("div", {}, h("h2", { id }, title), description && h("p", {}, description)), side), body);
+}
+/** Two columns: label and muted help on the left, the control on the right. */
+export function settingsRow(label, help, control, { forId = null, helpId = null, className = "" } = {}) {
+  return h("div", { class: ["ds-settings-row", className].filter(Boolean).join(" ") },
+    h("div", { class: "ds-settings-label" }, forId ? h("label", { for: forId }, label) : h("span", {}, label), help && h("p", { class: "ds-settings-help", id: helpId }, help)),
+    h("div", { class: "ds-settings-control" }, control));
+}
+const settingsFoot = (...children) => h("div", { class: "ds-settings-foot" }, children);
+const note = (attrs = {}) => h("p", { class: "ds-settings-note form-feedback", tabindex: -1, role: "status", "aria-live": "polite", ...attrs });
+const toggle = (attrs = {}) => h("input", { type: "checkbox", class: "ds-switch", role: "switch", ...attrs });
+
+/** Skeleton settings cards shown while account data loads. */
+export function settingsSkeleton(cards = 2, label = "Loading settings…") {
+  return h("div", { class: "ds-settings", role: "status", "aria-live": "polite", "aria-busy": "true", "aria-label": label },
+    Array.from({ length: Math.max(1, Math.min(4, cards)) }, (_, index) => h("div", { class: "ds-settings-card", "aria-hidden": "true" },
+      h("div", { class: "ds-settings-head" }, h("div", { class: "account-skeleton-title" }, h("span", { class: "ds-skeleton" }), h("span", { class: "ds-skeleton" }))),
+      Array.from({ length: index === 0 ? 3 : 2 }, () => h("div", { class: "ds-skeleton-row", "data-variant": "settings" }, h("span"), h("span"))))));
+}
+
 
 export function workspacePending(session) {
   return Boolean(session?.org && ((session.org.provisioningStatus && session.org.provisioningStatus !== "ready") || session.onboarding?.provisioning === true));
@@ -42,85 +70,170 @@ export function planCards(catalog, cloudHref = "/app#start", cloudLabel = "Start
   )));
 }
 
+
+const ATTENTION = ["past_due", "unpaid", "incomplete", "incomplete_expired", "trial_expired", "canceled", "paused"];
+const cloudPrice = catalog => { const price = catalog?.plans?.find(item => item.id === "cloud")?.monthlyPrice; return Number.isFinite(price) ? price : null; };
+
+/** In-app plan cards. The plan this workspace is on gets the mint ring; prices come from the API catalog. */
+function billingPlans(catalog, { hosted, trial }) {
+  const plans = Array.isArray(catalog?.plans) ? catalog.plans : [];
+  if (!plans.length) return null;
+  return h("section", { class: "account-plans", "aria-labelledby": "account-plans-title" },
+    h("div", { class: "account-subhead" }, h("h2", { id: "account-plans-title" }, "Plans"), link("Compare plans", "/pricing", "text small")),
+    h("div", { class: "ds-plan-grid" }, plans.map(plan => {
+      const cloud = plan.id === "cloud", current = cloud ? hosted : !hosted;
+      return h("article", { class: "ds-plan-card", "data-current": current ? "true" : null, "aria-label": `${plan.name}${current ? ", current plan" : ""}` },
+        h("h3", { class: "ds-plan-name" }, icon(cloud ? "cloud" : "terminal", { size: 16 }), plan.name, current && pill(cloud && trial ? "Current · trial" : "Current plan", { tone: "accent" })),
+        h("p", { class: "ds-plan-description" }, plan.description),
+        Number.isFinite(plan.monthlyPrice) && h("p", { class: "ds-plan-price" }, h("strong", {}, `$${plan.monthlyPrice}`), h("span", {}, cloud ? "/ workspace / month" : "/ Engram licence")),
+        h("p", { class: "ds-plan-note" }, cloud ? "USD · launch pricing · taxes may apply" : "You cover your infrastructure costs."),
+        h("ul", { class: "ds-plan-features" }, (plan.features || []).map(feature => h("li", {}, icon("check", { size: 14 }), feature))),
+        current ? h("button", { type: "button", class: "small", disabled: true }, "Current plan")
+          : cloud ? link("Explore Engram Cloud", "/hosted", "button small") : link("Self-host Engram", "/self-host", "button small"),
+        h("p", { class: "ds-plan-note" }, cloud ? "Billed per workspace. Other workspaces are billed separately." : "Open source · MIT licence"));
+    })));
+}
+
 export function billingPanel({ billing, catalog, jev, jevError, api, notify, fail, refresh, isCurrent = () => true }) {
-  const feedback = h("p", { class: "form-feedback", tabindex: -1, role: "status", "aria-live": "polite" });
+  const feedback = note();
   const plan = billingPresentation(billing);
   const { hosted, complimentary } = plan;
-  const needsAttention = hosted && (billing.canWrite !== true || (!complimentary && ["past_due", "unpaid", "incomplete", "incomplete_expired", "trial_expired", "canceled", "paused"].includes(billing.status)) || plan.label === "Subscription needs attention");
+  const needsAttention = hosted && (billing.canWrite !== true || (!complimentary && ATTENTION.includes(billing.status)) || plan.label === "Subscription needs attention");
   const trial = hosted && !complimentary && !needsAttention && ["trial", "trialing"].includes(billing.status);
   const redirect = async (button, operation) => {
     if (button.disabled || !isCurrent()) return;
     const original = [...button.childNodes];
-    button.disabled = true; button.setAttribute("aria-busy", "true"); button.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), "Opening…"); feedback.setAttribute("role", "status"); feedback.textContent = "Opening billing…";
+    button.disabled = true; button.setAttribute("aria-busy", "true"); button.replaceChildren(spinner(), "Opening…"); feedback.setAttribute("role", "status"); feedback.textContent = "Opening billing…";
     try { const result = await operation(); if (isCurrent()) window.location.assign(result.url); }
     catch (error) { if (isCurrent()) { fail(error); feedback.setAttribute("role", "alert"); feedback.textContent = error.message || "Billing could not open. Please try again."; button.disabled = false; button.removeAttribute("aria-busy"); button.replaceChildren(...original); if ([button, document.body].includes(document.activeElement)) feedback.focus?.(); } }
   };
-  const subscribe = action("Subscribe to Cloud · $19 / month", event => redirect(event.currentTarget, () => api.checkout("cloud")), { class: "primary", disabled: !billing.checkoutAvailable });
-  const manage = action("Manage subscription", event => redirect(event.currentTarget, api.billingPortal), { disabled: !billing.portalAvailable });
+  const price = cloudPrice(catalog);
+  const subscribe = action(price === null ? "Subscribe to Cloud" : `Subscribe to Cloud · $${price} / month`, event => redirect(event.currentTarget, () => api.checkout("cloud")), { class: "primary small", disabled: !billing.checkoutAvailable });
+  const manage = action("Manage subscription", event => redirect(event.currentTarget, api.billingPortal), { class: "small", disabled: !billing.portalAvailable });
   const returnState = new URLSearchParams(location.search).get("billing");
-  return h("div", { class: "account-content" },
-    returnState === "success" && h("div", { class: "notice", role: "status" }, "Checkout returned successfully. Your plan updates after payment confirmation.", action("Refresh plan", refresh, { class: "text small" })),
-    returnState === "canceled" && h("div", { class: "notice", role: "status" }, "Checkout was canceled. Your plan has not changed."),
-    h("section", { class: "billing-summary" }, h("div", { class: "ds-heading-group" }, h("p", { class: "eyebrow" }, "Current plan"), h("h2", {}, plan.title), h("p", { class: "detail-note" }, plan.description)), h("p", { class: "plan-status status-label", "data-tone": needsAttention ? "danger" : "neutral" }, plan.label),
-      hosted && h("dl", { class: "billing-dates" }, h("dt", {}, plan.dateLabel), h("dd", {}, plan.noExpiry ? "No expiry" : date(plan.dateValue))),
-      plan.subscriptionLabel && h("p", { class: "detail-note" }, `Existing Stripe subscription: ${plan.subscriptionLabel}. Complimentary access does not cancel a subscription. Manage it below.`),
-      hosted && h("div", { class: "form-actions" }, plan.showSubscribe && subscribe, billing.portalAvailable && manage),
-      hosted && !billing.canWrite && h("p", { class: "detail-note" }, "You can still read and export existing memory and activity, revoke access, and unpublish your profile. A subscription restores writes."),
-      hosted && !complimentary && !billing.checkoutAvailable && h("p", { class: "detail-note" }, "The operator has not connected hosted billing on this installation yet."), feedback),
+  const status = h("span", { class: "account-status", "data-tone": needsAttention ? "danger" : "neutral" }, icon(needsAttention ? "triangle-alert" : complimentary || billing.status === "active" ? "circle-check" : hosted ? "clock" : "terminal", { size: 15 }), plan.label);
+  const subscription = settingsCard({ title: "Subscription", description: plan.description },
+    settingsRow("Current plan", "", h("span", { class: "ds-settings-value account-plan-title" }, plan.title)),
+    settingsRow("Status", "", status),
+    hosted && settingsRow(plan.dateLabel, "", h("span", { class: "ds-settings-value" }, plan.noExpiry ? "No expiry" : date(plan.dateValue))),
+    plan.subscriptionLabel && settingsRow("Stripe subscription", "Complimentary access does not cancel a subscription. Manage it below.", h("span", { class: "ds-settings-value" }, `Existing Stripe subscription: ${plan.subscriptionLabel}`)),
+    hosted && !billing.canWrite && h("div", { class: "ds-settings-row-full" }, h("p", { class: "ds-settings-help" }, "You can still read and export existing memory and activity, revoke access, and unpublish your profile. A subscription restores writes.")),
+    hosted && !complimentary && !billing.checkoutAvailable && h("div", { class: "ds-settings-row-full" }, h("p", { class: "ds-settings-help" }, "The operator has not connected hosted billing on this installation yet.")),
+    hosted ? settingsFoot(feedback, billing.portalAvailable && manage, plan.showSubscribe && subscribe) : feedback);
+  return h("div", { class: "account-content ds-settings" },
+    returnState === "success" && banner({ glyph: icon("circle-check", { size: 18 }), title: "Checkout returned successfully", description: "Your plan updates after payment confirmation.", action: action("Refresh plan", refresh, { class: "small" }) }),
+    returnState === "canceled" && banner({ glyph: icon("info", { size: 18 }), title: "Checkout was canceled", description: "Your plan has not changed." }),
+    subscription,
+    complimentary ? h("p", { class: "account-footnote" }, link("Compare hosting options", "/pricing", "text small")) : billingPlans(catalog, { hosted, trial }),
     jevUsageSummary(jev, { error: jevError, refresh }),
-    complimentary ? h("p", { class: "detail-note" }, link("Compare hosting options", "/pricing", "text small")) : planCards(catalog, "/pricing", "View pricing"),
-    section("Built with open source", "As Engram earns revenue, we’ll use a portion to sponsor open-source projects.",
-      h("p", { class: "detail-note" }, "Engram’s memory engine is ", link("gbrain", "https://github.com/garrytan/gbrain"), " by Garry Tan. Engram uses a pinned fork and other open-source tools.")),
-    section("Your space, your boundaries", "The same access and publishing controls apply on hosted and self-hosted workspaces.", h("div", { class: "trust-list" },
-      h("p", {}, "Workspace-scoped access and agent credentials."),
-      h("p", {}, "Jev and embeddings/generated briefs have separate workspace permissions."),
-      h("p", {}, "Your activity profile stays private until you publish it."), link("Read how privacy works", "/privacy"))),
+    settingsCard({ title: "About Engram billing", description: "How revenue and boundaries work across hosted and self-hosted workspaces." },
+      settingsRow("Built with open source", "As Engram earns revenue, we’ll use a portion to sponsor open-source projects.",
+        h("p", { class: "ds-settings-value" }, "Engram’s memory engine is ", link("gbrain", "https://github.com/garrytan/gbrain"), " by Garry Tan. Engram uses a pinned fork and other open-source tools.")),
+      settingsRow("Your space, your boundaries", "The same access and publishing controls apply on hosted and self-hosted workspaces.", h("ul", { class: "account-trust-list" },
+        h("li", {}, icon("lock", { size: 14 }), "Workspace-scoped access and agent credentials."),
+        h("li", {}, icon("shield-check", { size: 14 }), "Jev and embeddings/generated briefs have separate workspace permissions."),
+        h("li", {}, icon("eye-off", { size: 14 }), "Your activity profile stays private until you publish it."),
+        h("li", {}, link("Read how privacy works", "/privacy"))))),
   );
 }
 
-export function workspacePanel({ session, members, invites, api, saved, notify, fail, isCurrent = () => true }) {
+export function workspacePanel({ session, members, invites, api, saved, notify, fail, renamed = null, isCurrent = () => true }) {
   const owner = session.role === "owner";
-  const feedback = h("p", { tabindex: -1, role: "status", "aria-live": "polite", class: "form-feedback" });
   const policies = session.org.policies;
-  const ai = h("input", { type: "checkbox", name: "external-ai", checked: policies.externalAiProcessing === true });
-  const writes = h("input", { type: "checkbox", name: "agent-writes", checked: policies.agentsMayWrite !== false });
-  const save = h("button", { type: "submit", class: "primary small", "data-account-focus": "privacy-save" }, "Save privacy settings");
-  const settings = h("form", { class: "stack", onsubmit: async event => {
-    event.preventDefault(); if (!owner || save.disabled || !isCurrent()) return;
-    save.disabled = true; ai.disabled = true; writes.disabled = true; settings.setAttribute("aria-busy", "true"); save.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), "Saving…"); feedback.setAttribute("role", "status"); feedback.textContent = "Saving privacy settings…";
-    try { const result = await api.savePolicies({ externalAiProcessing: ai.checked, agentsMayWrite: writes.checked }); if (!isCurrent()) return; feedback.textContent = "Privacy settings saved."; saved(result.policies, { restoreFocus: [save, document.body].includes(document.activeElement), focusKey: "privacy-save" }); notify("Workspace settings saved"); }
-    catch (error) { if (isCurrent()) { fail(error); feedback.setAttribute("role", "alert"); feedback.textContent = error.message || "Privacy settings could not be saved. Please try again."; if ([save, document.body].includes(document.activeElement)) feedback.focus?.(); } }
-    finally { if (isCurrent()) { save.disabled = false; ai.disabled = !owner; writes.disabled = !owner; settings.setAttribute("aria-busy", "false"); save.textContent = "Save privacy settings"; } }
-  } }, h("label", { class: "ds-option" }, writes, h("span", {}, h("strong", {}, "Allow agents to write"), h("small", {}, "Individual connection permissions also apply."))),
-    h("label", { class: "ds-option" }, ai, h("span", {}, h("strong", {}, "Allow embeddings & generated briefs"), h("small", {}, "Allows configured Voyage embeddings to process relevant memory text and queries, and OpenAI to process bounded activity context for optional generated briefs. This permission does not enable Jev. Provider keys stay on the server; provider terms and retention apply."))), feedback, owner && save);
+  const cards = [];
+
+  // General: the workspace's name. Renaming needs an owner and an owning callback that applies the confirmed name.
+  if (owner && typeof renamed === "function") {
+    const nameId = uid("name"), nameNote = note();
+    const name = h("input", { id: nameId, name: "workspace-name", value: session.org.name, maxlength: 100, autocomplete: "off", required: true, "aria-describedby": `${nameId}-help` });
+    const cancel = action("Cancel", () => { name.value = session.org.name; nameNote.textContent = ""; sync(); }, { class: "small", disabled: true });
+    const submit = h("button", { type: "submit", class: "primary small", disabled: true }, "Save changes");
+    let pending = false;
+    const sync = () => { const dirty = name.value.trim() !== session.org.name; submit.disabled = pending || !dirty; cancel.disabled = pending || !dirty; };
+    name.addEventListener("input", () => { nameNote.textContent = ""; name.setAttribute("aria-invalid", "false"); sync(); });
+    const form = h("form", { "data-settings": "general", novalidate: true, onsubmit: async event => {
+      event.preventDefault(); if (pending || !isCurrent()) return;
+      const value = name.value.trim();
+      if (!value || value.length > 100 || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) { name.setAttribute("aria-invalid", "true"); nameNote.setAttribute("role", "alert"); nameNote.textContent = "Use a workspace name between 1 and 100 characters without control characters."; name.focus?.(); return; }
+      if (value === session.org.name) return;
+      pending = true; sync(); name.readOnly = true; submit.setAttribute("aria-busy", "true"); submit.replaceChildren(spinner(), "Saving…"); nameNote.setAttribute("role", "status"); nameNote.textContent = "";
+      try { const result = await api.renameWorkspace(value); if (!isCurrent()) return; if (result?.org?.id !== session.org.id || result.org.name !== value) throw new Error("The workspace name could not be confirmed. Please try again."); notify("Settings saved"); renamed(result.org); }
+      catch (error) { if (isCurrent()) { fail(error); nameNote.setAttribute("role", "alert"); nameNote.textContent = error.message || "The workspace name could not be saved. Please try again."; } }
+      finally { if (isCurrent()) { pending = false; name.readOnly = false; submit.removeAttribute("aria-busy"); submit.textContent = "Save changes"; sync(); } }
+    } }, settingsRow("Workspace name", "Shown in the top bar, invitations and exports.", name, { forId: nameId, helpId: `${nameId}-help` }),
+      settingsRow("Workspace type", "", h("span", { class: "ds-settings-value" }, session.org.kind === "personal" ? "Personal" : "Team")),
+      settingsFoot(nameNote, cancel, submit));
+    cards.push(settingsCard({ title: "General", description: "Basic details for this workspace." }, form));
+  } else {
+    cards.push(settingsCard({ title: "General", description: "Basic details for this workspace." },
+      settingsRow("Workspace name", owner ? "" : "Only an owner can rename this workspace.", h("span", { class: "ds-settings-value" }, session.org.name)),
+      settingsRow("Workspace type", "", h("span", { class: "ds-settings-value" }, session.org.kind === "personal" ? "Personal" : "Team")),
+      settingsRow("Your role", "", h("span", { class: "ds-settings-value" }, owner ? "Owner" : "Member"))));
+  }
+
+  // Privacy & access: two switches, saved together.
+  const feedback = note();
+  const writesId = uid("writes"), aiId = uid("ai");
+  const ai = toggle({ id: aiId, name: "external-ai", checked: policies.externalAiProcessing === true, "aria-describedby": `${aiId}-help` });
+  const writes = toggle({ id: writesId, name: "agent-writes", checked: policies.agentsMayWrite !== false, "aria-describedby": `${writesId}-help` });
+  const initial = { ai: policies.externalAiProcessing === true, writes: policies.agentsMayWrite !== false };
+  const save = h("button", { type: "submit", class: "primary small", "data-account-focus": "privacy-save", disabled: true }, "Save changes");
+  const cancel = action("Cancel", () => { ai.checked = initial.ai; writes.checked = initial.writes; feedback.textContent = ""; sync(); }, { class: "small", disabled: true });
+  let pending = false;
+  const sync = () => { const dirty = ai.checked !== initial.ai || writes.checked !== initial.writes; save.disabled = pending || !dirty; cancel.disabled = pending || !dirty; };
+  for (const control of [ai, writes]) control.addEventListener("change", () => { feedback.textContent = ""; sync(); });
+  const settings = h("form", { "data-settings": "privacy", onsubmit: async event => {
+    event.preventDefault(); if (!owner || pending || !isCurrent()) return;
+    pending = true; sync(); ai.disabled = true; writes.disabled = true; settings.setAttribute("aria-busy", "true"); save.setAttribute("aria-busy", "true"); save.replaceChildren(spinner(), "Saving…"); feedback.setAttribute("role", "status"); feedback.textContent = "";
+    try { const result = await api.savePolicies({ externalAiProcessing: ai.checked, agentsMayWrite: writes.checked }); if (!isCurrent()) return; feedback.textContent = "Settings saved."; saved(result.policies, { restoreFocus: [save, document.body].includes(document.activeElement), focusKey: "privacy-save" }); notify("Settings saved"); }
+    catch (error) { if (isCurrent()) { fail(error); feedback.setAttribute("role", "alert"); feedback.textContent = error.message || "Settings could not be saved. Your changes are still here."; if ([save, document.body].includes(document.activeElement)) feedback.focus?.(); } }
+    finally { if (isCurrent()) { pending = false; ai.disabled = !owner; writes.disabled = !owner; settings.setAttribute("aria-busy", "false"); save.removeAttribute("aria-busy"); save.textContent = "Save changes"; sync(); } }
+  } },
+    settingsRow("Allow agents to write", "Individual connection permissions also apply.", writes, { forId: writesId, helpId: `${writesId}-help` }),
+    settingsRow("Allow embeddings & generated briefs", "Allows configured Voyage embeddings to process relevant memory text and queries, and OpenAI to process bounded activity context for optional generated briefs. This permission does not enable Jev. Provider keys stay on the server; provider terms and retention apply.", ai, { forId: aiId, helpId: `${aiId}-help` }),
+    owner ? settingsFoot(feedback, cancel, save) : settingsFoot(h("p", { class: "ds-settings-note" }, "Only an owner can change these settings.")));
   ai.disabled = !owner; writes.disabled = !owner;
-  const email = h("input", { type: "email", inputmode: "email", name: "teammate-email", required: true, maxlength: 254, autocomplete: "email", spellcheck: "false", autocapitalize: "none", placeholder: "teammate@example.com", "aria-describedby": "workspace-invite-feedback" });
-  const send = h("button", { type: "submit", class: "small" }, "Invite member");
-  const inviteFeedback = h("p", { id: "workspace-invite-feedback", tabindex: -1, role: "status", "aria-live": "polite", class: "form-feedback detail-note" });
-  const invite = h("form", { class: "stack workspace-invite-form", onsubmit: async event => {
+  cards.push(settingsCard({ title: "Privacy & access", description: "These settings apply to this workspace. Only an owner can change them." }, settings));
+
+  // Members: a bordered list with the invite form below.
+  const emailId = uid("invite");
+  const email = h("input", { id: emailId, type: "email", inputmode: "email", name: "teammate-email", required: true, maxlength: 254, autocomplete: "email", spellcheck: "false", autocapitalize: "none", placeholder: "teammate@example.com", "aria-describedby": "workspace-invite-feedback" });
+  const send = h("button", { type: "submit", class: "small" }, icon("user-plus", { size: 14 }), "Send invite");
+  const inviteFeedback = h("p", { id: "workspace-invite-feedback", tabindex: -1, role: "status", "aria-live": "polite", class: "form-feedback ds-settings-help" });
+  const invite = h("form", { class: "workspace-invite-form", onsubmit: async event => {
     event.preventDefault(); if (!owner || send.disabled || !isCurrent()) return;
-    send.disabled = true; email.readOnly = true; invite.setAttribute("aria-busy", "true"); send.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), "Inviting…"); inviteFeedback.setAttribute("role", "status"); inviteFeedback.textContent = "Creating invitation…";
-    try { const result = await api.invite(email.value.trim()); if (!isCurrent()) return; email.value = ""; inviteFeedback.replaceChildren(result.url ? h("span", {}, "Invite created. ", link("Open invitation", result.url)) : "Invitation emailed. The link expires in seven days."); }
+    const original = [...send.childNodes];
+    send.disabled = true; email.readOnly = true; invite.setAttribute("aria-busy", "true"); send.replaceChildren(spinner(), "Sending…"); inviteFeedback.setAttribute("role", "status"); inviteFeedback.textContent = "Creating invitation…";
+    try { const result = await api.invite(email.value.trim()); if (!isCurrent()) return; email.value = ""; inviteFeedback.replaceChildren(result.url ? h("span", {}, "Invite created. ", link("Open invitation", result.url)) : "Invitation emailed. The link expires in seven days."); notify(result.url ? "Invite created" : "Invitation sent"); }
     catch (error) { if (isCurrent()) { fail(error); inviteFeedback.setAttribute("role", "alert"); inviteFeedback.textContent = error.message || "The invitation could not be created. Please try again."; if ([send, document.body].includes(document.activeElement)) inviteFeedback.focus?.(); } }
-    finally { if (isCurrent()) { send.disabled = false; email.readOnly = false; invite.setAttribute("aria-busy", "false"); send.textContent = "Invite member"; } }
-  } }, h("div", { class: "inline-form" }, h("label", { class: "field" }, "Teammate email", email), send), inviteFeedback);
-  return h("div", { class: "account-content" },
-    section("Privacy & access", "These settings apply to this workspace. Only an owner can change them.", settings),
-    section("People", session.org.kind === "personal" ? "A personal workspace has one owner. Shared work belongs in a team workspace." : "Everyone in this workspace can read its shared memory and activity.", h("div", { class: "workspace-people", role: "group", "aria-label": "Workspace members", tabindex: -1 }, members.map(member => h("div", { class: "token-row" }, h("div", {}, h("span", {}, member.email), h("small", {}, member.role)), owner && member.role !== "owner" && action("Remove", async event => {
+    finally { if (isCurrent()) { send.disabled = false; email.readOnly = false; invite.setAttribute("aria-busy", "false"); send.replaceChildren(...original); } }
+  } }, settingsRow("Invite a teammate", "Invited people join this workspace as members.", h("div", { class: "account-invite-line" }, email, send), { forId: emailId }), h("div", { class: "ds-settings-row-full account-invite-feedback" }, inviteFeedback));
+  const people = h("ul", { class: "account-members", role: "list", "aria-label": "Workspace members", tabindex: -1 }, members.map(member => h("li", { class: "account-member ds-row-hover" },
+    h("span", { class: "account-member-mark", "aria-hidden": "true" }, icon("circle-user", { size: 18 })),
+    h("span", { class: "account-member-email" }, member.email),
+    pill(member.role === "owner" ? "Owner" : member.role === "member" ? "Member" : member.role),
+    owner && member.role !== "owner" && action("Remove", async event => {
       const button = event.currentTarget; if (button.disabled || !isCurrent()) return;
       if (button.dataset.confirm !== "yes") { button.dataset.confirm = "yes"; button.textContent = "Confirm removal"; button.setAttribute("aria-label", `Confirm removal of ${member.email}`); return; }
-      button.disabled = true; button.setAttribute("aria-busy", "true"); button.setAttribute("aria-label", `Removing ${member.email}…`); button.replaceChildren(h("span", { class: "ds-spinner", "aria-hidden": "true" }), "Removing…");
-      try { await api.removeMember(member.email); if (!isCurrent()) return; const row = button.closest(".token-row"), people = row.parentElement; row.remove(); if ([button, document.body].includes(document.activeElement)) (people.querySelector("button, input") || people).focus(); notify("Member access removed"); }
+      button.disabled = true; button.setAttribute("aria-busy", "true"); button.setAttribute("aria-label", `Removing ${member.email}…`); button.replaceChildren(spinner(), "Removing…");
+      try { await api.removeMember(member.email); if (!isCurrent()) return; const row = button.closest(".account-member"), list = row.parentElement; row.remove(); if ([button, document.body].includes(document.activeElement)) (list.querySelector("button, input") || list).focus(); notify("Member removed"); }
       catch (error) { if (isCurrent()) { fail(error); notify(error.message || "Member access could not be removed. Please try again."); button.disabled = false; button.removeAttribute("aria-busy"); button.setAttribute("aria-label", `Confirm removal of ${member.email}`); button.textContent = "Confirm removal"; if (document.activeElement === document.body) button.focus(); } }
-    }, { class: "text small", "aria-label": `Remove ${member.email}` }))), owner && session.org.kind !== "personal" && invite, invites?.length > 0 && h("p", { class: "field-hint" }, `${invites.length} pending invitation${invites.length === 1 ? "" : "s"}.`))),
-    section("Take a copy", "Download the memory pages and activity you can read in this workspace. The file may contain sensitive data.", exportControl(session, api, fail, notify, isCurrent)),
-    h("p", { class: "detail-note" }, "Public sharing is managed separately in Public profile. ", link("Privacy details", "/privacy")),
-  );
-}
+    }, { class: "small ds-button", "data-variant": "danger", "aria-label": `Remove ${member.email}` }))));
+  const memberCount = `${members.length} ${members.length === 1 ? "member" : "members"}`;
+  cards.push(settingsCard({ title: "Members", description: session.org.kind === "personal" ? "A personal workspace has one owner. Shared work belongs in a team workspace." : "Everyone in this workspace can read its shared memory and activity." },
+    h("div", { class: "account-members-panel" }, h("div", { class: "ds-panel-head" }, h("span", {}, "Email"), h("span", { class: "account-members-role" }, "Role")), people),
+    owner && session.org.kind !== "personal" && invite,
+    h("div", { class: "ds-settings-foot account-members-foot" }, h("p", { class: "ds-settings-note" }, invites?.length > 0 ? `${memberCount} · ${invites.length} pending invitation${invites.length === 1 ? "" : "s"}` : memberCount))));
 
-function exportControl(session, api, fail, notify, isCurrent) {
-  const feedback = h("p", { class: "form-feedback", tabindex: -1, role: "status", "aria-live": "polite" });
-  return h("div", { class: "stack" }, action("Export memory & activity", event => exportWorkspace(event.currentTarget, feedback, session, api, fail, notify, isCurrent)), feedback);
+  // Export.
+  const exportFeedback = note();
+  const exportButton = action([icon("download", { size: 14 }), "Export memory & activity"], event => exportWorkspace(event.currentTarget, exportFeedback, session, api, fail, notify, isCurrent), { class: "small" });
+  cards.push(settingsCard({ title: "Export data", description: "Take a copy of what you can read in this workspace." },
+    settingsRow("Memory & activity", "Download the memory pages and activity you can read in this workspace. The file may contain sensitive data.", exportButton),
+    settingsFoot(exportFeedback)));
+
+  return h("div", { class: "account-content ds-settings" }, cards,
+    h("p", { class: "account-footnote" }, "Public sharing is managed separately in Public profile. ", link("Privacy details", "/privacy")));
 }
 
 async function exportWorkspace(button, feedback, session, api, fail, notify, isCurrent) {

@@ -317,3 +317,34 @@ describe("operator early access invitations", () => {
     expect(signupInviteStatus({ ...redeemed, complimentaryErrorCode: "authority_conflict" })).toBe("Access needs attention");
   });
 });
+
+describe("check-your-inbox state", () => {
+  test("a sent sign-in link switches to the inbox state with a resend timer, and can return to the form", async () => {
+    const sent: string[] = [];
+    const panel = signupView({ mode: "email", policy: beta, api: { loginEmail: async (email: string) => { sent.push(email); return { sent: true }; } }, changeMode() {}, signedIn() {} });
+    const view = panel.element as Element;
+    const body = find(view, item => item.attrs.class?.includes("ds-auth-body"));
+    input(view, "email").value = "ada@example.com"; await submit(view).fire("submit");
+    expect(sent).toEqual(["ada@example.com"]); expect(body.attrs["data-state"]).toBe("sent");
+    expect(find(view, item => item.attrs.id === "auth-sent-title").textContent).toBe("Check your inbox");
+    expect(view.textContent).toContain("Check ada@example.com for a sign-in link");
+    const resend = find(view, item => item.tag === "button" && item.attrs.class?.includes("auth-resend"));
+    expect(resend.disabled).toBe(true); expect(resend.textContent).toBe("Resend in 30s");
+    await resend.fire("click"); expect(sent).toHaveLength(1);
+    await button(view, "Use a different email").fire("click");
+    expect(body.attrs["data-state"]).toBeUndefined(); expect(find(view, item => item.attrs.id === "auth-feedback").textContent).toBe("");
+    panel.dispose();
+  });
+
+  test("an unlinked invite cannot be resent after its code is cleared; the product panel makes no customer claims", async () => {
+    const panel = signupView({ mode: "create", policy: beta, api: { createOrg: async () => ({ sent: true }) }, changeMode() {}, signedIn() {} });
+    const view = panel.element as Element;
+    input(view, "email").value = "friend@example.com"; input(view, "password").value = "example-invite"; await submit(view).fire("submit");
+    expect(all(view).some(item => item.attrs.class?.includes("auth-resend"))).toBe(false);
+    expect(button(view, "Start over")).toBeDefined();
+    const aside = find(view, item => item.tag === "aside");
+    expect(aside.textContent).toContain("Outside work appears only when an agent reports it");
+    expect(aside.textContent).not.toMatch(/customers?|trusted by|testimonial|“[^”]+” —/i);
+    panel.dispose();
+  });
+});

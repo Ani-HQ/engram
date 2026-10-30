@@ -289,3 +289,16 @@ import { ICON_NAMES } from './icons.js';
   if (rows) { renderRows(); document.getElementById('identity-replay')?.addEventListener('click', () => { rows.classList.remove('ds-stagger'); void rows.offsetWidth; renderRows(); }); }
   document.getElementById('identity-flash')?.addEventListener('click', () => { const row = document.createElement('div'); row.className = 'ds-row-hover ds-gallery-row'; row.textContent = 'New: recalled job retries'; rows.prepend(row); flashNew([row]); });
 }
+
+// App shell examples.
+import { pill, showToast, banner, commandPalette } from './design-system.js';
+{
+  const kbd = text => { const key = document.createElement('kbd'); key.textContent = text; return key; };
+  document.getElementById('shell-pills')?.replaceChildren(pill('Team'), pill('Read only', { tone: 'accent' }), pill('Beta', { tone: 'warning' }), pill('Revoked', { tone: 'danger' }), kbd('⌘K'), kbd('Esc'));
+  document.getElementById('shell-toast')?.addEventListener('click', () => showToast('Settings saved', { glyph: icon('circle-check', { size: 16 }) }));
+  document.getElementById('shell-toast-error')?.addEventListener('click', () => showToast('Could not save settings. Try again.', { tone: 'danger', glyph: icon('circle-alert', { size: 16 }), action: { label: 'Retry', run: () => {} } }));
+  const demoPalette = commandPalette([{ label: 'Pages', items: [{ label: 'Activity', glyph: icon('activity', { size: 16 }), run: () => {} }, { label: 'Memory', glyph: icon('brain', { size: 16 }), run: () => {} }] }, { label: 'Actions', items: [{ label: 'Connect an agent', glyph: icon('plug-zap', { size: 16 }), run: () => {} }] }]);
+  document.getElementById('shell-palette')?.addEventListener('click', () => demoPalette.open());
+  const action = document.createElement('button'); action.type = 'button'; action.className = 'ds-button primary small'; action.textContent = 'Learn more';
+  document.getElementById('shell-banner')?.replaceChildren(banner({ glyph: icon('sparkles', { size: 18 }), title: 'Search by intent', description: 'Find related work by meaning when model processing is on.', action, onDismiss: () => {} }));
+}

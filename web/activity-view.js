@@ -198,6 +198,7 @@ export function refreshActivityTimes(scope = document) {
   }
 }
 export function activitySkeleton() {
-  return h("div", { class: "activity-skeleton", role: "status", "aria-label": "Loading activities" },
-    [0, 1, 2].map(() => h("div", { class: "activity-card skeleton-card" }, h("span", { class: "skeleton-line" }), h("span", { class: "skeleton-line short" }))));
+  return h("div", { class: "ds-panel-list activity-skeleton", role: "status", "aria-label": "Loading activity" },
+    h("div", { class: "ds-panel-head", "aria-hidden": "true" }, h("span", {}, "Loading activity…")),
+    [0, 1, 2, 3, 4].map(index => h("div", { class: "ds-skeleton-row", "aria-hidden": "true", "data-row": index }, h("span"), h("span"), h("span"), h("span"))));
 }

@@ -35,6 +35,38 @@ Defined in `web/design-system.css` ("Identity and motion") and `web/design-syste
 
 Brand marks: `web/vendor/brands/manifest.json` records each mark's file, tone (`color` or `mono`), source and license. `bun scripts/brand-catalog.ts` regenerates `web/brand-catalog.js` and the hashed provenance in `catalog-sources.json`; tests verify hashes and SVG safety. Mono files use `fill="currentColor"` and render lightened via `data-tone="mono"`.
 
+## App shell (dashboard grammar)
+
+Modeled on developer dashboards (Supabase's, via Mobbin), with Engram's palette. Defined in the "App shell" sections of `web/design-system.css` / `web/design-system.js`, laid out in `web/app-theme.css`, shown in the gallery under `#shell`.
+
+| Primitive | Use |
+| --- | --- |
+| `.ds-topbar`, `.ds-crumbs`, `.ds-crumb`, `.ds-crumb-sep`, `.ds-search-trigger`, `.ds-topbar-button` | Top bar: logo / workspace switcher + kind pill / page, then Feedback, ⌘K search, help, account menu. |
+| `.ds-rail` | 56px icon rail; labels slide in on hover or focus; off-canvas sheet under 900px. |
+| `commandPalette(groups)` | ⌘K / Ctrl K menu: grouped pages, actions, workspaces and help; arrow keys, Enter, Esc. Every item runs an existing app action. |
+| `pill(text, { tone })` | Small mono uppercase pill for a fixed category ("Team", "Read only"). Never a status claim. |
+| `showToast(message, { tone, glyph, action })` | Top-right stacked toast with a countdown hairline; pauses on hover; max three. App `toast()` wraps it and marks failures red. |
+| `routeProgress.start()/done()` | 2px mint bar while a view's data loads (not on background polling). |
+| `banner({ glyph, title, description, action, onDismiss })` | Dismissible notice with an icon tile. |
+| `.ds-panel-list`, `.ds-panel-head`, `.ds-panel-foot` | Bordered list with a mono uppercase header row, hairline rows and a footer bar (counts, load more, key hints). |
+| `.ds-skeleton-row` | Shimmering placeholder row; app `skeletonRows()` renders a loading panel of them. |
+| `.ds-empty[data-variant='dashed']` | Dashed empty box (`emptyState()`), used by every app list. |
+| `input.ds-switch` | Mint toggle for booleans. |
+| `kbd` | Key hints (⌘K, Esc, ↑ ↓). |
+| `.ds-settings`, `.ds-settings-card` (`-head`, `-row`, `-row-full`, `-label`, `-help`, `-control`, `-value`, `-switch`, `-foot`, `-note`) | Settings card: header, two-column rows (label and help left, control right), footer with Cancel / Save changes disabled until dirty. `data-tone="danger"` for a danger zone. |
+| `.ds-plan-grid`, `.ds-plan-card[data-current]` | Catalog-driven plan cards; the current plan gets a mint ring and a "Current plan" pill. Prices come from the API catalog only. |
+| `.ds-usage`, `.ds-usage-line` | Usage meter, shown only when a real limit exists. |
+| `.ds-preview-panel`, `.ds-preview-body` | Bordered live preview with a mono header, sticky beside an editor. |
+| `.ds-steps > li[data-state]` | Ordered stepper on a hairline rail: `current`, `complete`, `upcoming`. A real sequence only, never decoration. |
+| `.ds-action-bar`, `.ds-action-bar-actions` | Sticky footer bar for a pending decision ("Approve 3 excerpts"). |
+| `.ds-auth` | Split sign-in: form column left; a quiet dot-grid panel right with real agent logos and true statements only (no quotes or metrics). |
+| `.ds-result` | Result state with an icon tile (approved, denied, expired, not found, error); a small check pop. |
+| `.ds-decision`, `.ds-code-compare` | Centered approval card with a large monospace code to compare. |
+| `.ds-checklist`, `.ds-check`, `li[data-fresh]` | Getting-started checklist; a step ticks with an animation only when a real event flips it between renders. |
+| `.ds-client-tab`, `.ds-window-panel` | Connect dialog tabs with client logos inside a terminal window. |
+
+Micro copy: sentence case, short; buttons are verbs ("Connect agent", "Save changes"); empty states are "No X yet" plus one actionable line; toasts are past tense ("Settings saved"). Truthful labels (observed, agent-reported, read-only, unverified) are never shortened away.
+
 ## Marketing kit (public pages)
 
 Defined in the "Marketing kit" section of `web/design-system.css`, arranged by `web/marketing.css`, and made interactive by `web/marketing-site.js`. Shown in the gallery under `#marketing-kit`.
