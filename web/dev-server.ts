@@ -663,6 +663,11 @@ function showcaseActivity(profile: ShowcaseProfile, workspaceId = session.org.id
   }, now, { rows: rows.map((row: any) => ({ id: row.id, agent: row.agent, action_key: row.actionKey, tool: row.tool, resource: row.resource, status: row.status, evidence: row.evidence, recorded_at: row.recordedAt, harness: row.harness })), scope: `demo:${workspaceId}:${profile.slug}`, key: "local-preview-public-activity-key", preview, photoUrl: preview ? profile.photo ?? null : showcasePhotoUrl(profile.slug, showcasePhotos.get(workspaceId)?.digest) });
 }
 
+function demoCardOptions(activity: { profile: { slug: string } }, url: URL) {
+  const entry = publicDemoProfile(activity.profile.slug);
+  return { origin: url.origin, photo: entry ? showcasePhotos.get(entry[0])?.bytes ?? null : null };
+}
+
 async function publicShowcase(req: Request, url: URL): Promise<Response | null> {
   const photo = /^\/api\/public\/activity\/([^/]+)\/photo\.png$/.exec(url.pathname);
   if (photo) {
@@ -689,7 +694,7 @@ async function publicShowcase(req: Request, url: URL): Promise<Response | null> 
   if (api && !api[2]) return new Response(req.method === "HEAD" ? null : JSON.stringify(activity), { headers: { ...headers, "Content-Type": "application/json; charset=utf-8" } });
   const card = Boolean(api?.[2]);
   const png = Boolean(api?.[2].endsWith("png"));
-  return new Response(req.method === "HEAD" ? null : card ? png ? await renderShowcasePng(activity) : renderShowcaseCard(activity) : renderShowcasePage(activity, url.origin).replace("</head>", '<meta name="engram-demo" content="sample-data"></head>'), {
+  return new Response(req.method === "HEAD" ? null : card ? png ? await renderShowcasePng(activity, demoCardOptions(activity, url)) : renderShowcaseCard(activity, demoCardOptions(activity, url)) : renderShowcasePage(activity, url.origin).replace("</head>", '<meta name="engram-demo" content="sample-data"></head>'), {
     headers: { ...headers, "Content-Type": card ? png ? "image/png" : "image/svg+xml; charset=utf-8" : "text/html; charset=utf-8" },
   });
 }

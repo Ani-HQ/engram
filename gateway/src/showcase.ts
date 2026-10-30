@@ -229,6 +229,14 @@ async function publicPhoto(req: Request, slug: string, version: string | null, d
   return new Response(req.method === "HEAD" ? null : bytes, { headers: { ...headers, "Content-Length": String(bytes.byteLength) } });
 }
 
+// The share card embeds the published photo; any failure just leaves it out.
+async function cardPhoto(slug: string, db: postgres.Sql): Promise<Uint8Array | null> {
+  try {
+    const rows = await db`SELECT photo_png FROM action_profiles WHERE slug = ${slug} AND published = true AND photo_digest IS NOT NULL`;
+    return rows[0]?.photo_png ?? null;
+  } catch { return null; }
+}
+
 export async function handlePublicShowcase(req: Request, db: postgres.Sql = sql): Promise<Response | null> {
   const url = new URL(req.url);
   const photo = /^\/api\/public\/activity\/([^/]+)\/photo\.png$/.exec(url.pathname);
@@ -251,7 +259,8 @@ export async function handlePublicShowcase(req: Request, db: postgres.Sql = sql)
     if (!activity) return new Response(req.method === "HEAD" ? null : page ? renderUnavailableShowcasePage() : "Not Found", { status: 404, headers: { ...headers, "X-Robots-Tag": "noindex", "Content-Type": page ? "text/html; charset=utf-8" : "text/plain; charset=utf-8" } });
     if (api && !api[2]) return new Response(req.method === "HEAD" ? null : JSON.stringify(activity), { headers: { ...headers, "Content-Type": "application/json; charset=utf-8" } });
     const card = Boolean(api?.[2]);
-    return new Response(req.method === "HEAD" ? null : card ? (api![2].endsWith("png") ? await renderShowcasePng(activity) : renderShowcaseCard(activity)) : renderShowcasePage(activity, config.publicUrl || url.origin), {
+    const cardOptions = card && req.method !== "HEAD" ? { origin: config.publicUrl || url.origin, photo: activity.profile.photoUrl ? await cardPhoto((api ?? page)![1], db) : null } : {};
+    return new Response(req.method === "HEAD" ? null : card ? (api![2].endsWith("png") ? await renderShowcasePng(activity, cardOptions) : renderShowcaseCard(activity, cardOptions)) : renderShowcasePage(activity, config.publicUrl || url.origin), {
       headers: { ...headers, "Content-Type": card ? (api![2].endsWith("png") ? "image/png" : "image/svg+xml; charset=utf-8") : "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'" },
     });
   } catch {

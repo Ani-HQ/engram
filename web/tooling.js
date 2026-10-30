@@ -16,7 +16,7 @@ export const agentSources = Object.freeze([
   ['amp', 'Amp'], ['github-copilot', 'GitHub Copilot'], ['openclaw', 'OpenClaw'],
   ['hermes', 'Hermes Agent'], ['other', 'Custom agent'],
 ].map(source => Object.freeze(source)));
-const sourceBrands = Object.freeze({
+export const sourceBrands = Object.freeze({
   'grok-bot': 'grok-bot', grok: 'grok', codex: 'codex', 'claude-code': 'claude', claude: 'claude',
   cursor: 'cursor', chatgpt: 'openai', 'gemini-cli': 'gemini', gemini: 'gemini', opencode: 'opencode',
   cline: 'cline', windsurf: 'windsurf', goose: 'goose', amp: 'amp', 'github-copilot': 'githubcopilot',
