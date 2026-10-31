@@ -51,6 +51,10 @@ blocker changes, milestones and handoff. Send the whole record, a fresh
 resume and reconcile or use a new `lineage`. Only a receipt means saved;
 `trigger:"completed"` closes the task.
 
+When the user asks to hand off, save with `trigger:"handoff"`. Its receipt
+carries `pickUp`: end your reply with `pickUp.say`, then `pickUp.prompt` alone
+in a code block so the user can paste it into the next agent.
+
 ## Optional: bridge on the actual runtime
 
 Use this path only if `engram-mcp` is installed on the actual agent/cloud runtime

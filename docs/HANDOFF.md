@@ -49,6 +49,24 @@ remember(topic: "engram", text: "Deferred the Claude Code hook until we proved
 an instructed agent writes on its own. Capture hooks now exist for the trail itself.")
 ```
 
+## End a handoff with something to paste
+
+When the user asks to hand off, save the task with `checkpoint_task` and
+`trigger: "handoff"`. The confirmed receipt carries a `pickUp` pair: a short line
+to show and a prompt to paste into the next agent.
+
+```
+Handoff saved. Paste this into your next agent to pick up right where we left off. Keep building ❤️
+
+    Pick up my engram task "Fix invite errors" (task_…). Load it with resume_task,
+    recheck the repo and tests, then keep going from its next step.
+```
+
+The agent ends its reply with that line and puts the prompt alone in a code block,
+so the user copies one thing. Only a confirmed receipt has `pickUp`; an unsent or
+unconfirmed save never shows it. The local bridge (`memory checkpoint`) builds the
+same text itself from the confirmed task ID.
+
 ## Recall before starting, not on every session
 
 `recall` costs context. Call it when there is a named subject with plausible

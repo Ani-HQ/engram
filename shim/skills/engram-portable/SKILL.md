@@ -39,6 +39,10 @@ blocker changes, milestones and handoff. Send the whole record, a fresh
 resume and reconcile or use a new `lineage`. Only a receipt means saved;
 `trigger:"completed"` closes the task.
 
+When the user asks to hand off, save with `trigger:"handoff"`. Its receipt
+carries `pickUp`: end your reply with `pickUp.say`, then `pickUp.prompt` alone
+in a code block so the user can paste it into the next agent.
+
 Plain MCP defaults to a 4096-byte cap per response, not a cumulative task cap.
 Avoid repeated retrieval as best-effort discipline. A hard cumulative task budget
 requires client support for stable `params._meta["com.engram/context"]` metadata
