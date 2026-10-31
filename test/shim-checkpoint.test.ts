@@ -159,6 +159,11 @@ describe("checkpoint bridge queue", () => {
     const attach = await memory.lifecycle("task-start", { runtime: "cursor", sessionId: "other-3", taskId: "work-4", recall: false }, { binding: gateway.binding });
     const saved = await memory.lifecycle("checkpoint", { runId: attach.runId, continueFrom: { taskId: outgoing.continuation.task.taskId, checkpointId: outgoing.continuation.task.checkpointId }, trigger: "handoff", record: record("done by cursor") }, { binding: gateway.binding });
     expect([saved.ok, saved.receipt.taskId, saved.receipt.revision]).toEqual([true, outgoing.continuation.task.taskId, 2]);
+    // A confirmed handoff hands the user something to paste into the next agent.
+    expect(saved.pickUp.prompt).toContain(outgoing.continuation.task.taskId);
+    expect(saved.pickUp.prompt).toContain("resume_task");
+    expect(saved.pickUp.say).toContain("Keep building");
+    expect(outgoing.pickUp).toBeUndefined();
     expect(gateway.calls.at(-1).harness).toBe("cursor");
   });
 
@@ -185,6 +190,7 @@ describe("checkpoint bridge queue", () => {
     expect(text).toContain("checkpoint --run <run-id>");
     expect(text).toContain("find_tasks");
     expect(text).toContain(first.continuation.task.taskId);
+    expect(text).toContain("pickUp.prompt");
   });
 
   test("Cursor session-start context is delivered once more on the first tool result, never twice", async () => {

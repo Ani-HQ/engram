@@ -61,6 +61,8 @@ export async function checkContinuation(db: postgres.Sql): Promise<number> {
     equal([second.revision, second.created], [2, false], "A decision advances the lineage");
     const unchanged = await inA(codex, () => checkpointTask(codex, { requestId: "req_codex_0002", taskId: created.taskId, expectedParent: second.checkpointId, trigger: "handoff", record: decision }));
     equal([unchanged.unchanged, unchanged.checkpointId, unchanged.revision], [true, second.checkpointId, 2], "Unchanged content creates no new revision, even for a handoff");
+    ok(unchanged.pickUp?.prompt.includes(created.taskId) && unchanged.pickUp.prompt.includes("resume_task") && unchanged.pickUp.say.includes("Keep building"), "A handoff receipt carries a prompt to paste into the next agent");
+    equal(second.pickUp, undefined, "Only a handoff receipt carries a pick-up prompt");
 
     // Claude still holds revision 1. Its save must not overwrite Codex's plan.
     const stale = { requestId: "req_start_0002", taskId: created.taskId, expectedParent: created.checkpointId, trigger: "plan", record: { ...record, next: "Something else" } };

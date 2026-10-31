@@ -7,6 +7,7 @@ import { canDelete, canUseTool, DEFAULT_POLICIES, hasOauthScope, isHuman, normal
 import { redactSecrets } from "./redact";
 import { parseReportedSource } from "./agent-source";
 import { judgeFreshness, judgeTaskMatches, type StaleDecision } from "./continuation-jev";
+import { handoffPickUp } from "../../shim/instructions.js";
 
 // Continuation keeps one compact, attributed task record that another agent can
 // load. The checkpoint is the authoritative task snapshot; memory pages stay the
@@ -359,6 +360,8 @@ export interface CheckpointReceipt {
   unchanged: boolean;
   duplicate?: boolean;
   closed?: boolean;
+  /** Present on a confirmed handoff: a line to show and a prompt to paste into the next agent. */
+  pickUp?: { say: string; prompt: string };
 }
 
 function receiptFrom(row: any, extra: Partial<CheckpointReceipt> = {}): CheckpointReceipt {
@@ -371,12 +374,16 @@ export async function checkpointTask(token: TokenRecord, raw: unknown, db: postg
   const actor = continuationActor(token, true);
   const input = parseCheckpointInput(raw);
   const fingerprint = checkpointFingerprint(input);
+  const finish = (receipt: CheckpointReceipt, title: string): CheckpointReceipt => {
+    const pickUp = input.trigger === "handoff" ? handoffPickUp(receipt.taskId, title) : null;
+    return pickUp ? { ...receipt, pickUp } : receipt;
+  };
   return guarded(() => db.begin(async tx => {
     // Serialize one writer's request ID across instances, then check for a
     // completed retry before validating the now-current parent.
     await tx`SELECT pg_advisory_xact_lock(hashtextextended(${JSON.stringify(["continuation", actor.orgId, actor.name, input.requestId])}, 0))`;
     const prior = await tx`
-      SELECT r.*, c.lineage, c.revision, c.created_at AS saved_at, t.deleted_at
+      SELECT r.*, c.lineage, c.revision, c.created_at AS saved_at, t.deleted_at, t.title AS task_title
       FROM continuation_receipts r
       JOIN continuation_checkpoints c ON c.id = r.checkpoint_id AND c.org_id = r.org_id
       JOIN continuation_tasks t ON t.id = r.task_id AND t.org_id = r.org_id
@@ -384,7 +391,7 @@ export async function checkpointTask(token: TokenRecord, raw: unknown, db: postg
     if (prior[0]) {
       if (prior[0].fingerprint !== fingerprint) throw new ContinuationError("requestId was already used for a different checkpoint. Use a new requestId for new content.", 409, "request_conflict");
       if (prior[0].deleted_at) throw new ContinuationError("This task was deleted. Its checkpoints can no longer be changed or resumed.", 410, "task_deleted");
-      return receiptFrom(prior[0], { duplicate: true });
+      return finish(receiptFrom(prior[0], { duplicate: true }), prior[0].task_title);
     }
 
     let task: any, head: any = null, parentRow: any = null, created = false;
@@ -419,8 +426,8 @@ export async function checkpointTask(token: TokenRecord, raw: unknown, db: postg
         await tx`
           INSERT INTO continuation_receipts (org_id, author, request_id, op, fingerprint, task_id, checkpoint_id, unchanged)
           VALUES (${actor.orgId}, ${actor.name}, ${input.requestId}, 'append', ${fingerprint}, ${task.id}, ${head.checkpoint_id}, true)`;
-        return { ok: true, taskId: task.id, checkpointId: head.checkpoint_id, lineage: input.lineage, revision: Number(head.revision),
-          savedAt: iso(parent[0].created_at), created: false, unchanged: true, ...(task.closed_at ? { closed: true } : {}) };
+        return finish({ ok: true, taskId: task.id, checkpointId: head.checkpoint_id, lineage: input.lineage, revision: Number(head.revision),
+          savedAt: iso(parent[0].created_at), created: false, unchanged: true, ...(task.closed_at ? { closed: true } : {}) }, title);
       }
     }
 
@@ -448,10 +455,10 @@ export async function checkpointTask(token: TokenRecord, raw: unknown, db: postg
     await tx`
       INSERT INTO continuation_receipts (org_id, author, request_id, op, fingerprint, task_id, checkpoint_id, unchanged)
       VALUES (${actor.orgId}, ${actor.name}, ${input.requestId}, ${created ? "create" : "append"}, ${fingerprint}, ${task.id}, ${id}, false)`;
-    return {
+    return finish({
       ok: true, taskId: task.id, checkpointId: id, lineage: input.lineage, revision, savedAt: iso(checkpoint.created_at),
       created, unchanged: false, ...(closing ? { closed: true } : {}),
-    };
+    }, input.title ?? task.title);
   }) as Promise<CheckpointReceipt>);
 }
 

@@ -8,6 +8,7 @@ const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
 const { endpointForHost, inspectConnection, askSecret } = require('./onboarding');
 const { redactSecrets } = require('./capture');
+const { handoffPickUp } = require('./instructions');
 const PACKAGE_VERSION = require('./package.json').version;
 
 const DEFAULT_BUDGET = 4096;
@@ -473,8 +474,11 @@ async function flushCheckpoints(binding, state, persist, fetchImpl) {
       const receipt = result.data;
       if (receipt?.ok !== true || !/^task_[a-f0-9]{32}$/.test(receipt.taskId) || !/^cp_[a-f0-9]{32}$/.test(receipt.checkpointId)) throw Object.assign(new Error('Engram did not confirm the checkpoint.'), { code: 'invalid_response', retryable: true });
       Object.assign(store, { taskId: receipt.taskId, checkpointId: receipt.checkpointId, lineage: receipt.lineage, revision: receipt.revision, savedAt: receipt.savedAt, closed: receipt.closed === true });
+      if (entry.title) store.title = entry.title;
       store.pending.shift();
-      store.last = { status: receipt.unchanged ? 'unchanged' : 'saved', taskId: receipt.taskId, checkpointId: receipt.checkpointId, revision: receipt.revision, savedAt: receipt.savedAt };
+      // Built locally from the confirmed task ID, never from server prose.
+      const pickUp = entry.trigger === 'handoff' ? handoffPickUp(receipt.taskId, store.title || state.title) : null;
+      store.last = { status: receipt.unchanged ? 'unchanged' : 'saved', taskId: receipt.taskId, checkpointId: receipt.checkpointId, revision: receipt.revision, savedAt: receipt.savedAt, ...(pickUp ? { pickUp } : {}) };
       persist();
     } catch (error) {
       if (error.code === 'authorization_required') { state.blocked = true; break; }
@@ -531,14 +535,14 @@ async function checkpoint(binding, state, persist, input, fetchImpl) {
   if (state.blocked) return { ok: false, status: 'authorization_required', continuation: view };
   if (state.writeDenied) return { ok: false, status: 'write_denied', continuation: view, message: 'This connection is read only. The checkpoint was not saved.' };
   if (store.pending.length) return { ok: false, status: store.pending[0].sent ? 'unconfirmed' : 'unsent', continuation: view, message: 'The checkpoint is queued locally and will be retried with the same request ID. Do not claim it was saved.' };
-  return { ok: true, status: store.last?.status || 'saved', receipt: store.last, continuation: view };
+  return { ok: true, status: store.last?.status || 'saved', receipt: store.last, ...(store.last?.pickUp ? { pickUp: store.last.pickUp } : {}), continuation: view };
 }
 
 /** Guidance the hooks inject. One place, so every runtime teaches the same flow. */
 function continuationGuidance(state) {
   const store = state?.checkpoints;
   const current = store?.taskId ? ` This run's task: ${store.taskId}, last confirmed checkpoint ${store.checkpointId}. After a context reset, call resume_task with that taskId.` : '';
-  return `Continuation: without being asked, save the whole compact task record at start, decisions, plan/constraint/blocker changes, milestones and handoff with ${bridgeCommand()} checkpoint --run <run-id> and JSON stdin {"trigger":"decision","title":"Short task title","record":{"objective":"…","next":"…","plan":[{"id":"s1","step":"…","status":"doing"}]}}. It retries unconfirmed saves itself; only status "saved" means saved. To continue other work, call find_tasks, ask if several match, then resume_task and add "continueFrom":{"taskId":"…","checkpointId":"…"} from it to your first save.${current}`;
+  return `Continuation: without being asked, save the whole compact task record at start, decisions, plan/constraint/blocker changes, milestones and handoff with ${bridgeCommand()} checkpoint --run <run-id> and JSON stdin {"trigger":"decision","title":"Short task title","record":{"objective":"…","next":"…","plan":[{"id":"s1","step":"…","status":"doing"}]}}. It retries unconfirmed saves itself; only status "saved" means saved. To continue other work, call find_tasks, ask if several match, then resume_task and add "continueFrom":{"taskId":"…","checkpointId":"…"} from it to your first save. After a saved "handoff", end your reply with pickUp.say, then pickUp.prompt alone in a code block for the user to copy.${current}`;
 }
 
 async function lifecycle(event, input, dependencies = {}) {
