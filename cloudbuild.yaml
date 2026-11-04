@@ -81,7 +81,7 @@ steps:
     id: push-reviewed-image
     args: ['push', 'gcr.io/$PROJECT_ID/engram:$BUILD_ID']
 
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:aa2b2728a6f3eaf1d6d37409133fde8220b28460282f6983e3055b1b2c792228'
     id: release-automation-tests
     entrypoint: bash
     args:
@@ -100,7 +100,7 @@ steps:
   # This step creates no credentials or IAM grants. It stops at a tagged
   # candidate with existing traffic pinned to its old revision. Missing approved
   # credential resources or authority boundaries fail the preflight.
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:aa2b2728a6f3eaf1d6d37409133fde8220b28460282f6983e3055b1b2c792228'
     id: stage-candidate
     entrypoint: bash
     env:
