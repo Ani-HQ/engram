@@ -202,10 +202,10 @@ export function personalSlugBase(email: string): string {
   return `me-${slugFromName(local)}`;
 }
 
-export async function personalOrgForEmail(email: string): Promise<Org | null> {
+export async function personalOrgForEmail(email: string, db: postgres.Sql = sql): Promise<Org | null> {
   const normalized = normalizeEmail(email);
   if (!normalized) return null;
-  const rows = await sql`
+  const rows = await db`
     SELECT o.* FROM orgs o
     JOIN org_members m ON m.org_id = o.id
     WHERE m.email = ${normalized} AND o.kind = 'personal'
@@ -214,10 +214,10 @@ export async function personalOrgForEmail(email: string): Promise<Org | null> {
   return rows[0] ? rowToOrg(rows[0]) : null;
 }
 
-export async function ensurePersonalOrg(email: string): Promise<Org> {
+export async function ensurePersonalOrg(email: string, db: postgres.Sql = sql): Promise<Org> {
   const normalized = normalizeEmail(email);
   if (!normalized) throw new Error("owner email required");
-  const existing = await personalOrgForEmail(normalized);
+  const existing = await personalOrgForEmail(normalized, db);
   if (existing) return existing;
   const local = normalized.split("@")[0] || "me";
   return createOrg(`${local}'s memory`, normalized, "personal");
@@ -419,7 +419,13 @@ export async function acceptInvite(raw: string, db: postgres.Sql = sql, options:
     // A login link proves email ownership, not a grant of the role that was
     // current when it was mailed. Removal/demotion must take effect immediately.
     const member = await memberInOrg(org.id, String(invite.email), db);
-    return member ? { org, member } : null;
+    if (!member) return null;
+    // Team members who joined before personal workspaces existed never got
+    // one, so Sharing had nothing to share from. Create it on sign-in.
+    if (org.kind !== "personal") await ensurePersonalOrg(member.email, db).catch(e => {
+      console.error("[org] personal org failed:", failureCode(e));
+    });
+    return { org, member };
   }
   if (org.kind === "personal") return null;
   const member = await addMember(org.id, String(invite.email), invite.role === "owner" ? "owner" : "member");

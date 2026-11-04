@@ -236,6 +236,23 @@ describe("live membership and credential boundaries", () => {
     expect(await acceptInvite("inv_removed", removed.db)).toBeNull();
   });
 
+  test("a team login checks for the member's personal workspace; a personal login does not", async () => {
+    const login = (kind: string) => database(({ statement }) => {
+      if (statement.includes("UPDATE invites SET accepted_at")) return [{ id: 3, org_id: 7, email: "ada@example.com", role: "member", created_by: "login" }];
+      if (statement.includes("o.kind = 'personal'")) return [{ ...orgRow(9), kind: "personal" }];
+      if (statement.includes("FROM orgs")) return [{ ...orgRow(7), kind }];
+      if (statement.includes("FROM org_members")) return [{ id: 3, org_id: 7, email: "ada@example.com", role: "member" }];
+      throw new Error("unexpected statement");
+    });
+    const team = login("team");
+    expect((await acceptInvite("inv_team", team.db))?.org.id).toBe(7);
+    const lookup = team.calls.find(call => call.statement.includes("o.kind = 'personal'"));
+    expect(lookup?.values).toEqual(["ada@example.com"]);
+    const personal = login("personal");
+    expect((await acceptInvite("inv_personal", personal.db))?.org.id).toBe(7);
+    expect(personal.calls.some(call => call.statement.includes("o.kind = 'personal'"))).toBe(false);
+  });
+
   test("an actor cannot administer another tenant or widen a delegated OAuth credential", async () => {
     const workspace = org(7);
     const owner = normalizeToken({ name: "ada", orgId: 8, role: "owner", kind: "session", email: "ada@example.com" });
