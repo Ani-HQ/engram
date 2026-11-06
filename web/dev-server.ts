@@ -110,6 +110,32 @@ function demoAccess() {
   const complimentary = !demoSelfHosted && session.org.id === 2 && session.org.kind === "personal" ? { ...demoFriendGrant, active: !demoFriendGrant.revokedAt && Date.parse(demoFriendGrant.expiresAt) > Date.now(), unlimitedKnowledgeTransfers: !demoFriendGrant.revokedAt && Date.parse(demoFriendGrant.expiresAt) > Date.now() } : null;
   return { serverNow: new Date().toISOString(), canWrite: true, entitlementSource: complimentary?.active ? "complimentary" : demoSelfHosted ? "self-hosted" : "trial", complimentary };
 }
+// Fixed sample analytics for the local preview. Not real traffic.
+function demoAnalytics(days: number) {
+  const today = Date.UTC(2026, 10, 5);
+  const daily = Array.from({ length: days }, (_, index) => {
+    const day = new Date(today - (days - 1 - index) * 86_400_000).toISOString().slice(0, 10);
+    const visitors = [4, 6, 3, 0, 9, 14, 11, 5, 7, 2, 1, 8, 12, 23, 17, 10, 6, 5, 9, 13][index % 20];
+    return { day, visitors, pageviews: visitors * 3, signup_forms: index % 9 === 4 ? 1 : 0 };
+  });
+  const pageviews = daily.reduce((sum, row) => sum + row.pageviews, 0), visitors = daily.reduce((sum, row) => sum + row.visitors, 0);
+  const signups = daily.reduce((sum, row) => sum + row.signup_forms, 0);
+  return {
+    days, daily,
+    traffic: { pageviews, visitor_days: visitors, signups_submitted: signups },
+    funnel: { workspaces_created: 3, with_agent_call: 2, saved_memory: 2, recalled_memory: 1, saved_handoff: 1, resumed_handoff: 0, started_checkout: 0, paying: 0 },
+    ctas: [{ cta: "ask-invite", clicks: 18 }, { cta: "how-it-works", clicks: 14 }, { cta: "pricing", clicks: 9 }, { cta: "source", clicks: 6 }, { cta: "sign-in", clicks: 4 }],
+    pages: [{ path: "/", views: Math.round(pageviews * .45), visitor_days: Math.round(visitors * .7) }, { path: "/how-it-works", views: Math.round(pageviews * .2), visitor_days: Math.round(visitors * .3) }, { path: "/pricing", views: Math.round(pageviews * .12), visitor_days: Math.round(visitors * .2) }, { path: "/app", views: Math.round(pageviews * .1), visitor_days: Math.round(visitors * .1) }, { path: "/self-host", views: Math.round(pageviews * .05), visitor_days: Math.round(visitors * .06) }],
+    referrers: [{ referrer: "(direct)", visitor_days: Math.round(visitors * .5) }, { referrer: "x.com", visitor_days: Math.round(visitors * .25) }, { referrer: "linkedin.com", visitor_days: Math.round(visitors * .12) }, { referrer: "github.com", visitor_days: Math.round(visitors * .08) }],
+    campaigns: [{ source: "x", medium: "social", campaign: "launch", visitor_days: Math.round(visitors * .2), invite_requests: 9, signups_submitted: 2 }],
+    people: [
+      { email: "sample.one@example.com", joinedAt: new Date(today - 2 * 86_400_000).toISOString(), workspace: "Sample's memory", kind: "personal", how: "invite code", agentConnected: true, savedMemory: true },
+      { email: "sample.two@example.com", joinedAt: new Date(today - 6 * 86_400_000).toISOString(), workspace: "Ani HQ", kind: "team", how: "team invite", agentConnected: true, savedMemory: false },
+      { email: "sample.three@example.com", joinedAt: new Date(today - 11 * 86_400_000).toISOString(), workspace: "Sample team", kind: "team", how: "created workspace", agentConnected: false, savedMemory: false },
+    ].filter(person => Date.parse(person.joinedAt) > today - days * 86_400_000),
+    notes: ["Local preview: fixed sample numbers, not real traffic.", "Visitor counts are visitor-days: a visitor hash rotates daily and cannot be followed across days."],
+  };
+}
 const demoSession = () => ({ ...session, access: demoAccess(), capabilities: { manageSignupInvites: session.org.id === 1 && session.role === "owner" }, onboarding: demoOnboarding() });
 const tokens: any[] = [
   { id: 1, orgId: 1, name: "codex", harness: "codex", sourceLabel: null, canWrite: true, createdAt: "2026-10-20T09:00:00.000Z", revokedAt: null, lastUsedAt: "2026-10-21T09:42:00.000Z", issuerKind: "member", issuedBy: session.email },
@@ -283,6 +309,12 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     session.org.name = name;
     session.orgs = session.orgs.map((org: any) => org.id === workspaceId ? { ...org, name } : org);
     return json({ org: { ...session.org } });
+  }
+  if (url.pathname === "/api/admin/analytics") {
+    if (!demoSession().capabilities.manageSignupInvites) return json({ error: "Operator access is required.", code: "forbidden" }, 403);
+    const days = Number(url.searchParams.get("days") ?? 30);
+    if (![7, 30, 90].includes(days)) return json({ error: "days must be 7, 30 or 90" }, 400);
+    return json(demoAnalytics(days));
   }
   if (url.pathname.startsWith("/api/admin/signup-invites")) {
     if (!demoSession().capabilities.manageSignupInvites) return json({ error: "Operator access is required.", code: "forbidden" }, 403, signupLinkHeaders);

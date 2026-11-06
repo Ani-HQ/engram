@@ -1,5 +1,5 @@
 import { failureCode } from "./diagnostics";
-import { parseAttribution, recordSiteEvent } from "./site-analytics";
+import { ANALYTICS_WINDOWS, operatorAnalytics, parseAttribution, recordSiteEvent } from "./site-analytics";
 import { config } from "./config";
 import type postgres from "postgres";
 import { agentOnboardingChecks, handleConnectionsApi } from "./connections";
@@ -168,6 +168,7 @@ export async function handleOrgApi(
   if (url.pathname === "/api/workspace") {
     return req.method === "PUT" ? putWorkspace(req, token, org) : Response.json({ error: "method not allowed" }, { status: 405, headers: { Allow: "PUT" } });
   }
+  if (url.pathname === "/api/admin/analytics") return getOperatorAnalytics(req, url, token);
   if (url.pathname === "/api/admin/signup-invites" || url.pathname.startsWith("/api/admin/signup-invites/")) {
     return handleSignupInviteAdmin(req, url, token);
   }
@@ -278,6 +279,15 @@ async function postOrg(req: Request): Promise<Response> {
     console.error("[org] create failed:", failureCode(e));
     return Response.json({ error: "could not create org" }, { status: 400 });
   }
+}
+
+// Site analytics and new people, for the signup operator only.
+async function getOperatorAnalytics(req: Request, url: URL, token: TokenRecord): Promise<Response> {
+  if (req.method !== "GET") return Response.json({ error: "method not allowed" }, { status: 405, headers: { Allow: "GET" } });
+  if (!await canManageSignupInvites(token)) return forbidden();
+  const days = Number(url.searchParams.get("days") ?? 30);
+  if (!(ANALYTICS_WINDOWS as readonly number[]).includes(days)) return Response.json({ error: "days must be 7, 30 or 90" }, { status: 400 });
+  return Response.json(await operatorAnalytics(days), { headers: { "Cache-Control": "no-store" } });
 }
 
 async function handleSignupInviteAdmin(req: Request, url: URL, token: TokenRecord): Promise<Response> {

@@ -314,3 +314,19 @@ import { pill, showToast, banner, commandPalette } from './design-system.js';
   const action = document.createElement('button'); action.type = 'button'; action.className = 'ds-button primary small'; action.textContent = 'Learn more';
   document.getElementById('shell-banner')?.replaceChildren(banner({ glyph: icon('sparkles', { size: 18 }), title: 'Search by intent', description: 'Find related work by meaning when model processing is on.', action, onDismiss: () => {} }));
 }
+
+import { columnChart, barList, dataTable } from './design-system.js';
+{
+  const metrics = document.getElementById('data-metrics-example');
+  for (const [label, value, note] of [['Page views', '1,284', 'Sample'], ['Visitor-days', '412', 'Sample'], ['New people', '3', 'Sample']]) {
+    const tile = document.createElement('div'); tile.className = 'ds-metric';
+    const l = document.createElement('span'); l.className = 'ds-metric-label'; l.textContent = label;
+    const v = document.createElement('span'); v.className = 'ds-metric-value'; v.textContent = value;
+    const n = document.createElement('span'); n.className = 'ds-metric-note'; n.textContent = note;
+    tile.append(l, v, n); metrics?.append(tile);
+  }
+  const sample = [3, 5, 2, 0, 8, 13, 9, 4, 6, 0, 0, 7, 11, 21, 15, 9, 6, 5, 8, 12, 10, 4, 3, 9, 14, 18, 7, 5, 2, 6];
+  document.getElementById('data-columns-example')?.append(columnChart(sample.map((value, index) => ({ label: `Day ${index + 1}`, value, title: `Sample day ${index + 1}: ${value} views` })), { label: 'Sample page views per day', startLabel: 'Day 1', endLabel: 'Day 30' }));
+  document.getElementById('data-bars-example')?.append(barList([{ label: '/', value: 640 }, { label: '/pricing', value: 210 }, { label: '/how-it-works', value: 188 }, { label: '/a-very-long-path/that-keeps-going/and-truncates', value: 12, note: 'Long labels truncate with a full title.' }], { label: 'Sample page views by path' }));
+  document.getElementById('data-table-example')?.append(dataTable({ caption: 'Sample sources', columns: [{ key: 'source', label: 'Source' }, { key: 'visitors', label: 'Visitor-days', numeric: true }], rows: [{ source: '(direct)', visitors: 220 }, { source: 'x.com', visitors: 96 }, { source: 'news.ycombinator.com', visitors: 41 }] }));
+}

@@ -432,3 +432,19 @@ html[data-design-system] .detail .detail-body { padding: var(--ds-space-6) var(-
   .workspace .page-heading { flex-direction: column; align-items: stretch; gap: var(--ds-space-3); }
   .page-heading-actions { justify-content: flex-start; }
 }
+
+/* Site analytics (operator only): layout of shared data-display primitives. */
+.analytics-view { display: grid; gap: var(--ds-space-6); }
+.analytics-toolbar { justify-content: flex-end; }
+.analytics-window { min-width: 12rem; }
+.analytics-body { display: grid; gap: var(--ds-space-6); min-width: 0; }
+.analytics-section { min-width: 0; }
+.analytics-section .ds-panel-header { display: block; }
+.analytics-section .ds-panel-header h2 { margin: 0; font-size: var(--ds-text-lg); }
+.analytics-section .ds-panel-header p { margin: var(--ds-space-2) 0 0; color: var(--ds-muted); font-size: var(--ds-text-sm); }
+.analytics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ds-space-6); }
+.analytics-yes, .analytics-no { display: inline-flex; align-items: center; gap: var(--ds-space-1); white-space: nowrap; }
+.analytics-yes { color: var(--ds-success); }
+.analytics-no { color: var(--ds-muted); }
+.analytics-notes { margin: 0; padding-left: var(--ds-space-5); color: var(--ds-muted); font-size: var(--ds-text-xs); line-height: 1.7; }
+@media (max-width: 900px) { .analytics-grid { grid-template-columns: minmax(0, 1fr); } }

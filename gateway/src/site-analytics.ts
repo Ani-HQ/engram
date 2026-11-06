@@ -159,3 +159,35 @@ export async function siteReport(days: number, db: postgres.Sql = sql) {
   return { days, traffic: traffic[0], funnel: funnel[0], ctas, pages, referrers, campaigns,
     notes: ["Visitor counts are visitor-days: a visitor hash rotates daily and cannot be followed across days.", "Funnel steps after sign-up come from workspace records and observed Engram calls, for workspaces created in this window.", "Browsers sending Do Not Track or Global Privacy Control are not counted."] };
 }
+
+export const ANALYTICS_WINDOWS = [7, 30, 90] as const;
+
+/** Operator view: the report plus a daily series and the people who joined.
+ * A person counts as new when their first-ever membership falls in the window,
+ * so a workspace an existing member gains later is not a sign-up. */
+export async function operatorAnalytics(days: number, db: postgres.Sql = sql) {
+  const since = db`now() - make_interval(days => ${days})`;
+  const [report, daily, people] = await Promise.all([
+    siteReport(days, db),
+    db`WITH d AS (SELECT generate_series((now() AT TIME ZONE 'UTC')::date - (${days}::int - 1), (now() AT TIME ZONE 'UTC')::date, interval '1 day')::date AS day)
+       SELECT to_char(d.day, 'YYYY-MM-DD') AS day,
+         (SELECT count(*) FROM site_events e WHERE e.name = 'pageview' AND (e.at AT TIME ZONE 'UTC')::date = d.day)::int AS pageviews,
+         (SELECT count(DISTINCT visitor) FROM site_events e WHERE e.name = 'pageview' AND (e.at AT TIME ZONE 'UTC')::date = d.day)::int AS visitors,
+         (SELECT count(*) FROM site_events e WHERE e.name = 'signup_submitted' AND (e.at AT TIME ZONE 'UTC')::date = d.day)::int AS signup_forms
+       FROM d ORDER BY d.day`,
+    db`WITH firsts AS (
+         SELECT DISTINCT ON (m.email) m.email, m.org_id, m.role, m.created_at AS joined_at
+         FROM org_members m ORDER BY m.email, m.created_at, m.id)
+       SELECT f.email, f.joined_at, o.name AS workspace, o.kind, f.role,
+         EXISTS (SELECT 1 FROM hosted_signup_invites i WHERE i.redeemed_org_id = f.org_id) AS used_invite,
+         EXISTS (SELECT 1 FROM audit_log a JOIN org_members m ON m.org_id = a.org_id WHERE m.email = f.email AND a.outcome = 'ok') AS agent_connected,
+         EXISTS (SELECT 1 FROM audit_log a JOIN org_members m ON m.org_id = a.org_id WHERE m.email = f.email AND a.outcome = 'ok' AND a.tool = 'remember') AS saved_memory
+       FROM firsts f JOIN orgs o ON o.id = f.org_id
+       WHERE f.joined_at > ${since} ORDER BY f.joined_at DESC LIMIT 50`,
+  ]);
+  return { ...report, daily, people: people.map(row => ({
+    email: String(row.email), joinedAt: new Date(row.joined_at).toISOString(), workspace: String(row.workspace), kind: String(row.kind),
+    how: row.used_invite ? "invite code" : row.kind === "team" && row.role === "member" ? "team invite" : "created workspace",
+    agentConnected: row.agent_connected === true, savedMemory: row.saved_memory === true,
+  })) };
+}
