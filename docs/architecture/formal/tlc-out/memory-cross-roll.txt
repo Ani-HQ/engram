@@ -1,0 +1,193 @@
+TLC2 Version 2026.10.23.035525 (rev: 606dfa4)
+Running breadth-first search Model-Checking with fp 110 and seed -1488730363839897733 with 2 workers on 4 cores with 3330MB heap and 64MB offheap memory [pid: 2351] (Linux 6.12.94+ amd64, Ubuntu 21.0.12.1 64bit, MSBDiskFPSet, DiskStateQueue).
+Parsing file /workspace/docs/architecture/formal/EngramMemory.tla
+Parsing file /tmp/tlc-9722234882575098566/Integers.tla (jar:file:/tmp/tla2tools.jar!/tla2sany/StandardModules/Integers.tla)
+Parsing file /tmp/tlc-9722234882575098566/FiniteSets.tla (jar:file:/tmp/tla2tools.jar!/tla2sany/StandardModules/FiniteSets.tla)
+Parsing file /tmp/tlc-9722234882575098566/TLC.tla (jar:file:/tmp/tla2tools.jar!/tla2sany/StandardModules/TLC.tla)
+Parsing file /tmp/tlc-9722234882575098566/Naturals.tla (jar:file:/tmp/tla2tools.jar!/tla2sany/StandardModules/Naturals.tla)
+Parsing file /tmp/tlc-9722234882575098566/Sequences.tla (jar:file:/tmp/tla2tools.jar!/tla2sany/StandardModules/Sequences.tla)
+Semantic processing of module Naturals
+Semantic processing of module Integers
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module EngramMemory
+Linting of module EngramMemory
+Starting... (2026-10-23 04:54:02)
+Implied-temporal checking--satisfiability problem has 1 branches.
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-23 04:54:02.
+Error: Invariant AckedWritePresent is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ recallPc = "idle"
+/\ attempts = (W1 :> 0 @@ W2 :> 0)
+/\ snap = (W1 :> {} @@ W2 :> {})
+/\ pc = (W1 :> "route" @@ W2 :> "route")
+/\ recallHits = {}
+/\ lock = (I1 :> None @@ I2 :> None)
+/\ archive = {}
+/\ failed = {}
+/\ acked = {}
+/\ live = {}
+/\ saved = (W1 :> {} @@ W2 :> {})
+
+State 2: <Route(W1) line 90, col 3 to line 93, col 54 of module EngramMemory>
+/\ recallPc = "idle"
+/\ attempts = (W1 :> 0 @@ W2 :> 0)
+/\ snap = (W1 :> {} @@ W2 :> {})
+/\ pc = (W1 :> "suggest" @@ W2 :> "route")
+/\ recallHits = {}
+/\ lock = (I1 :> None @@ I2 :> None)
+/\ archive = {}
+/\ failed = {}
+/\ acked = {}
+/\ live = {}
+/\ saved = (W1 :> {} @@ W2 :> {})
+
+State 3: <Suggest(W1) line 99, col 3 to line 102, col 54 of module EngramMemory>
+/\ recallPc = "idle"
+/\ attempts = (W1 :> 0 @@ W2 :> 0)
+/\ snap = (W1 :> {} @@ W2 :> {})
+/\ pc = (W1 :> "lock" @@ W2 :> "route")
+/\ recallHits = {}
+/\ lock = (I1 :> None @@ I2 :> None)
+/\ archive = {}
+/\ failed = {}
+/\ acked = {}
+/\ live = {}
+/\ saved = (W1 :> {} @@ W2 :> {})
+
+State 4: <Acquire(W1) line 105, col 3 to line 110, col 54 of module EngramMemory>
+/\ recallPc = "idle"
+/\ attempts = (W1 :> 0 @@ W2 :> 0)
+/\ snap = (W1 :> {} @@ W2 :> {})
+/\ pc = (W1 :> "read" @@ W2 :> "route")
+/\ recallHits = {}
+/\ lock = (I1 :> W1 @@ I2 :> None)
+/\ archive = {}
+/\ failed = {}
+/\ acked = {}
+/\ live = {}
+/\ saved = (W1 :> {} @@ W2 :> {})
+
+State 5: <ReadPage(W1) line 113, col 3 to line 117, col 54 of module EngramMemory>
+/\ recallPc = "idle"
+/\ attempts = (W1 :> 0 @@ W2 :> 0)
+/\ snap = (W1 :> {} @@ W2 :> {})
+/\ pc = (W1 :> "write" @@ W2 :> "route")
+/\ recallHits = {}
+/\ lock = (I1 :> W1 @@ I2 :> None)
+/\ archive = {}
+/\ failed = {}
+/\ acked = {}
+/\ live = {}
+/\ saved = (W1 :> {} @@ W2 :> {})
+
+State 6: <Route(W2) line 90, col 3 to line 93, col 54 of module EngramMemory>
+/\ recallPc = "idle"
+/\ attempts = (W1 :> 0 @@ W2 :> 0)
+/\ snap = (W1 :> {} @@ W2 :> {})
+/\ pc = (W1 :> "write" @@ W2 :> "suggest")
+/\ recallHits = {}
+/\ lock = (I1 :> W1 @@ I2 :> None)
+/\ archive = {}
+/\ failed = {}
+/\ acked = {}
+/\ live = {}
+/\ saved = (W1 :> {} @@ W2 :> {})
+
+State 7: <Suggest(W2) line 99, col 3 to line 102, col 54 of module EngramMemory>
+/\ recallPc = "idle"
+/\ attempts = (W1 :> 0 @@ W2 :> 0)
+/\ snap = (W1 :> {} @@ W2 :> {})
+/\ pc = (W1 :> "write" @@ W2 :> "lock")
+/\ recallHits = {}
+/\ lock = (I1 :> W1 @@ I2 :> None)
+/\ archive = {}
+/\ failed = {}
+/\ acked = {}
+/\ live = {}
+/\ saved = (W1 :> {} @@ W2 :> {})
+
+State 8: <Acquire(W2) line 105, col 3 to line 110, col 54 of module EngramMemory>
+/\ recallPc = "idle"
+/\ attempts = (W1 :> 0 @@ W2 :> 0)
+/\ snap = (W1 :> {} @@ W2 :> {})
+/\ pc = (W1 :> "write" @@ W2 :> "read")
+/\ recallHits = {}
+/\ lock = (I1 :> W1 @@ I2 :> W2)
+/\ archive = {}
+/\ failed = {}
+/\ acked = {}
+/\ live = {}
+/\ saved = (W1 :> {} @@ W2 :> {})
+
+State 9: <ReadPage(W2) line 113, col 3 to line 117, col 54 of module EngramMemory>
+/\ recallPc = "idle"
+/\ attempts = (W1 :> 0 @@ W2 :> 0)
+/\ snap = (W1 :> {} @@ W2 :> {})
+/\ pc = (W1 :> "write" @@ W2 :> "write")
+/\ recallHits = {}
+/\ lock = (I1 :> W1 @@ I2 :> W2)
+/\ archive = {}
+/\ failed = {}
+/\ acked = {}
+/\ live = {}
+/\ saved = (W1 :> {} @@ W2 :> {})
+
+State 10: <WritePage(W1) line 121, col 3 to line 125, col 54 of module EngramMemory>
+/\ recallPc = "idle"
+/\ attempts = (W1 :> 0 @@ W2 :> 0)
+/\ snap = (W1 :> {} @@ W2 :> {})
+/\ pc = (W1 :> "readback" @@ W2 :> "write")
+/\ recallHits = {}
+/\ lock = (I1 :> W1 @@ I2 :> W2)
+/\ archive = {}
+/\ failed = {}
+/\ acked = {}
+/\ live = {W1}
+/\ saved = (W1 :> {} @@ W2 :> {})
+
+State 11: <ReadBack(W1) line 131, col 3 to line 158, col 60 of module EngramMemory>
+/\ recallPc = "idle"
+/\ attempts = (W1 :> 0 @@ W2 :> 0)
+/\ snap = (W1 :> {} @@ W2 :> {})
+/\ pc = (W1 :> "roll" @@ W2 :> "write")
+/\ recallHits = {}
+/\ lock = (I1 :> W1 @@ I2 :> W2)
+/\ archive = {}
+/\ failed = {}
+/\ acked = {}
+/\ live = {W1}
+/\ saved = (W1 :> {W1} @@ W2 :> {})
+
+State 12: <RollLive(W1) line 165, col 3 to line 171, col 70 of module EngramMemory>
+/\ recallPc = "idle"
+/\ attempts = (W1 :> 0 @@ W2 :> 0)
+/\ snap = (W1 :> {} @@ W2 :> {})
+/\ pc = (W1 :> "done" @@ W2 :> "write")
+/\ recallHits = {}
+/\ lock = (I1 :> None @@ I2 :> W2)
+/\ archive = {}
+/\ failed = {}
+/\ acked = {W1}
+/\ live = {W1}
+/\ saved = (W1 :> {W1} @@ W2 :> {})
+
+State 13: <WritePage(W2) line 121, col 3 to line 125, col 54 of module EngramMemory>
+/\ recallPc = "idle"
+/\ attempts = (W1 :> 0 @@ W2 :> 0)
+/\ snap = (W1 :> {} @@ W2 :> {})
+/\ pc = (W1 :> "done" @@ W2 :> "readback")
+/\ recallHits = {}
+/\ lock = (I1 :> None @@ I2 :> W2)
+/\ archive = {}
+/\ failed = {}
+/\ acked = {W1}
+/\ live = {W2}
+/\ saved = (W1 :> {W1} @@ W2 :> {})
+
+362 states generated, 209 distinct states found, 50 states left on queue.
+The depth of the complete state graph search is 13.
+Finished in 00s at (2026-10-23 04:54:02)

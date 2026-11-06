@@ -1,0 +1,42 @@
+TLC2 Version 2026.10.23.035525 (rev: 606dfa4)
+Running breadth-first search Model-Checking with fp 34 and seed 9086541971443686044 with 2 workers on 4 cores with 3330MB heap and 64MB offheap memory [pid: 2541] (Linux 6.12.94+ amd64, Ubuntu 21.0.12.1 64bit, MSBDiskFPSet, DiskStateQueue).
+Parsing file /workspace/docs/architecture/formal/EngramDreamLock.tla
+Parsing file /tmp/tlc-9437846660317720585/Integers.tla (jar:file:/tmp/tla2tools.jar!/tla2sany/StandardModules/Integers.tla)
+Parsing file /tmp/tlc-9437846660317720585/FiniteSets.tla (jar:file:/tmp/tla2tools.jar!/tla2sany/StandardModules/FiniteSets.tla)
+Parsing file /tmp/tlc-9437846660317720585/TLC.tla (jar:file:/tmp/tla2tools.jar!/tla2sany/StandardModules/TLC.tla)
+Parsing file /tmp/tlc-9437846660317720585/Naturals.tla (jar:file:/tmp/tla2tools.jar!/tla2sany/StandardModules/Naturals.tla)
+Parsing file /tmp/tlc-9437846660317720585/Sequences.tla (jar:file:/tmp/tla2tools.jar!/tla2sany/StandardModules/Sequences.tla)
+Semantic processing of module Naturals
+Semantic processing of module Integers
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module EngramDreamLock
+Linting of module EngramDreamLock
+Starting... (2026-10-23 04:55:03)
+Implied-temporal checking--satisfiability problem has 1 branches.
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-23 04:55:03.
+Error: Invariant AtMostOneRunning is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ jobConn = (J1 :> None @@ J2 :> None)
+/\ heldBy = None
+/\ running = {}
+/\ jobPc = (J1 :> "acquire" @@ J2 :> "acquire")
+
+State 2: <Acquire(J1,C1) line 57, col 3 to line 67, col 39 of module EngramDreamLock>
+/\ jobConn = (J1 :> C1 @@ J2 :> None)
+/\ heldBy = C1
+/\ running = {J1}
+/\ jobPc = (J1 :> "work" @@ J2 :> "acquire")
+
+State 3: <Acquire(J2,C1) line 57, col 3 to line 67, col 39 of module EngramDreamLock>
+/\ jobConn = (J1 :> C1 @@ J2 :> C1)
+/\ heldBy = C1
+/\ running = {J1, J2}
+/\ jobPc = (J1 :> "work" @@ J2 :> "work")
+
+10 states generated, 10 distinct states found, 5 states left on queue.
+The depth of the complete state graph search is 3.
+Finished in 00s at (2026-10-23 04:55:03)
