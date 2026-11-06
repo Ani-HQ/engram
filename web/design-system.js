@@ -393,6 +393,82 @@ export function flashNew(elements = []) {
   }
 }
 
+// ── Data display ─────────────────────────────────────────────────────────────
+// Static charts and tables for real counts the caller supplies. No invented
+// data, no animation, no markup parsing. Values stay readable as text.
+const ratio = (value, max) => (max > 0 && Number.isFinite(value) ? Math.min(1, Math.max(0, value / max)) : 0);
+const count = value => (Number.isFinite(value) ? new Intl.NumberFormat().format(value) : '0');
+
+/** A daily column chart. `points` are `{ label, value, title }` in order; `title`
+ * is the full accessible description of one column, e.g. "4 Nov: 12 views". */
+export function columnChart(points = [], { label = 'Chart', startLabel = '', endLabel = '' } = {}) {
+  const figure = document.createElement('figure'); figure.setAttribute('class', 'ds-column-chart');
+  const list = document.createElement('ol'); list.setAttribute('class', 'ds-column-chart-columns'); list.setAttribute('role', 'list'); list.setAttribute('aria-label', String(label));
+  const max = Math.max(0, ...points.map(point => Number(point.value) || 0));
+  for (const point of points) {
+    const item = document.createElement('li'); item.setAttribute('class', 'ds-column');
+    const text = String(point.title || `${point.label}: ${count(Number(point.value))}`);
+    item.title = text;
+    const bar = document.createElement('span'); bar.setAttribute('class', 'ds-column-fill'); bar.setAttribute('aria-hidden', 'true');
+    bar.style.setProperty('--ds-column-ratio', String(ratio(Number(point.value), max)));
+    if (Number(point.value) > 0) item.setAttribute('data-filled', 'true');
+    const sr = document.createElement('span'); sr.setAttribute('class', 'ds-sr-only'); sr.textContent = text;
+    item.append(bar, sr); list.append(item);
+  }
+  figure.append(list);
+  if (startLabel || endLabel) {
+    const axis = document.createElement('figcaption'); axis.setAttribute('class', 'ds-column-chart-axis'); axis.setAttribute('aria-hidden', 'true');
+    const start = document.createElement('span'); start.textContent = String(startLabel);
+    const end = document.createElement('span'); end.textContent = String(endLabel);
+    axis.append(start, end); figure.append(axis);
+  }
+  return figure;
+}
+
+/** Labeled horizontal bars: `rows` are `{ label, value, note }`. Each bar is
+ * scaled to `max` (default: the largest value), and the value is always text. */
+export function barList(rows = [], { label = 'Values', max } = {}) {
+  const list = document.createElement('ol'); list.setAttribute('class', 'ds-bar-list'); list.setAttribute('role', 'list'); list.setAttribute('aria-label', String(label));
+  const top = Number.isFinite(max) ? max : Math.max(0, ...rows.map(row => Number(row.value) || 0));
+  for (const row of rows) {
+    const item = document.createElement('li'); item.setAttribute('class', 'ds-bar-row');
+    const name = document.createElement('span'); name.setAttribute('class', 'ds-bar-label'); name.textContent = String(row.label ?? ''); name.title = String(row.label ?? '');
+    const track = document.createElement('span'); track.setAttribute('class', 'ds-bar-track'); track.setAttribute('aria-hidden', 'true');
+    const fill = document.createElement('span'); fill.setAttribute('class', 'ds-bar-fill'); fill.style.setProperty('--ds-bar-ratio', String(ratio(Number(row.value), top)));
+    track.append(fill);
+    const value = document.createElement('span'); value.setAttribute('class', 'ds-bar-value'); value.textContent = count(Number(row.value));
+    item.append(name, track, value);
+    if (row.note) { const note = document.createElement('span'); note.setAttribute('class', 'ds-bar-note'); note.textContent = String(row.note); item.append(note); }
+    list.append(item);
+  }
+  return list;
+}
+
+/** A data table. `columns` are `{ key, label, numeric }`; cells are text or a
+ * caller-made Node. The wrapper scrolls sideways on narrow screens. */
+export function dataTable({ caption = '', columns = [], rows = [] } = {}) {
+  const wrap = document.createElement('div'); wrap.setAttribute('class', 'ds-table-wrap'); wrap.setAttribute('role', 'region'); wrap.setAttribute('tabindex', '0');
+  wrap.setAttribute('aria-label', String(caption || 'Table'));
+  const table = document.createElement('table'); table.setAttribute('class', 'ds-table');
+  if (caption) { const node = document.createElement('caption'); node.setAttribute('class', 'ds-sr-only'); node.textContent = String(caption); table.append(node); }
+  const head = document.createElement('thead'), headRow = document.createElement('tr');
+  for (const column of columns) { const th = document.createElement('th'); th.setAttribute('scope', 'col'); th.textContent = String(column.label); if (column.numeric) th.setAttribute('data-numeric', 'true'); headRow.append(th); }
+  head.append(headRow);
+  const body = document.createElement('tbody');
+  for (const row of rows) {
+    const tr = document.createElement('tr');
+    for (const column of columns) {
+      const td = document.createElement('td'); const cell = row[column.key];
+      if (column.numeric) { td.setAttribute('data-numeric', 'true'); td.textContent = typeof cell === 'number' ? count(cell) : String(cell ?? ''); }
+      else if (cell instanceof Node) td.append(cell); else td.textContent = String(cell ?? '');
+      tr.append(td);
+    }
+    body.append(tr);
+  }
+  table.append(head, body); wrap.append(table);
+  return wrap;
+}
+
 // ── App shell (dashboard grammar) ────────────────────────────────────────────
 // Pills, toasts, route progress, banners and a command palette. Text only, no
 // markup parsing; icons come from the caller (icon()) so this module stays dependency-free.

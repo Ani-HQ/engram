@@ -490,6 +490,31 @@ html[data-design-system] .ds-tab { position: relative; flex: 0 0 auto; display: 
 html[data-design-system] .ds-tab:hover:not(:disabled) { color: var(--ds-ink); background: transparent; border-color: transparent; }
 html[data-design-system] .ds-tabs .ds-tab:is([aria-selected='true'], [aria-current='page']) { color: var(--ds-ink); border-bottom-color: var(--ds-accent); }
 html[data-design-system] .ds-tab:focus-visible { outline-offset: -3px; }
+/* Data display: column chart, bar list and table (design-system.js). Static; real counts only. */
+.ds-metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--ds-space-3); }
+.ds-column-chart { margin: 0; min-width: 0; }
+.ds-column-chart-columns { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(2px, 1fr); align-items: end; gap: 2px; height: 160px; margin: 0; padding: 0; list-style: none; border-bottom: 1px solid var(--ds-hairline); }
+.ds-column { position: relative; display: flex; align-items: flex-end; height: 100%; min-width: 0; }
+.ds-column-fill { display: block; width: 100%; height: 100%; border-radius: 2px 2px 0 0; background: var(--ds-chart-3); transform: scaleY(var(--ds-column-ratio, 0)); transform-origin: center bottom; }
+.ds-column:not([data-filled]) .ds-column-fill { transform: none; height: 2px; background: var(--ds-chart-0); }
+.ds-column:hover .ds-column-fill { background: var(--ds-chart-4); }
+.ds-column-chart-axis { display: flex; justify-content: space-between; gap: var(--ds-space-3); margin-top: var(--ds-space-2); color: var(--ds-muted); font-size: var(--ds-text-xs); font-variant-numeric: tabular-nums; }
+.ds-bar-list { display: grid; gap: var(--ds-space-2); margin: 0; padding: 0; list-style: none; }
+.ds-bar-row { display: grid; grid-template-columns: minmax(0, 12rem) minmax(0, 1fr) minmax(3rem, auto); align-items: center; gap: var(--ds-space-3); min-height: 28px; font-size: var(--ds-text-sm); }
+.ds-bar-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ds-ink); }
+.ds-bar-track { position: relative; display: block; height: 8px; overflow: hidden; border-radius: 4px; background: var(--ds-chart-0); }
+.ds-bar-fill { position: absolute; inset: 0; display: block; background: var(--ds-chart-3); transform: scaleX(var(--ds-bar-ratio, 0)); transform-origin: left center; }
+.ds-bar-value { color: var(--ds-ink); text-align: right; font-variant-numeric: tabular-nums; }
+.ds-bar-note { grid-column: 1 / -1; color: var(--ds-muted); font-size: var(--ds-text-xs); }
+.ds-table-wrap { min-width: 0; max-width: 100%; overflow-x: auto; scrollbar-width: thin; border-radius: var(--ds-radius-control); }
+.ds-table-wrap:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+.ds-table { width: 100%; border-collapse: collapse; font-size: var(--ds-text-sm); }
+.ds-table th { padding: var(--ds-space-2) var(--ds-space-3); border-bottom: 1px solid var(--ds-hairline); color: var(--ds-muted); font-size: var(--ds-text-xs); font-weight: 450; text-align: left; white-space: nowrap; }
+.ds-table td { padding: var(--ds-space-3); border-bottom: 1px solid var(--ds-hairline); color: var(--ds-ink); vertical-align: top; overflow-wrap: anywhere; }
+.ds-table tbody tr:hover { background: var(--ds-hover-bg); }
+.ds-table [data-numeric] { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 600px) { .ds-bar-row { grid-template-columns: minmax(0, 1fr) minmax(3rem, auto); } .ds-bar-track { grid-column: 1 / -1; grid-row: 2; } .ds-column-chart-columns { height: 120px; } }
+@media (forced-colors: active) { .ds-column-fill, .ds-bar-fill { background: Highlight; } .ds-bar-track { border: 1px solid CanvasText; background: Canvas; } }
 .ds-metric { min-width: 0; padding: var(--ds-space-5); border: 0; border-radius: var(--ds-radius-card); background: var(--ds-surface); box-shadow: none; }
 .ds-metric-label { display: block; color: var(--ds-muted); font-size: var(--ds-text-xs); font-weight: 450; }
 .ds-metric-value { display: block; margin-top: var(--ds-space-3); color: var(--ds-ink); font-size: var(--ds-text-2xl); font-weight: 500; letter-spacing: 0; font-variant-numeric: tabular-nums; line-height: 1.1; }

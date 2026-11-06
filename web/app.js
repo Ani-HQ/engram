@@ -26,6 +26,7 @@ import { parseInviteEntry, parseSignupPolicy, signupAuthMode, signupEntryMode, e
 import { signupView } from "./signup-view.js";
 import { signupAdminPanel } from "./signup-admin.js";
 import { sharingView } from "./sharing-view.js";
+import { analyticsView } from "./analytics-view.js";
 import { handoffsView } from "./handoffs-view.js";
 import { loadingState, observeLoadingMotion, observeSelects, emptyState, identityMark, markStack, pill, commandPalette, showToast, routeProgress, banner } from "./design-system.js";
 import { statusLabel } from "./status-label.js";
@@ -45,6 +46,7 @@ function paletteGroups() {
   const pages = [go("activity", "Activity", "activity", "history tasks timeline"), go("memory", "Memory", "brain", "pages decisions"), go("connect", "Connections", "plug", "agents keys")];
   if (["owner", "member"].includes(state.session.role)) pages.push(go("sharing", "Sharing", "share-2", "team excerpts"), go("workspace", "Workspace settings", "settings-2", "members"));
   if (state.session.role === "owner") pages.push(go("showcase", "Public profile", "globe"), go("billing", "Plan & billing", "credit-card", "subscription"));
+  if (isOperator()) pages.push(go("analytics", "Site analytics", "filter", "visitors sign-ups traffic funnel"));
   const actions = [];
   if (["owner", "member"].includes(state.session.role)) actions.push({ label: "Connect an agent", glyph: icon("plug-zap", { size: 16 }), keywords: "new key setup", run: () => { location.hash = "connect"; setTimeout(() => beginConnection(), 0); } });
   if (state.session.canWrite !== false) actions.push({ label: "Add a memory", glyph: icon("plus", { size: 16 }), keywords: "remember save", run: () => captureMemory() });
@@ -91,7 +93,7 @@ let connectionDraft = null, connectionFocusPending = null, connectionEditor = nu
 const connectionKeyRequests = new Map();
 const connectionMutations = new Map();
 let signupPolicy = null, signupPolicyRequest = null, authPanel = null, signupAdmin = null, jevSettingsPanel = null, pendingInviteEntry = null;
-let sharingPanel = null, sharingSwitchError = null, handoffsPanel = null;
+let analyticsPanel = null, sharingPanel = null, sharingSwitchError = null, handoffsPanel = null;
 let workspaceNameEpoch = 0;
 let deviceRequest = 0, deviceFocusPending = false;
 let accessSnapshot = null, accessClock = () => null, accessRefreshTimer, accessRequest = 0, accessError = "", accessRefreshing = false;
@@ -216,7 +218,7 @@ function showDetail(title, body, { activity = false, memory = false, reporting =
   }
 }
 function empty(title, description, action, glyph = "activity") { const node = emptyState({ glyph: icon(glyph, { size: 22 }), title, description, action, className: "empty" }); node.setAttribute("data-variant", "dashed"); return node; }
-const docsFor = { activity: "/how-it-works#activity", memory: "/how-it-works#remember", connect: "/how-it-works#connections", device: "/how-it-works#connections", sharing: "/how-it-works#sharing", showcase: "/support", workspace: "/support", billing: "/pricing" };
+const docsFor = { analytics: "/privacy", activity: "/how-it-works#activity", memory: "/how-it-works#remember", connect: "/how-it-works#connections", device: "/how-it-works#connections", sharing: "/how-it-works#sharing", showcase: "/support", workspace: "/support", billing: "/pricing" };
 function heading(title, description, side) {
   const docs = docsFor[state.view] && el("a", { class: "button-link small page-docs", href: docsFor[state.view], target: "_blank", rel: "noopener" }, icon("book-open", { size: 14 }), "Docs");
   return el("div", { class: "page-heading" }, el("div", { class: "ds-heading-group" }, el("h1", {}, title), el("p", {}, description)), el("div", { class: "page-heading-actions" }, docs, side));
@@ -257,7 +259,7 @@ function readRoute() {
     return;
   }
   const params = new URLSearchParams(query), destination = activityDestination(rawView, params);
-  state.view = ["activity", "memory", "connect", "sharing", "showcase", "workspace", "billing"].includes(destination.view) ? destination.view : "activity";
+  state.view = ["activity", "memory", "connect", "sharing", "analytics", "showcase", "workspace", "billing"].includes(destination.view) ? destination.view : "activity";
   state.activityTab = destination.activityTab;
   if (state.view !== "connect") connectionFocusPending = null;
   if (activityChecksActive()) {
@@ -351,6 +353,7 @@ async function refreshSetup() {
 function render() {
   const setupFocus = captureSetupFocus(document.querySelector("#setup-slot"));
   sharingPanel?.dispose(); sharingPanel = null;
+  analyticsPanel?.dispose(); analyticsPanel = null;
   handoffsPanel?.dispose(); handoffsPanel = null;
   authPanel?.dispose(); authPanel = null;
   signupAdmin?.dispose(); signupAdmin = null;
@@ -369,11 +372,12 @@ function render() {
   if (state.session.role === "owner") navigation.push(["showcase", "Public profile", "globe"]);
   if (["owner", "member"].includes(state.session.role)) navigation.push(["workspace", "Workspace", "settings-2"]);
   if (state.session.role === "owner") navigation.push(["billing", "Plan & billing", "file-text"]);
-  const titles = { device: "Connect a computer", activity: "Activity", memory: "Memory", connect: "Connections", sharing: "Sharing", showcase: "Public profile", workspace: "Workspace", billing: "Plan & billing" };
+  if (isOperator()) navigation.push(["analytics", "Site analytics", "filter"]);
+  const titles = { analytics: "Site analytics", device: "Connect a computer", activity: "Activity", memory: "Memory", connect: "Connections", sharing: "Sharing", showcase: "Public profile", workspace: "Workspace", billing: "Plan & billing" };
   const navigationLink = ([key, label, name]) => el("a", { href: `#${key}`, "aria-current": state.view === key ? "page" : null, onclick: () => { if (navigationOpen) { setNavigationOpen(false); document.querySelector('#main')?.focus({ preventScroll: true }); } } }, icon(name, { size: 18 }), el("span", {}, label));
-  const workspaceNavigation = navigation.filter(([key]) => !["showcase", "workspace", "billing"].includes(key));
-  const manageNavigation = navigation.filter(([key]) => ["showcase", "workspace", "billing"].includes(key));
-  const content = state.view === "device" ? deviceScreen() : state.view === "activity" ? activityView() : state.view === "memory" ? memoryView() : state.view === "sharing" ? selectiveSharingView() : state.view === "showcase" ? showcaseView() : ["workspace", "billing"].includes(state.view) ? accountView() : connectView();
+  const workspaceNavigation = navigation.filter(([key]) => !["showcase", "workspace", "billing", "analytics"].includes(key));
+  const manageNavigation = navigation.filter(([key]) => ["showcase", "workspace", "billing", "analytics"].includes(key));
+  const content = state.view === "device" ? deviceScreen() : state.view === "activity" ? activityView() : state.view === "memory" ? memoryView() : state.view === "sharing" ? selectiveSharingView() : state.view === "analytics" ? siteAnalyticsView() : state.view === "showcase" ? showcaseView() : ["workspace", "billing"].includes(state.view) ? accountView() : connectView();
   const accessSlot = el("div", { id: "friend-access-slot" }), setupSlot = el("div", { id: "setup-slot" }, setupPanel());
   const mainContent = state.view === "sharing" ? [setupSlot, content, accessSlot] : [accessSlot, setupSlot, content];
   root.replaceChildren(
@@ -1644,7 +1648,7 @@ async function switchOrg(orgId) {
   sessionMutation = true; setSessionControlsBusy(true);
   ++accessRequest; clearTimeout(accessRefreshTimer); accessError = "";
   invalidateWorkspaceNames();
-  sharingPanel?.dispose(); sharingPanel = null; handoffsPanel?.dispose(); handoffsPanel = null;
+  sharingPanel?.dispose(); sharingPanel = null; analyticsPanel?.dispose(); analyticsPanel = null; handoffsPanel?.dispose(); handoffsPanel = null;
   signupAdmin?.dispose(); signupAdmin = null;
   jevSettingsPanel?.dispose(); jevSettingsPanel = null;
   const epoch = authEpoch;
@@ -1668,6 +1672,16 @@ async function switchOrg(orgId) {
     if (epoch === authEpoch && state.session && state.view === "sharing") render();
     if (workspacePending(state.session)) scheduleProvisioning();
   }
+}
+
+function isOperator() { return state.session?.capabilities?.manageSignupInvites === true; }
+function siteAnalyticsView() {
+  const title = heading("Site analytics", "Visits, sources and sign-ups across the public site and app. Cookieless and first-party.");
+  if (!isOperator()) return [title, empty("Only for the signup operator", "Site analytics cover every workspace, so only the operator can see them.", null, "shield-check")];
+  const workspaceId = state.session.org.id, epoch = authEpoch;
+  analyticsPanel = analyticsView({ api: workspaceApi(workspaceId), fail: error => { if (error instanceof AuthError) expired(); },
+    isCurrent: () => !sessionMutation && authEpoch === epoch && state.view === "analytics" && state.session?.org.id === workspaceId });
+  return [title, analyticsPanel.element];
 }
 
 function selectiveSharingView() {
@@ -1734,7 +1748,7 @@ async function signOut() {
   if (sessionMutation) return;
   sessionMutation = true; ++authEpoch; setSessionControlsBusy(true);
   invalidateWorkspaceNames();
-  sharingPanel?.dispose(); sharingPanel = null; handoffsPanel?.dispose(); handoffsPanel = null;
+  sharingPanel?.dispose(); sharingPanel = null; analyticsPanel?.dispose(); analyticsPanel = null; handoffsPanel?.dispose(); handoffsPanel = null;
   signupAdmin?.dispose(); signupAdmin = null;
   jevSettingsPanel?.dispose(); jevSettingsPanel = null;
   try { await api.logout(); expired(); }
@@ -1745,7 +1759,7 @@ function expired(message = "") {
   ++authEpoch;
   ++accessRequest; clearTimeout(accessRefreshTimer); accessSnapshot = null; accessError = "";
   invalidateWorkspaceNames();
-  sharingPanel?.dispose(); sharingPanel = null; handoffsPanel?.dispose(); handoffsPanel = null;
+  sharingPanel?.dispose(); sharingPanel = null; analyticsPanel?.dispose(); analyticsPanel = null; handoffsPanel?.dispose(); handoffsPanel = null;
   signupAdmin?.dispose(); signupAdmin = null;
   jevSettingsPanel?.dispose(); jevSettingsPanel = null;
   setupReader.invalidate(); setupByWorkspace.clear();
@@ -1756,7 +1770,7 @@ function expired(message = "") {
 }
 function renderAuth(mode = "email", message = "") {
   mode = signupAuthMode(mode, signupPolicy);
-  sharingPanel?.dispose(); sharingPanel = null; handoffsPanel?.dispose(); handoffsPanel = null;
+  sharingPanel?.dispose(); sharingPanel = null; analyticsPanel?.dispose(); analyticsPanel = null; handoffsPanel?.dispose(); handoffsPanel = null;
   authPanel?.dispose(); signupAdmin?.dispose(); signupAdmin = null;
   jevSettingsPanel?.dispose(); jevSettingsPanel = null;
   authPanel = signupView({ mode, policy: signupPolicy, message, api, inviteEntry: pendingInviteEntry, inviteSubmitted: () => { pendingInviteEntry = null; },

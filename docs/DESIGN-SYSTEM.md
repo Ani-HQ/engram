@@ -232,6 +232,10 @@ these same label-first actions without reserving a trailing icon slot.
 | Toolbar | `.ds-toolbar` | Flexible wrapping action row. Keep action meaning and accessible names visible |
 | Tabs | `.ds-tabs` containing `.ds-tab` | Use native links with `aria-current="page"` for navigation; buttons with tab roles and `aria-selected` require complete arrow/Home/End keyboard handling and associated panels. Selected state uses a mint underline |
 | Metric | `.ds-metric` with `.ds-metric-label`, `.ds-metric-value`, `.ds-metric-note` | Tabular value with visible meaning and provenance. No invented activity or hidden unit |
+| Metric grid | `.ds-metric-grid` of `.ds-metric` tiles | Wrapping row of metric tiles (160px minimum). Gallery: `/design-system#data-display` |
+| Column chart | `columnChart(points,{label,startLabel,endLabel})`; `.ds-column-chart` | Static daily columns scaled to the largest real count; zero days show a flat baseline. Each column carries its full count as a title and screen-reader text, so color and height never carry meaning alone. No animation |
+| Bar list | `barList(rows,{label,max})`; `.ds-bar-list` | Label, bar and the value as text. Bars scale to `max` (a funnel passes its first step) or the largest value. Long labels truncate with a full title; the bar wraps under the label below 600px |
+| Data table | `dataTable({caption,columns,rows})`; `.ds-table-wrap`, `.ds-table` | Hairline rows, muted headers, right-aligned tabular numbers (`numeric: true`). Cells are text or caller-made nodes. The wrapper is a focusable labeled region that scrolls sideways on narrow screens |
 | Divider (deprecated) | `.ds-divider` | Renders as empty space. Separate content with spacing and headings |
 | Status dot | `.ds-status-dot` beside visible state text | Inherits text color. Never conveys state alone |
 | Feedback | `.ds-notice[data-tone]` (neutral, success, warning, danger), `.ds-toast` | A flat surface; the state is carried by its text color and words, never a tinted fill or border. Errors should remain until a user can act; avoid disappearing essential instructions |
