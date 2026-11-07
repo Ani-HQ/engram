@@ -7,6 +7,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun gateway/src/index.ts",
+    "demo": "ENGRAM_DEPLOYMENT_MODE=self-hosted ENGRAM_ALLOW_LEGACY_DB_CREDENTIALS=1 ENGRAM_DB_URL_TEMPLATE=postgresql://engram_demo:demo@127.0.0.1:1/__DB__ bun --no-env-file web/dev-server.ts",
     "admin": "bun cli/engram-admin.ts"
   },
   "dependencies": {
