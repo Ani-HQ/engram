@@ -1,9 +1,23 @@
-# Linked workspaces: one agent connection that can read your teams
+# Linked workspaces and teammate requests
 
 Draft, 7 November 2026, against `4de18d1`. Status: proposal. Nothing here is
 built or shipped.
 
-## Problem
+Two parts, in two directions:
+
+- **Part 1, linked workspaces.** Your own agent reads teams you already belong
+  to. No one else has to approve, because it is team memory you can already read.
+- **Part 2, ask a teammate.** A teammate's agent asks for something from your
+  personal memory. Nothing leaves without your yes, and you approve the exact
+  excerpts.
+
+Part 2 borrows the request-and-approve pattern from GBrain Teams' "ask before a
+teammate's AI uses an account" (gbrain.io, 6 November 2026), adapted to memory
+instead of connected accounts.
+
+## Part 1: linked workspaces
+
+### Problem
 
 Every agent connection is bound to exactly one workspace. An OAuth grant signs
 `org_id` and `membership_id`; an `eng_` token stores one `org_id`. That is the
@@ -19,7 +33,7 @@ Goal: a person who belongs to a team can let an existing personal connection
 read that team in one click, or in one ask from the agent that ends in one
 click.
 
-## Decisions proposed
+### Decisions proposed
 
 | Decision | Proposal |
 | --- | --- |
@@ -32,9 +46,9 @@ click.
 | Team control | Team owners see linked connections on their Connections page and can revoke any of them. A team policy can turn linking off. |
 | Audit | Every linked read writes an audit row in the team, attributed to the person and the connection, marked as linked. |
 
-## Experience
+### Experience
 
-### One click, from the console
+#### One click, from the console
 
 On **Connections**, each personal connection gets an **Also read from** row
 listing the teams the signed-in person belongs to, each with a toggle. Turning
@@ -45,7 +59,7 @@ writes the link and takes effect on the agent's next call.
 The team's Connections page lists it as "Ani's *Claude (Ani's laptop)*, linked
 from a personal workspace, read only", with **Revoke**.
 
-### One ask, from the agent
+#### One ask, from the agent
 
 A new read-only tool, `list_workspaces`, returns the home workspace, the
 linked teams, and any teams the person belongs to that are not linked yet.
@@ -55,7 +69,7 @@ read it yet. Approve it here: <link>". After one click, the agent retries.
 
 `whoami` also reports linked workspaces so agents learn about them at start.
 
-### Using a link
+#### Using a link
 
 `recall`, `search`, `list_pages`, `get_page` and the task readers
 (`find_tasks`, `resume_task`, `list_actions`) accept
@@ -70,9 +84,9 @@ Write tools (`remember`, `put_page`, `checkpoint_task`, `record_action` and the
 rest) reject a `workspace` argument with a clear message: connect an agent
 directly to the team, or use Sharing to publish reviewed excerpts.
 
-## Design
+### Design
 
-### Storage
+#### Storage
 
 New central table, gateway database:
 
@@ -95,7 +109,7 @@ CREATE UNIQUE INDEX ON connection_workspace_links (home_org_id, connection_id, t
 The home workspace must be personal in v1 (`orgs.kind = 'personal'`). Team to
 team linking is out of scope.
 
-### Resolving a call
+#### Resolving a call
 
 1. Authenticate exactly as today. This yields the home `TokenRecord`.
 2. If a read tool has `workspace` set to something other than the home slug,
@@ -113,7 +127,7 @@ team linking is out of scope.
 Any failed check returns the same "not linked" error, so a probe can't tell
 "no such team" from "not a member".
 
-### What this changes in the security contract
+#### What this changes in the security contract
 
 `OAUTH.md` says neither auth path chooses a tenant from an untrusted request
 parameter. This proposal keeps the meaning of that rule: the credential still
@@ -123,20 +137,115 @@ pre-authorized targets, like choosing a file you already have access to. The
 doc should be updated to say so explicitly, and tests must prove an unlinked or
 stale target is unreachable whatever the argument says.
 
-### Lifecycle
+#### Lifecycle
 
 - Archiving or deleting a connection revokes its links.
 - Removing a member from a team, or a member leaving, breaks the membership ID
   match. Rejoining does not revive old links.
 - Deleting a personal workspace deletes its links.
 - A team owner revoking a link records `revoked_by_email`.
-- Turning the team policy off blocks all linked reads without deleting rows,
-  so turning it back on restores them. (Open question below.)
+- Turning the team policy off pauses all linked reads without deleting rows,
+  so turning it back on restores them. A team owner can make access stricter
+  this way, never looser.
 
-### Billing
+#### Billing
 
 Linked reads are reads of the team, so they follow the team's rules for reads,
 which stay available even after a trial lapses. No new billable unit.
+
+## Part 2: ask a teammate
+
+### Problem
+
+Sharing today only pushes: you describe a topic, review excerpts, and send
+them. A teammate who needs something you know has to message you, wait, and
+hope you remember to share it. Their agent can't ask.
+
+### Decisions proposed
+
+| Decision | Proposal |
+| --- | --- |
+| Default | Personal memory is "ask me". Nothing is readable by teammates without a request you approve. Team memory stays open to members, as now. |
+| Who can ask | A current member of a team you also belong to, through an agent connected to that team, or from the console. |
+| What you approve | The exact excerpts Engram proposes for the question, after you review and trim them, exactly like Sharing today. Never raw access to your memory. |
+| Approval choices | **Just this once**, **This person, this topic, for 90 days**, or **Decline**. |
+| Per person | An approval covers one requester. A yes to one teammate covers no one else. |
+| Expiry | A one-off request you haven't answered lapses after 24 hours. Standing approvals last 90 days, then ask again. |
+| Where you answer | One **Approvals** page plus an email with a link. |
+| Team owners | Can turn requests off for their team. They can make it stricter, never open anyone's memory. |
+| Audit | Requests, decisions and every excerpt delivered are logged in both workspaces. |
+
+### Experience
+
+**The teammate's side.** Their agent, connected to Ani HQ, calls a new tool,
+`ask_teammate`, with a teammate (by name or email within the shared team) and a
+question: "What did Ani decide about the deploy pipeline?" The agent gets back
+a request ID and "Waiting for Ani to approve." It can check later with
+`get_request`, or the person sees the answer arrive on the team's Sharing page.
+If a 90-day approval already covers this person and topic, the answer comes back
+straight away as reviewed excerpts (see below for how "covers" is decided).
+
+**Your side.** You get an email: "Thejus's agent in Ani HQ asked about the
+deploy pipeline." The link opens **Approvals**, which shows:
+
+- who asked, from which team and which agent connection;
+- their exact question;
+- the excerpts Engram proposes, each unselected, which you can trim to an exact
+  substring, the same review as Sharing;
+- a plain warning that anything you approve is copied into the team and stays
+  readable there until you revoke it.
+
+Then choose **Just this once**, **For 90 days on this topic**, or **Decline**.
+Declining tells the requester "Ani declined" with no reason and no hint of what
+exists.
+
+The page also lists pending requests, past decisions and active 90-day
+approvals, each with **Revoke**.
+
+### How a 90-day approval answers later questions
+
+A standing approval stores the requester, the team, and the topic as you
+confirmed it (Engram drafts the topic from the question; you can edit it).
+Later questions from that person are matched against your memory with the
+same candidate search Sharing uses. Excerpts are delivered without asking only
+when they come from material you already approved under that topic. Anything
+new still comes to you as a request, with the new excerpts to review. This is
+stricter than GBrain, where an approved colleague's AI reads with the owner's
+full access; in Engram nothing unreviewed ever leaves.
+
+### Design
+
+- **Reuse Sharing.** A request creates a preview with
+  `previewContextShare` (personal workspace as source, the team as
+  recipient), and approval goes through `commitContextShare`, so excerpts land
+  as read-only `shared-context/<share-id>/<item-id>` pages in the team with the
+  existing checks on ownership, membership and team acceptance.
+- **New table `context_share_requests`:** requester member ID and team, owner
+  member ID, question, status (pending, approved_once, approved_standing,
+  declined, expired), the preview it produced, decision time, expiry.
+- **New table `context_share_grants`:** owner, requester member ID, team,
+  confirmed topic, the share IDs it covers, `expires_at` (90 days), revoked
+  fields. Membership is checked live on every use, against exact member IDs.
+- **Mail:** one email per request, batched if several arrive within a few
+  minutes, through the existing mail service and its preferences.
+- **Rate limits:** a cap on open requests per requester per owner, so an agent
+  can't flood someone's inbox.
+- **Standing share rules** move to the same 90-day expiry, with a renewal email
+  a week before.
+
+### What it never does
+
+- Let a teammate's agent search your memory directly.
+- Deliver an excerpt you haven't reviewed.
+- Reveal whether a decline was because nothing matched or because you said no.
+- Let a team owner approve on your behalf.
+
+### Known gaps to state on the page
+
+- Excerpt matching is text or model based and can miss or misjudge relevance;
+  the review step is the privacy control, not the matcher.
+- Revoking an approval removes the excerpts from the team, but copies an agent
+  already read into its own context are out of Engram's reach.
 
 ## Out of scope for v1
 
@@ -155,6 +264,9 @@ which stay available even after a trial lapses. No new billable unit.
 - Audit: linked reads appear in the team's activity and not as home writes.
 - Console: toggle, confirmation, team-side list and revoke, with loading,
   empty, error and narrow-screen states per the design-system contract.
+- Part 2: a request never returns unreviewed text; decline and "nothing
+  matched" look identical to the requester; expired, revoked and
+  stale-membership grants deliver nothing; rate limits hold.
 - Live check in production with a test team before announcing.
 
 ## Stages
@@ -166,6 +278,10 @@ which stay available even after a trial lapses. No new billable unit.
 3. `workspace: "all"` fan-out and task readers.
 4. Docs (`OAUTH.md`, `ORGS.md`, `SHARING.md`, `CONNECTION-LIFECYCLE.md`) and
    the agent setup prompts.
+5. Part 2: request and grant tables, `ask_teammate` and `get_request`, the
+   Approvals page with "just this once" and decline, and the email.
+6. Part 2: 90-day approvals, revoke, the team-owner switch, and 90-day expiry
+   for standing share rules.
 
 ## Open questions
 
@@ -175,6 +291,11 @@ which stay available even after a trial lapses. No new billable unit.
 2. Should `recall` search linked teams by default once linked, instead of
    needing `workspace: "all"`? Simpler for agents, but it mixes team memory into
    personal answers without the agent asking.
-3. When a team turns linking off, should links be revoked for good or just
-   paused?
-4. Should team-side audit show the person's email, or only their member name?
+3. Should team-side audit show the person's email, or only their member name?
+4. Part 2: should a teammate be able to ask from the console too, or only
+   through their agent at first?
+5. Part 2: should "ask me" be the only setting for personal memory, or should
+   people also get "never ask me" for teams where they want no requests?
+
+Resolved: when a team turns linking or requests off, access is paused, not
+deleted. Team owners can make things stricter, never looser.
