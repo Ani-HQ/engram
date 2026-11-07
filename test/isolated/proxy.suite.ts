@@ -256,11 +256,9 @@ describe("proxy tool surface", () => {
     expect(auditCalls[0][2]).not.toContain("secret-value");
   });
 
-  test("whoami returns only the token name", async () => {
+  test("whoami names the token, its role and its own workspace", async () => {
     const result = await callTool(token, "whoami", {});
-    expect(result).toEqual({
-      content: [{ type: "text", text: "{\"token\":\"agent\"}" }],
-    });
+    expect(JSON.parse(result.content[0].text)).toEqual({ token: "agent", role: "agent", workspace: { name: "Test", slug: "test", kind: "team" } });
     expect(forwardedCalls).toEqual([]);
     // The fifth field is the page the call touched; whoami touches none.
     expect(auditCalls).toEqual([["agent", "whoami", "{}", "ok", null]]);

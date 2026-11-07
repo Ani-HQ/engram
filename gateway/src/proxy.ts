@@ -141,7 +141,7 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   add_tag: "Tag an existing page.",
   add_link: "Link one page to another.",
   add_timeline_entry: "Add a dated event to an existing page's timeline.",
-  whoami: "Show this token's identity.",
+  whoami: "Show this connection's identity and which workspace it reads and writes.",
   set_identity: "Set the name and logo Engram shows for you, if you are a custom agent. Shown as self-described; owners can override or lock it.",
   remember: "Save a decision, correction, or handoff to shared memory. Groups under a topic when given.",
   recall: "Search shared memory. Returns up to 5 short snippets.",
@@ -819,7 +819,9 @@ async function callToolUnbounded(
     return {
       content: [{
         type: "text",
-        text: JSON.stringify({ token: token.name }),
+        // Name the workspace so an agent with several Engram connections can
+        // tell which one it is using. Only the connection's own workspace.
+        text: JSON.stringify(whoamiBody(token, currentContext()?.org)),
       }],
     };
   }
@@ -939,6 +941,14 @@ export async function callTool(token: TokenRecord, name: string, args: Record<st
   const result = await callToolUnbounded(token, name, args);
   const projected = boundMcpResult(name, args ?? {}, result, contextMaxBytes(context.maxBytes));
   return applyContextBudget(normalizeToken(token), name, args ?? {}, projected, context);
+}
+
+export function whoamiBody(token: TokenRecord, org?: { name: string; slug: string; kind: string }) {
+  return {
+    token: token.name,
+    ...(org ? { workspace: { name: org.name, slug: org.slug, kind: org.kind } } : {}),
+    role: token.role,
+  };
 }
 
 function optionalArg(value: unknown): string | null {
