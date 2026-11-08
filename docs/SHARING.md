@@ -84,6 +84,31 @@ Before upload:
 
 Claude.ai, ChatGPT, and Grok web chats have no local transcript. They still contribute through `remember`, and those notes can be shared by rule.
 
+## Teammate requests and Approvals
+
+A teammate's agent can ask for something from your personal memory with the
+`ask_teammate` tool. Nothing is shared at that point. You get an email, and
+the request waits on **Approvals** in your personal workspace for 24 hours.
+
+Approvals shows who asked, from which team, and their exact question. **Review
+excerpts** runs the same preview as Sharing: every excerpt starts unselected,
+and you can shorten each one before approving. Then choose:
+
+- **Just this once.** Only this answer.
+- **This person, this topic, for 90 days.** Later questions from that teammate
+  that match the topic get excerpts you already approved under it, straight
+  away. Anything new still comes to you as a request. Revoke it any time.
+- **Decline.** The asker sees that nothing was shared, the same message they
+  would see if nothing matched.
+
+Approved excerpts land in the team as read-only snapshots, exactly like a
+Sharing approval, so everyone in that team can read them until you revoke the
+share in Sharing. Revoking a 90-day approval stops automatic answers; it does
+not remove excerpts already shared.
+
+Team owners can turn requests off in Workspace settings. Open requests to one
+person are capped at 5, and each person can ask at most 20 times a day.
+
 ## Legacy standing share rules
 
 The structured sharing API remains available for existing integrations. It is separate from the reviewed snapshot flow above and can automatically copy matching future content. It has no semantic natural-language permission engine.

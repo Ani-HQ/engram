@@ -173,26 +173,32 @@ export function workspacePanel({ session, members, invites, api, saved, notify, 
 
   // Privacy & access: two switches, saved together.
   const feedback = note();
-  const writesId = uid("writes"), aiId = uid("ai");
+  const writesId = uid("writes"), aiId = uid("ai"), linkedId = uid("linked"), requestsId = uid("requests");
+  const team = session.org.kind === "team";
   const ai = toggle({ id: aiId, name: "external-ai", checked: policies.externalAiProcessing === true, "aria-describedby": `${aiId}-help` });
   const writes = toggle({ id: writesId, name: "agent-writes", checked: policies.agentsMayWrite !== false, "aria-describedby": `${writesId}-help` });
-  const initial = { ai: policies.externalAiProcessing === true, writes: policies.agentsMayWrite !== false };
+  const linked = toggle({ id: linkedId, name: "linked-reads", checked: policies.linkedReads !== false, "aria-describedby": `${linkedId}-help` });
+  const requests = toggle({ id: requestsId, name: "share-requests", checked: policies.shareRequests !== false, "aria-describedby": `${requestsId}-help` });
+  const switches = team ? [ai, writes, linked, requests] : [ai, writes];
+  const initial = { ai: policies.externalAiProcessing === true, writes: policies.agentsMayWrite !== false, linked: policies.linkedReads !== false, requests: policies.shareRequests !== false };
   const save = h("button", { type: "submit", class: "primary small", "data-account-focus": "privacy-save", disabled: true }, "Save changes");
-  const cancel = action("Cancel", () => { ai.checked = initial.ai; writes.checked = initial.writes; feedback.textContent = ""; sync(); }, { class: "small", disabled: true });
+  const cancel = action("Cancel", () => { ai.checked = initial.ai; writes.checked = initial.writes; linked.checked = initial.linked; requests.checked = initial.requests; feedback.textContent = ""; sync(); }, { class: "small", disabled: true });
   let pending = false;
-  const sync = () => { const dirty = ai.checked !== initial.ai || writes.checked !== initial.writes; save.disabled = pending || !dirty; cancel.disabled = pending || !dirty; };
-  for (const control of [ai, writes]) control.addEventListener("change", () => { feedback.textContent = ""; sync(); });
+  const sync = () => { const dirty = ai.checked !== initial.ai || writes.checked !== initial.writes || linked.checked !== initial.linked || requests.checked !== initial.requests; save.disabled = pending || !dirty; cancel.disabled = pending || !dirty; };
+  for (const control of switches) control.addEventListener("change", () => { feedback.textContent = ""; sync(); });
   const settings = h("form", { "data-settings": "privacy", onsubmit: async event => {
     event.preventDefault(); if (!owner || pending || !isCurrent()) return;
-    pending = true; sync(); ai.disabled = true; writes.disabled = true; settings.setAttribute("aria-busy", "true"); save.setAttribute("aria-busy", "true"); save.replaceChildren(spinner(), "Saving…"); feedback.setAttribute("role", "status"); feedback.textContent = "";
-    try { const result = await api.savePolicies({ externalAiProcessing: ai.checked, agentsMayWrite: writes.checked }); if (!isCurrent()) return; feedback.textContent = "Settings saved."; saved(result.policies, { restoreFocus: [save, document.body].includes(document.activeElement), focusKey: "privacy-save" }); notify("Settings saved"); }
+    pending = true; sync(); switches.forEach(control => { control.disabled = true; }); settings.setAttribute("aria-busy", "true"); save.setAttribute("aria-busy", "true"); save.replaceChildren(spinner(), "Saving…"); feedback.setAttribute("role", "status"); feedback.textContent = "";
+    try { const result = await api.savePolicies({ externalAiProcessing: ai.checked, agentsMayWrite: writes.checked, ...(team ? { linkedReads: linked.checked, shareRequests: requests.checked } : {}) }); if (!isCurrent()) return; feedback.textContent = "Settings saved."; saved(result.policies, { restoreFocus: [save, document.body].includes(document.activeElement), focusKey: "privacy-save" }); notify("Settings saved"); }
     catch (error) { if (isCurrent()) { fail(error); feedback.setAttribute("role", "alert"); feedback.textContent = error.message || "Settings could not be saved. Your changes are still here."; if ([save, document.body].includes(document.activeElement)) feedback.focus?.(); } }
-    finally { if (isCurrent()) { pending = false; ai.disabled = !owner; writes.disabled = !owner; settings.setAttribute("aria-busy", "false"); save.removeAttribute("aria-busy"); save.textContent = "Save changes"; sync(); } }
+    finally { if (isCurrent()) { pending = false; switches.forEach(control => { control.disabled = !owner; }); settings.setAttribute("aria-busy", "false"); save.removeAttribute("aria-busy"); save.textContent = "Save changes"; sync(); } }
   } },
     settingsRow("Allow agents to write", "Individual connection permissions also apply.", writes, { forId: writesId, helpId: `${writesId}-help` }),
+    team && settingsRow("Let members link personal agents", "A member can let one of their personal agent connections read this team. Read-only. You can see and revoke links on Connections. Turning this off pauses every link.", linked, { forId: linkedId, helpId: `${linkedId}-help` }),
+    team && settingsRow("Let agents ask teammates", "Members' agents can ask a teammate for something from that teammate's personal memory. The teammate reviews and approves exact excerpts first.", requests, { forId: requestsId, helpId: `${requestsId}-help` }),
     settingsRow("Allow embeddings & generated briefs", "Allows configured Voyage embeddings to process relevant memory text and queries, and OpenAI to process bounded activity context for optional generated briefs. This permission does not enable Jev. Provider keys stay on the server; provider terms and retention apply.", ai, { forId: aiId, helpId: `${aiId}-help` }),
     owner ? settingsFoot(feedback, cancel, save) : settingsFoot(h("p", { class: "ds-settings-note" }, "Only an owner can change these settings.")));
-  ai.disabled = !owner; writes.disabled = !owner;
+  switches.forEach(control => { control.disabled = !owner; });
   cards.push(settingsCard({ title: "Privacy & access", description: "These settings apply to this workspace. Only an owner can change them." }, settings));
 
   // Members: a bordered list with the invite form below.

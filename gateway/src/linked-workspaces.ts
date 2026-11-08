@@ -239,8 +239,8 @@ export async function createLink(token: TokenRecord, org: Org, input: unknown, c
       if (still.length) return { link: { id: Number(still[0].id), agent: connection.agent, kind: connection.kind, teamId: Number(teamId), createdAt: new Date(still[0].created_at).toISOString() } };
     }
     const [row] = await tx`
-      INSERT INTO connection_workspace_links (home_org_id, actor_kind, actor_name, target_org_id, target_membership_id, granted_by_email)
-      VALUES (${org.id}, ${connection.kind}, ${connection.agent}, ${Number(teamId)}, ${team[0].member_id}, ${email}) RETURNING id, created_at`;
+      INSERT INTO connection_workspace_links (home_org_id, actor_kind, actor_name, target_org_id, target_membership_id, granted_by_email, display_name)
+      VALUES (${org.id}, ${connection.kind}, ${connection.agent}, ${Number(teamId)}, ${team[0].member_id}, ${email}, ${String(connection.displayName ?? "").slice(0, 120)}) RETURNING id, created_at`;
     return { link: { id: Number(row.id), agent: connection.agent, kind: connection.kind, teamId: Number(teamId), createdAt: new Date(row.created_at).toISOString() } };
   });
 }
@@ -257,13 +257,13 @@ export async function revokeHomeLink(token: TokenRecord, org: Org, id: number, d
 export async function listTeamLinks(token: TokenRecord, org: Org, db: postgres.Sql = sql) {
   if (token.kind !== "session" || !["owner", "member"].includes(token.role) || !token.email || token.orgId !== org.id || org.kind !== "team") throw new LinkedWorkspaceError("Sign in to this team to see linked connections.", 403, "forbidden");
   const rows = await db`
-    SELECT l.id, l.actor_kind, l.actor_name, l.granted_by_email, l.created_at FROM connection_workspace_links l
+    SELECT l.id, l.actor_kind, l.actor_name, l.granted_by_email, l.display_name, l.created_at FROM connection_workspace_links l
     JOIN org_members m ON m.id = l.target_membership_id AND m.org_id = l.target_org_id AND m.email = l.granted_by_email AND m.role IN ('owner', 'member')
     WHERE l.target_org_id = ${org.id} AND l.revoked_at IS NULL ORDER BY l.created_at DESC LIMIT 200`;
   return {
     linkedReads: org.policies.linkedReads,
     canRevoke: token.role === "owner",
-    links: rows.map(row => ({ id: Number(row.id), member: String(row.granted_by_email), agent: String(row.actor_name), kind: String(row.actor_kind), createdAt: new Date(row.created_at).toISOString() })),
+    links: rows.map(row => ({ id: Number(row.id), member: String(row.granted_by_email), agent: String(row.display_name || "") || (row.actor_kind === "oauth" ? "Agent sign-in" : String(row.actor_name)), kind: String(row.actor_kind), createdAt: new Date(row.created_at).toISOString() })),
   };
 }
 

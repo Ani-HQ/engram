@@ -111,6 +111,20 @@ function demoAccess() {
   return { serverNow: new Date().toISOString(), canWrite: true, entitlementSource: complimentary?.active ? "complimentary" : demoSelfHosted ? "self-hosted" : "trial", complimentary };
 }
 // Fixed sample analytics for the local preview. Not real traffic.
+// Linked workspaces and teammate requests: sample rows only.
+const demoLinks: { id: number; homeId: number; agent: string; kind: string; teamId: number; member: string; createdAt: string }[] = [
+  { id: 1, homeId: 2, agent: "Claude", kind: "oauth", teamId: 1, member: "thejus@example.com", createdAt: new Date(Date.now() - 3 * 86_400_000).toISOString() },
+];
+let demoLinkSeq = 1;
+const demoRequests: any[] = [
+  { id: "5b7a3c1e-0000-4000-8000-000000000001", question: "What did we decide about the deploy pipeline rollback?", status: "pending", team: { id: 1, name: "Fixture Org" }, requester: "thejus@example.com", agent: "oauth:thejus@example.com:claude", createdAt: new Date(Date.now() - 2 * 3_600_000).toISOString(), expiresAt: new Date(Date.now() + 22 * 3_600_000).toISOString(), decidedAt: null, automatic: false },
+  { id: "5b7a3c1e-0000-4000-8000-000000000002", question: "Any notes on the pricing page experiment?", status: "pending", team: { id: 1, name: "Fixture Org" }, requester: "sree@example.com", agent: "token:sree-cursor", createdAt: new Date(Date.now() - 20 * 3_600_000).toISOString(), expiresAt: new Date(Date.now() + 4 * 3_600_000).toISOString(), decidedAt: null, automatic: false },
+  { id: "5b7a3c1e-0000-4000-8000-000000000003", question: "How do we pin the Cloud SDK image?", status: "answered", team: { id: 1, name: "Fixture Org" }, requester: "thejus@example.com", agent: "oauth:thejus@example.com:claude", createdAt: new Date(Date.now() - 4 * 86_400_000).toISOString(), expiresAt: new Date(Date.now() - 3 * 86_400_000).toISOString(), decidedAt: new Date(Date.now() - 4 * 86_400_000 + 600_000).toISOString(), automatic: false },
+];
+const demoGrants: any[] = [
+  { id: "9c1d2e3f-0000-4000-8000-000000000001", topic: "release process", team: { id: 1, name: "Fixture Org" }, requester: "thejus@example.com", shares: 2, createdAt: new Date(Date.now() - 4 * 86_400_000).toISOString(), expiresAt: new Date(Date.now() + 86 * 86_400_000).toISOString(), revokedAt: null },
+];
+
 function demoAnalytics(days: number) {
   const today = Date.UTC(2026, 10, 5);
   const daily = Array.from({ length: days }, (_, index) => {
@@ -309,6 +323,66 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     session.org.name = name;
     session.orgs = session.orgs.map((org: any) => org.id === workspaceId ? { ...org, name } : org);
     return json({ org: { ...session.org } });
+  }
+  if (url.pathname === "/api/linked-workspaces") {
+    if (req.headers.get("x-engram-console") !== "1" || !expectedWorkspace) return json({ error: "Select a workspace first." }, 400);
+    if (session.org.kind === "personal") {
+      if (session.role !== "owner") return json({ error: "Open your personal workspace to manage linked teams.", code: "forbidden" }, 403);
+      const listed = demoConnections(workspaceId).connections.filter((c: any) => c.status === "authorized" && !c.archivedAt).map((c: any) => ({ agent: c.agent, kind: c.kind, displayName: c.displayName }));
+      // The sample personal workspace has no connections; show two so the switches can be tried.
+      const connections = listed.length ? listed : [{ agent: "oauth:ada%40example.com:claude", kind: "oauth", displayName: "Claude" }, { agent: "ada-laptop-codex", kind: "token", displayName: "Codex" }];
+      const teams = session.orgs.filter((org: any) => org.kind === "team").map((org: any) => ({ id: org.id, name: org.name, slug: org.slug || `team-${org.id}`, linkedReads: (workspacePolicies.get(org.id) as any)?.linkedReads !== false }));
+      if (req.method === "GET") return json({ teams, connections, links: demoLinks.filter(link => link.homeId === workspaceId) });
+      if (req.method === "POST") {
+        const body = await bodyObject(req);
+        if (!connections.some((c: any) => c.agent === body?.agent)) return json({ error: "That connection isn't active in this workspace.", code: "not_found" }, 404);
+        const team = teams.find((t: any) => t.id === body?.teamId);
+        if (!team) return json({ error: "You're not a member of that team.", code: "forbidden" }, 403);
+        if (!team.linkedReads) return json({ error: "This team's owners have turned off linked reads.", code: "linking_disabled" }, 403);
+        const existing = demoLinks.find(link => link.homeId === workspaceId && link.agent === body.agent && link.teamId === team.id);
+        if (existing) return json({ link: existing });
+        const link = { id: ++demoLinkSeq, homeId: workspaceId, agent: body.agent, kind: connections.find((c: any) => c.agent === body.agent).kind, teamId: team.id, member: session.email, createdAt: new Date().toISOString() };
+        demoLinks.push(link);
+        return json({ link });
+      }
+    }
+    if (req.method === "GET") return json({ linkedReads: (workspacePolicies.get(workspaceId) as any)?.linkedReads !== false, canRevoke: session.role === "owner", links: demoLinks.filter(link => link.teamId === workspaceId) });
+    if (req.method === "DELETE") {
+      const id = Number(url.searchParams.get("id"));
+      const index = demoLinks.findIndex(link => link.id === id && (session.org.kind === "personal" ? link.homeId === workspaceId : link.teamId === workspaceId && session.role === "owner"));
+      if (index < 0) return json({ error: "Link not found.", code: "not_found" }, 404);
+      demoLinks.splice(index, 1);
+      return json({ ok: true });
+    }
+    return json({ error: "Method not allowed." }, 405);
+  }
+  if (url.pathname === "/api/approvals" || url.pathname.startsWith("/api/approvals/")) {
+    if (req.headers.get("x-engram-console") !== "1" || !expectedWorkspace) return json({ error: "Select a workspace first." }, 400);
+    if (session.org.kind !== "personal" || session.role !== "owner") return json({ error: "Open your personal workspace to review requests.", code: "forbidden" }, 403);
+    if (req.method === "GET" && url.pathname === "/api/approvals") {
+      const views = demoRequests.map(item => ({ ...item, status: item.status === "pending" && Date.parse(item.expiresAt) <= Date.now() ? "expired" : item.status }));
+      return json({ pending: views.filter(item => item.status === "pending"), history: views.filter(item => item.status !== "pending"), grants: demoGrants.filter(grant => !grant.revokedAt) });
+    }
+    const grant = url.pathname.match(/^\/api\/approvals\/grants\/([^/]+)$/);
+    if (grant && req.method === "DELETE") { const found = demoGrants.find(item => item.id === grant[1]); if (!found) return json({ error: "Approval not found." }, 404); found.revokedAt = new Date().toISOString(); return json({ ok: true }); }
+    const action = url.pathname.match(/^\/api\/approvals\/([^/]+)\/(preview|approve|decline)$/);
+    const item = action && demoRequests.find(request => request.id === action[1]);
+    if (!action || !item || req.method !== "POST") return json({ error: "Request not found." }, 404);
+    if (item.status !== "pending") return json({ error: "This request has already been answered.", code: "already_decided" }, 409);
+    if (action[2] === "decline") { item.status = "declined"; item.decidedAt = new Date().toISOString(); return json({ ok: true }); }
+    if (action[2] === "preview") {
+      const candidates = item.id === demoRequests[0].id ? [
+        { id: "8f0c1d2e-0000-4000-8000-000000000001", title: "Memory excerpt", text: "Deploys go through a staged rollout: 5% for an hour, then 50%, then everyone. A manual gate sits before 50%.", reason: "Text match only. Check relevance and remove any private material before sharing.", sourceKind: "entry" },
+        { id: "8f0c1d2e-0000-4000-8000-000000000002", title: "Conversation excerpt", text: "Rollback is one command: release.py activate with the previous image. We tested it on Nov 4.", reason: "Text match only. Check relevance and remove any private material before sharing.", sourceKind: "trail" },
+      ] : [];
+      return json({ request: { id: item.id, question: item.question, requester: item.requester }, suggestedTopic: item.id === demoRequests[0].id ? "deploy pipeline rollback" : "pricing page experiment", preview: { previewId: "8f0c1d2e-0000-4000-8000-0000000000ff", expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(), method: "text", candidates } });
+    }
+    const body = await bodyObject(req);
+    if (!body || !Array.isArray(body.selections) || !body.selections.length || body.acknowledged !== true || !["once", "standing"].includes(body.mode)) return json({ error: "Review and approve exact excerpts." }, 400);
+    item.status = "answered"; item.decidedAt = new Date().toISOString();
+    let grantId = null;
+    if (body.mode === "standing") { grantId = crypto.randomUUID(); demoGrants.push({ id: grantId, topic: String(body.topic || item.question).slice(0, 200), team: item.team, requester: item.requester, shares: 1, createdAt: item.decidedAt, expiresAt: new Date(Date.now() + 90 * 86_400_000).toISOString(), revokedAt: null }); }
+    return json({ ok: true, grantId, share: { id: crypto.randomUUID() } });
   }
   if (url.pathname === "/api/admin/analytics") {
     if (!demoSession().capabilities.manageSignupInvites) return json({ error: "Operator access is required.", code: "forbidden" }, 403);

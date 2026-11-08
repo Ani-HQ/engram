@@ -116,3 +116,10 @@ describe("teammate request topics", () => {
     expect(topicWords("What did we decide about the Deploy deploy pipeline?")).toEqual(["deploy", "pipeline"]);
   });
 });
+
+describe("suggestTopic", () => {
+  test("keeps the first few specific words of the question", async () => {
+    const { suggestTopic } = await import("../gateway/src/share-requests");
+    expect(suggestTopic("What did we decide about the deploy pipeline rollback?")).toBe("deploy pipeline rollback");
+  });
+});

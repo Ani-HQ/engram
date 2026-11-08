@@ -39,6 +39,12 @@ export function coveredByTopic(question: string, topic: string): boolean {
   return hits >= Math.max(1, Math.ceil(wanted.length / 2));
 }
 
+/** A short topic from a question: its first few specific words. */
+export function suggestTopic(question: string): string {
+  const words = topicWords(question).slice(0, 4).join(" ");
+  return words.length >= 3 ? words : question.slice(0, 200);
+}
+
 /** The team membership behind an agent call, from the credential, never from arguments. */
 export async function requesterMember(actor: TokenRecord, teamOrgId: number, db: postgres.Sql = sql) {
   if (actor.kind === "session") return null;
@@ -231,7 +237,7 @@ export async function previewRequest(token: TokenRecord, org: Org, id: string, d
   const me = await approver(token, org, db);
   const row = await pendingRequest(org, me.memberId, id, db, now);
   const preview = await (deps.preview ?? previewContextShare)(token, org, { instruction: String(row.question), recipient: { kind: "team", orgId: Number(row.team_org) } }, deps.sharing);
-  return { request: { id: String(row.id), question: String(row.question), requester: String(row.requester_email) }, preview };
+  return { request: { id: String(row.id), question: String(row.question), requester: String(row.requester_email) }, suggestedTopic: suggestTopic(String(row.question)), preview };
 }
 
 export async function approveRequest(token: TokenRecord, org: Org, id: string, input: unknown, publicUrl: string, deps: ApprovalDeps = {}) {

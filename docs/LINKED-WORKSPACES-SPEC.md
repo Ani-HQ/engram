@@ -1,7 +1,8 @@
 # Linked workspaces and teammate requests
 
-Draft, 7 November 2026, against `4de18d1`. Status: proposal. Nothing here is
-built or shipped.
+Drafted 7 November 2026 against `4de18d1`. Status: built on
+`feat/linked-workspaces` (8 November 2026), with the decisions below. Not
+shipped until it is merged, released and checked in production.
 
 Two parts, in two directions:
 
@@ -283,19 +284,39 @@ full access; in Engram nothing unreviewed ever leaves.
 6. Part 2: 90-day approvals, revoke, the team-owner switch, and 90-day expiry
    for standing share rules.
 
-## Open questions
+## Decisions (8 November 2026)
 
-1. Should a new link need a team owner's approval, or is membership enough?
-   Proposal: membership is enough, because any member can already connect an
-   agent directly to the team. Owners can revoke.
-2. Should `recall` search linked teams by default once linked, instead of
-   needing `workspace: "all"`? Simpler for agents, but it mixes team memory into
-   personal answers without the agent asking.
-3. Should team-side audit show the person's email, or only their member name?
-4. Part 2: should a teammate be able to ask from the console too, or only
-   through their agent at first?
-5. Part 2: should "ask me" be the only setting for personal memory, or should
-   people also get "never ask me" for teams where they want no requests?
+1. **Membership is enough to link.** No team-owner approval; owners can see
+   and revoke links, or turn linking off.
+2. **Linked teams are searched only when asked.** Agents pass
+   `workspace: "<slug>"` or `workspace: "all"`. Plain calls stay home.
+3. **No separate names.** Engram has no member display names, so the team's
+   Connections list shows the member's email (already visible to members on
+   the Members list) and the agent's name. Audit rows use the agent identity
+   prefixed `linked:`.
+4. **Agents ask first.** Teammate requests are made through `ask_teammate`;
+   there is no console form for asking yet.
+5. **No "never ask me" setting in v1.** Team owners can turn requests off for
+   a team.
+6. **Paused, not deleted.** When a team turns linking or requests off, links
+   and approvals are paused and come back when turned on.
 
-Resolved: when a team turns linking or requests off, access is paused, not
-deleted. Team owners can make things stricter, never looser.
+## As built
+
+- Tables `connection_workspace_links`, `context_share_requests` and
+  `context_share_grants`, with their own readiness marker
+  (`workspace_access_version`) so a rollback still starts.
+- `gateway/src/linked-workspaces.ts`: link checks, the `workspace` argument,
+  `list_workspaces`, and `/api/linked-workspaces`.
+- `gateway/src/share-requests.ts`: `ask_teammate`, `get_request`, and
+  `/api/approvals`, built on the Sharing preview and commit.
+- Console: **Connections** gets "Let agents read your teams" (personal) and
+  "Linked from personal workspaces" (team). A new **Approvals** page in the
+  personal workspace. Two switches in team **Workspace** settings.
+- Team policies `linkedReads` and `shareRequests`, both on by default.
+- Emails for requests are plain text and sent at most once per 10 minutes per
+  person; everything waiting is on the Approvals page.
+
+Not built: expiring the legacy standing share rules after 90 days. Those rules
+are API-only with no way to renew them in the app, so expiring them now would
+silently cut off shares people rely on. It needs a renewal path first.

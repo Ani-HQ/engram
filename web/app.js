@@ -27,6 +27,8 @@ import { signupView } from "./signup-view.js";
 import { signupAdminPanel } from "./signup-admin.js";
 import { sharingView } from "./sharing-view.js";
 import { analyticsView } from "./analytics-view.js";
+import { approvalsView } from "./approvals-view.js";
+import { linkedWorkspacesPanel } from "./linked-workspaces-view.js";
 import { handoffsView } from "./handoffs-view.js";
 import { loadingState, observeLoadingMotion, observeSelects, emptyState, identityMark, markStack, pill, commandPalette, showToast, routeProgress, banner } from "./design-system.js";
 import { statusLabel } from "./status-label.js";
@@ -45,6 +47,7 @@ function paletteGroups() {
   const go = (hash, label, glyph, keywords = "") => ({ label, glyph: icon(glyph, { size: 16 }), keywords, run: () => { location.hash = hash; } });
   const pages = [go("activity", "Activity", "activity", "history tasks timeline"), go("memory", "Memory", "brain", "pages decisions"), go("connect", "Connections", "plug", "agents keys")];
   if (["owner", "member"].includes(state.session.role)) pages.push(go("sharing", "Sharing", "share-2", "team excerpts"), go("workspace", "Workspace settings", "settings-2", "members"));
+  if (approvalsAvailable()) pages.push(go("approvals", "Approvals", "inbox", "requests teammates ask"));
   if (state.session.role === "owner") pages.push(go("showcase", "Public profile", "globe"), go("billing", "Plan & billing", "credit-card", "subscription"));
   if (isOperator()) pages.push(go("analytics", "Site analytics", "filter", "visitors sign-ups traffic funnel"));
   const actions = [];
@@ -93,7 +96,7 @@ let connectionDraft = null, connectionFocusPending = null, connectionEditor = nu
 const connectionKeyRequests = new Map();
 const connectionMutations = new Map();
 let signupPolicy = null, signupPolicyRequest = null, authPanel = null, signupAdmin = null, jevSettingsPanel = null, pendingInviteEntry = null;
-let analyticsPanel = null, sharingPanel = null, sharingSwitchError = null, handoffsPanel = null;
+let analyticsPanel = null, approvalsPanel = null, linkedPanel = null, sharingPanel = null, sharingSwitchError = null, handoffsPanel = null;
 let workspaceNameEpoch = 0;
 let deviceRequest = 0, deviceFocusPending = false;
 let accessSnapshot = null, accessClock = () => null, accessRefreshTimer, accessRequest = 0, accessError = "", accessRefreshing = false;
@@ -259,7 +262,7 @@ function readRoute() {
     return;
   }
   const params = new URLSearchParams(query), destination = activityDestination(rawView, params);
-  state.view = ["activity", "memory", "connect", "sharing", "analytics", "showcase", "workspace", "billing"].includes(destination.view) ? destination.view : "activity";
+  state.view = ["activity", "memory", "connect", "sharing", "approvals", "analytics", "showcase", "workspace", "billing"].includes(destination.view) ? destination.view : "activity";
   state.activityTab = destination.activityTab;
   if (state.view !== "connect") connectionFocusPending = null;
   if (activityChecksActive()) {
@@ -354,6 +357,8 @@ function render() {
   const setupFocus = captureSetupFocus(document.querySelector("#setup-slot"));
   sharingPanel?.dispose(); sharingPanel = null;
   analyticsPanel?.dispose(); analyticsPanel = null;
+  approvalsPanel?.dispose(); approvalsPanel = null;
+  linkedPanel?.dispose(); linkedPanel = null;
   handoffsPanel?.dispose(); handoffsPanel = null;
   authPanel?.dispose(); authPanel = null;
   signupAdmin?.dispose(); signupAdmin = null;
@@ -369,15 +374,16 @@ function render() {
   const orgs = state.session.orgs?.length ? state.session.orgs : [state.session.org];
   const navigation = [["activity", "Activity", "activity"], ["memory", "Memory", "brain"], ["connect", "Connections", "plug"]];
   if (["owner", "member"].includes(state.session.role)) navigation.push(["sharing", "Sharing", "share-2"]);
+  if (approvalsAvailable()) navigation.push(["approvals", "Approvals", "inbox"]);
   if (state.session.role === "owner") navigation.push(["showcase", "Public profile", "globe"]);
   if (["owner", "member"].includes(state.session.role)) navigation.push(["workspace", "Workspace", "settings-2"]);
   if (state.session.role === "owner") navigation.push(["billing", "Plan & billing", "file-text"]);
   if (isOperator()) navigation.push(["analytics", "Site analytics", "filter"]);
-  const titles = { analytics: "Site analytics", device: "Connect a computer", activity: "Activity", memory: "Memory", connect: "Connections", sharing: "Sharing", showcase: "Public profile", workspace: "Workspace", billing: "Plan & billing" };
+  const titles = { approvals: "Approvals", analytics: "Site analytics", device: "Connect a computer", activity: "Activity", memory: "Memory", connect: "Connections", sharing: "Sharing", showcase: "Public profile", workspace: "Workspace", billing: "Plan & billing" };
   const navigationLink = ([key, label, name]) => el("a", { href: `#${key}`, "aria-current": state.view === key ? "page" : null, onclick: () => { if (navigationOpen) { setNavigationOpen(false); document.querySelector('#main')?.focus({ preventScroll: true }); } } }, icon(name, { size: 18 }), el("span", {}, label));
   const workspaceNavigation = navigation.filter(([key]) => !["showcase", "workspace", "billing", "analytics"].includes(key));
   const manageNavigation = navigation.filter(([key]) => ["showcase", "workspace", "billing", "analytics"].includes(key));
-  const content = state.view === "device" ? deviceScreen() : state.view === "activity" ? activityView() : state.view === "memory" ? memoryView() : state.view === "sharing" ? selectiveSharingView() : state.view === "analytics" ? siteAnalyticsView() : state.view === "showcase" ? showcaseView() : ["workspace", "billing"].includes(state.view) ? accountView() : connectView();
+  const content = state.view === "device" ? deviceScreen() : state.view === "activity" ? activityView() : state.view === "memory" ? memoryView() : state.view === "sharing" ? selectiveSharingView() : state.view === "approvals" ? approvalsPageView() : state.view === "analytics" ? siteAnalyticsView() : state.view === "showcase" ? showcaseView() : ["workspace", "billing"].includes(state.view) ? accountView() : connectView();
   const accessSlot = el("div", { id: "friend-access-slot" }), setupSlot = el("div", { id: "setup-slot" }, setupPanel());
   const mainContent = state.view === "sharing" ? [setupSlot, content, accessSlot] : [accessSlot, setupSlot, content];
   root.replaceChildren(
@@ -1106,6 +1112,7 @@ function connectView() {
     canConnect ? state.connections ? connectionInventory(state.connections, { list: state.connectionList, onInspect: connectionHelp,
       actions: connection => button(state.session.role === "owner" ? "Manage" : "Details", () => connectionHelp(connection), { class: "text small", "aria-label": `${state.session.role === "owner" ? "Manage" : "Details for"} ${connection.displayName || connection.name || "connection"}` }),
     }) : !state.error && !state.connectionError && skeletonRows(3, "Loading connections…") : empty("Managed by your workspace owner", "Sign in with your own account to connect an agent or manage its access."),
+    canConnect && linkedTeamsSection(),
   );
 }
 
@@ -1648,7 +1655,7 @@ async function switchOrg(orgId) {
   sessionMutation = true; setSessionControlsBusy(true);
   ++accessRequest; clearTimeout(accessRefreshTimer); accessError = "";
   invalidateWorkspaceNames();
-  sharingPanel?.dispose(); sharingPanel = null; analyticsPanel?.dispose(); analyticsPanel = null; handoffsPanel?.dispose(); handoffsPanel = null;
+  sharingPanel?.dispose(); sharingPanel = null; analyticsPanel?.dispose(); analyticsPanel = null; approvalsPanel?.dispose(); approvalsPanel = null; linkedPanel?.dispose(); linkedPanel = null; handoffsPanel?.dispose(); handoffsPanel = null;
   signupAdmin?.dispose(); signupAdmin = null;
   jevSettingsPanel?.dispose(); jevSettingsPanel = null;
   const epoch = authEpoch;
@@ -1675,6 +1682,23 @@ async function switchOrg(orgId) {
 }
 
 function isOperator() { return state.session?.capabilities?.manageSignupInvites === true; }
+function approvalsAvailable() { return state.session?.org.kind === "personal" && state.session.role === "owner"; }
+function approvalsPageView() {
+  const title = heading("Approvals", "Teammates' agents can ask for something from your memory. Nothing is shared until you review the exact excerpts.");
+  if (!approvalsAvailable()) return [title, empty("Open your personal workspace", "Requests are about your personal memory, so they're answered from your personal workspace.", null, "inbox")];
+  const workspaceId = state.session.org.id, epoch = authEpoch;
+  approvalsPanel = approvalsView({ api: workspaceApi(workspaceId), fail: error => { if (error instanceof AuthError) expired(); },
+    isCurrent: () => !sessionMutation && authEpoch === epoch && state.view === "approvals" && state.session?.org.id === workspaceId });
+  return [title, approvalsPanel.element];
+}
+function linkedTeamsSection() {
+  const workspaceId = state.session.org.id, epoch = authEpoch;
+  linkedPanel?.dispose();
+  linkedPanel = linkedWorkspacesPanel({ api: workspaceApi(workspaceId), workspaceId, kind: state.session.org.kind, role: state.session.role,
+    fail: error => { if (error instanceof AuthError) expired(); },
+    isCurrent: () => !sessionMutation && authEpoch === epoch && state.view === "connect" && state.session?.org.id === workspaceId });
+  return linkedPanel.element;
+}
 function siteAnalyticsView() {
   const title = heading("Site analytics", "Visits, sources and sign-ups across the public site and app. Cookieless and first-party.");
   if (!isOperator()) return [title, empty("Only for the signup operator", "Site analytics cover every workspace, so only the operator can see them.", null, "shield-check")];
@@ -1748,7 +1772,7 @@ async function signOut() {
   if (sessionMutation) return;
   sessionMutation = true; ++authEpoch; setSessionControlsBusy(true);
   invalidateWorkspaceNames();
-  sharingPanel?.dispose(); sharingPanel = null; analyticsPanel?.dispose(); analyticsPanel = null; handoffsPanel?.dispose(); handoffsPanel = null;
+  sharingPanel?.dispose(); sharingPanel = null; analyticsPanel?.dispose(); analyticsPanel = null; approvalsPanel?.dispose(); approvalsPanel = null; linkedPanel?.dispose(); linkedPanel = null; handoffsPanel?.dispose(); handoffsPanel = null;
   signupAdmin?.dispose(); signupAdmin = null;
   jevSettingsPanel?.dispose(); jevSettingsPanel = null;
   try { await api.logout(); expired(); }
@@ -1759,7 +1783,7 @@ function expired(message = "") {
   ++authEpoch;
   ++accessRequest; clearTimeout(accessRefreshTimer); accessSnapshot = null; accessError = "";
   invalidateWorkspaceNames();
-  sharingPanel?.dispose(); sharingPanel = null; analyticsPanel?.dispose(); analyticsPanel = null; handoffsPanel?.dispose(); handoffsPanel = null;
+  sharingPanel?.dispose(); sharingPanel = null; analyticsPanel?.dispose(); analyticsPanel = null; approvalsPanel?.dispose(); approvalsPanel = null; linkedPanel?.dispose(); linkedPanel = null; handoffsPanel?.dispose(); handoffsPanel = null;
   signupAdmin?.dispose(); signupAdmin = null;
   jevSettingsPanel?.dispose(); jevSettingsPanel = null;
   setupReader.invalidate(); setupByWorkspace.clear();
@@ -1770,7 +1794,7 @@ function expired(message = "") {
 }
 function renderAuth(mode = "email", message = "") {
   mode = signupAuthMode(mode, signupPolicy);
-  sharingPanel?.dispose(); sharingPanel = null; analyticsPanel?.dispose(); analyticsPanel = null; handoffsPanel?.dispose(); handoffsPanel = null;
+  sharingPanel?.dispose(); sharingPanel = null; analyticsPanel?.dispose(); analyticsPanel = null; approvalsPanel?.dispose(); approvalsPanel = null; linkedPanel?.dispose(); linkedPanel = null; handoffsPanel?.dispose(); handoffsPanel = null;
   authPanel?.dispose(); signupAdmin?.dispose(); signupAdmin = null;
   jevSettingsPanel?.dispose(); jevSettingsPanel = null;
   authPanel = signupView({ mode, policy: signupPolicy, message, api, inviteEntry: pendingInviteEntry, inviteSubmitted: () => { pendingInviteEntry = null; },

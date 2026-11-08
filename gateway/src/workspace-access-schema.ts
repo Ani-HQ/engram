@@ -14,6 +14,7 @@ export async function ensureWorkspaceAccessSchema(db: postgres.Sql): Promise<voi
     target_org_id integer NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
     target_membership_id integer NOT NULL REFERENCES org_members(id) ON DELETE CASCADE,
     granted_by_email text NOT NULL CHECK (length(granted_by_email) BETWEEN 3 AND 254),
+    display_name text NOT NULL DEFAULT '' CHECK (length(display_name) <= 120),
     created_at timestamptz NOT NULL DEFAULT now(),
     revoked_at timestamptz,
     revoked_by_email text,
