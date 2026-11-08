@@ -2,7 +2,9 @@ import { failureCode } from "./diagnostics";
 import { ANALYTICS_WINDOWS, operatorAnalytics, parseAttribution, recordSiteEvent } from "./site-analytics";
 import { config } from "./config";
 import type postgres from "postgres";
-import { agentOnboardingChecks, handleConnectionsApi } from "./connections";
+import { agentOnboardingChecks, handleConnectionsApi, listConnections } from "./connections";
+import { handleLinkedWorkspacesApi } from "./linked-workspaces";
+import { handleApprovalsApi } from "./share-requests";
 import { handleAgentIdentitiesApi } from "./agent-identity";
 import { parseReportedSource } from "./agent-source";
 import { sql } from "./db";
@@ -176,6 +178,8 @@ export async function handleOrgApi(
     return Response.json(await onboardingState(org));
   }
   if (url.pathname === "/api/connections") return handleConnectionsApi(req, token);
+  if (url.pathname === "/api/linked-workspaces") return handleLinkedWorkspacesApi(req, token, org, async () => (await listConnections(token)).connections);
+  if (url.pathname === "/api/approvals" || url.pathname.startsWith("/api/approvals/")) return handleApprovalsApi(req, token, org);
   if (url.pathname === "/api/agent-identities") return handleAgentIdentitiesApi(req, token);
   if (req.method === "GET" && url.pathname === "/api/tokens") {
     if (!isConsolePerson(token)) return forbidden();

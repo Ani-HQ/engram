@@ -15,6 +15,8 @@ import { BillingError, requireHostedWriteAccess } from "./billing";
 import { SERVER_INSTRUCTIONS } from "../../shim/instructions.js";
 import { boundMcpResult, contextMaxBytes, contextReadArguments, MAX_REMEMBER_BYTES, MAX_TOPIC_BYTES, PAGE_READ_PROPERTIES, projectRecallPassage, type McpCallContext } from "./mcp-context";
 import { applyContextBudget } from "./memory-usage";
+import { activeLinks, LINKED_READ_TOOLS, linkActor, WORKSPACE_PROPERTY, workspaceChoices } from "./linked-workspaces";
+import { askTeammate, getShareRequest } from "./share-requests";
 import { approvedTeamContextPages, contextReadLimit, contextReadOffset, isSharedContextSlug, readRows, searchContextSnapshots, sharedPageSummary, sortContextPages } from "./shared-context-read";
 import {
   ARCHIVE_POINTER,
@@ -46,7 +48,7 @@ const CONTINUATION = new Set<string>(CONTINUATION_TOOLS);
 // engram's own verbs. They are not gbrain tools: each one is a small script over
 // the allowlisted primitives, so an agent gets one obvious way to write and one
 // obvious way to read instead of seven ways to do either.
-const SYNTHETIC_TOOLS = new Set(["whoami", "set_identity", "remember", "recall", "record_action", "list_actions", ...CONTINUATION_TOOLS]);
+const SYNTHETIC_TOOLS = new Set(["whoami", "set_identity", "remember", "recall", "record_action", "list_actions", "list_workspaces", "ask_teammate", "get_request", ...CONTINUATION_TOOLS]);
 
 // Response caps are enforced here, not suggested in a description, so an agent
 // cannot blow up its own context by asking for more.
@@ -142,6 +144,9 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   add_link: "Link one page to another.",
   add_timeline_entry: "Add a dated event to an existing page's timeline.",
   whoami: "Show this connection's identity and which workspace it reads and writes.",
+  list_workspaces: "List the workspaces this connection can read: its own, linked teams (read-only), and teams it could be linked to.",
+  ask_teammate: "Ask a teammate for something from their personal memory. They review and approve exact excerpts first; nothing is shared without their yes.",
+  get_request: "Check a request made with ask_teammate. Returns approved excerpts once the teammate answers.",
   set_identity: "Set the name and logo Engram shows for you, if you are a custom agent. Shown as self-described; owners can override or lock it.",
   remember: "Save a decision, correction, or handoff to shared memory. Groups under a topic when given.",
   recall: "Search shared memory. Returns up to 5 short snippets.",
@@ -207,6 +212,37 @@ function syntheticToolDefs(): any[] {
       name: "whoami",
       description: TOOL_DESCRIPTIONS.whoami,
       inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "list_workspaces",
+      description: TOOL_DESCRIPTIONS.list_workspaces,
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "ask_teammate",
+      description: TOOL_DESCRIPTIONS.ask_teammate,
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          teammate: { type: "string", maxLength: 254, description: "The teammate's email address in this team." },
+          question: { type: "string", minLength: 5, maxLength: 500, description: "What you need, in plain words. The teammate sees it exactly." },
+          workspace: WORKSPACE_PROPERTY,
+        },
+        required: ["teammate", "question"],
+      },
+    },
+    {
+      name: "get_request",
+      description: TOOL_DESCRIPTIONS.get_request,
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: { requestId: { type: "string", maxLength: 36 }, workspace: WORKSPACE_PROPERTY },
+        required: ["requestId"],
+      },
     },
     {
       name: "set_identity",
@@ -382,10 +418,10 @@ function continuationToolDefs(): any[] {
 }
 
 // Tools served entirely by the gateway: available even when the engine is not.
-const ENGINE_FREE = new Set(["whoami", "set_identity", "record_action", "list_actions", ...CONTINUATION_TOOLS]);
+const ENGINE_FREE = new Set(["whoami", "set_identity", "record_action", "list_actions", "list_workspaces", "ask_teammate", "get_request", ...CONTINUATION_TOOLS]);
 let engineFreeDefs: any[] | null = null;
 export function ENGINE_FREE_TOOLS(): any[] {
-  return engineFreeDefs ??= syntheticToolDefs().filter(tool => ENGINE_FREE.has(tool.name));
+  return engineFreeDefs ??= syntheticToolDefs().filter(tool => ENGINE_FREE.has(tool.name)).map(withWorkspaceOption);
 }
 
 export async function listTools(_token: TokenRecord, options: { engineAvailable?: boolean } = {}): Promise<any[]> {
@@ -405,9 +441,16 @@ export async function listTools(_token: TokenRecord, options: { engineAvailable?
         .filter(Boolean)
         .map(shrinkToolDef),
       ...syntheticToolDefs(),
-    ];
+    ].map(withWorkspaceOption);
   }
   return cachedToolDefs;
+}
+
+// Read tools can target a linked team. The option is the same for every token
+// (tools/list is shared); the gateway decides whether a link exists.
+export function withWorkspaceOption(tool: any): any {
+  if (!LINKED_READ_TOOLS.has(tool?.name) || tool.inputSchema?.properties?.workspace) return tool;
+  return { ...tool, inputSchema: { ...tool.inputSchema, properties: { ...(tool.inputSchema?.properties ?? {}), workspace: WORKSPACE_PROPERTY } } };
 }
 
 function slugFromResult(result: any): string | null {
@@ -821,9 +864,26 @@ async function callToolUnbounded(
         type: "text",
         // Name the workspace so an agent with several Engram connections can
         // tell which one it is using. Only the connection's own workspace.
-        text: JSON.stringify(whoamiBody(token, currentContext()?.org)),
+        text: JSON.stringify({ ...whoamiBody(token, currentContext()?.org), ...await linkedSummary(actor, currentContext()?.org) }),
       }],
     };
+  }
+
+  if (name === "list_workspaces") {
+    try {
+      const choices = await workspaceChoices(ctx.org, actor);
+      await audit(actor.name, name, "{}", "ok", null);
+      return { content: [{ type: "text", text: JSON.stringify(choices) }] };
+    } catch {
+      await audit(actor.name, name, "{}", "error", null);
+      return toolError("Workspaces could not be listed right now. Try again shortly.");
+    }
+  }
+
+  if (name === "ask_teammate" || name === "get_request") {
+    const result = name === "ask_teammate" ? await askTeammate(actor, ctx.org, args ?? {}) : await getShareRequest(actor, ctx.org, args ?? {});
+    await audit(actor.name, name, name === "get_request" ? summarizeArgs({ requestId: forwardedArgs.requestId }) : redactSecrets(JSON.stringify({ teammate: forwardedArgs.teammate })).slice(0, 200), result.isError ? "denied" : "ok", null);
+    return result;
   }
 
   if (name === "set_identity") {
@@ -941,6 +1001,13 @@ export async function callTool(token: TokenRecord, name: string, args: Record<st
   const result = await callToolUnbounded(token, name, args);
   const projected = boundMcpResult(name, args ?? {}, result, contextMaxBytes(context.maxBytes));
   return applyContextBudget(normalizeToken(token), name, args ?? {}, projected, context);
+}
+
+async function linkedSummary(actor: TokenRecord, org?: { id: number; kind: string }) {
+  const link = linkActor(actor);
+  if (!org || org.kind !== "personal" || !link) return {};
+  try { return { linked: (await activeLinks(org, link)).map(target => ({ name: target.name, slug: target.slug, access: "read-only" })) }; }
+  catch { return {}; }
 }
 
 export function whoamiBody(token: TokenRecord, org?: { name: string; slug: string; kind: string }) {
