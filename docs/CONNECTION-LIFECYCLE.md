@@ -47,9 +47,9 @@ The Connections page owns the current/archived inventory and connection access.
 Its primary **Connect an agent** action shows the shared MCP endpoint and a
 **Copy setup prompt** action. The prompt includes the endpoint and intended
 workspace as JSON data, uses the client's native setup, preserves other
-connections, and asks for a successful `whoami` access check. Workspace matching
-uses authoritative workspace information or user confirmation; `whoami` may only
-identify the credential.
+connections, and asks for a successful `whoami` access check. `whoami` returns the
+connection's own workspace name, slug and kind, so the agent can confirm it
+reached the intended workspace.
 It guides the user when the agent cannot configure itself or needs secure
 credential entry. A collapsed preview and endpoint-only copy remain available.
 Bearer-token guidance is highlighted with the existing neutral notice.
