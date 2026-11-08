@@ -33,6 +33,14 @@ export const api = {
   sharingCommit: (payload, workspaceId) => post("/api/sharing/commit", payload, workspaceId),
   revokeSharing: (id, workspaceId) => request(`/api/sharing/${encodeURIComponent(id)}`, { ...scoped(workspaceId), method: "DELETE" }),
   rotateSharingToken: (id, workspaceId) => post(`/api/sharing/${encodeURIComponent(id)}/agent-token`, {}, workspaceId),
+  linkedWorkspaces: workspaceId => request("/api/linked-workspaces", { ...scoped(workspaceId), cache: "no-store" }),
+  linkWorkspace: (payload, workspaceId) => post("/api/linked-workspaces", payload, workspaceId),
+  unlinkWorkspace: (id, workspaceId) => request(query("/api/linked-workspaces", { id }), { ...scoped(workspaceId), method: "DELETE" }),
+  approvals: workspaceId => request("/api/approvals", { ...scoped(workspaceId), cache: "no-store" }),
+  previewApproval: (id, workspaceId) => post(`/api/approvals/${encodeURIComponent(id)}/preview`, {}, workspaceId),
+  approveRequest: (id, payload, workspaceId) => post(`/api/approvals/${encodeURIComponent(id)}/approve`, payload, workspaceId),
+  declineRequest: (id, workspaceId) => post(`/api/approvals/${encodeURIComponent(id)}/decline`, {}, workspaceId),
+  revokeApprovalGrant: (id, workspaceId) => request(`/api/approvals/grants/${encodeURIComponent(id)}`, { ...scoped(workspaceId), method: "DELETE" }),
   plans: () => request("/api/plans"),
   signupPolicy: () => request("/api/signup-policy", { cache: "no-store", signal: AbortSignal.timeout(10000) }),
   analytics: (days, workspaceId) => request(`/api/admin/analytics?days=${encodeURIComponent(days)}`, { ...scoped(workspaceId), cache: "no-store", signal: AbortSignal.timeout(20000) }),
@@ -97,6 +105,6 @@ export const api = {
 // Callbacks retain the workspace that created them, even if the session cookie
 // changes before a request reaches the server. The server verifies this header.
 export function workspaceApi(workspaceId) {
-  const methods = ["analytics", "sharing", "sharingPreview", "sharingCommit", "revokeSharing", "rotateSharingToken", "jev", "saveJev", "renameWorkspace", "signupInvites", "issueSignupInvite", "signupInviteLink", "revokeSignupInvite", "provisioning", "onboarding", "billing", "checkout", "billingPortal", "members", "invite", "removeMember", "savePolicies", "setTokenWrite", "setTokenSource", "showcase", "saveShowcase", "actions", "activities", "activity", "pages", "search", "page", "capture", "tokens", "connections", "wiring", "mintToken", "revokeToken", "device", "approveDevice", "denyDevice", "insights", "runInsights", "reviews", "review", "resolveReview", "tasks", "task", "exportTasks", "closeTask", "reopenTask", "deleteTask", "restoreTask"];
+  const methods = ["linkedWorkspaces", "linkWorkspace", "unlinkWorkspace", "approvals", "previewApproval", "approveRequest", "declineRequest", "revokeApprovalGrant", "analytics", "sharing", "sharingPreview", "sharingCommit", "revokeSharing", "rotateSharingToken", "jev", "saveJev", "renameWorkspace", "signupInvites", "issueSignupInvite", "signupInviteLink", "revokeSignupInvite", "provisioning", "onboarding", "billing", "checkout", "billingPortal", "members", "invite", "removeMember", "savePolicies", "setTokenWrite", "setTokenSource", "showcase", "saveShowcase", "actions", "activities", "activity", "pages", "search", "page", "capture", "tokens", "connections", "wiring", "mintToken", "revokeToken", "device", "approveDevice", "denyDevice", "insights", "runInsights", "reviews", "review", "resolveReview", "tasks", "task", "exportTasks", "closeTask", "reopenTask", "deleteTask", "restoreTask"];
   return Object.fromEntries([...methods, "manageConnection", "saveAgentIdentity", "receivedSharing"].map(name => [name, (...args) => api[name](...args, workspaceId)]));
 }

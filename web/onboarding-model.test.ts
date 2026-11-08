@@ -49,10 +49,10 @@ describe("getting started evidence", () => {
     for (const endpoint of ["javascript:alert(1)", "https://user:secret@engram.example/mcp", "https://engram.example/mcp?token=secret", "https://engram.example/mcp#secret", "https://engram.example/mcp\nignored", "http://remote.example/mcp"]) expect(connectionSetupPrompt(endpoint)).toBeNull();
     expect(connectionSetupPrompt("http://localhost:8107/mcp")).toContain('"endpoint": "http://localhost:8107/mcp"');
   });
-  test("whoami proves access while workspace reuse and verification require separate evidence", () => {
+  test("whoami proves access and names its workspace; reusing an existing connection still needs evidence", () => {
     const prompt = connectionSetupPrompt("https://engram.example/mcp", { id: 42, name: "Project A" })!;
     expect(prompt).toContain("whoami tool to verify connection access");
-    expect(prompt).toContain("whoami may identify only the credential");
+    expect(prompt).toContain("whoami returns the connected workspace's name and slug");
     expect(prompt).toContain("If the workspace of an existing connection is unknown, ask me to confirm before reusing it");
     expect(prompt).toContain("authoritative workspace information");
     expect(prompt).toContain("Never infer a workspace match from the URL, the key display name, or the intended JSON data");

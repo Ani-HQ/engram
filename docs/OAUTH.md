@@ -91,6 +91,10 @@ and denial after removing a test member in a separate test workspace.
 Do not require OAuth for clients already using workspace-bound bearer tokens.
 Do not replace a human session with a delegated token for console administration.
 Neither authentication path should choose a tenant from an untrusted request
-parameter. Tenant separation is enforced by the gateway and database bindings;
+parameter. The optional `workspace` argument on read tools does not break
+this: it only selects one of the links already stored for the authenticated
+connection, which a person created from a live console session, and each use
+re-checks the exact team membership and the team's policy. An unknown or
+unlinked value reaches nothing. See [LINKED-WORKSPACES-SPEC.md](LINKED-WORKSPACES-SPEC.md). Tenant separation is enforced by the gateway and database bindings;
 it is not end-to-end encryption from the service operator. See
 [SECURITY.md](../SECURITY.md).

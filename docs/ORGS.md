@@ -50,6 +50,11 @@ A settings page, not a language:
 - Review items can be approved by owners only, or by any member.
 - The team may accept shared slices from members' personal brains.
 - `maxShareLevel` caps those slices at a digest, a digest plus transcript, or a transcript.
+- `linkedReads` (team, on by default): members may let one of their personal
+  agent connections read this team, read-only. Turning it off pauses every
+  link. See [LINKED-WORKSPACES-SPEC.md](LINKED-WORKSPACES-SPEC.md).
+- `shareRequests` (team, on by default): members' agents may ask a teammate
+  for excerpts from that teammate's personal memory with `ask_teammate`.
 - `externalAiProcessing` is false by default. Only an owner can opt a workspace
   into optional external model and embedding processing. Server-side provider
   keys alone do not enable it.

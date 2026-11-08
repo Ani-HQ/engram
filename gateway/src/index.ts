@@ -20,7 +20,8 @@ import {
   unauthorizedResponse,
 } from "./oauth";
 import { authorizationServerMetadata, handleOauth } from "./oauth-as";
-import { resolveOrg, withOrg } from "./orgs";
+import { getOrg, resolveOrg, withOrg } from "./orgs";
+import { planWorkspaceCall, runLinkedPlan } from "./linked-workspaces";
 import { mcpMethodNotAllowed } from "./mcp-http";
 import { hasOauthScope, normalizeToken } from "./policies";
 import {
@@ -51,6 +52,8 @@ function rpcResult(id: unknown, result: unknown) {
 function rpcError(id: unknown, code: number, message: string, status = 200) {
   return Response.json({ jsonrpc: "2.0", id, error: { code, message } }, { status });
 }
+
+const ENGINE_FREE_CALLS = ["record_action", "list_actions", "whoami", "checkpoint_task", "find_tasks", "resume_task", "list_workspaces", "ask_teammate", "get_request"];
 
 async function handleMcp(req: Request): Promise<Response> {
   const token = await authenticateRequest(req);
@@ -102,7 +105,9 @@ async function handleMcp(req: Request): Promise<Response> {
       // An unavailable memory engine must not hide the tools that never use it.
       let engineAvailable = true;
       if (method === "tools/list") { try { await ensureBrain(org); } catch { engineAvailable = false; } }
-      else if (method === "tools/call" && !snapshotRead && !["record_action", "list_actions", "whoami", "checkpoint_task", "find_tasks", "resume_task"].includes(name ?? "")) await ensureBrain(org);
+      // A call aimed at a linked team needs that team's engine, not this one.
+      const aimed = method === "tools/call" && msg.params?.arguments && typeof msg.params.arguments === "object" && Object.prototype.hasOwnProperty.call(msg.params.arguments, "workspace");
+      if (method === "tools/call" && !aimed && !snapshotRead && !ENGINE_FREE_CALLS.includes(name ?? "")) await ensureBrain(org);
       switch (method) {
         case "initialize": {
           const requested = msg.params?.protocolVersion;
@@ -129,7 +134,27 @@ async function handleMcp(req: Request): Promise<Response> {
         case "tools/call": {
           const args = msg.params?.arguments ?? {};
           if (typeof name !== "string") return rpcError(msg.id, -32602, "missing tool name");
-          return rpcResult(msg.id, await callTool(actor, name, args ?? {}, memoryContext));
+          const plan = await planWorkspaceCall(org, actor, name, args ?? {});
+          if (plan.kind === "error") return rpcResult(msg.id, plan.result);
+          if (plan.kind === "home") {
+            if (args && typeof args === "object" && Object.prototype.hasOwnProperty.call(args, "workspace") && !snapshotRead && !ENGINE_FREE_CALLS.includes(name)) await ensureBrain(org);
+            return rpcResult(msg.id, await callTool(actor, name, plan.args, memoryContext));
+          }
+          const needsEngine = !ENGINE_FREE_CALLS.includes(name) && !(name === "get_page" && isSharedContextSlug(plan.args.slug));
+          return rpcResult(msg.id, await runLinkedPlan(plan, actor, org, memoryContext.maxBytes, {
+            getOrg: id => getOrg(id),
+            runHome: async (homeArgs, maxBytes) => {
+              if (needsEngine) await ensureBrain(org);
+              return callTool(actor, name, homeArgs, { ...memoryContext, maxBytes, verification: undefined });
+            },
+            run: async (target, linked, linkedArgs, maxBytes) => {
+              const scoped = await processingOrg(target, linked);
+              return withOrg(scoped, linked, async () => {
+                if (needsEngine) await ensureBrain(scoped);
+                return callTool(linked, name, linkedArgs, { ...memoryContext, maxBytes, verification: undefined });
+              });
+            },
+          }));
         }
         default:
           return rpcError(msg.id, -32601, `Method not found: ${method}`);

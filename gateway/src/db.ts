@@ -12,6 +12,7 @@ import { ensureConnectionsSchema } from "./connections-schema";
 import { ensureMemoryUsageSchema } from "./memory-usage-schema";
 import { ensureConnectionClientSchema } from "./connection-client-schema";
 import { ensureAgentIdentitySchema } from "./agent-identity-schema";
+import { ensureWorkspaceAccessSchema } from "./workspace-access-schema";
 import { ensureSiteAnalyticsSchema } from "./site-analytics-schema";
 import { ensureDeviceAuthSchema } from "./device-auth-schema";
 import { assertRuntimeSchema, ensureProvisioningSchema, markSchemaReady } from "./provisioning-schema";
@@ -553,6 +554,7 @@ export async function migrate() {
   await ensureMailSeriesSchema(sql);
   await ensureJevSchema(sql);
   await ensureContextSharingSchema(sql);
+  await ensureWorkspaceAccessSchema(sql);
   await ensureSiteAnalyticsSchema(sql);
   await ensureDeviceAuthSchema(sql);
   await protectGatewayMetadata(sql);

@@ -26,6 +26,10 @@ export interface OrgPolicies {
   maxShareLevel: ShareLevel;
   externalAiProcessing: boolean;
   jevProcessing: boolean;
+  /** Members may let their personal agent connections read this team. */
+  linkedReads: boolean;
+  /** Members' agents may ask teammates for excerpts from personal memory. */
+  shareRequests: boolean;
 }
 
 export const SHARE_LEVELS: ShareLevel[] = ["digest", "digest_transcript", "transcript"];
@@ -39,6 +43,8 @@ export const DEFAULT_POLICIES: OrgPolicies = {
   maxShareLevel: "digest",
   externalAiProcessing: false,
   jevProcessing: false,
+  linkedReads: true,
+  shareRequests: true,
 };
 
 const SHARE_RANK: Record<ShareLevel, number> = {
@@ -82,6 +88,8 @@ export function parsePolicies(value: unknown): OrgPolicies {
     maxShareLevel: parseShareLevel(raw.maxShareLevel, "digest"),
     externalAiProcessing: raw.externalAiProcessing === true,
     jevProcessing: raw.jevProcessing === true,
+    linkedReads: raw.linkedReads !== false,
+    shareRequests: raw.shareRequests !== false,
   };
 }
 

@@ -117,6 +117,9 @@ describe("proxy tool surface", () => {
       "add_link",
       "add_timeline_entry",
       "whoami",
+      "list_workspaces",
+      "ask_teammate",
+      "get_request",
       "set_identity",
       "remember",
       "recall",
@@ -130,10 +133,17 @@ describe("proxy tool surface", () => {
 
   test("an unavailable engine still serves gateway-owned tools, uncached", async () => {
     const { ENGINE_FREE_TOOLS } = await import("../../gateway/src/proxy");
-    expect(ENGINE_FREE_TOOLS().map((tool: any) => tool.name)).toEqual(["whoami", "set_identity", "record_action", "list_actions", "checkpoint_task", "find_tasks", "resume_task"]);
+    expect(ENGINE_FREE_TOOLS().map((tool: any) => tool.name)).toEqual(["whoami", "list_workspaces", "ask_teammate", "get_request", "set_identity", "record_action", "list_actions", "checkpoint_task", "find_tasks", "resume_task"]);
     // Once the full surface is known it stays served; otherwise the engine-free subset.
     const names = (await listTools(token, { engineAvailable: false })).map((tool: any) => tool.name);
     for (const name of ["checkpoint_task", "find_tasks", "resume_task"]) expect(names).toContain(name);
+  });
+
+  test("read tools offer a linked workspace; write tools do not", async () => {
+    const tools = await listTools(token);
+    const has = (name: string) => Boolean(tools.find((tool: any) => tool.name === name)?.inputSchema?.properties?.workspace);
+    for (const name of ["recall", "search", "get_page", "list_pages", "find_tasks", "resume_task", "list_actions", "ask_teammate", "get_request"]) expect(has(name)).toBe(true);
+    for (const name of ["remember", "put_page", "add_tag", "record_action", "checkpoint_task", "set_identity"]) expect(has(name)).toBe(false);
   });
 
   test("every served description stays short enough to ship in a system prompt", async () => {
@@ -256,11 +266,9 @@ describe("proxy tool surface", () => {
     expect(auditCalls[0][2]).not.toContain("secret-value");
   });
 
-  test("whoami returns only the token name", async () => {
+  test("whoami names the token, its role and its own workspace", async () => {
     const result = await callTool(token, "whoami", {});
-    expect(result).toEqual({
-      content: [{ type: "text", text: "{\"token\":\"agent\"}" }],
-    });
+    expect(JSON.parse(result.content[0].text)).toEqual({ token: "agent", role: "agent", workspace: { name: "Test", slug: "test", kind: "team" } });
     expect(forwardedCalls).toEqual([]);
     // The fifth field is the page the call touched; whoami touches none.
     expect(auditCalls).toEqual([["agent", "whoami", "{}", "ok", null]]);
