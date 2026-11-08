@@ -161,10 +161,10 @@ Jev proposes memory changes. Humans resolve them through the review API; source 
 Console development, against fixtures, without the gateway:
 
 ```bash
-bun web/dev-server.ts
+bun run demo
 ```
 
-That serves an explicitly labeled, local-only sample-data preview on port 8099. Set `PORT` to choose another port. Production uses the authenticated gateway API and has no sample actions.
+The script skips your `.env`, so local hosted settings cannot stop the preview from starting. That serves an explicitly labeled, local-only sample-data preview on port 8099. Set `PORT` to choose another port. Production uses the authenticated gateway API and has no sample actions.
 
 Run the unit suite with `bun test`. Real PostgreSQL tenant and billing checks are in `test/integration-postgres.ts`; they require an explicitly named disposable local test cluster and reject production-style targets. CI runs those checks against PostgreSQL as well.
 
