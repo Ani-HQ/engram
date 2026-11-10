@@ -1,23 +1,36 @@
+import type postgres from "postgres";
 import { failureCode } from "../diagnostics";
 import { dataSql } from "../db";
 
 export const DREAM_LOCK_KEY = 814229;
 
-export async function tryDreamLock(): Promise<boolean> {
-  try {
-    const rows = await dataSql()`SELECT pg_try_advisory_lock(${DREAM_LOCK_KEY}) AS locked`;
-    return Boolean(rows[0]?.locked);
-  } catch (e) {
-    console.error("[dream] lock failed:", failureCode(e));
-    return false;
-  }
-}
+export type DreamLock = { release(): Promise<void> };
 
-export async function releaseDreamLock(): Promise<void> {
+// A session advisory lock belongs to one connection. Take and release it on
+// one reserved connection, or a pooled unlock can land on another session and
+// leave the lock held until that connection closes.
+export async function tryDreamLock(db: postgres.Sql = dataSql()): Promise<DreamLock | null> {
+  let reserved: postgres.ReservedSql | undefined;
   try {
-    await dataSql()`SELECT pg_advisory_unlock(${DREAM_LOCK_KEY})`;
+    reserved = await db.reserve();
+    const rows = await reserved`SELECT pg_try_advisory_lock(${DREAM_LOCK_KEY}) AS locked`;
+    if (!rows[0]?.locked) { reserved.release(); return null; }
+    const held = reserved;
+    return {
+      async release() {
+        try {
+          await held`SELECT pg_advisory_unlock(${DREAM_LOCK_KEY})`;
+        } catch (e) {
+          console.error("[dream] unlock failed:", failureCode(e));
+        } finally {
+          held.release();
+        }
+      },
+    };
   } catch (e) {
-    console.error("[dream] unlock failed:", failureCode(e));
+    reserved?.release();
+    console.error("[dream] lock failed:", failureCode(e));
+    return null;
   }
 }
 

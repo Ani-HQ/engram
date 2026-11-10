@@ -7,7 +7,7 @@ import { classifyMemory } from "../reflex/tasks/classify";
 import { judgePair } from "../reflex/tasks/pairwise";
 import { enqueueReviewItem } from "../review/store";
 import { deriveClusters } from "./cluster";
-import { nightKey, releaseDreamLock, tryDreamLock } from "./lock";
+import { nightKey, tryDreamLock } from "./lock";
 import { backfillChangedPages, neighborSlugs } from "./scan";
 
 export interface DreamResult {
@@ -24,8 +24,8 @@ export async function runDreamCycle(now = new Date()): Promise<DreamResult> {
   if (!policies?.jevProcessing || !policies.jevMayPropose || !reflexClient().available()) {
     return { ok: true, nightKey: key, locked: false, stats: { skipped: 1 } };
   }
-  const locked = await tryDreamLock();
-  if (!locked) return { ok: false, nightKey: key, locked: false, stats: {}, error: "lock held" };
+  const lock = await tryDreamLock();
+  if (!lock) return { ok: false, nightKey: key, locked: false, stats: {}, error: "lock held" };
 
   const stats = { pages: 0, entries: 0, decisions: 0, reviews: 0, clusters: 0 };
   let runId: number | null = null;
@@ -85,7 +85,7 @@ export async function runDreamCycle(now = new Date()): Promise<DreamResult> {
     }
     return { ok: false, nightKey: key, locked: true, stats, error };
   } finally {
-    await releaseDreamLock();
+    await lock.release();
   }
 }
 
