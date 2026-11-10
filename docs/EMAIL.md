@@ -55,6 +55,11 @@ messages, prints aggregate counts and closes its pools. It does not start an
 agent engine or use the provisioner credential. Provider errors and message
 contents must never be printed.
 
+After the series, the same run sends share-rule renewal reminders
+(`gateway/src/share-rule-expiry.ts`): one plain-text email per owner whose
+standing share rules end within a week, marked sent only after the provider
+accepts it, so a failure retries on the next run. It prints counts only.
+
 The shared restricted-runtime configuration also requires the existing tenant
 credential key at startup. The job receives that existing runtime secret; it
 does not provision tenant databases or launch tenant processes.

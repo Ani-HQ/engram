@@ -323,7 +323,7 @@ describe("explicit cross-workspace sharing authority", () => {
   const rule = {
     id: 9, ownerEmail: "ada@example.com", sourceOrg: 7, targetOrg: 8,
     match: parseShareMatch({matchAll:true}), level: "digest" as const,
-    createdAt: "2026-10-01T00:00:00Z", pausedAt: null, revokedAt: null,
+    createdAt: "2026-10-01T00:00:00Z", pausedAt: null, revokedAt: null, expiresAt: "2999-01-01T00:00:00Z",
   };
 
   test("mirrors use the current target membership and a target-bound actor", async () => {
@@ -339,7 +339,7 @@ describe("explicit cross-workspace sharing authority", () => {
       .toEqual([[7, "ada@example.com"], [8, "ada@example.com"]]);
   });
 
-  test("removal at either end or disabled consent stops a standing rule", async () => {
+  test("removal at either end, expiry or disabled consent stops a standing rule", async () => {
     for (const removedOrg of [7, 8]) {
       const { db } = database(({ statement, values }) => {
         if (statement.includes("FROM orgs")) return [{ ...orgRow(7), kind: "personal" }];
@@ -350,6 +350,7 @@ describe("explicit cross-workspace sharing authority", () => {
     const { db, calls } = database(() => { throw new Error("revoked sharing must not read source data"); });
     expect(await resolveShareAuthority({ ...rule, revokedAt: "2026-10-22T00:00:00Z" }, org(8), db)).toBeNull();
     expect(await resolveShareAuthority({ ...rule, pausedAt: "2026-10-22T00:00:00Z" }, org(8), db)).toBeNull();
+    expect(await resolveShareAuthority({ ...rule, expiresAt: "2026-10-22T00:00:00Z" }, org(8), db)).toBeNull();
     expect(await resolveShareAuthority(rule, org(99), db)).toBeNull();
     expect(await resolveShareAuthority(rule, { ...org(8), policies: parsePolicies({ acceptShares: false }) }, db)).toBeNull();
     expect(calls).toHaveLength(0);

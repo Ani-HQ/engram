@@ -317,6 +317,7 @@ full access; in Engram nothing unreviewed ever leaves.
 - Emails for requests are plain text and sent at most once per 10 minutes per
   person; everything waiting is on the Approvals page.
 
-Not built: expiring the legacy standing share rules after 90 days. Those rules
-are API-only with no way to renew them in the app, so expiring them now would
-silently cut off shares people rely on. It needs a renewal path first.
+Standing share rules now expire too (10 November 2026): 90 days from creation
+or renewal, with existing rules given 90 days from that release. A reminder
+email goes out about a week before, and Approvals > Automatic sharing has Renew
+and Stop. Expiry stops new copies only. See SHARING.md.
