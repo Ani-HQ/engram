@@ -1,6 +1,7 @@
 import { databaseSecurity, config } from "../config";
 import { migrate, closeDatabasePools } from "../db";
 import { drainMailSeries, preflightMailSeries } from "../mail-series";
+import { remindExpiringShareRules } from "../share-rule-expiry";
 
 export async function main() {
   try {
@@ -19,6 +20,10 @@ export async function main() {
     const result = await drainMailSeries({ dryRun: process.argv.includes("--dry-run"), limit: 25 });
     console.log(JSON.stringify({ mail: result }));
     if (result.blocked || result.failed || result.retried) process.exitCode = 1;
+    // Counts only: recipients and rule contents stay out of job logs.
+    const renewals = await remindExpiringShareRules({ dryRun: process.argv.includes("--dry-run") });
+    console.log(JSON.stringify({ shareRuleRenewals: renewals }));
+    if (renewals.failed) process.exitCode = 1;
   } finally {
     await closeDatabasePools();
   }

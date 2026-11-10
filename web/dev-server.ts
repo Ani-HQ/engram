@@ -125,6 +125,13 @@ const demoGrants: any[] = [
   { id: "9c1d2e3f-0000-4000-8000-000000000001", topic: "release process", team: { id: 1, name: "Fixture Org" }, requester: "thejus@example.com", shares: 2, createdAt: new Date(Date.now() - 4 * 86_400_000).toISOString(), expiresAt: new Date(Date.now() + 86 * 86_400_000).toISOString(), revokedAt: null },
 ];
 
+const demoRules: any[] = [
+  { id: 41, targetOrg: 1, targetName: "Fixture Org", summary: "topics: release process", level: "digest", createdAt: new Date(Date.now() - 85 * 86_400_000).toISOString(), pausedAt: null, expiresAt: new Date(Date.now() + 5 * 86_400_000).toISOString(), revokedAt: null },
+  { id: 42, targetOrg: 1, targetName: "Fixture Org", summary: "repos: engram", level: "digest", createdAt: new Date(Date.now() - 100 * 86_400_000).toISOString(), pausedAt: null, expiresAt: new Date(Date.now() - 10 * 86_400_000).toISOString(), revokedAt: null },
+  { id: 43, targetOrg: 1, targetName: "Fixture Org", summary: "everything new", level: "digest", createdAt: new Date(Date.now() - 10 * 86_400_000).toISOString(), pausedAt: null, expiresAt: new Date(Date.now() + 80 * 86_400_000).toISOString(), revokedAt: null },
+];
+const ruleView = (rule: any) => ({ ...rule, expired: Date.parse(rule.expiresAt) <= Date.now() });
+
 function demoAnalytics(days: number) {
   const today = Date.UTC(2026, 10, 5);
   const daily = Array.from({ length: days }, (_, index) => {
@@ -354,6 +361,17 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
       demoLinks.splice(index, 1);
       return json({ ok: true });
     }
+    return json({ error: "Method not allowed." }, 405);
+  }
+  if (url.pathname === "/api/share/rules" || url.pathname.startsWith("/api/share/rules/")) {
+    if (req.headers.get("x-engram-console") !== "1" || !expectedWorkspace) return json({ error: "Select a workspace first." }, 400);
+    if (session.org.kind !== "personal") return json({ rules: [] });
+    if (req.method === "GET" && url.pathname === "/api/share/rules") return json({ rules: demoRules.filter(rule => !rule.revokedAt).map(ruleView), repos: [] });
+    const match = url.pathname.match(/^\/api\/share\/rules\/(\d+)(\/renew)?$/);
+    const rule = match && demoRules.find(item => item.id === Number(match[1]) && !item.revokedAt);
+    if (!rule) return json({ error: "not found" }, 404);
+    if (req.method === "POST" && match![2]) { rule.expiresAt = new Date(Date.now() + 90 * 86_400_000).toISOString(); return json({ rule: ruleView(rule) }); }
+    if (req.method === "DELETE" && !match![2]) { rule.revokedAt = new Date().toISOString(); return json({ ok: true, warning: "Teammates' agents may already have read what was shared." }); }
     return json({ error: "Method not allowed." }, 405);
   }
   if (url.pathname === "/api/approvals" || url.pathname.startsWith("/api/approvals/")) {

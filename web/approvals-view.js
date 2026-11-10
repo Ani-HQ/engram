@@ -22,6 +22,15 @@ export function timeLeft(expiresAt, now = Date.now()) {
   const hours = Math.floor(ms / 3_600_000);
   return hours >= 1 ? `${plural(hours, "hour")} left` : `${Math.max(1, Math.floor(ms / 60_000))} min left`;
 }
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+/** Pure: where a standing sharing rule stands. Exported for tests. */
+export function ruleState(rule, now = Date.now()) {
+  const left = Date.parse(rule.expiresAt) - now;
+  if (rule.expired || (Number.isFinite(left) && left <= 0)) return { label: "Expired", tone: "neutral", line: `Stopped on ${day(rule.expiresAt)}. Nothing new is shared.` };
+  if (!rule.expiresAt) return { label: rule.pausedAt ? "Paused" : "On", tone: "neutral", line: "No end date" };
+  const soon = left <= WEEK_MS;
+  return { label: rule.pausedAt ? "Paused" : soon ? "Ends soon" : "On", tone: soon && !rule.pausedAt ? "warning" : "neutral", line: `Shares new items until ${day(rule.expiresAt)}` };
+}
 /** Pure: the label for a decided request. */
 export function outcomeLabel(item) {
   if (item.status === "answered") return item.automatic ? "Answered automatically" : "Shared";
@@ -32,7 +41,7 @@ export function outcomeLabel(item) {
 
 export function approvalsView({ api, fail = () => {}, isCurrent = () => true, now = () => Date.now() }) {
   const prefix = `approvals-${++sequence}`;
-  let disposed = false, request = 0, data = null, error = "", open = null;
+  let disposed = false, request = 0, data = null, error = "", open = null, rules = [], rulesError = "", confirmStop = null;
   const busy = new Set();
   const status = h("p", { class: "ds-sr-only", role: "status", "aria-live": "polite" });
   const body = h("div", { class: "approvals-body" });
@@ -58,6 +67,9 @@ export function approvalsView({ api, fail = () => {}, isCurrent = () => true, no
         pending.length ? list : quiet("inbox", "Nothing waiting", "When a teammate's agent asks for something from your memory, it shows up here and by email.")),
       section("Active 90-day approvals", grants.length,
         grants.length ? h("ul", { class: "approvals-grants" }, grants.map(grantRow)) : h("p", { class: "field-hint" }, "None. A 90-day approval lets one teammate get excerpts you already approved on a topic without asking again.")),
+      rules.length || rulesError ? section("Automatic sharing", rules.length || null,
+        h("p", { class: "field-hint" }, "Rules made through the API that copy new matching memories to a team. Each one stops after 90 days unless you renew it. Stopping or expiring never removes what was already shared."),
+        rulesError ? notice(rulesError, "danger", true) : h("ul", { class: "approvals-grants" }, rules.map(ruleRow))) : null,
       history.length ? section("Past requests", null, h("ul", { class: "approvals-history" }, history.map(historyRow))) : null,
       h("p", { class: "field-hint approvals-gaps" }, "Known limits: excerpt matching is simple and can miss things or suggest the wrong ones, so your review is the privacy control. Revoking a share removes it from the team, but an agent that already read it keeps what it read."));
     staggerIn(list);
@@ -142,6 +154,38 @@ export function approvalsView({ api, fail = () => {}, isCurrent = () => true, no
       button("Revoke", () => revokeGrant(grant), { class: "small", disabled: busy.has(grant.id), "aria-label": `Revoke ${grant.requester}'s approval for ${grant.topic}` }));
   }
 
+  function ruleRow(rule) {
+    const state = ruleState(rule, now());
+    const key = `rule-${rule.id}`, working = busy.has(key);
+    const label = `${rule.summary || "Automatic sharing"} to ${rule.targetName || "a team"}`;
+    const actions = confirmStop === rule.id
+      ? h("div", { class: "ds-row approvals-rule-actions" },
+          h("span", { class: "approvals-meta" }, "Stop sharing? What was already shared stays."),
+          button(working ? busyLabel("Stopping") : "Stop sharing", () => stopRule(rule), { class: "ds-button small", "data-variant": "danger", disabled: working, "aria-label": `Confirm stop: ${label}` }),
+          button("Cancel", () => { confirmStop = null; render(); element.querySelector(`[aria-label="Stop: ${CSS.escape(label)}"]`)?.focus(); }, { class: "text small", disabled: working }))
+      : h("div", { class: "ds-row approvals-rule-actions" },
+          button(working ? busyLabel("Renewing") : "Renew for 90 days", () => renewRule(rule), { class: "small", disabled: working, "aria-label": `Renew for 90 days: ${label}` }),
+          button("Stop", () => { confirmStop = rule.id; render(); element.querySelector(`[aria-label="Confirm stop: ${CSS.escape(label)}"]`)?.focus(); }, { class: "text small", disabled: working, "aria-label": `Stop: ${label}` }));
+    return h("li", { class: "approvals-row approvals-rule" },
+      h("div", {}, h("strong", {}, rule.targetName || "A team"), h("p", { class: "approvals-meta" }, `${rule.summary || "Matching memories"} · ${state.line}`)),
+      pill(state.label, { tone: state.tone }),
+      actions);
+  }
+
+  async function renewRule(rule) {
+    const key = `rule-${rule.id}`; busy.add(key); render();
+    try { await api.renewShareRule(rule.id); if (live()) { toast(`Sharing to ${rule.targetName || "the team"} renewed for 90 days`); status.textContent = "Renewed."; await load(); } }
+    catch (err) { if (live()) { fail(err); toast(err.message || "The rule could not be renewed.", "danger"); } }
+    finally { busy.delete(key); render(); }
+  }
+
+  async function stopRule(rule) {
+    const key = `rule-${rule.id}`; busy.add(key); render();
+    try { await api.stopShareRule(rule.id); if (live()) { confirmStop = null; toast("Sharing stopped. Already-shared items stay until you revoke them."); status.textContent = "Stopped."; await load(); } }
+    catch (err) { if (live()) { fail(err); toast(err.message || "The rule could not be stopped.", "danger"); } }
+    finally { busy.delete(key); render(); }
+  }
+
   function historyRow(item) {
     return h("li", { class: "approvals-row" },
       h("div", {}, h("span", {}, item.question), h("p", { class: "approvals-meta" }, `${item.requester} · ${item.team.name} · ${day(item.decidedAt || item.createdAt)}`)),
@@ -199,9 +243,11 @@ export function approvalsView({ api, fail = () => {}, isCurrent = () => true, no
     const id = ++request;
     refresh.disabled = true; refresh.replaceChildren(...busyLabel("Refresh"));
     try {
-      const result = await api.approvals();
+      const [result, ruleResult] = await Promise.all([api.approvals(), api.shareRules ? api.shareRules().then(value => ({ value }), err => ({ err })) : { value: { rules: [] } }]);
       if (!live() || id !== request) return;
       data = result; error = "";
+      if (ruleResult.err) { rulesError = ruleResult.err.message || "Sharing rules could not be loaded."; }
+      else { rulesError = ""; rules = Array.isArray(ruleResult.value?.rules) ? ruleResult.value.rules : []; }
       status.textContent = `${plural((result.pending || []).length, "request")} waiting.`;
     } catch (err) {
       if (!live() || id !== request) return;

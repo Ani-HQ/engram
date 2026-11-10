@@ -7,6 +7,8 @@ import { getOrg, withOrg } from "../gateway/src/orgs";
 import { DEFAULT_POLICIES, normalizeToken } from "../gateway/src/policies";
 import { upsertMemoryEntry } from "../gateway/src/memory-entries";
 import { activeLinks, createLink, listHomeLinks, listTeamLinks, revokeHomeLink, revokeTeamLink, workspaceChoices } from "../gateway/src/linked-workspaces";
+import { remindExpiringShareRules } from "../gateway/src/share-rule-expiry";
+import { getShareRule, renewShareRule, resolveShareAuthority } from "../gateway/src/sharing";
 import { approveRequest, askTeammate, declineRequest, getShareRequest, listApprovals, previewRequest, revokeGrant } from "../gateway/src/share-requests";
 
 export async function checkWorkspaceAccess(db: postgres.Sql): Promise<number> {
@@ -120,8 +122,43 @@ export async function checkWorkspaceAccess(db: postgres.Sql): Promise<number> {
     const off = await askTeammate(asker, (await getOrg(teamId, db))!, { teammate: mate, question: "Anything new on deploys?" }, { db, notify: async () => {} });
     equal(off.isError, true, "Team owners can turn teammate requests off");
     equal(mails.length, 1, "Several requests in a short window send one email");
+
+    // ---- Part 3: standing share rules expire unless renewed ----
+    await db`UPDATE orgs SET policies = ${db.json(DEFAULT_POLICIES)} WHERE id = ${teamId}`;
+    const ruleRow = async (sql: any) => Number((await sql)[0].id);
+    const soon = await ruleRow(db`INSERT INTO share_rules(owner_email,source_org,target_org,match,level) VALUES (${ani},${personalId},${teamId},${db.json({ topics: ["billing"] })},'digest') RETURNING id`);
+    const ttlDays = Number((await db`SELECT round(extract(epoch FROM expires_at - created_at) / 86400) AS days FROM share_rules WHERE id = ${soon}`)[0].days);
+    equal(ttlDays, 90, "A new rule lasts 90 days by default, even from an older revision's insert");
+    const alsoSoon = await ruleRow(db`INSERT INTO share_rules(owner_email,source_org,target_org,match,level,expires_at) VALUES (${ani},${personalId},${otherTeamId},${db.json({})},'digest', now() + interval '3 days') RETURNING id`);
+    const later = await ruleRow(db`INSERT INTO share_rules(owner_email,source_org,target_org,match,level,expires_at) VALUES (${ani},${personalId},${teamId},${db.json({})},'digest', now() + interval '30 days') RETURNING id`);
+    const stopped = await ruleRow(db`INSERT INTO share_rules(owner_email,source_org,target_org,match,level,expires_at,revoked_at) VALUES (${ani},${personalId},${teamId},${db.json({})},'digest', now() + interval '2 days', now()) RETURNING id`);
+    await db`UPDATE share_rules SET expires_at = now() + interval '5 days' WHERE id = ${soon}`;
+    const reminders: any[] = [];
+    let outcome: "sent" | "failed" = "failed";
+    const send = async (mail: any) => { reminders.push(mail); return outcome; };
+    const failedRun = await remindExpiringShareRules({ db, send, publicUrl: "https://engram.example" });
+    equal([failedRun.owners, failedRun.rules, failedRun.sent, failedRun.failed], [1, 2, 0, 1], "Only live rules expiring within a week are due, grouped per owner");
+    equal(Number((await db`SELECT count(*) AS n FROM share_rules WHERE renewal_notified_at IS NOT NULL AND id IN (${soon},${alsoSoon})`)[0].n), 0, "A failed send is retried next run");
+    outcome = "sent";
+    const sentRun = await remindExpiringShareRules({ db, send, publicUrl: "https://engram.example" });
+    equal([sentRun.sent, reminders.at(-1).to, reminders.at(-1).subject], [1, ani, "2 automatic sharing rules stop in a week"], "One email lists every expiring rule");
+    equal((await remindExpiringShareRules({ db, send })).rules, 0, "Each expiry is reminded once");
+    equal((await db`SELECT id FROM share_rules WHERE renewal_notified_at IS NOT NULL AND id IN (${soon},${alsoSoon},${later},${stopped}) ORDER BY id`).map((r: any) => Number(r.id)), [soon, alsoSoon].sort((x, y) => x - y), "Later and stopped rules are not reminded");
+
+    const expiredId = await ruleRow(db`INSERT INTO share_rules(owner_email,source_org,target_org,match,level,expires_at,paused_at) VALUES (${ani},${personalId},${teamId},${db.json({})},'digest', now() - interval '1 minute', now()) RETURNING id`);
+    const expired = (await getShareRule(expiredId))!;
+    equal(await resolveShareAuthority({ ...expired, pausedAt: null }, team, db), null, "An expired rule shares nothing new");
+    const renewed = await renewShareRule(expired);
+    equal([renewed.expiresAt !== null && Date.parse(renewed.expiresAt) > Date.now() + 89 * 864e5, (await db`SELECT renewal_notified_at FROM share_rules WHERE id = ${expiredId}`)[0].renewal_notified_at], [true, null], "Renewing restarts 90 days and re-arms the reminder");
+    equal((await resolveShareAuthority({ ...renewed, pausedAt: null }, team, db))?.targetToken.orgId, teamId, "A renewed rule shares again");
+    await assert.rejects(async () => renewShareRule((await getShareRule(stopped))!)); checks++;
+
+    await db`DELETE FROM org_members WHERE org_id = ${personalId} AND email = ${ani}`;
+    await db`UPDATE share_rules SET renewal_notified_at = NULL WHERE id = ${soon}`;
+    equal((await remindExpiringShareRules({ db, send })).rules, 0, "No reminder once the person no longer owns the personal workspace");
     return checks;
   } finally {
+    await db`DELETE FROM share_rules WHERE source_org = ${personalId}`;
     await db`DELETE FROM context_share_requests WHERE team_org IN (${teamId},${otherTeamId})`;
     await db`DELETE FROM context_shares WHERE source_org = ${mateId}`;
     await db`DELETE FROM context_share_grants WHERE source_org = ${mateId}`;

@@ -47,6 +47,8 @@ export interface ShareRule {
   createdAt: string;
   pausedAt: string | null;
   revokedAt: string | null;
+  // Rules stop sharing new items after this time unless the owner renews them.
+  expiresAt: string | null;
 }
 
 export interface ShareableItem {
@@ -207,7 +209,7 @@ export async function shareAfterWrite(input: { kind: "trail"; trail: Trail } | {
   const org = currentOrg();
   if (!org || org.kind !== "personal") return;
   const item = input.kind === "trail" ? itemFromTrail(input.trail) : itemFromEntry(input.entry);
-  const rules = (await listShareRules(org.id)).filter(rule => !rule.pausedAt && ruleMatches(rule.match, item));
+  const rules = (await listShareRules(org.id)).filter(rule => !rule.pausedAt && !ruleExpired(rule) && ruleMatches(rule.match, item));
   for (const rule of rules) {
     const target = await getOrg(rule.targetOrg);
     if (!target || target.kind !== "team" || !target.policies.acceptShares) continue;
@@ -339,7 +341,7 @@ export async function resolveShareAuthority(rule: ShareRule, target: Org, db: po
   sourceToken: TokenRecord;
   targetToken: TokenRecord;
 } | null> {
-  if (rule.pausedAt || rule.revokedAt || target.id !== rule.targetOrg
+  if (rule.pausedAt || rule.revokedAt || ruleExpired(rule) || target.id !== rule.targetOrg
     || target.kind !== "team" || !target.policies.acceptShares) return null;
   const source = await getOrg(rule.sourceOrg, db);
   if (!source || source.kind !== "personal" || source.id === target.id) return null;
@@ -514,6 +516,7 @@ function rowToRule(row: any): ShareRule {
     createdAt: new Date(row.created_at).toISOString(),
     pausedAt: row.paused_at ? new Date(row.paused_at).toISOString() : null,
     revokedAt: row.revoked_at ? new Date(row.revoked_at).toISOString() : null,
+    expiresAt: row.expires_at ? new Date(row.expires_at).toISOString() : null,
   };
 }
 
@@ -545,7 +548,29 @@ export function publicRule(rule: ShareRule) {
     level: rule.level,
     createdAt: rule.createdAt,
     pausedAt: rule.pausedAt,
+    expiresAt: rule.expiresAt,
+    expired: ruleExpired(rule),
   };
+}
+
+export function ruleExpired(rule: Pick<ShareRule, "expiresAt">, now = Date.now()): boolean {
+  return Boolean(rule.expiresAt && Date.parse(rule.expiresAt) <= now);
+}
+
+// Renewing restarts the 90 days and catches up anything written while the rule
+// was expired. Already-shared items were never removed by expiry.
+export async function renewShareRule(rule: ShareRule): Promise<ShareRule> {
+  const rows = await sql`
+    UPDATE share_rules
+    SET expires_at = now() + interval '90 days', renewal_notified_at = NULL
+    WHERE id = ${rule.id} AND revoked_at IS NULL
+    RETURNING *`;
+  if (!rows[0]) throw new Error("That sharing rule was stopped.");
+  const renewed = rowToRule(rows[0]);
+  if (!renewed.pausedAt) {
+    await backfillRule(renewed).catch(e => { console.error("[sharing] backfill failed:", failureCode(e)); });
+  }
+  return renewed;
 }
 
 export { publicTrail };

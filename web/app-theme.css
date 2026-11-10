@@ -490,3 +490,6 @@ html[data-design-system] .detail .detail-body { padding: var(--ds-space-6) var(-
 }
 .analytics-notes { margin: 0; padding-left: var(--ds-space-5); color: var(--ds-muted); font-size: var(--ds-text-xs); line-height: 1.7; }
 @media (max-width: 900px) { .analytics-grid { grid-template-columns: minmax(0, 1fr); } }
+.approvals-rule > div:first-child { flex: 1; }
+.approvals-rule-actions { flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; gap: var(--ds-space-2); }
+@media (max-width: 640px) { .approvals-rule-actions { justify-content: flex-start; } }

@@ -62,12 +62,14 @@ import { oauthEnabled } from "./oauth";
 import { canManageSignupInvites, createSignupVerification, issueSignupInvite, listSignupInvites, revokeSignupInvite, signupInviteLink, SignupInviteError } from "./signup-invites";
 import { triggerProvisioning } from "./provisioning-trigger";
 import { handleContextSharingApi } from "./context-sharing";
+import { describeShareMatch } from "./share-rule-expiry";
 import {
   getShareRule,
   createShareRule,
   updateShareRule,
   revokeShareRule,
   listShareRules,
+  renewShareRule,
   previewShare,
   publicRule,
   shareOne,
@@ -245,6 +247,9 @@ export async function handleOrgApi(
   }
   if (req.method === "POST" && url.pathname.match(/^\/api\/share\/rules\/\d+\/resume$/)) {
     return pauseShareRule(url, token, org, false);
+  }
+  if (req.method === "POST" && url.pathname.match(/^\/api\/share\/rules\/\d+\/renew$/)) {
+    return postRenewShareRule(url, token, org);
   }
   if (req.method === "DELETE" && url.pathname.match(/^\/api\/share\/rules\/\d+$/)) {
     return deleteShareRule(url, token, org);
@@ -632,7 +637,22 @@ async function getShareRules(token: TokenRecord, org: Org): Promise<Response> {
     return Response.json({ rules: [], repos: await listRepos() });
   }
   const rules = await listShareRules(org.id, token.email);
-  return Response.json({ rules: rules.map(publicRule), repos: await listRepos() });
+  const names = new Map<number, string>();
+  for (const id of new Set(rules.map(rule => rule.targetOrg))) names.set(id, (await getOrg(id))?.name ?? "A team");
+  return Response.json({ rules: rules.map(rule => ({ ...publicRule(rule), targetName: names.get(rule.targetOrg) ?? "A team", summary: describeShareMatch(rule.match) })), repos: await listRepos() });
+}
+
+async function postRenewShareRule(url: URL, token: TokenRecord, org: Org): Promise<Response> {
+  if (!isHuman(token) || !token.email) return Response.json({ error: "forbidden" }, { status: 403 });
+  const rule = await ownedRule(url, token, org);
+  if (!rule || rule.revokedAt) return Response.json({ error: "not found" }, { status: 404 });
+  try {
+    await assertCanShare(token.email, org, rule.targetOrg);
+  } catch (e) {
+    return Response.json({ error: String(e).replace(/^Error: /, "").slice(0, 160) }, { status: 400 });
+  }
+  const renewed = await renewShareRule(rule);
+  return Response.json({ rule: publicRule(renewed) });
 }
 
 async function postShareRule(req: Request, token: TokenRecord, org: Org): Promise<Response> {
