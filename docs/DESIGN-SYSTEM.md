@@ -59,7 +59,7 @@ Modeled on developer dashboards (Supabase's, via Mobbin), with Engram's palette.
 
 | Primitive | Use |
 | --- | --- |
-| `.ds-topbar`, `.ds-crumbs`, `.ds-crumb`, `.ds-crumb-sep`, `.ds-search-trigger`, `.ds-topbar-button` | Top bar: logo / workspace switcher + kind pill / page, then Feedback, ⌘K search, help, account menu. |
+| `.ds-topbar`, `.ds-crumbs`, `.ds-crumb`, `.ds-crumb-sep`, `.ds-search-trigger`, `.ds-topbar-button`, `.ds-topbar-action` | Top bar: logo / workspace switcher + kind pill / page, then Share and Feedback (`.ds-topbar-action`), ⌘K search, help, account menu. Every control is 30px tall (44px on touch) with the same hairline border, centered on one line. |
 | `.ds-rail` | 56px icon rail; labels slide in on hover or focus; off-canvas sheet under 900px. |
 | `commandPalette(groups)` | ⌘K / Ctrl K menu: grouped pages, actions, workspaces and help; arrow keys, Enter, Esc. Every item runs an existing app action. |
 | `pill(text, { tone })` | Small mono uppercase pill for a fixed category ("Team", "Read only"). Never a status claim. |
