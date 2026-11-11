@@ -48,6 +48,7 @@ const { listConnections } = await import("../gateway/src/connections");
 const { closeWriteCoordinator } = await import("../gateway/src/write-coordination");
 const { canManageSignupInvites, issueSignupInvite, createSignupVerification } = await import("../gateway/src/signup-invites");
 const { ensureHostedSignupInvitesSchema } = await import("../gateway/src/signup-invites-schema");
+const { loadSignupAdmission } = await import("../gateway/src/mail-series");
 try {
   const marker = await admin`SELECT purpose FROM _engram_integration_sandbox WHERE id = 1`;
   equal(marker[0]?.purpose, "engram-disposable-integration-v1", "Only the marked integration sandbox may be upgraded");
@@ -81,6 +82,10 @@ try {
   await denied(() => sql`UPDATE engram_schema_state SET agent_identity_version = 1`, "Runtime cannot forge additive agent-identity readiness");
   await denied(() => sql`UPDATE engram_schema_state SET workspace_access_version = 1`, "Runtime cannot forge additive workspace-access readiness");
   await denied(() => sql`UPDATE engram_schema_state SET share_rule_expiry_version = 1`, "Runtime cannot forge additive share-rule-expiry readiness");
+  // The mail worker runs as this role. It may read but not lock operator rows.
+  const noInvite = "00000000-0000-4000-8000-000000000000";
+  await denied(() => sql`SELECT i.id FROM hosted_signup_invites i JOIN hosted_signup_operators op ON op.member_id = i.created_by_member_id WHERE i.id = ${noInvite} FOR SHARE OF i, op`, "Runtime cannot lock operator-only rows");
+  equal(await sql.begin(tx => loadSignupAdmission(tx as any, noInvite)), undefined, "The mail worker's invite check runs under the runtime role");
   equal((await sql`SELECT count(*)::int AS n FROM workspace_complimentary_access`)[0].n >= 0, true, "Restricted runtime can read complimentary entitlement state");
   await denied(() => sql`INSERT INTO workspace_complimentary_access (id,org_id,owner_member_id) VALUES (gen_random_uuid(),1,0)`, "Runtime cannot grant complimentary access");
   await denied(() => sql`UPDATE workspace_complimentary_access SET revoked_at=now() WHERE org_id=1`, "Runtime cannot revoke complimentary access");

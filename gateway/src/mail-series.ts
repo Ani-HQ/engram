@@ -176,10 +176,7 @@ export async function drainMailSeries(options: { db?: postgres.Sql; dryRun?: boo
       const [job] = await tx`SELECT * FROM mail_series_jobs WHERE id = ${claim.id} FOR UPDATE`;
       if (!enrollment || enrollment.status !== 'active' || job?.status !== 'leased' || job.lease_token !== claim.lease) return;
       const [member] = await tx`SELECT id FROM org_members WHERE id = ${enrollment.member_id} AND org_id = ${enrollment.org_id} AND email = ${enrollment.email} AND role = 'owner' FOR SHARE`;
-      const [admission] = await tx`SELECT i.*, op.revoked_at AS operator_revoked, creator.role AS operator_role
-        FROM hosted_signup_invites i JOIN hosted_signup_operators op ON op.member_id = i.created_by_member_id
-        JOIN org_members creator ON creator.id = op.member_id AND creator.org_id = 1
-        WHERE i.id = ${enrollment.signup_invite_id} FOR SHARE OF i, op, creator`;
+      const admission = await loadSignupAdmission(tx as unknown as postgres.Sql, enrollment.signup_invite_id);
       const [org] = await tx`SELECT * FROM orgs WHERE id = ${enrollment.org_id} FOR SHARE`;
       const canceled = !member || !org || !admission || !admission.redeemed_at || admission.redeemed_org_id !== enrollment.org_id || admission.redeemed_owner_member_id !== enrollment.member_id || admission.email !== enrollment.email
         || admission.revoked_at || admission.complimentary_revoked_at || admission.operator_revoked || admission.operator_role !== 'owner';
@@ -228,4 +225,15 @@ export async function drainMailSeries(options: { db?: postgres.Sql; dryRun?: boo
   }
   await count();
   return counts;
+}
+
+// The runtime role may only read hosted_signup_operators (operator-only table),
+// and a row lock needs write permission, so lock the invite and the member row
+// but read the operator row plainly. Covered by integration-tenant-security.ts.
+export async function loadSignupAdmission(tx: postgres.Sql, inviteId: unknown): Promise<any> {
+  const [admission] = await tx`SELECT i.*, op.revoked_at AS operator_revoked, creator.role AS operator_role
+    FROM hosted_signup_invites i JOIN hosted_signup_operators op ON op.member_id = i.created_by_member_id
+    JOIN org_members creator ON creator.id = op.member_id AND creator.org_id = 1
+    WHERE i.id = ${inviteId as any} FOR SHARE OF i, creator`;
+  return admission;
 }
