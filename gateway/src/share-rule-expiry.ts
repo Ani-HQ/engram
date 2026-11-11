@@ -2,23 +2,31 @@ import type postgres from "postgres";
 import { config } from "./config";
 import { sql } from "./db";
 import { sendMail, type MailDelivery } from "./mail";
-import { parseShareMatch, type ShareMatch } from "./sharing";
+// Keep this module free of sharing.ts: that pulls in the agent engine, which
+// the mail job is not configured to load (test/mail-job-imports.test.ts).
+export interface MatchSummary { repos?: string[]; topics?: string[]; harnesses?: string[]; trailIds?: string[] }
+const list = (value: unknown): string[] => Array.isArray(value) ? [...new Set(value.filter((item): item is string => typeof item === "string" && item.trim() !== "").map(item => item.trim()))] : [];
+function summaryOf(value: unknown): MatchSummary {
+  const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return { repos: list(raw.repos), topics: list(raw.topics), harnesses: list(raw.harnesses), trailIds: list(raw.trailIds) };
+}
 
 export const SHARE_RULE_TTL_DAYS = 90;
 export const RENEWAL_NOTICE_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Plain words for what a rule shares, for the reminder email and the app.
-export function describeShareMatch(match: ShareMatch): string {
+export function describeShareMatch(input: MatchSummary): string {
+  const match = summaryOf(input);
   const parts: string[] = [];
-  if (match.trailIds.length) parts.push(match.trailIds.length === 1 ? "one session" : `${match.trailIds.length} sessions`);
-  if (match.topics.length) parts.push(`topics: ${match.topics.join(", ")}`);
-  if (match.repos.length) parts.push(`repos: ${match.repos.join(", ")}`);
-  if (match.harnesses.length) parts.push(`agents: ${match.harnesses.join(", ")}`);
+  if (match.trailIds!.length) parts.push(match.trailIds!.length === 1 ? "one session" : `${match.trailIds!.length} sessions`);
+  if (match.topics!.length) parts.push(`topics: ${match.topics!.join(", ")}`);
+  if (match.repos!.length) parts.push(`repos: ${match.repos!.join(", ")}`);
+  if (match.harnesses!.length) parts.push(`agents: ${match.harnesses!.join(", ")}`);
   if (!parts.length) parts.push("everything new");
   return parts.join("; ");
 }
 
-export interface ExpiringRule { id: number; ownerEmail: string; teamName: string; match: ShareMatch; expiresAt: Date }
+export interface ExpiringRule { id: number; ownerEmail: string; teamName: string; match: MatchSummary; expiresAt: Date }
 
 export interface ReminderDeps {
   db?: postgres.Sql;
@@ -48,7 +56,7 @@ export async function remindExpiringShareRules(deps: ReminderDeps = {}): Promise
     LIMIT 200`;
   const byOwner = new Map<string, ExpiringRule[]>();
   for (const row of rows) {
-    const rule = { id: Number(row.id), ownerEmail: String(row.owner_email), teamName: String(row.team_name), match: parseShareMatch(row.match, { allowStoredAll: true }), expiresAt: new Date(row.expires_at) };
+    const rule = { id: Number(row.id), ownerEmail: String(row.owner_email), teamName: String(row.team_name), match: summaryOf(row.match), expiresAt: new Date(row.expires_at) };
     const key = rule.ownerEmail.toLowerCase();
     byOwner.set(key, [...(byOwner.get(key) ?? []), rule]);
   }
