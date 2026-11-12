@@ -458,6 +458,15 @@ describe("Claude lifecycle and explicit installation", () => {
     expect(stop.reason).toContain("no-change");
     expect(await memory.claudeHook({ ...session, hook_event_name: "Stop", stop_hook_active: true }, dependencies)).toEqual({});
     expect(await memory.claudeHook({ ...session, hook_event_name: "Stop", stop_hook_active: false }, dependencies)).toEqual({});
+    // A long session asks again after every few substantive prompts, not on chatter.
+    expect(await memory.claudeHook({ ...session, hook_event_name: "UserPromptSubmit", prompt: "ok" }, dependencies)).toEqual({});
+    for (const prompt of ["Please add a test for duplicate deliveries in the retry queue.", "Now fix the backoff calculation for the retry queue worker."]) await memory.claudeHook({ ...session, hook_event_name: "UserPromptSubmit", prompt }, dependencies);
+    expect(await memory.claudeHook({ ...session, hook_event_name: "Stop", stop_hook_active: false }, dependencies)).toEqual({});
+    await memory.claudeHook({ ...session, hook_event_name: "UserPromptSubmit", prompt: "Please review the retry queue change and update the docs." }, dependencies);
+    const again = await memory.claudeHook({ ...session, hook_event_name: "Stop", stop_hook_active: false }, dependencies);
+    expect(again.decision).toBe("block");
+    expect(again.reason).toContain("save progress to Engram");
+    expect(await memory.claudeHook({ ...session, hook_event_name: "Stop", stop_hook_active: false }, dependencies)).toEqual({});
     expect([...gateway.events.values()].map(event => event.status)).toEqual(["running"]);
     expect(gateway.memories).toHaveLength(0);
   });

@@ -132,7 +132,7 @@ An explicitly named task should describe the project decision or task, not conta
 secrets. The automatic first-task heuristic queries only the installed topic; it
 does not forward the full prompt. A model or owned runtime must call `task-end`
 with an explicit outcome when it actually knows that outcome. Session guidance,
-the bounded recall wrapper, and the one-time delta check teach the exact
+the bounded recall wrapper, and the Stop delta check teach the exact
 `task-end --run <run-id>` command and `status`/`outcome` JSON fields, with completion
 or failure conditional on an actual known result. The command hooks
 cannot infer completion from a response stopping, or reliably infer every new
@@ -368,10 +368,16 @@ observation of tool execution. A bridge must only call its hooks for real events
 
 The retrieval ceiling is not an overall token or spending limit. Server guidance,
 loaded skills, tool definitions, input arguments and model output add overhead.
-Claude's one-time Stop delta check can also request an extra agent continuation
-when the task has neither saved a delta nor acknowledged no-change. Saving or
-acknowledging no-change before Stop avoids that check; the bridge does not run a
-separate summarization model.
+The Stop delta check can also request an extra agent continuation. It runs once
+when the task has saved nothing, then again after every three substantive prompts
+since the last confirmed save, so long sessions keep Engram current without the
+user asking. A confirmed checkpoint, memory save or no-change resets the count;
+short replies such as "ok" do not count. The bridge does not run a separate
+summarization model.
+
+Session guidance, server instructions and the setup skills also tell agents that
+Engram is one of their sources: when in doubt about the project, past decisions,
+preferences or another agent's work, check it before guessing or asking the user.
 
 Optional Jev passage selection has its own consent, access and metering boundary.
 It considers at most 20 local recall hits, removes duplicate content, and sends
