@@ -1,4 +1,5 @@
 import { icon } from "./icons.js";
+import { slidingIndicator } from "./design-system.js";
 import { h } from "./profile.js";
 
 const historyFilters = ["q", "agent", "tool", "status", "resource", "runId"];
@@ -26,8 +27,10 @@ export function activityHref({ tab = "history", kind = "all", filters = {}, quer
 
 export function activitySections({ tab = "history", historyHref = "#activity", checksHref = "#activity?tab=checks", handoffsHref = "#activity?tab=handoffs" } = {}) {
   const selected = ["checks", "handoffs"].includes(tab) ? tab : "history";
-  return h("nav", { class: "ds-tabs activity-section-tabs", "aria-label": "Activity views" },
+  const nav = h("nav", { class: "ds-tabs activity-section-tabs", "aria-label": "Activity views" },
     [["history", "History", historyHref, "history"], ["handoffs", "Handoffs", handoffsHref, "route"], ["checks", "Checks", checksHref, "badge-check"]].map(([key, label, href, glyph]) => h("a", {
       href, class: "ds-tab", "aria-current": selected === key ? "page" : null, "data-activity-section": key,
     }, icon(glyph, { size: 15 }), label)));
+  slidingIndicator(nav, { variant: "underline", key: "activity-sections", offset: 0 });
+  return nav;
 }

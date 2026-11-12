@@ -245,6 +245,9 @@ details[open] > summary > .disclosure-chevron { transform: rotate(180deg); }
 .workspace .activity-switcher { display: inline-flex; gap: 0; padding: 2px; margin-bottom: var(--ds-space-4); background: var(--ds-surface-raised); border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-control); }
 :is(.workspace, .detail) .activity-switcher .activity-filter-tab { min-height: 28px; padding: 0 10px; border-radius: 4px; font-size: var(--ds-text-sm); font-weight: 450; transition: background-color var(--ds-duration-fast) var(--ds-ease-out), color var(--ds-duration-fast) var(--ds-ease-out); }
 :is(.workspace, .detail) .activity-switcher .activity-filter-tab[aria-pressed="true"] { color: var(--ds-ink); background: var(--ds-paper); font-weight: 500; box-shadow: 0 0 0 1px var(--ds-hairline-strong); }
+/* With a sliding indicator, the pill moves instead of each tab filling in. */
+.activity-switcher > .ds-slide-indicator { background: var(--ds-paper); border-radius: 4px; box-shadow: 0 0 0 1px var(--ds-hairline-strong); }
+:is(.workspace, .detail) .activity-switcher.ds-slide-host .activity-filter-tab[aria-pressed="true"] { background: transparent; box-shadow: none; }
 .activity-switcher .filter-count { padding: 0 5px; margin-left: 2px; color: var(--ds-muted); background: var(--ds-paper); border-radius: 4px; font-size: var(--ds-text-xs); }
 .activity-switcher .activity-filter-tab[aria-pressed="true"] .filter-count { background: var(--ds-surface-raised); color: var(--ds-ink); }
 /* Kind tabs: underline tabs on a hairline. */

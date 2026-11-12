@@ -64,6 +64,48 @@ for (const card of document.querySelectorAll(".ds-spotlight")) {
   });
 }
 
+// Glowing border: the arc turns toward the pointer while it is near the card.
+if (finePointer.matches && !reduceMotion.matches) {
+  const glowCards = [...document.querySelectorAll(".ds-glow-border")];
+  if (glowCards.length) document.addEventListener("pointermove", event => {
+    for (const card of glowCards) {
+      const box = card.getBoundingClientRect();
+      const near = event.clientX > box.left - 80 && event.clientX < box.right + 80 && event.clientY > box.top - 80 && event.clientY < box.bottom + 80;
+      card.dataset.glow = String(near);
+      if (!near) continue;
+      const angle = Math.atan2(event.clientY - (box.top + box.height / 2), event.clientX - (box.left + box.width / 2)) * 180 / Math.PI + 90;
+      card.style.setProperty("--ds-glow-angle", `${angle}deg`);
+    }
+  }, { passive: true });
+}
+
+// Word reveal: wrap each word of a [data-words] heading once. Screen readers
+// keep the original text through aria-label.
+if (!reduceMotion.matches) {
+  for (const heading of document.querySelectorAll("[data-words]")) {
+    let index = 0;
+    heading.setAttribute("aria-label", heading.textContent.replace(/\s+/g, " ").trim());
+    const walk = node => {
+      for (const child of [...node.childNodes]) {
+        if (child.nodeType === Node.TEXT_NODE) {
+          const parts = child.textContent.split(/(\s+)/);
+          const fragment = document.createDocumentFragment();
+          for (const part of parts) {
+            if (!part) continue;
+            if (/^\s+$/.test(part)) { fragment.append(part); continue; }
+            const word = document.createElement("span");
+            word.className = "ds-word"; word.setAttribute("aria-hidden", "true");
+            word.style.setProperty("--ds-i", String(index++)); word.textContent = part;
+            fragment.append(word);
+          }
+          child.replaceWith(fragment);
+        } else if (child.nodeType === Node.ELEMENT_NODE) walk(child);
+      }
+    };
+    walk(heading);
+  }
+}
+
 // Tabs with arrow-key navigation.
 for (const list of document.querySelectorAll("[role='tablist']")) {
   const tabs = [...list.querySelectorAll("[role='tab']")];
