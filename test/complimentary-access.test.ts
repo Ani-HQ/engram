@@ -63,6 +63,12 @@ describe("operator-only complimentary workspace access", () => {
       expect(() => complimentarySettings(["grant", ...bad, "--request-id", "launch-request-1", "--reason", "Authorized"], now)).toThrow();
     }
     expect(() => complimentarySettings(["grant", ...targetArgs], now)).toThrow();
+    // The owner's personal workspace is the only other authorized target, and only under its exact name.
+    const personal = ["--project", "ani-hq", "--org", "7", "--workspace-name", "anianroid's memory", "--owner-email", "owner@example.test"];
+    expect(complimentarySettings(["inspect", ...personal], now)).toMatchObject({ orgId: 7, workspaceName: "anianroid's memory" });
+    for (const bad of [personal.map(value => value === "anianroid's memory" ? "Ani HQ" : value), targetArgs.map(value => value === "Ani HQ" ? "anianroid's memory" : value), personal.map(value => value === "7" ? "07" : value), personal.map(value => value === "7" ? "6" : value)]) {
+      expect(() => complimentarySettings(["inspect", ...bad], now)).toThrow();
+    }
     expect(() => options("grant", ["--expires-at", "2026-10-23T00:00:00.000Z"])).toThrow();
     expect(() => options("grant", ["--expires-at", "2026-02-30T00:00:00.000Z"])).toThrow();
     const f = fixture();

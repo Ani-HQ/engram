@@ -8,10 +8,23 @@ import { OwnerCheckError, withOperatorDatabase } from "./check-owners";
 
 type Operation = "inspect" | "grant" | "revoke";
 export interface ComplimentarySettings {
-  operation: Operation; project: "ani-hq"; orgId: 1; workspaceName: "Ani HQ";
+  operation: Operation; project: "ani-hq"; orgId: AuthorizedOrg; workspaceName: string;
   ownerEmail: string; requestId: string | null; reason: string | null;
   expiresAt: string | null; grantId: string | null; run: boolean;
 }
+// Only these workspaces are authorized for operator grants: the Ani HQ team
+// and its owner's personal workspace. Each must still match its exact shape.
+const AUTHORIZED = {
+  1: { name: "Ani HQ", brainDb: "brain_shared", dataDb: "engram_gateway", homeDir: "brain" },
+  7: { name: "anianroid's memory", brainDb: "brain_org_7", dataDb: "brain_org_7", homeDir: "org-7" },
+} as const;
+type AuthorizedOrg = keyof typeof AUTHORIZED;
+function authorizedTarget(org: unknown, name: unknown) {
+  const id = Number(org) as AuthorizedOrg;
+  const target = String(org) === String(id) ? AUTHORIZED[id] : undefined;
+  return target && target.name === name ? { id, ...target } : null;
+}
+
 export function complimentarySettings(args: string[], now = new Date()): ComplimentarySettings {
   const operation = args[0] as Operation;
   if (!["inspect", "grant", "revoke"].includes(operation)) throw new OwnerCheckError("invalid_complimentary_operation");
@@ -25,7 +38,8 @@ export function complimentarySettings(args: string[], now = new Date()): Complim
   }
   // This launch helper is intentionally limited to the explicitly authorized
   // workspace. It never defaults a missing target or promotes membership.
-  if (values["--project"] !== "ani-hq" || values["--org"] !== "1" || values["--workspace-name"] !== "Ani HQ") throw new OwnerCheckError("complimentary_target_not_authorized");
+  const target = authorizedTarget(values["--org"], values["--workspace-name"]);
+  if (values["--project"] !== "ani-hq" || !target) throw new OwnerCheckError("complimentary_target_not_authorized");
   const ownerEmail = values["--owner-email"] ?? "";
   if (ownerEmail.length > 254 || ownerEmail !== ownerEmail.trim().toLowerCase() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) throw new OwnerCheckError("normalized_owner_email_required");
   const requestId = values["--request-id"] ?? null, reason = values["--reason"] ?? null;
@@ -34,7 +48,7 @@ export function complimentarySettings(args: string[], now = new Date()): Complim
   const expiresAt = values["--expires-at"] ?? null, grantId = values["--grant-id"] ?? null;
   if (expiresAt && (operation !== "grant" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(expiresAt) || !Number.isFinite(Date.parse(expiresAt)) || new Date(expiresAt).toISOString() !== expiresAt || Date.parse(expiresAt) <= now.getTime())) throw new OwnerCheckError("future_expiration_required");
   if (operation === "revoke" ? !grantId || !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(grantId) : grantId !== null) throw new OwnerCheckError("exact_grant_id_required");
-  return { operation, project: "ani-hq", orgId: 1, workspaceName: "Ani HQ", ownerEmail, requestId, reason, expiresAt, grantId, run };
+  return { operation, project: "ani-hq", orgId: target.id, workspaceName: target.name, ownerEmail, requestId, reason, expiresAt, grantId, run };
 }
 
 function validated(options: ComplimentarySettings, now: Date) {
@@ -65,7 +79,8 @@ export async function manageComplimentaryAccess(db: postgres.Sql, supplied: Comp
           FROM public.orgs o JOIN public.org_members m ON m.org_id = o.id
           WHERE o.id = ${options.orgId} AND o.name = ${options.workspaceName} AND m.email = ${options.ownerEmail} AND m.role = 'owner' FOR UPDATE OF o, m`;
     const target = rows[0];
-    if (rows.length !== 1 || target.id !== 1 || target.name !== options.workspaceName || target.brain_db !== "brain_shared" || target.data_db !== "engram_gateway" || target.home_dir !== "brain" || target.provisioning_status !== "ready" || !Number.isSafeInteger(Number(target.member_id))) throw new OwnerCheckError("complimentary_owner_workspace_mismatch");
+    const expected = authorizedTarget(options.orgId, options.workspaceName);
+    if (rows.length !== 1 || !expected || target.id !== expected.id || target.name !== expected.name || target.brain_db !== expected.brainDb || target.data_db !== expected.dataDb || target.home_dir !== expected.homeDir || target.provisioning_status !== "ready" || !Number.isSafeInteger(Number(target.member_id))) throw new OwnerCheckError("complimentary_owner_workspace_mismatch");
     if (options.operation !== "inspect") await tx`SELECT pg_advisory_xact_lock(hashtextextended(${`engram/complimentary/${options.orgId}`}, 0))`;
     const current = (await tx`SELECT id, org_id, granted_at, expires_at, revoked_at FROM public.workspace_complimentary_access WHERE org_id = ${options.orgId}`)[0];
     if (options.operation === "inspect") return { ok: true, operation: "inspect", orgId: options.orgId, ownerVerified: true, workspaceVerified: true, complimentary: access(current, now) };
