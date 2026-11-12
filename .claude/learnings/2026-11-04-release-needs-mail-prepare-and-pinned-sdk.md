@@ -16,5 +16,10 @@ fails with `python3: command not found`.
    then re-enables delivery and the schedule.
 4. A failed activate pre-check leaves traffic on the old revision, so retrying
    after the fix is safe.
+5. Activate refuses a smoke older than 2 hours. Re-run the smoke, then activate.
+   `prepare` pauses the mail schedule, so activate promptly after it.
+6. Every stage and activate pauses the Jev billing exporter unless both carry
+   `--jev-enable-customer-billing --jev-markup-bps 0`. Leaving the flag off on
+   2026-11-04 paused billing for 8 days without anyone noticing.
 
 **Evidence:** engram, 2026-11-04, PRs #86 and #87, revision `engram-r-1793791850`.
