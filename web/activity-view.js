@@ -1,7 +1,7 @@
 import { h } from "./profile.js";
 import { agentVisual, toolVisual, visualIcon } from "./tooling.js";
 import { icon } from "./icons.js";
-import { identityMark, staggerIn } from "./design-system.js";
+import { identityMark, slidingIndicator, staggerIn } from "./design-system.js";
 import { activityPresentation, actionPresentation, resourcePresentation, chronologicalActions, contributorName } from "./activity-presentation.js";
 
 const plural = (count, word) => `${count} ${count === 1 ? word : word === "approach" ? "approaches" : `${word}s`}`;
@@ -56,9 +56,11 @@ function toolChip(tool, onFilter, active = false, extraClass = "") {
     { class: `activity-tool-chip ${extraClass}`, title: tool, "aria-label": `Filter by ${tool}`, "aria-pressed": String(active), "data-focus-key": `tool:${tool}` });
 }
 export function activityFilters(stats, selected, onChange) {
-  return h("div", { class: "activity-switcher", role: "group", "aria-label": "Activity status" },
+  const group = h("div", { class: "activity-switcher", role: "group", "aria-label": "Activity status" },
     [["", "All statuses", stats.total], ["running", "In progress", stats.running], ["completed", "Completed", stats.completed], ["failed", "Needs attention", stats.failed]].map(([value, label, count]) =>
       button([label, h("span", { class: "filter-count" }, count ?? "—")], () => onChange(value), { class: "activity-filter-tab", "aria-pressed": String(selected === value), "data-activity-status": value })));
+  slidingIndicator(group, { key: "activity-status" });
+  return group;
 }
 function resourceControl(resource, activity, onResource, { action = null, primary = false, concise = false } = {}) {
   const label = resource.kind === "memory" ? "Open memory" : resource.kind === "url" ? "Open resource" : "Copy resource";

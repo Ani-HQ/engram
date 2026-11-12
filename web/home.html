@@ -44,9 +44,9 @@
   <button type="button" class="m-nav-toggle" data-nav-toggle aria-controls="site-nav" aria-expanded="false" aria-label="Open menu"><span class="ds-icon" data-icon="menu" aria-hidden="true"></span></button>
 </div></header>
 <main id="main" tabindex="-1">
-<section class="m-hero ds-dotgrid" aria-labelledby="home-title"><div class="m-wrap m-hero-inner">
+<section class="m-hero ds-dotgrid" data-variant="grid" data-spotlight aria-labelledby="home-title"><div class="m-wrap m-hero-inner">
   <a class="ds-announce" href="/changelog" data-reveal><span class="ds-announce-label">New</span><span class="ds-announce-text">One command now connects OpenClaw, Hermes Agent, Amp and Devin CLI</span><span class="ds-icon" data-icon="arrow-right" aria-hidden="true"></span></a>
-  <h1 id="home-title" data-reveal data-reveal-delay="60">Your agents forget.<span class="m-hero-accent">Engram remembers.</span></h1>
+  <h1 id="home-title" data-words>Your agents forget.<span class="m-hero-accent">Engram remembers.</span></h1>
   <p class="m-lead" data-reveal data-reveal-delay="120">One shared memory for Claude Code, Codex, Cursor and the rest of your MCP agents. Save a decision in one, recall it in the next, and stop re-explaining your project every session.</p>
   <div class="m-actions" data-reveal data-reveal-delay="180"><a class="ds-button m-button m-button-lg" data-variant="primary" href="https://x.com/anirudh_twt">Ask for an invite</a><a class="ds-button m-button m-button-lg m-button-ghost" href="/self-host"><span class="ds-icon" data-icon="terminal" aria-hidden="true"></span>Self-host for free</a></div>
   <p class="m-hero-note" data-reveal data-reveal-delay="240">Closed beta. New invites get 60 days of unlimited knowledge transfers, no card. <a href="/app#invite">Have an invite?</a></p>
@@ -130,30 +130,30 @@
 
 <section class="m-section" id="features" aria-labelledby="features-title"><div class="m-wrap">
   <div class="m-section-head m-center" data-reveal><span class="ds-kicker"><span class="ds-icon" data-icon="layers" aria-hidden="true"></span>One shared drive for agent context</span><h2 id="features-title">Everything your agents need to stop starting over.</h2></div>
-  <div class="m-bento">
-    <a class="ds-spotlight m-card m-span-2" href="/how-it-works#remember" data-reveal>
+  <div class="ds-bento">
+    <a class="ds-spotlight ds-glow-border m-card" data-span="wide" href="/how-it-works#remember" data-reveal>
       <div class="m-card-copy"><span class="ds-icon-tile" data-tone="accent"><span class="ds-icon" data-icon="brain"></span></span><h3>Memory you can actually read</h3><p>Decisions land on readable pages with tags, links and a timeline. Open the console and see exactly what was saved.</p><span class="m-card-more">How memory works<span class="ds-icon" data-icon="chevron-right" aria-hidden="true"></span></span></div>
       <div class="m-card-art m-page-art" aria-hidden="true"><div class="m-art-head"><span class="ds-icon" data-icon="file-text"></span>projects/billing</div><ul><li><time>Oct 21</time><span>Retries use a stable request ID.</span></li><li><time>Oct 18</time><span>Verify webhook signatures before parsing.</span></li><li><time>Oct 12</time><span>Invoices stay in cents, never floats.</span></li></ul><span class="m-art-caption">Example page</span></div>
     </a>
-    <a class="ds-spotlight m-card" href="/how-it-works#recall" data-reveal data-reveal-delay="80">
+    <a class="ds-spotlight ds-glow-border m-card" href="/how-it-works#recall" data-reveal data-reveal-delay="80">
       <div class="m-card-copy"><span class="ds-icon-tile" data-tone="accent"><span class="ds-icon" data-icon="search"></span></span><h3>Recall from any agent</h3><p>A second agent asks, Engram returns a few relevant snippets. Full pages are one call away.</p><span class="m-card-more">How recall works<span class="ds-icon" data-icon="chevron-right" aria-hidden="true"></span></span></div>
       <div class="m-card-art m-search-art" aria-hidden="true"><div class="m-art-input"><span class="ds-icon" data-icon="search"></span>job retries</div><div class="m-art-hit"><strong>projects/billing</strong><span>Retries use a stable request ID.</span></div></div>
     </a>
-    <a class="ds-spotlight m-card" href="/how-it-works#activity" data-reveal>
+    <a class="ds-spotlight ds-glow-border m-card" href="/how-it-works#activity" data-reveal>
       <div class="m-card-copy"><span class="ds-icon-tile" data-tone="accent"><span class="ds-icon" data-icon="activity"></span></span><h3>A trail you can trust</h3><p>Engram’s own calls are observed. Work in other tools appears when an agent reports it, and stays labeled unverified.</p><span class="m-card-more">What gets recorded<span class="ds-icon" data-icon="chevron-right" aria-hidden="true"></span></span></div>
       <div class="m-card-art m-trail-art" aria-hidden="true"><div><span class="m-dot" data-tone="ok"></span><span>Codex recalled <b>job retries</b></span><span class="m-trail-tag" data-tone="ok">Observed</span></div><div><span class="m-dot"></span><span>Claude Code opened a pull request</span><span class="m-trail-tag">Reported</span></div></div>
     </a>
-    <a class="ds-spotlight m-card m-span-2" href="/how-it-works#sharing" data-reveal data-reveal-delay="80">
+    <a class="ds-spotlight ds-glow-border m-card" data-span="wide" href="/how-it-works#sharing" data-reveal data-reveal-delay="80">
       <div class="m-card-copy"><span class="ds-icon-tile" data-tone="accent"><span class="ds-icon" data-icon="share-2"></span></span><h3>Share a slice, not the whole drive</h3><p>Describe what a team or agent should see. Review the exact excerpts, approve them, and share a fixed snapshot. Everything else stays yours.</p><span class="m-card-more">How scoped sharing works<span class="ds-icon" data-icon="chevron-right" aria-hidden="true"></span></span></div>
       <div class="m-card-art m-share-art" aria-hidden="true"><div class="m-art-head"><span class="ds-icon" data-icon="users"></span>Share with Platform team</div><ul><li data-on><span class="m-check"></span>Retries use a stable request ID.</li><li data-on><span class="m-check"></span>Verify webhook signatures before parsing.</li><li><span class="m-check"></span>Personal notes on the pricing call</li></ul><span class="m-art-button">Approve 2 excerpts</span></div>
     </a>
-    <a class="ds-spotlight m-card" href="/self-host" data-reveal>
+    <a class="ds-spotlight ds-glow-border m-card" href="/self-host" data-reveal>
       <div class="m-card-copy"><span class="ds-icon-tile" data-tone="accent"><span class="ds-icon" data-icon="database"></span></span><h3>Open source. Run it yourself.</h3><p>The gateway, memory, activity and console are MIT licensed. Docker Compose is the starting point.</p><code class="m-card-code">docker compose up --build -d</code></div>
     </a>
-    <a class="ds-spotlight m-card" href="/privacy" data-reveal data-reveal-delay="80">
+    <a class="ds-spotlight ds-glow-border m-card" href="/privacy" data-reveal data-reveal-delay="80">
       <div class="m-card-copy"><span class="ds-icon-tile" data-tone="accent"><span class="ds-icon" data-icon="shield-check"></span></span><h3>Optional AI stays off</h3><p>External AI processing starts off. Storage, keyword search and activity work without it until an owner turns it on.</p><span class="m-switch" aria-hidden="true"><span></span>External AI · Off</span></div>
     </a>
-    <a class="ds-spotlight m-card" href="/how-it-works#boundaries" data-reveal data-reveal-delay="160">
+    <a class="ds-spotlight ds-glow-border m-card" href="/how-it-works#boundaries" data-reveal data-reveal-delay="160">
       <div class="m-card-copy"><span class="ds-icon-tile" data-tone="accent"><span class="ds-icon" data-icon="key-round"></span></span><h3>One key per agent</h3><p>Every connection belongs to one workspace. Turn off write access for agents that should only read.</p><span class="m-card-more">Know the boundaries<span class="ds-icon" data-icon="chevron-right" aria-hidden="true"></span></span></div>
     </a>
   </div>

@@ -303,12 +303,30 @@ import { ICON_NAMES } from './icons.js';
 }
 
 // App shell examples.
-import { pill, showToast, banner, commandPalette } from './design-system.js';
+import { pill, showToast, toastPromise, banner, commandPalette, slidingIndicator, swapContent } from './design-system.js';
 {
   const kbd = text => { const key = document.createElement('kbd'); key.textContent = text; return key; };
   document.getElementById('shell-pills')?.replaceChildren(pill('Team'), pill('Read only', { tone: 'accent' }), pill('Beta', { tone: 'warning' }), pill('Revoked', { tone: 'danger' }), kbd('⌘K'), kbd('Esc'));
   document.getElementById('shell-toast')?.addEventListener('click', () => showToast('Settings saved', { glyph: icon('circle-check', { size: 16 }) }));
   document.getElementById('shell-toast-error')?.addEventListener('click', () => showToast('Could not save settings. Try again.', { tone: 'danger', glyph: icon('circle-alert', { size: 16 }), action: { label: 'Retry', run: () => {} } }));
+  document.getElementById('shell-toast-promise')?.addEventListener('click', () => {
+    const wait = new Promise(resolve => setTimeout(resolve, 1600));
+    toastPromise(wait, { pending: 'Saving example settings…', success: 'Example settings saved', glyphs: { pending: icon('loader-circle', { size: 16, class: 'ds-spin' }), success: icon('circle-check', { size: 16 }) } }).catch(() => {});
+  });
+  document.getElementById('shell-toast-stack')?.addEventListener('click', () => {
+    ['Example: memory saved', 'Example: handoff created', 'Example: connection renamed'].forEach((message, index) => setTimeout(() => showToast(message, { glyph: icon('circle-check', { size: 16 }) }), index * 220));
+  });
+  for (const [id, variant, attr] of [['slide-segmented', 'pill', 'aria-pressed'], ['slide-tabs', 'underline', 'aria-selected']]) {
+    const group = document.getElementById(id);
+    if (!group) continue;
+    slidingIndicator(group, { variant, offset: 0 });
+    group.addEventListener('click', event => { const pick = event.target.closest('button'); if (!pick) return; for (const item of group.querySelectorAll('button')) item.setAttribute(attr, String(item === pick)); });
+  }
+  {
+    const states = ['Saving…', 'Saved', 'Could not save'];
+    let index = 1;
+    document.getElementById('identity-swap')?.addEventListener('click', () => { index = (index + 1) % states.length; swapContent(document.getElementById('identity-swap-text'), states[index]); });
+  }
   const demoPalette = commandPalette([{ label: 'Pages', items: [{ label: 'Activity', glyph: icon('activity', { size: 16 }), run: () => {} }, { label: 'Memory', glyph: icon('brain', { size: 16 }), run: () => {} }] }, { label: 'Actions', items: [{ label: 'Connect an agent', glyph: icon('plug-zap', { size: 16 }), run: () => {} }] }]);
   document.getElementById('shell-palette')?.addEventListener('click', () => demoPalette.open());
   const action = document.createElement('button'); action.type = 'button'; action.className = 'ds-button primary small'; action.textContent = 'Learn more';

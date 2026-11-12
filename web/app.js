@@ -30,7 +30,7 @@ import { analyticsView } from "./analytics-view.js";
 import { approvalsView } from "./approvals-view.js";
 import { linkedWorkspacesPanel } from "./linked-workspaces-view.js";
 import { handoffsView } from "./handoffs-view.js";
-import { loadingState, observeLoadingMotion, observeSelects, emptyState, identityMark, markStack, pill, commandPalette, showToast, routeProgress, banner } from "./design-system.js";
+import { loadingState, observeLoadingMotion, observeSelects, emptyState, identityMark, markStack, pill, commandPalette, showToast, routeProgress, banner, slidingIndicator } from "./design-system.js";
 import { statusLabel } from "./status-label.js";
 import { createJevSettingsPanel } from "./jev-settings.js";
 import { deviceView } from "./device-view.js";
@@ -530,13 +530,18 @@ function handoffsSection() {
     isCurrent: () => !sessionMutation && authEpoch === epoch && activityHandoffsActive() && state.session?.org.id === workspaceId });
   return handoffsPanel.element;
 }
+function activityKindSwitcher() {
+  const group = el("div", { class: "activity-kind-switcher", role: "group", "aria-label": "Activity type" },
+    [["all", "All activity", "activity"], ["tasks", "Tasks", "layers"], ["memory", "Memory", "brain"]].map(([kind, label, mark]) => button([icon(mark, { size: 15 }), label], () => changeActivityKind(kind), { class: "ds-tab-underline", "aria-pressed": String(state.activityKind === kind), "data-activity-kind": kind })));
+  slidingIndicator(group, { variant: "underline", key: "activity-kind", offset: 6 });
+  return group;
+}
 function activityHistoryView() {
   const search = el("input", { type: "search", class: "search", placeholder: "Search work, tools, or approaches…", "aria-label": "Search activity", value: state.filters.q,
     oninput: event => { state.filters.q = event.target.value; clearTimeout(searchTimer); searchTimer = setTimeout(() => { writeRoute(); loadActivity(); }, 250); } });
   return [
     el("div", { id: "activity-agent-overview" }, activityAgents()),
-    el("div", { class: "activity-kind-switcher", role: "group", "aria-label": "Activity type" },
-      [["all", "All activity", "activity"], ["tasks", "Tasks", "layers"], ["memory", "Memory", "brain"]].map(([kind, label, mark]) => button([icon(mark, { size: 15 }), label], () => changeActivityKind(kind), { class: "ds-tab-underline", "aria-pressed": String(state.activityKind === kind), "data-activity-kind": kind }))),
+    activityKindSwitcher(),
     activityFilters(state.activityStats, state.filters.status, value => filterActivities("status", value)),
     el("div", { class: "filters activity-search-filters" }, el("div", { class: "search-field" }, icon("search", { size: 16 }), search, el("kbd", {}, "/")),
       button([icon("sparkles", { size: 13 }), "Search by intent"], () => launchInsights({ q: state.filters.q }), { class: "small activity-intent-button", title: "Find related work; text matching is used when model processing is unavailable" }),

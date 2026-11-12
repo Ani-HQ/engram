@@ -47,7 +47,13 @@ Defined in `web/design-system.css` ("Identity and motion") and `web/design-syste
 | `flashNew(elements)` / `.ds-flash` | Highlight rows that arrived since the last refresh. |
 | `.ds-row-hover` | Row hover surface. |
 | `.ds-tab-underline` | Mint underline that grows under the pressed or selected tab. |
+| `slidingIndicator(container, { variant, key, offset })` | One pill (`variant: 'pill'`) or mint underline (`'underline'`) that glides to the selected child (aria-pressed, aria-selected, aria-current or data-active) in 250ms. `key` remembers the last position so a set rebuilt by a render still glides. Used by the activity section tabs, kind tabs and status filter. |
+| `swapContent(element, text)` / `.ds-swap` | Text or icon change with a 150ms rise and blur, only when the value changes. For save state and status words. |
+| `.ds-reveal-content` | Content replacing a skeleton fades in as a 2px blur clears (400ms). |
 | `.ds-spin` | Rotation for a pending-state icon. |
+| `markStack` hover | The hovered mark lifts 4px and scales to 1.05; its neighbors lift 2px; release uses `--ds-ease-spring`. |
+
+**Motion recipe.** Overlays and fresh content enter with a short rise (`--ds-enter-rise`, 8px), a blur clearing from `--ds-enter-blur` (2px) and a slight scale (`--ds-enter-scale`, .97) over `--ds-duration-overlay` (250ms) on `--ds-ease-out`. Exits run about 40% faster (`--ds-duration-exit`, 150ms). `--ds-ease-spring` adds a small overshoot for physical controls (switch thumb, mark lift). Dialogs, menus, the command palette, toasts and `.ds-stagger` lists all use it, and all of it stops for reduced motion.
 
 Custom agents: an agent with no vendored mark can describe itself with the `set_identity` MCP tool (a name and a square PNG logo, re-encoded server side at 64 px). `setAgentIdentities()` in `tooling.js` loads the workspace's identities from `/api/connections`; `agentVisual()` then returns `{ logo, label, custom }` and `visualIcon()` renders the logo as `img.agent-logo`, which fills the `identityMark()` tile. Always pair a custom name or logo with a `pill()` that says where it came from ("Self-described" or "Set by owner"); it is a display hint, never verification. Owners edit it in the connection detail panel (`web/agent-identity-editor.js`). Public pages never show custom identities (`publicSafe`). Gallery: `#identity`, "Custom agents".
 
@@ -61,9 +67,10 @@ Modeled on developer dashboards (Supabase's, via Mobbin), with Engram's palette.
 | --- | --- |
 | `.ds-topbar`, `.ds-crumbs`, `.ds-crumb`, `.ds-crumb-sep`, `.ds-search-trigger`, `.ds-topbar-button`, `.ds-topbar-action` | Top bar: logo / workspace switcher + kind pill / page, then Share and Feedback (`.ds-topbar-action`), ⌘K search, help, account menu. Every control is 30px tall (44px on touch) with the same hairline border, centered on one line. |
 | `.ds-rail` | 56px icon rail; labels slide in on hover or focus; off-canvas sheet under 900px. |
-| `commandPalette(groups)` | ⌘K / Ctrl K menu: grouped pages, actions, workspaces and help; arrow keys, Enter, Esc. Every item runs an existing app action. |
+| `commandPalette(groups)` | ⌘K / Ctrl K menu: grouped pages, actions, workspaces and help; arrow keys, Enter, Esc. Every item runs an existing app action. The backdrop blurs, the panel enters with the motion recipe, and one highlight glides between results. |
 | `pill(text, { tone })` | Small mono uppercase pill for a fixed category ("Team", "Read only"). Never a status claim. |
-| `showToast(message, { tone, glyph, action })` | Top-right stacked toast with a countdown hairline; pauses on hover; max three. App `toast()` wraps it and marks failures red. |
+| `showToast(message, { tone, glyph, action })` | Top-right toast with a countdown hairline; pauses on hover; max three. Older toasts stack behind the newest (12px peek, smaller, dimmer) and fan out on hover. Returns `dismiss()`, whose `dismiss.update({ message, tone, glyph })` changes the toast in place with a blur swap. Tone `pending` has no timer. App `toast()` wraps it and marks failures red. |
+| `toastPromise(promise, { pending, success, failure, glyphs })` | One toast that follows a real operation: pending while it runs, then success or failure in place. Never claims success before the promise resolves. |
 | `routeProgress.start()/done()` | 2px mint bar while a view's data loads (not on background polling). |
 | `banner({ glyph, title, description, action, onDismiss })` | Dismissible notice with an icon tile. |
 | `.ds-panel-list`, `.ds-panel-head`, `.ds-panel-foot` | Bordered list with a mono uppercase header row, hairline rows and a footer bar (counts, load more, key hints). |
@@ -101,7 +108,10 @@ Defined in the "Marketing kit" section of `web/design-system.css`, arranged by `
 | `.ds-stat` | Value with an accent rule above it. Values must be true facts, never invented metrics. |
 | `.ds-accordion` | Hairline question list built on native `<details>`. |
 | `.ds-marquee` | Two lists: the real list, then an `aria-hidden` copy. Scrolls, pauses on hover or focus, and becomes a static wrapping list for reduced motion. |
-| `.ds-dotgrid` | Dot grid and soft mint glow behind a hero or closing call to action. |
+| `.ds-dotgrid` | Dot grid and soft mint glow behind a hero or closing call to action. `data-variant="grid"` swaps dots for a fine line grid; `data-spotlight` makes the glow drift in once, then hold still. |
+| `.ds-bento` | Feature grid with mixed spans: `data-span="wide"` or `"tall"` on any direct child. Three columns, two under 900px, one under 600px. `.ds-bento-card` and `.ds-bento-visual` give a plain card with a visual area above a title and one line. Visuals show real UI, labeled as examples. |
+| `.ds-glow-border` | A short mint arc on a card's edge that turns toward the pointer while it is within 80px (fine pointers only). Pairs with `.ds-spotlight`. |
+| `[data-words]` | Hero headline that arrives word by word as each word's blur clears (70ms stagger). Screen readers get the original text; reduced motion shows it at once. |
 | `.ds-menu` | Header dropdown panel. Opens on hover with a fine pointer, on click, and closes on Escape or outside click. Inline on narrow screens. |
 | `[data-reveal]`, `data-reveal-delay` | Fade-up on scroll. Content is hidden only after the script adds `html.ds-js`, and never for reduced motion. |
 

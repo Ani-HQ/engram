@@ -491,15 +491,26 @@ function region() {
   document.body.append(toastRegion);
   return toastRegion;
 }
-/** Top-right toast. tone: success | danger | info. Optional action { label, run }. Max three on screen. */
+/** Measure each toast so a hovered stack fans out to its real heights. */
+function layoutToasts(host) {
+  let offset = 0;
+  for (const item of host.children) { item.style.setProperty('--ds-toast-offset', `${offset}px`); offset += item.offsetHeight + 8; }
+}
+/**
+ * Top-right toast. tone: success | danger | info | pending. Optional action { label, run }.
+ * Max three on screen, stacked; hovering the stack fans it out. Returns dismiss(),
+ * which also has update({ message, tone, glyph, duration }) to change the toast in place.
+ */
 export function showToast(message, { tone = 'success', glyph = null, action = null, duration = 4200 } = {}) {
   const host = region();
   const item = document.createElement('div');
   item.setAttribute('class', 'ds-toast-item'); item.setAttribute('data-tone', tone);
   item.setAttribute('role', tone === 'danger' ? 'alert' : 'status');
-  if (glyph instanceof Node) { const mark = document.createElement('span'); mark.setAttribute('class', 'ds-toast-icon'); mark.append(glyph); item.append(mark); }
+  const mark = document.createElement('span'); mark.setAttribute('class', 'ds-toast-icon');
+  if (glyph instanceof Node) mark.append(glyph); else mark.hidden = true;
+  item.append(mark);
   const text = document.createElement('span'); text.setAttribute('class', 'ds-toast-text'); text.textContent = String(message); item.append(text);
-  const dismiss = () => { if (!item.isConnected) return; item.setAttribute('data-leaving', 'true'); setTimeout(() => item.remove(), 180); };
+  const dismiss = () => { if (!item.isConnected) return; item.setAttribute('data-leaving', 'true'); setTimeout(() => { item.remove(); if (host.isConnected) layoutToasts(host); }, 200); };
   if (action?.label && typeof action.run === 'function') {
     const control = document.createElement('button'); control.type = 'button'; control.setAttribute('class', 'ds-toast-action'); control.textContent = String(action.label);
     control.addEventListener('click', () => { action.run(); dismiss(); }); item.append(control);
@@ -509,10 +520,95 @@ export function showToast(message, { tone = 'success', glyph = null, action = nu
   const bar = document.createElement('span'); bar.setAttribute('class', 'ds-toast-timer'); bar.setAttribute('aria-hidden', 'true'); bar.style.setProperty('--ds-toast-duration', `${Math.max(1000, duration)}ms`); item.append(bar);
   host.prepend(item);
   while (host.children.length > 3) host.lastElementChild.remove();
-  let timer = setTimeout(dismiss, duration);
+  layoutToasts(host);
+  let timer = tone === 'pending' ? 0 : setTimeout(dismiss, duration);
   item.addEventListener('pointerenter', () => { clearTimeout(timer); item.setAttribute('data-paused', 'true'); });
-  item.addEventListener('pointerleave', () => { item.removeAttribute('data-paused'); timer = setTimeout(dismiss, 1600); });
+  item.addEventListener('pointerleave', () => { item.removeAttribute('data-paused'); if (item.dataset.tone !== 'pending') timer = setTimeout(dismiss, 1600); });
+  dismiss.update = (next = {}) => {
+    if (!item.isConnected) return;
+    const nextTone = next.tone || item.dataset.tone;
+    item.setAttribute('data-tone', nextTone); item.setAttribute('role', nextTone === 'danger' ? 'alert' : 'status');
+    if (next.message !== undefined) text.textContent = String(next.message);
+    if (next.glyph instanceof Node) { mark.replaceChildren(next.glyph); mark.hidden = false; }
+    item.removeAttribute('data-swapped'); void item.offsetWidth; item.setAttribute('data-swapped', 'true');
+    clearTimeout(timer);
+    if (nextTone !== 'pending') {
+      const wait = Math.max(1000, next.duration ?? duration);
+      bar.style.setProperty('--ds-toast-duration', `${wait}ms`);
+      bar.getAnimations().forEach(animation => { animation.cancel(); animation.play(); });
+      timer = setTimeout(dismiss, wait);
+    }
+    layoutToasts(host);
+  };
   return dismiss;
+}
+
+/**
+ * One toast that follows a real operation: pending while it runs, then success or
+ * failure in place. Returns the promise's own result or rejection.
+ */
+export async function toastPromise(promise, { pending = 'Working…', success = 'Done', failure = 'Something went wrong', glyphs = {} } = {}) {
+  const toast = showToast(pending, { tone: 'pending', glyph: glyphs.pending || null });
+  try {
+    const value = await promise;
+    toast.update({ tone: 'success', message: typeof success === 'function' ? success(value) : success, glyph: glyphs.success });
+    return value;
+  } catch (error) {
+    toast.update({ tone: 'danger', message: typeof failure === 'function' ? failure(error) : failure, glyph: glyphs.failure });
+    throw error;
+  }
+}
+
+/**
+ * Add one indicator that glides to the selected child of a tab or segment set.
+ * variant 'pill' fills behind the item; 'underline' draws the mint tab rule.
+ * Selection is read from aria-pressed, aria-selected, aria-current or data-active.
+ * key remembers the last position, so a set rebuilt by a render still glides
+ * from the old selection. offset moves the underline below each item's bottom.
+ * Returns a disconnect function.
+ */
+const slidePositions = new Map();
+export function slidingIndicator(container, { variant = 'pill', selector = ':scope > *', key = '', offset = 4 } = {}) {
+  // Progressive enhancement: without a real DOM (tests, very old browsers) the set keeps its own selected style.
+  if (typeof Element === 'undefined' || typeof MutationObserver !== 'function' || typeof requestAnimationFrame !== 'function' || !(container instanceof Element) || container.querySelector(':scope > .ds-slide-indicator')) return () => {};
+  const indicator = document.createElement('span');
+  indicator.setAttribute('class', 'ds-slide-indicator'); indicator.setAttribute('aria-hidden', 'true');
+  if (variant === 'underline') indicator.setAttribute('data-variant', 'underline');
+  container.classList.add('ds-slide-host'); container.setAttribute('data-slide', variant);
+  container.prepend(indicator);
+  const setBox = box => { for (const [name, value] of Object.entries(box)) indicator.style.setProperty(`--ds-slide-${name}`, `${value}px`); };
+  const remembered = key && slidePositions.get(key);
+  if (remembered) { setBox(remembered); indicator.setAttribute('data-ready', 'true'); }
+  const selected = () => [...container.querySelectorAll(selector)].find(item => item !== indicator && (item.getAttribute('aria-pressed') === 'true' || item.getAttribute('aria-selected') === 'true' || item.getAttribute('aria-current') === 'page' || item.getAttribute('data-active') === 'true'));
+  let frame = 0;
+  const place = () => {
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(() => {
+      const item = selected();
+      if (!item || !item.offsetWidth) { indicator.removeAttribute('data-ready'); return; }
+      const box = variant === 'underline'
+        ? { x: item.offsetLeft, y: item.offsetTop + item.offsetHeight + offset - 2, w: item.offsetWidth, h: 2 }
+        : { x: item.offsetLeft, y: item.offsetTop, w: item.offsetWidth, h: item.offsetHeight };
+      setBox(box);
+      if (key) slidePositions.set(key, box);
+      if (!indicator.hasAttribute('data-ready')) requestAnimationFrame(() => indicator.setAttribute('data-ready', 'true'));
+    });
+  };
+  const watch = new MutationObserver(place);
+  watch.observe(container, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-pressed', 'aria-selected', 'aria-current', 'data-active', 'hidden'] });
+  const resize = typeof ResizeObserver === 'function' ? new ResizeObserver(place) : null;
+  resize?.observe(container);
+  place();
+  return () => { watch.disconnect(); resize?.disconnect(); indicator.remove(); container.classList.remove('ds-slide-host'); container.removeAttribute('data-slide'); };
+}
+
+/** Replace an element's text with a short rise and blur, only when it changes. */
+export function swapContent(element, value) {
+  if (!(element instanceof Element)) return;
+  const next = String(value);
+  if (element.textContent === next) return;
+  element.textContent = next;
+  element.classList.remove('ds-swap'); void element.offsetWidth; element.classList.add('ds-swap');
 }
 
 /** A thin progress bar at the top of the viewport while a view's data loads. */
@@ -549,15 +645,27 @@ export function commandPalette(groups = [], { placeholder = 'Type a command or s
   const esc = document.createElement('kbd'); esc.textContent = 'Esc';
   search.append(input, esc);
   const list = document.createElement('div'); list.id = 'ds-palette-list'; list.setAttribute('class', 'ds-palette-list'); list.setAttribute('role', 'listbox');
+  const highlight = document.createElement('span'); highlight.setAttribute('class', 'ds-palette-highlight'); highlight.setAttribute('aria-hidden', 'true');
   const footer = document.createElement('div'); footer.setAttribute('class', 'ds-palette-footer');
   footer.textContent = '↑↓ to move · Enter to select · Esc to close';
   dialog.append(search, list, footer);
   let options = [], active = 0;
-  const select = index => { active = Math.max(0, Math.min(options.length - 1, index)); options.forEach((option, i) => option.setAttribute('aria-selected', String(i === active))); options[active]?.scrollIntoView({ block: 'nearest' }); if (options[active]) input.setAttribute('aria-activedescendant', options[active].id); };
+  const select = index => {
+    active = Math.max(0, Math.min(options.length - 1, index));
+    options.forEach((option, i) => option.setAttribute('aria-selected', String(i === active)));
+    const current = options[active];
+    highlight.hidden = !current;
+    if (current) {
+      highlight.style.setProperty('--ds-palette-y', `${current.offsetTop}px`);
+      highlight.style.setProperty('--ds-palette-h', `${current.offsetHeight}px`);
+      current.scrollIntoView({ block: 'nearest' });
+      input.setAttribute('aria-activedescendant', current.id);
+    }
+  };
   const run = option => { const item = option?.__item; if (!item) return; close(); item.run(); };
   function renderList() {
     const query = input.value.trim().toLowerCase();
-    list.replaceChildren(); options = [];
+    list.replaceChildren(highlight); options = [];
     for (const group of groups) {
       const matches = group.items.filter(item => !query || `${item.label} ${item.keywords || ''}`.toLowerCase().includes(query));
       if (!matches.length) continue;
