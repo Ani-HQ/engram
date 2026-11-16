@@ -47,6 +47,61 @@ Each snapshot has the same schema as the JSON endpoint. The `live` object contai
 - Stale actions are still recorded as running but have no recent report. They are excluded from working now. A new running heartbeat with a fresh `eventId` refreshes them; retrying the same report does not.
 - `stats` and category/day totals use each logical action's latest state. A keyed running action followed by its completion counts once. Historical reports without an `actionKey` remain individual events.
 
+- `stats.completedTasks` counts logical `agent.task` reports whose latest state is `completed`. Like other stats, a running report later completed counts once.
+
+### Token counters
+
+Snapshots include a `tokens` object:
+
+```json
+{
+  "enabled": true,
+  "total": 1284000000,
+  "input": 2100000, "output": 900000, "cacheRead": 1270000000, "cacheWrite": 11000000,
+  "today": 5400000,
+  "lastHour": 320000,
+  "daily": [{ "date": "2026-08-25", "count": 0 }, "... 84 UTC days, the same range as daily ..."],
+  "agents": [{ "product": "claude-code", "label": "Claude Code", "tokens": 1100000000 }, { "product": "codex", "label": "Codex", "tokens": 184000000 }],
+  "updatedAt": "2026-11-16T10:19:00.000Z",
+  "source": "local-session-logs"
+}
+```
+
+These numbers come from agents' local session logs, sent by the Engram memory connector. Engram does not observe them, and they are not a provider bill. The connector reads token **counts only** from the session log on the agent's machine and posts cumulative totals per session to `POST /api/usage`; prompts, outputs and file content never leave the machine.
+
+- `total` is `input + output + cacheRead + cacheWrite`, all time, across the workspace's reporting credentials. Cache reads usually dominate for coding agents.
+- `today` is the current UTC day so far. `lastHour` is a rolling figure: the sum of the current and previous UTC hour buckets, so it covers between 60 and 120 minutes.
+- Usage is bucketed by the hour the server **received** growth, not the hour the agent used the tokens. A connector installed mid-session reports that session's earlier tokens in its first hour.
+- `agents` groups totals by known agent product key; anything else is grouped as `other` (label "Agent"). Session identifiers, model names and credential names are never public.
+- `updatedAt` is the latest time any session's totals grew.
+- The owner's **Show token usage** switch (`showTokens`, default on, including for existing profiles) hides them. Hidden counters return `enabled: false`, zeros, empty arrays and `updatedAt: null`, and the public snapshot does not read usage rows at all. The owner's private settings preview still computes the numbers with `enabled: false`, showing what would be published. Toggling changes the publication revision, so open streams pick up the change on the next refresh.
+- The page and share card add a compact total (for example "1.2B tokens · 3,400 actions · 12 agents") only when counters are enabled and non-zero. Compact numbers truncate rather than round up.
+
+The existing five-second stream poll delivers new totals within about five seconds. The built-in page animates from the previous real value to the new real value and never extrapolates between updates.
+
+#### Ingest contract
+
+`POST /api/usage` takes a bearer credential (no cookies, no console header) and a JSON body of at most 2 KB:
+
+```json
+{ "harness": "claude-code", "session": "<64 lowercase hex>", "model": "claude-opus-5-5",
+  "input": 123, "output": 45, "cacheRead": 6789, "cacheWrite": 10, "occurredAt": "2026-11-16T10:00:00.000Z" }
+```
+
+Unknown fields are rejected. `session` is a SHA-256 of the runtime and its session id, computed by the connector. Counts are non-negative safe integers up to 10^12 and cumulative for the session. `model` and `occurredAt` are optional; `occurredAt` is informational and may not be more than a day ahead. The agent identity is the authenticated credential, never a body field, and `harness` is kept only if it is a known product key (otherwise `other`). A session keeps the harness it was first reported with.
+
+The server locks the session row, takes the per-column growth over the stored maximum, stores the maximum, and adds the growth to the current UTC hour bucket, all in one transaction. Retries and out-of-order reports therefore add nothing. A single report whose total growth exceeds 2,000,000,000 tokens is rejected. A credential can start at most 240 new sessions per hour; known sessions can always report.
+
+| Status | Body | Meaning |
+| --- | --- | --- |
+| 200 | `{"ok":true}` | Stored (or nothing new to add). |
+| 400 | `{"ok":false,"error":"invalid_usage"}` | Malformed, oversized, or over the per-report cap. Do not retry. |
+| 401 | `{"ok":false,"error":"unauthorized"}` | Missing or invalid credential. |
+| 403 | `{"ok":false,"error":"forbidden"}` or `"subscription_required"` | Read-only credential, agent writes disabled by policy, OAuth sign-in without write scope, or a workspace that cannot add content (for example an ended trial). Same rule as `record_action`. |
+| 429 / 503 | `{"ok":false,...}` with `Retry-After` | Retry later. |
+
+Storage is additive: `token_usage_sessions`, `token_usage_hourly`, and `action_profiles.show_tokens` (non-null, default `true`), with a separate `token_usage_version` readiness marker of `2026111601`. All predecessor markers are unchanged, so older runtime revisions still cold-start after the migration. Apply the provisioner migration before starting runtime instances that require the new marker.
+
 The profile's chosen name/bio is public. Counts refer to authenticated reporting identities, which need not correspond one-to-one to a physical agent process. Raw tool identifiers, private agent aliases, task summaries, resources, details, run IDs, action/event keys, and transcripts are excluded.
 
 ### Owner-written layout and highlights

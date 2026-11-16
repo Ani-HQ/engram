@@ -26,6 +26,7 @@ import { callTool } from "./proxy";
 import { resolveReview } from "./review/apply";
 import { getReviewItem, listReviewItems } from "./review/store";
 import { handlePublicShowcase, handleShowcaseApi } from "./showcase";
+import { handleTokenUsageRequest } from "./token-usage";
 import { BillingError, handleBillingApi, handleBillingWebhook, publicPlans, requireHostedWriteAccess, requiresHostedEntitlement } from "./billing";
 import { triggerProvisioning } from "./provisioning-trigger";
 import { processingOrg } from "./privacy";
@@ -203,6 +204,9 @@ async function routeWeb(req: Request): Promise<Response> {
   const showcase = await handlePublicShowcase(req);
   if (showcase) return showcase;
   if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
+    // Connectors report local session token counts with a bearer credential.
+    // No cookie or console header: this route never acts for a browser session.
+    if (url.pathname === "/api/usage") return handleTokenUsageRequest(req);
     if ((url.pathname === "/api/billing" || url.pathname.startsWith("/api/billing/")) && req.headers.get("authorization")) {
       const token = await authenticateRequest(req);
       if (!token) return Response.json({ error: "unauthorized" }, { status: 401 });
