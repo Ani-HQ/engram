@@ -191,3 +191,47 @@ describe('quiet activity text', () => {
     } finally { Object.assign(globalThis, { IntersectionObserver: saved }); }
   });
 });
+
+describe('flex counters', () => {
+  test('formats exact and compact counts without inventing values', async () => {
+    const { formatCount } = await import('./design-system.js');
+    expect(formatCount(1284113)).toBe('1,284,113');
+    expect(formatCount(9876, 'compact')).toBe('9,876');
+    expect(formatCount(12_345, 'compact')).toBe('12.3K');
+    expect(formatCount(340_000, 'compact')).toBe('340K');
+    expect(formatCount(1_842_000_000, 'compact')).toBe('1.84B');
+    expect(formatCount(1_200_000, 'compact')).toBe('1.2M');
+    for (const value of [-5, Number.NaN, 'x', undefined, null]) expect(formatCount(value as any, 'compact')).toBe('0');
+  });
+
+  const frames: Function[] = [];
+  const realGlobals = { requestAnimationFrame: (globalThis as any).requestAnimationFrame, cancelAnimationFrame: (globalThis as any).cancelAnimationFrame, matchMedia: (globalThis as any).matchMedia };
+  const useMotion = (reduced: boolean) => Object.assign(globalThis, {
+    requestAnimationFrame: (callback: Function) => frames.push(callback), cancelAnimationFrame: () => {},
+    matchMedia: (query: string) => ({ matches: reduced && query.includes('reduce') }),
+  });
+  afterEach(() => { frames.length = 0; Object.assign(globalThis, realGlobals); });
+
+  test('eases from the previous real value to the next and lands exactly on it', async () => {
+    const { counterTo } = await import('./design-system.js');
+    useMotion(false);
+    const value = new Element('strong');
+    counterTo(value as any, 1000);
+    expect(value.textContent).toBe('1,000'); expect(frames).toHaveLength(0);
+    counterTo(value as any, 2000, { duration: 100 });
+    expect(value.attrs['data-counting']).toBe('true'); expect(value.attrs.title).toBe('2,000');
+    const seen: number[] = [];
+    const start = performance.now();
+    for (const at of [start + 25, start + 50, start + 75, start + 200]) { const next = frames.shift()!; next(at); seen.push(Number(value.textContent.replace(/,/g, ''))); }
+    expect(seen.every(number => number >= 1000 && number <= 2000)).toBe(true);
+    expect(seen.at(-1)).toBe(2000); expect(value.attrs['data-counting']).toBeUndefined(); expect(frames).toHaveLength(0);
+  });
+
+  test('jumps straight to the new value under reduced motion', async () => {
+    const { counterTo } = await import('./design-system.js');
+    useMotion(true);
+    const value = new Element('strong');
+    counterTo(value as any, 10); counterTo(value as any, 99_000, { format: 'compact' });
+    expect(frames).toHaveLength(0); expect(value.textContent).toBe('99K'); expect(value.attrs.title).toBe('99,000');
+  });
+});

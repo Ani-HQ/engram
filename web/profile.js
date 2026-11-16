@@ -1,5 +1,5 @@
 import { agentVisual, providerVisual, visualIcon } from "./tooling.js";
-import { identityMark, markStack, profileAvatar, statusText } from "./design-system.js";
+import { formatCount, identityMark, markStack, profileAvatar, slidingIndicator, statHero, statusText, updateStatHero } from "./design-system.js";
 import { icon } from "./icons.js";
 import { statusLabel } from "./status-label.js";
 
@@ -30,16 +30,18 @@ export function activityRhythm(daily = []) {
   return { current, longest, best };
 }
 const dayCount = value => `${number(value)} ${value === 1 ? "day" : "days"}`;
-function rhythmFacts(daily) {
+const metricUnits = { actions: ["action", "actions"], tokens: ["token", "tokens"] };
+const unitCount = (value, metric = "actions", format = "exact") => `${metric === "tokens" ? formatCount(value, format) : number(value)} ${metricUnits[metric][value === 1 ? 0 : 1]}`;
+function rhythmFacts(daily, metric = "actions") {
   const { current, longest, best } = activityRhythm(daily);
   return [
     ["current", "flame", "Current streak", dayCount(current), current > 0],
     ["longest", "zap", "Longest streak", dayCount(longest), false],
-    ["best", "trophy", best ? `Best day · ${dayLabel(best.date)}` : "Best day", best ? `${number(best.count)} ${best.count === 1 ? "action" : "actions"}` : "None yet", false],
+    ["best", "trophy", best ? `Best day · ${dayLabel(best.date)}` : "Best day", best ? unitCount(best.count, metric, "compact") : "None yet", false],
   ];
 }
-function updateRhythm(section, daily) {
-  for (const [key, , label, value, hot] of rhythmFacts(daily)) {
+function updateRhythm(section, daily, metric = "actions") {
+  for (const [key, , label, value, hot] of rhythmFacts(daily, metric)) {
     const fact = section.querySelector(`[data-rhythm="${key}"]`);
     if (!fact) continue;
     setText(fact.querySelector(".profile-rhythm-value"), value);
@@ -51,12 +53,15 @@ const categories = { code: ["Code"], files: ["Files"], email: ["Email"], calenda
 
 // Square-root scaling keeps ordinary days visible next to one very busy day.
 const cellLevel = (count, maximum) => count > 0 ? Math.min(4, Math.max(1, Math.ceil(Math.sqrt(count / maximum) * 4))) : 0;
-export function contributionGrid(daily = [], { headingTag = "h3" } = {}) {
+const cellLabel = (day, metric) => `${unitCount(day.count, metric)} on ${new Intl.DateTimeFormat(undefined, { dateStyle: "long", timeZone: "UTC" }).format(new Date(`${day.date}T12:00:00Z`))}`;
+const chartCaption = (daily, metric) => `${unitCount(daily.reduce((sum, day) => sum + day.count, 0), metric, "compact")} in the last 12 weeks`;
+// metric switches the same grid between agent actions and reported tokens.
+// onMetric renders the toggle only when token counts are available.
+export function contributionGrid(daily = [], { headingTag = "h3", metric = "actions", onMetric = null } = {}) {
   const maximum = Math.max(1, ...daily.map(day => day.count));
-  const count = daily.reduce((sum, day) => sum + day.count, 0);
-  const live = h("span", { class: "contribution-caption", "aria-live": "polite" }, `${number(count)} actions in the last 12 weeks`);
+  const live = h("span", { class: "contribution-caption", "aria-live": "polite" }, chartCaption(daily, metric));
   const cells = daily.map((day, index) => {
-    const label = `${number(day.count)} ${day.count === 1 ? "action" : "actions"} on ${new Intl.DateTimeFormat(undefined, { dateStyle: "long", timeZone: "UTC" }).format(new Date(`${day.date}T12:00:00Z`))}`;
+    const label = cellLabel(day, metric);
     const showDay = event => {
       cells.forEach(cell => { cell.tabIndex = cell === event.currentTarget ? 0 : -1; });
       grid.dataset.selectedDate = day.date;
@@ -64,7 +69,7 @@ export function contributionGrid(daily = [], { headingTag = "h3" } = {}) {
     };
     return h("button", { type: "button", class: `contribution-cell level-${cellLevel(day.count, maximum)}`, "data-date": day.date, tabindex: index === daily.length - 1 ? "0" : "-1", title: label, "aria-label": label, onclick: showDay, onfocus: showDay });
   });
-  const grid = h("div", { class: "contribution-grid", role: "group", "aria-label": "Daily activity for the last 12 weeks. Use arrow keys to explore.", onkeydown: event => {
+  const grid = h("div", { class: "contribution-grid", role: "group", "aria-label": `Daily ${metric === "tokens" ? "token usage" : "activity"} for the last 12 weeks. Use arrow keys to explore.`, onkeydown: event => {
     const current = cells.indexOf(document.activeElement);
     const offset = { ArrowRight: 7, ArrowLeft: -7, ArrowDown: 1, ArrowUp: -1 }[event.key];
     if (current < 0 || (offset === undefined && !["Home", "End"].includes(event.key))) return;
@@ -81,9 +86,11 @@ export function contributionGrid(daily = [], { headingTag = "h3" } = {}) {
     const previous = daily[(index - 1) * 7]?.date;
     return h("span", {}, date && (index === 0 || date.slice(0, 7) !== previous?.slice(0, 7)) ? new Intl.DateTimeFormat(undefined, { month: "short", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`)) : "");
   });
-  const section = h("section", { class: "contributions" },
-    h("div", { class: "profile-section-heading" }, h(headingTag, {}, "Shipping rhythm"), h("span", {}, "Last 12 weeks")),
-    h("ul", { class: "profile-rhythm", role: "list", "aria-label": "Streaks in the last 12 weeks, UTC days" }, rhythmFacts(daily).map(([key, glyph, label, value, hot]) =>
+  const toggle = onMetric && h("div", { class: "ds-segmented profile-rhythm-metric", role: "group", "aria-label": "Chart shows" }, [["actions", "Actions"], ["tokens", "Tokens"]].map(([value, text]) =>
+    h("button", { type: "button", "data-metric": value, "aria-pressed": String(metric === value), onclick: () => { if (metric !== value) onMetric(value); } }, text)));
+  const section = h("section", { class: "contributions", "data-metric": metric, "data-metrics": String(Boolean(onMetric)) },
+    h("div", { class: "profile-section-heading" }, h(headingTag, {}, "Shipping rhythm"), toggle || h("span", {}, "Last 12 weeks")),
+    h("ul", { class: "profile-rhythm", role: "list", "aria-label": "Streaks in the last 12 weeks, UTC days" }, rhythmFacts(daily, metric).map(([key, glyph, label, value, hot]) =>
       h("li", { class: "profile-rhythm-fact", "data-rhythm": key, "data-hot": String(hot) }, h("span", { class: "profile-rhythm-icon", "aria-hidden": "true" }, icon(glyph, { size: 16 })),
         h("span", { class: "profile-rhythm-copy" }, h("strong", { class: "profile-rhythm-value" }, value), h("span", { class: "profile-rhythm-label" }, label))))),
     h("div", { class: "contribution-viewport", role: "region", "aria-label": "Daily activity chart. Tap a day or use arrow keys to explore dates." },
@@ -92,6 +99,7 @@ export function contributionGrid(daily = [], { headingTag = "h3" } = {}) {
         h("div", { class: "contribution-layout" }, h("div", { class: "contribution-weekdays", "aria-hidden": "true" }, weekLabels), grid))),
     h("p", { class: "contribution-explore" }, "Tap a day or use arrow keys to explore dates."),
     h("div", { class: "contribution-footer" }, live, h("div", { class: "contribution-legend", "aria-hidden": "true" }, h("span", {}, "Less"), [0, 1, 2, 3, 4].map(level => h("span", { class: `contribution-cell level-${level}` })), h("span", {}, "More"))));
+  if (toggle) slidingIndicator(toggle, { variant: "pill", key: "profile-rhythm-metric" });
   return section;
 }
 
@@ -210,7 +218,7 @@ export function updateProfileTimes(card, now = Date.now()) {
 }
 
 export function profileCard(data, { compact = false } = {}) {
-  const { profile, stats, tools = [], daily = [] } = data;
+  const { profile, tools = [] } = data;
   const headingTag = compact ? "h3" : "h2";
   const card = h("article", { class: `public-profile${compact ? " compact" : ""}`, "data-tools": JSON.stringify(tools) },
     h("header", { class: `profile-identity ds-heading-group${compact ? "" : " ds-dotgrid"}` },
@@ -222,30 +230,173 @@ export function profileCard(data, { compact = false } = {}) {
       h("div", { class: "profile-crew", hidden: true }, h("span", { class: "profile-crew-label" }, "Recently building with"), h("span", { class: "profile-crew-marks" })),
       h("div", { class: "profile-actions" })),
     h("div", { class: "profile-main" },
+      profileFlex(data),
       h("section", { class: "profile-desk", "aria-label": "The public desk" },
         h("div", { class: "profile-section-heading" }, h(headingTag, {}, "Right now"), h("span", {}, "Last 15 minutes")),
         liveActivity(data.live, { headingTag }),
         h("div", { class: "profile-desk-state" }),
         h("ol", { class: "profile-stage-list", role: "list", "aria-label": "Fresh running actions" })),
-      h("section", { class: "profile-overview", "aria-label": "Activity overview" },
-        h("div", { class: "profile-statistics", "aria-label": "All-time activity totals" }, [["totalActions", stats.totalActions === 1 ? "Action" : "Actions", stats.totalActions], ["activeAgents", stats.activeAgents === 1 ? "Agent" : "Agents", stats.activeAgents], ["activeDays", stats.activeDays === 1 ? "Active day" : "Active days", stats.activeDays]].map(([key, label, value]) => h("div", { class: "ds-stat" }, h("strong", { class: "ds-stat-value", "data-public-stat": key }, number(value)), h("span", { class: "ds-stat-label", "data-public-label": key }, label)))),
-        contributionGrid(daily, { headingTag })),
+      h("section", { class: "profile-overview", "aria-label": "Activity overview" }, chartFor(null, data, headingTag)),
       h("section", { class: "profile-highlights", "aria-label": "Owner-selected highlights" },
         h("div", { class: "profile-section-heading" }, h(headingTag, { tabindex: "-1" }, "Pinned work"), h("span", {}, "Chosen by the owner")),
         h("div", { class: "profile-highlight-list" }),
         h("div", { class: "profile-highlight-empty" }, h("strong", {}, "Nothing pinned here yet."), h("p", {}, "This space is ready for the notes and links the owner chooses to share."))),
       categorySummary(tools, headingTag),
+      tokenSummary(data, headingTag),
       agentRoster(data.agents, headingTag)),
     h("details", { class: "profile-receipts" }, h("summary", {}, h("span", { class: "profile-summary-title" }, "Recent activity"), h("span", { class: "profile-receipt-count" })), activityStream(data.activity, { headingTag })),
     h("details", { class: "profile-history" }, h("summary", {}, h("span", { class: "profile-summary-title" }, "Every tool category"), h("span", {}, "All time")), profileTools(tools, headingTag)),
     h("footer", { class: "profile-footnote" }, h("p", {}, privacyText(data.activity?.enabled === true, profileHighlights(profile).length > 0))));
   const checkedAt = Date.parse(data.live?.checkedAt);
   if (Number.isFinite(checkedAt)) profileClocks.set(card, { serverNow: checkedAt, receivedAt: Date.now() });
+  cardData.set(card, data);
   updateProfilePhoto(card, profile);
   updateActivityStream(card.querySelector(".public-stream"), data.activity, eventTiming(data));
   updatePresentation(card, data);
   updateIdentityExtras(card, data);
   return card;
+}
+
+// Token counts: present only when the owner shares them and the server sends
+// them. Older servers omit the field, so every token surface stays hidden.
+const cardData = new WeakMap();
+export function publicTokens(data) {
+  const tokens = data?.tokens;
+  return tokens && typeof tokens === "object" && tokens.enabled === true ? tokens : null;
+}
+const count = value => Number.isFinite(Number(value)) && Number(value) > 0 ? Math.floor(Number(value)) : 0;
+const completedTasks = stats => Number.isFinite(stats?.completedTasks) && stats.completedTasks >= 0 ? stats.completedTasks : null;
+const plural = (value, one, many) => value === 1 ? one : many;
+// lastHour is the current plus the previous UTC clock hour, so the copy says
+// "past 2 hours": every counted token falls inside that window.
+const RECENT_WINDOW = "past 2 hours";
+function tokenSublabel(tokens) {
+  const recent = count(tokens.lastHour), today = count(tokens.today), parts = [];
+  if (recent) parts.push(h("strong", {}, `+${formatCount(recent, "compact")}`), ` in the ${RECENT_WINDOW}`);
+  if (today) parts.push(recent ? " · " : "", `${formatCount(today, "compact")} today`);
+  return parts.length ? parts.filter(Boolean).map(part => part instanceof Node ? part : document.createTextNode(part)) : "";
+}
+function tokenLive(data, tokens) {
+  const working = count(data.live?.workingAgents);
+  if (working) return { active: true, text: `${number(working)} working now`, title: "Agents with a fresh running report" };
+  if (tokens && count(tokens.lastHour)) return { active: true, text: "Live", title: "Tokens were reported in the current or previous UTC hour" };
+  return { active: false, text: "" };
+}
+const flexStats = [
+  ["completedTasks", stats => completedTasks(stats), value => plural(value, "Task completed", "Tasks completed")],
+  ["totalActions", stats => count(stats?.totalActions), value => plural(value, "Agent action", "Agent actions")],
+  ["activeAgents", stats => count(stats?.activeAgents), value => plural(value, "Agent", "Agents")],
+  ["activeDays", stats => count(stats?.activeDays), value => plural(value, "Active day", "Active days")],
+];
+// The flex band: the token total is the hero, with the all-time counts beside it.
+function profileFlex(data) {
+  const tokens = publicTokens(data);
+  const hero = statHero({ label: "Tokens burned", value: tokens ? count(tokens.total) : 0, format: "exact", unit: "tokens", emphasis: "primary", live: tokenLive(data, tokens), sublabel: tokens ? tokenSublabel(tokens) : "", className: "profile-flex-hero" });
+  const list = h("div", { class: "profile-flex-stats", role: "list", "aria-label": "All-time activity totals" }, flexStats.map(([key, read, label]) => {
+    const value = read(data.stats);
+    const stat = statHero({ label: label(value ?? 0), value: value ?? 0, format: "compact", className: "profile-flex-stat" });
+    stat.setAttribute("role", "listitem"); stat.setAttribute("data-public-stat", key); stat.hidden = value === null;
+    return stat;
+  }));
+  hero.hidden = !tokens;
+  return h("section", { class: "profile-flex", "aria-label": "Agent totals", "data-tokens": String(Boolean(tokens)) }, hero, list);
+}
+function updateFlex(section, data) {
+  if (!section) return;
+  const tokens = publicTokens(data), hero = section.querySelector(".profile-flex-hero");
+  section.dataset.tokens = String(Boolean(tokens));
+  const wasHidden = hero.hidden;
+  hero.hidden = !tokens;
+  // A hero that just appeared starts at its real value; it never counts up from a placeholder.
+  updateStatHero(hero, { value: tokens ? count(tokens.total) : 0, sublabel: tokens ? tokenSublabel(tokens) : "", live: tokenLive(data, tokens), animate: !wasHidden });
+  for (const [key, read, label] of flexStats) {
+    const stat = section.querySelector(`[data-public-stat="${key}"]`); if (!stat) continue;
+    const value = read(data.stats), appeared = stat.hidden && value !== null;
+    stat.hidden = value === null;
+    updateStatHero(stat, { value: value ?? 0, label: label(value ?? 0), animate: !appeared });
+  }
+}
+
+const tokenParts = [["input", "Input"], ["output", "Output"], ["cacheRead", "Cache read"], ["cacheWrite", "Cache write"]];
+function tokenSummary(data, headingTag) {
+  const moments = [["today", "Today (UTC)"], ["lastHour", `In the ${RECENT_WINDOW}`]].map(([key, label]) => {
+    const stat = statHero({ label, value: 0, format: "compact", unit: "tokens", className: "profile-token-moment" });
+    stat.setAttribute("data-token-moment", key);
+    return stat;
+  });
+  const section = h("section", { class: "profile-tokens", "aria-label": "Token usage" },
+    h("div", { class: "profile-section-heading" }, h(headingTag, {}, "Token burn"), h("span", {}, "All time · from agents’ local session logs")),
+    h("div", { class: "profile-token-body" },
+      h("div", { class: "profile-token-mix" },
+        h("div", { class: "profile-token-moments" }, moments),
+        h("div", { class: "profile-token-bar", role: "img" }, tokenParts.map(([key]) => h("span", { class: "profile-token-segment", "data-part": key }))),
+        h("ul", { class: "profile-token-legend", role: "list" }, tokenParts.map(([key, label]) => h("li", { "data-part": key }, h("span", { class: "profile-token-swatch", "aria-hidden": "true" }), h("span", { class: "profile-token-part" }, label), h("strong", { class: "profile-token-value" }), h("span", { class: "profile-token-share" }))))),
+      h("div", { class: "profile-token-board" },
+        h("p", { class: "profile-token-board-title" }, "By agent"),
+        h("ol", { class: "profile-token-agents", role: "list", "aria-label": "Tokens by agent product" }),
+        h("p", { class: "profile-empty-note profile-token-agents-empty", hidden: true }, "No per-agent counts yet."))),
+    h("p", { class: "profile-token-note" }, "Token counts are read from each agent’s local session log and sent by the Engram connector. Engram does not observe them directly. Counts only."));
+  updateTokens(section, data, { animate: false });
+  return section;
+}
+function updateTokens(section, data, { animate = true } = {}) {
+  if (!section) return;
+  const tokens = publicTokens(data);
+  const wasHidden = section.hidden;
+  section.hidden = !tokens;
+  if (!tokens) return;
+  const motion = animate && !wasHidden;
+  for (const key of ["today", "lastHour"]) updateStatHero(section.querySelector(`[data-token-moment="${key}"]`), { value: count(tokens[key]), animate: motion });
+  const parts = tokenParts.map(([key, label]) => [key, label, count(tokens[key])]);
+  const total = parts.reduce((sum, [, , value]) => sum + value, 0);
+  const share = value => total ? value / total * 100 : 0;
+  const shareText = value => { const percent = share(value); return percent > 0 && percent < 1 ? "<1%" : `${Math.round(percent)}%`; };
+  section.querySelector(".profile-token-bar").setAttribute("aria-label", total ? `Token mix: ${parts.map(([, label, value]) => `${label} ${shareText(value)}`).join(", ")}` : "No token counts yet");
+  for (const [key, label, value] of parts) {
+    section.querySelector(`.profile-token-segment[data-part="${key}"]`)?.style?.setProperty?.("--share", `${share(value)}%`);
+    const row = section.querySelector(`.profile-token-legend [data-part="${key}"]`);
+    const strong = row.querySelector(".profile-token-value");
+    setText(strong, formatCount(value, "compact")); strong.setAttribute("title", `${number(value)} ${label.toLowerCase()} tokens`);
+    setText(row.querySelector(".profile-token-share"), shareText(value));
+  }
+  const agents = (Array.isArray(tokens.agents) ? tokens.agents : []).filter(item => item && typeof item.product === "string" && count(item.tokens) > 0)
+    .sort((a, b) => count(b.tokens) - count(a.tokens) || a.product.localeCompare(b.product)).slice(0, 6);
+  const key = JSON.stringify(agents.map(item => [item.product, count(item.tokens)]));
+  const list = section.querySelector(".profile-token-agents");
+  section.querySelector(".profile-token-agents-empty").hidden = agents.length > 0;
+  if (list.dataset.agents === key) return;
+  list.dataset.agents = key;
+  const top = Math.max(1, ...agents.map(item => count(item.tokens)));
+  list.replaceChildren(...agents.map((item, index) => {
+    const visual = agentVisual("", { harness: item.product, publicSafe: true });
+    const label = item.product === "other" ? "Other agents" : visual.label;
+    const fill = h("span", { class: "profile-token-agent-fill" });
+    fill.style?.setProperty?.("--share", `${Math.max(2, count(item.tokens) / top * 100)}%`);
+    return h("li", { class: "profile-token-agent", "data-rank": index + 1 },
+      identityMark(visualIcon(visual, { size: 20 }), { size: "md" }),
+      h("span", { class: "profile-token-agent-copy" }, h("strong", {}, label), h("span", { class: "profile-token-agent-bar", "aria-hidden": "true" }, fill)),
+      h("span", { class: "profile-token-agent-count", title: `${number(count(item.tokens))} tokens` }, formatCount(item.tokens, "compact"), h("span", { class: "ds-sr-only" }, " tokens")));
+  }));
+}
+
+// The 12-week chart for the selected metric. Tokens are offered only while
+// the snapshot carries them; otherwise the chart shows actions.
+function chartMetric(card, data) { return card?.dataset?.rhythmMetric === "tokens" && publicTokens(data) ? "tokens" : "actions"; }
+function chartSeries(data, metric) {
+  const series = metric === "tokens" ? publicTokens(data)?.daily : data.daily;
+  return (Array.isArray(series) ? series : []).filter(day => day && typeof day.date === "string").map(day => ({ date: day.date, count: count(day.count) }));
+}
+function chartFor(card, data, headingTag) {
+  const metric = chartMetric(card, data);
+  let section;
+  const onMetric = publicTokens(data) ? value => {
+    const owner = section.closest(".public-profile"); if (!owner) return;
+    owner.dataset.rhythmMetric = value;
+    updateChart(owner, cardData.get(owner) || data);
+    owner.querySelector(`.profile-rhythm-metric [data-metric="${value}"]`)?.focus({ preventScroll: true });
+  } : null;
+  section = contributionGrid(chartSeries(data, metric), { headingTag, metric, onMetric });
+  return section;
 }
 
 function categorySummary(tools, headingTag) {
@@ -411,7 +562,8 @@ function updatePresentation(card, data) {
   if (card.dataset.profileLayout !== layout) {
     const focus = card.contains(document.activeElement) ? document.activeElement : null;
     const desk = card.querySelector(".profile-desk"), overview = card.querySelector(".profile-overview"), categories = card.querySelector(".profile-category-summary"), agents = card.querySelector(".profile-agents");
-    main.append(...(layout === "field-notes" ? [highlights, overview, desk, categories, agents] : [desk, overview, categories, agents, highlights]));
+    const flex = card.querySelector(".profile-flex"), tokens = card.querySelector(".profile-tokens");
+    main.append(...(layout === "field-notes" ? [highlights, flex, overview, desk, categories, tokens, agents] : [flex, desk, overview, categories, tokens, agents, highlights]));
     card.dataset.profileLayout = layout;
     if (focus && document.activeElement !== focus) focus.focus({ preventScroll: true });
   }
@@ -439,7 +591,8 @@ const staleText = count => `${number(count)} older running ${count === 1 ? "repo
 // Update numbers in place so live snapshots never steal keyboard focus or reset
 // the date a visitor is exploring on the contribution chart.
 export function updateProfileCard(card, data) {
-  const { stats, profile, daily = [] } = data;
+  const { profile } = data;
+  cardData.set(card, data);
   const checkedAt = Date.parse(data.live?.checkedAt);
   if (Number.isFinite(checkedAt)) {
     if (profileClocks.get(card)?.serverNow !== checkedAt) profileClocks.set(card, { serverNow: checkedAt, receivedAt: Date.now() });
@@ -450,9 +603,8 @@ export function updateProfileCard(card, data) {
   updateProfileTimes(card);
   card.querySelector(".profile-footnote p").textContent = privacyText(data.activity?.enabled === true, profileHighlights(profile).length > 0);
   const text = (node, value) => { if (node.textContent !== value) node.textContent = value; };
-  card.querySelectorAll("[data-public-stat]").forEach(node => text(node, number(stats[node.dataset.publicStat])));
-  const labels = { totalActions: stats.totalActions === 1 ? "Action" : "Actions", activeAgents: stats.activeAgents === 1 ? "Agent" : "Agents", activeDays: stats.activeDays === 1 ? "Active day" : "Active days" };
-  card.querySelectorAll("[data-public-label]").forEach(node => text(node, labels[node.dataset.publicLabel]));
+  updateFlex(card.querySelector(".profile-flex"), data);
+  updateTokens(card.querySelector(".profile-tokens"), data);
   card.querySelectorAll("[data-public-live]").forEach(node => text(node, number(data.live?.[node.dataset.publicLive])));
   const stale = card.querySelector(".live-stale");
   if (stale) { stale.hidden = !data.live?.staleActions; stale.textContent = staleText(data.live?.staleActions || 0); }
@@ -460,12 +612,26 @@ export function updateProfileCard(card, data) {
   updateProfilePhoto(card, profile);
   text(identity.querySelector("h1, h2"), profile.displayName || "Your public profile");
   text(identity.querySelector("p"), profile.bio || "A small window into the work across my agents.");
+  updateChart(card, data);
+  updateAgents(card.querySelector(".profile-agents"), data.agents);
+  const tools = JSON.stringify(data.tools || []);
+  if (card.dataset.tools !== tools) {
+    const updatedTools = profileTools(data.tools || [], card.classList.contains("compact") ? "h3" : "h2");
+    card.querySelector(".profile-tools").replaceWith(updatedTools); card.dataset.tools = tools;
+    updateCategories(card.querySelector(".profile-category-summary"), data.tools || []);
+  }
+}
+
+function updateChart(card, data) {
+  const metric = chartMetric(card, data), daily = chartSeries(data, metric);
+  const text = (node, value) => { if (node.textContent !== value) node.textContent = value; };
   let grid = card.querySelector(".contribution-grid");
-  if ([...grid.children].some((node, index) => node.dataset.date !== daily[index]?.date) || grid.children.length !== daily.length) {
+  const chart = grid.closest(".contributions");
+  if (chart.dataset.metric !== metric || chart.dataset.metrics !== String(Boolean(publicTokens(data))) || [...grid.children].some((node, index) => node.dataset.date !== daily[index]?.date) || grid.children.length !== daily.length) {
     const focusedDate = grid.contains(document.activeElement) ? document.activeElement?.dataset?.date : null;
     const selectedDate = grid.dataset.selectedDate;
     const scrollLeft = grid.closest(".contribution-viewport").scrollLeft;
-    const replacement = contributionGrid(daily, { headingTag: card.classList.contains("compact") ? "h3" : "h2" }); grid.closest(".contributions").replaceWith(replacement); grid = replacement.querySelector(".contribution-grid");
+    const replacement = chartFor(card, data, card.classList.contains("compact") ? "h3" : "h2"); chart.replaceWith(replacement); grid = replacement.querySelector(".contribution-grid");
     if (selectedDate && [...grid.children].some(node => node.dataset.date === selectedDate)) {
       grid.dataset.selectedDate = selectedDate;
       [...grid.children].forEach(node => { node.tabIndex = node.dataset.date === selectedDate ? 0 : -1; });
@@ -474,23 +640,15 @@ export function updateProfileCard(card, data) {
     grid.closest(".contribution-viewport").scrollLeft = scrollLeft;
   }
   const maximum = Math.max(1, ...daily.map(day => day.count));
-  const total = daily.reduce((sum, day) => sum + day.count, 0);
   for (const [index, cell] of [...grid.children].entries()) {
     const day = daily[index]; if (!day) continue;
-    const label = `${number(day.count)} ${day.count === 1 ? "action" : "actions"} on ${new Intl.DateTimeFormat(undefined, { dateStyle: "long", timeZone: "UTC" }).format(new Date(`${day.date}T12:00:00Z`))}`;
+    const label = cellLabel(day, metric);
     cell.className = `contribution-cell level-${cellLevel(day.count, maximum)}`;
     cell.title = label; cell.setAttribute("aria-label", label);
   }
-  updateRhythm(grid.closest(".contributions"), daily);
-  updateAgents(card.querySelector(".profile-agents"), data.agents);
+  updateRhythm(grid.closest(".contributions"), daily, metric);
   const selected = [...grid.children].find(node => node.dataset.date === grid.dataset.selectedDate);
-  text(card.querySelector(".contribution-caption"), selected ? selected.getAttribute("aria-label") : `${number(total)} actions in the last 12 weeks`);
-  const tools = JSON.stringify(data.tools || []);
-  if (card.dataset.tools !== tools) {
-    const updatedTools = profileTools(data.tools || [], card.classList.contains("compact") ? "h3" : "h2");
-    card.querySelector(".profile-tools").replaceWith(updatedTools); card.dataset.tools = tools;
-    updateCategories(card.querySelector(".profile-category-summary"), data.tools || []);
-  }
+  text(card.querySelector(".contribution-caption"), selected ? selected.getAttribute("aria-label") : chartCaption(daily, metric));
 }
 
 export function profileSkeleton() {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { contributionGrid, profileCard, updateProfileCard, updateProfileTimes } from "./profile.js";
+import { contributionGrid, profileCard, publicTokens, updateProfileCard, updateProfileTimes } from "./profile.js";
 
 const dataKey = (key: string) => key.slice(5).replace(/-([a-z])/g, (_: string, letter: string) => letter.toUpperCase());
 class Element {
@@ -42,6 +42,7 @@ beforeEach(() => Object.assign(globalThis, { Node: Element, document: { activeEl
 afterEach(() => Object.assign(globalThis, original));
 const daily = [{ date: "2026-10-23", count: 1 }, { date: "2026-10-24", count: 2 }, { date: "2026-10-25", count: 3 }];
 const event = { id: "a".repeat(32), agent: { product: "codex", label: "Codex" }, agentAlias: "private laptop alias", service: "github", action: "GitHub activity", status: "running", evidence: "reported", updatedAt: "2026-10-25T10:00:00Z", taskTitle: "private task title", resource: "https://private.example/doc" };
+const stat = (card: Element, key: string) => card.querySelector(`[data-public-stat="${key}"] [data-counter-digits]`)!.textContent;
 const sample = { profile: { displayName: "Ada", bio: "Building useful things.", slug: "ada" }, stats: { totalActions: 6, activeAgents: 1, activeDays: 3 }, daily, tools: [{ category: "code", count: 6 }], live: { workingAgents: 1, recentlyActiveAgents: 1, completedAgents: 1, staleActions: 0 }, activity: { enabled: true, events: [event] } };
 
 describe("public activity profile", () => {
@@ -158,10 +159,12 @@ describe("public activity profile", () => {
   test("both layouts have a distinct reading order and real empty states", () => {
     const studio = profileCard(sample) as unknown as Element;
     expect(studio.dataset.profileLayout).toBe("studio");
-    expect(studio.querySelector(".profile-main")!.children[0].className).toBe("profile-desk");
+    expect(studio.querySelector(".profile-main")!.children[0].className).toBe("profile-flex");
+    expect(studio.querySelector(".profile-main")!.children[1].className).toBe("profile-desk");
     const notes = profileCard({ ...sample, profile: { ...sample.profile, layout: "field-notes", highlights: [] }, activity: { enabled: false, events: [event] } }) as unknown as Element;
     expect(notes.dataset.profileLayout).toBe("field-notes");
     expect(notes.querySelector(".profile-main")!.children[0]).toBe(notes.querySelector(".profile-highlights"));
+    expect(notes.querySelector(".profile-main")!.children[1]).toBe(notes.querySelector(".profile-flex"));
     expect(notes.querySelector(".profile-highlights")!.dataset.empty).toBe("true");
     expect(notes.textContent).toContain("Nothing pinned here yet.");
     expect(notes.textContent).toContain("Some work stays behind the scenes.");
@@ -171,7 +174,7 @@ describe("public activity profile", () => {
       const overview = card.querySelector(".profile-overview")!;
       expect(overview.parentElement).toBe(card.querySelector(".profile-main"));
       expect(overview.closest("details")).toBeNull();
-      expect(overview.querySelector(".profile-statistics")).not.toBeNull();
+      expect(card.querySelector(".profile-flex .profile-flex-stats")).not.toBeNull();
       expect(overview.querySelector(".contribution-grid")).not.toBeNull();
     }
     const quiet = profileCard({ ...sample, tools: [], activity: { enabled: true, events: [] } }) as unknown as Element;
@@ -284,16 +287,17 @@ describe("public activity profile", () => {
     expect(overview.closest("details")).toBeNull();
     expect(card.querySelector(".profile-weekly")).toBeNull();
     const history = card.querySelector(".profile-history")!;
-    expect(history.querySelector(".profile-statistics")).toBeNull();
+    expect(history.querySelector(".profile-flex-stats")).toBeNull();
     expect(history.querySelector(".contributions")).toBeNull();
     expect(history.querySelector(".profile-tools")).not.toBeNull();
     expect(card.textContent).not.toContain("A little momentum.");
-    const totals = overview.querySelector(".profile-statistics")!;
+    const totals = card.querySelector(".profile-flex-stats")!;
     expect(totals.getAttribute("aria-label")).toBe("All-time activity totals");
-    expect(totals.querySelector('[data-public-stat="totalActions"]')!.textContent).toBe("1,234");
-    expect(totals.querySelector('[data-public-stat="activeAgents"]')!.textContent).toBe("9");
-    expect(totals.querySelector('[data-public-stat="activeDays"]')!.textContent).toBe("104");
-    expect(totals.textContent).toContain("Actions"); expect(totals.textContent).toContain("Agents"); expect(totals.textContent).toContain("Active days");
+    expect(stat(totals, "totalActions")).toBe("1,234");
+    expect(stat(totals, "activeAgents")).toBe("9");
+    expect(stat(totals, "activeDays")).toBe("104");
+    expect(totals.querySelector('[data-public-stat="totalActions"] .ds-stat-hero-value')!.getAttribute("title")).toBe("1,234");
+    expect(totals.textContent).toContain("Agent actions"); expect(totals.textContent).toContain("Agents"); expect(totals.textContent).toContain("Active days");
     const chart = overview.querySelector(".contributions")!, grid = chart.querySelector(".contribution-grid")!;
     expect(chart.closest("details")).toBeNull();
     expect(chart.textContent).toContain("Last 12 weeks");
@@ -314,9 +318,9 @@ describe("public activity profile", () => {
     expect(grid.children.filter(cell => cell.tabIndex === 0)).toHaveLength(1);
     expect(viewport.scrollLeft).toBe(160);
     expect(chart.querySelector(".contribution-caption")!.textContent).toContain("20 actions");
-    expect(totals.querySelector('[data-public-stat="totalActions"]')!.textContent).toBe("1,252");
-    expect(totals.querySelector('[data-public-stat="activeAgents"]')!.textContent).toBe("10");
-    expect(totals.querySelector('[data-public-stat="activeDays"]')!.textContent).toBe("105");
+    expect(stat(totals, "totalActions")).toBe("1,252");
+    expect(stat(totals, "activeAgents")).toBe("10");
+    expect(stat(totals, "activeDays")).toBe("105");
   });
 
   test("aggregate-only and zero-activity profiles keep the overview visible without sample activity", () => {
@@ -324,14 +328,14 @@ describe("public activity profile", () => {
       const card = profileCard({ ...sample, profile: { ...sample.profile, layout }, activity: { enabled: false, events: [event] } }) as unknown as Element;
       const overview = card.querySelector(".profile-overview")!;
       expect(overview.closest("details")).toBeNull();
-      expect(overview.querySelector('[data-public-stat="totalActions"]')!.textContent).toBe("6");
+      expect(stat(card, "totalActions")).toBe("6");
       expect(overview.querySelector(".contribution-grid")!.children).toHaveLength(daily.length);
       expect(card.querySelectorAll("[data-public-event]")).toHaveLength(0);
       expect(card.querySelectorAll("[data-stage-event]")).toHaveLength(0);
 
       updateProfileCard(card, { ...sample, profile: { ...sample.profile, layout }, stats: { totalActions: 0, activeAgents: 0, activeDays: 0 }, daily: [], tools: [], activity: { enabled: false, events: [] } });
       expect(card.querySelector(".profile-overview")).toBe(overview);
-      for (const key of ["totalActions", "activeAgents", "activeDays"]) expect(overview.querySelector(`[data-public-stat="${key}"]`)!.textContent).toBe("0");
+      for (const key of ["totalActions", "activeAgents", "activeDays"]) expect(stat(card, key)).toBe("0");
       expect(overview.querySelector(".contribution-grid")!.children).toHaveLength(0);
       expect(overview.querySelector(".contribution-caption")!.textContent).toContain("0 actions");
       expect(overview.hidden).toBe(false);
@@ -384,5 +388,86 @@ describe("public activity profile", () => {
     studio.querySelector(".ds-highlight-disclosure")!.querySelector("summary")!.focus();
     updateProfileCard(studio, sample);
     expect(document.activeElement).toBe(studio.querySelector(".profile-category-summary")!.querySelector("h2") as any);
+  });
+});
+
+describe("token flex", () => {
+  const tokenDays = daily.map((day, index) => ({ date: day.date, count: (index + 1) * 1_000_000 }));
+  const tokens = { enabled: true, total: 1_842_000_000, input: 60_000_000, output: 24_000_000, cacheRead: 1_612_000_000, cacheWrite: 146_000_000, today: 18_400_000, lastHour: 48_000, daily: tokenDays,
+    agents: [{ product: "codex", label: "Codex", tokens: 500_000_000 }, { product: "claude-code", label: "Claude Code", tokens: 1_200_000_000 }, { product: "unknown-x", label: "X", tokens: 0 }], updatedAt: "2026-10-25T10:00:00Z", source: "local-session-logs" };
+  const withTokens = { ...sample, stats: { ...sample.stats, completedTasks: 1284 }, tokens };
+  const digits = (node: Element) => node.querySelector("[data-counter-digits]")!.textContent;
+
+  test("older snapshots and owners who turn tokens off show no token numbers at all", () => {
+    for (const data of [sample, { ...sample, tokens: { ...tokens, enabled: false } }, { ...sample, tokens: null }]) {
+      const card = profileCard(data) as unknown as Element;
+      expect(card.querySelector(".profile-flex-hero")!.hidden).toBe(true);
+      expect(card.querySelector(".profile-flex")!.dataset.tokens).toBe("false");
+      expect(card.querySelector(".profile-tokens")!.hidden).toBe(true);
+      expect(card.querySelector(".profile-rhythm-metric")).toBeNull();
+      expect(card.querySelector('[data-public-stat="completedTasks"]')!.hidden).toBe(true);
+    }
+    expect(publicTokens({ tokens: { enabled: "true" } })).toBeNull();
+  });
+
+  test("the token total leads the flex band with exact digits, a truthful window and per-agent totals", () => {
+    const card = profileCard(withTokens) as unknown as Element;
+    const hero = card.querySelector(".profile-flex-hero")!;
+    expect(hero.hidden).toBe(false);
+    expect(hero.getAttribute("data-emphasis")).toBe("primary");
+    expect(digits(hero)).toBe("1,842,000,000");
+    expect(hero.querySelector(".ds-stat-hero-value")!.getAttribute("title")).toBe("1,842,000,000 tokens");
+    expect(hero.querySelector(".ds-stat-hero-sub")!.textContent).toBe("+48K in the past 2 hours · 18.4M today");
+    expect(hero.querySelector(".ds-live-dot")!.getAttribute("data-active")).toBe("true");
+    expect(hero.querySelector(".ds-live-words")!.textContent).toBe("1 working now");
+    expect(stat(card, "completedTasks")).toBe("1,284");
+    const summary = card.querySelector(".profile-tokens")!;
+    expect(summary.hidden).toBe(false);
+    expect(summary.textContent).toContain("local session log");
+    expect(summary.querySelector('.profile-token-legend [data-part="cacheRead"] .profile-token-value')!.textContent).toBe("1.61B");
+    expect(summary.querySelector(".profile-token-bar")!.getAttribute("aria-label")).toContain("Cache read 88%");
+    const rows = summary.querySelectorAll(".profile-token-agent");
+    expect(rows).toHaveLength(2);
+    expect(rows[0].textContent).toContain("Claude Code"); expect(rows[0].textContent).toContain("1.2B");
+    expect(rows[1].textContent).toContain("Codex");
+  });
+
+  test("updates replace numbers in place, and switching tokens off hides every token surface", () => {
+    const card = profileCard(withTokens) as unknown as Element;
+    const hero = card.querySelector(".profile-flex-hero")!;
+    updateProfileCard(card, { ...withTokens, tokens: { ...tokens, total: 1_842_500_000, lastHour: 0 }, live: { ...sample.live, workingAgents: 0 } });
+    expect(card.querySelector(".profile-flex-hero")).toBe(hero);
+    expect(digits(hero)).toBe("1,842,500,000");
+    expect(hero.querySelector(".ds-live-tag")!.hidden).toBe(true);
+    expect(hero.querySelector(".ds-stat-hero-sub")!.textContent).toBe("18.4M today");
+    updateProfileCard(card, { ...withTokens, tokens: { ...tokens, enabled: false, total: 0 } });
+    expect(hero.hidden).toBe(true);
+    expect(card.querySelector(".profile-tokens")!.hidden).toBe(true);
+    updateProfileCard(card, sample);
+    expect(card.querySelector('[data-public-stat="completedTasks"]')!.hidden).toBe(true);
+    expect(card.querySelector(".profile-rhythm-metric")).toBeNull();
+  });
+
+  test("the twelve-week chart switches to reported tokens and back without fake values", () => {
+    const card = profileCard(withTokens) as unknown as Element;
+    const toggle = card.querySelector(".profile-rhythm-metric")!;
+    expect(toggle.querySelector('[data-metric="actions"]')!.getAttribute("aria-pressed")).toBe("true");
+    toggle.querySelector('[data-metric="tokens"]')!.events.click();
+    const chart = card.querySelector(".contributions")!;
+    expect(chart.dataset.metric).toBe("tokens");
+    expect(card.querySelector(".contribution-caption")!.textContent).toBe("6M tokens in the last 12 weeks");
+    expect(card.querySelector(".contribution-grid")!.children[2].getAttribute("aria-label")).toContain("3,000,000 tokens");
+    expect(document.activeElement).toBe(card.querySelector('.profile-rhythm-metric [data-metric="tokens"]') as any);
+    updateProfileCard(card, { ...withTokens, tokens: { ...tokens, enabled: false } });
+    expect(card.querySelector(".contributions")!.dataset.metric).toBe("actions");
+    expect(card.querySelector(".contribution-caption")!.textContent).toBe("6 actions in the last 12 weeks");
+  });
+
+  test("both layouts place the flex band and the token card in reading order", () => {
+    const studio = profileCard(withTokens) as unknown as Element;
+    const notes = profileCard({ ...withTokens, profile: { ...withTokens.profile, layout: "field-notes" } }) as unknown as Element;
+    const order = (card: Element) => card.querySelector(".profile-main")!.children.map(node => node.className.split(" ")[0]);
+    expect(order(studio)).toEqual(["profile-flex", "profile-desk", "profile-overview", "profile-category-summary", "profile-tokens", "profile-agents", "profile-highlights"]);
+    expect(order(notes)).toEqual(["profile-highlights", "profile-flex", "profile-overview", "profile-desk", "profile-category-summary", "profile-tokens", "profile-agents"]);
   });
 });

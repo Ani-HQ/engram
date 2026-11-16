@@ -348,3 +348,27 @@ import { columnChart, barList, dataTable } from './design-system.js';
   document.getElementById('data-bars-example')?.append(barList([{ label: '/', value: 640 }, { label: '/pricing', value: 210 }, { label: '/how-it-works', value: 188 }, { label: '/a-very-long-path/that-keeps-going/and-truncates', value: 12, note: 'Long labels truncate with a full title.' }], { label: 'Sample page views by path' }));
   document.getElementById('data-table-example')?.append(dataTable({ caption: 'Sample sources', columns: [{ key: 'source', label: 'Source' }, { key: 'visitors', label: 'Visitor-days', numeric: true }], rows: [{ source: '(direct)', visitors: 220 }, { source: 'x.com', visitors: 96 }, { source: 'news.ycombinator.com', visitors: 41 }] }));
 }
+
+// Flex counters: fixed sample totals. Updates ease between real sample values only.
+import { statHero, updateStatHero, formatCount } from './design-system.js';
+{
+  const heroSlot = document.getElementById('flex-hero-example');
+  if (heroSlot) {
+    let total = 1_284_113_908, recent = 48_200, live = true;
+    const sub = () => { const strong = document.createElement('strong'); strong.textContent = `+${formatCount(recent, 'compact')}`; return [strong, document.createTextNode(' in the past 2 hours (sample)')]; };
+    const hero = statHero({ label: 'Tokens burned', value: total, unit: 'tokens', emphasis: 'primary', live: { active: true, text: 'Live' }, sublabel: sub() });
+    heroSlot.append(hero);
+    const stats = [['Tasks completed', 1284], ['Agent actions', 41_920], ['Agents', 6], ['Active days', 73]].map(([label, value]) => statHero({ label, value, format: 'compact' }));
+    document.getElementById('flex-stat-examples')?.append(...stats);
+    document.getElementById('flex-reduced-example')?.append(statHero({ label: 'Reduced motion (sample)', value: 340_000, format: 'compact', unit: 'tokens', sublabel: 'Compact format: hover for the exact value' }));
+    document.getElementById('flex-bump')?.addEventListener('click', () => {
+      const step = 9_000 + Math.floor(Math.random() * 60_000);
+      total += step; recent += step;
+      updateStatHero(hero, { value: total, sublabel: sub() });
+      const reduced = document.querySelector('#flex-reduced-example .ds-stat-hero');
+      updateStatHero(reduced, { value: Number(reduced.querySelector('.ds-stat-hero-value').dataset.value) + step });
+      updateStatHero(stats[1], { value: Number(stats[1].querySelector('.ds-stat-hero-value').dataset.value) + 3 });
+    });
+    document.getElementById('flex-live')?.addEventListener('click', () => { live = !live; updateStatHero(hero, { live: live ? { active: true, text: 'Live' } : { active: false, text: 'Quiet' } }); });
+  }
+}

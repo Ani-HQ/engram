@@ -7,11 +7,16 @@ an already published profile updates its public page.
 
 | Layout | Reading order |
 | --- | --- |
-| Living studio (`studio`, the default) | Fresh running actions, activity totals and twelve-week chart, optional owner highlights, broad categories |
-| Field notes (`field-notes`) | Owner highlights, activity totals and twelve-week chart, fresh running actions, broad categories |
+| Living studio (`studio`, the default) | Flex band (token total and all-time counts), fresh running actions, twelve-week chart, broad categories, token burn, agent crew, optional owner highlights |
+| Field notes (`field-notes`) | Owner highlights, flex band, twelve-week chart, fresh running actions, broad categories, token burn, agent crew |
 
-Both show all-time Actions, Agents and Active days together with the twelve-week
-activity chart without a disclosure. This overview replaces the former seven-day
+Both show the flex band: the all-time token total (when shared) as the hero
+counter, with Tasks completed, Agent actions, Agents and Active days beside it,
+then the twelve-week activity chart without a disclosure. The chart switches
+between actions and tokens when token counts are present. Token surfaces are
+hidden when the owner turns off **Show token usage** (`showTokens`, default on)
+or when the server does not send `tokens`. Counters animate between real
+snapshot values only. This overview replaces the former seven-day
 pulse. Recent receipts and the full per-tool breakdown retain native disclosures.
 Working cards show at most two fresh, safely projected running actions. They
 retain the observed/agent-reported distinction and do not describe an external

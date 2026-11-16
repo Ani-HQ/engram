@@ -922,6 +922,37 @@ a.ds-spotlight:focus-visible { outline: 2px solid var(--ds-accent); outline-offs
 .ds-stat-value { color: var(--ds-ink); font-size: clamp(28px, 3.4vw, 40px); font-weight: 500; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .ds-stat-label { color: var(--ds-muted); font-size: var(--ds-text-sm); line-height: 1.5; }
 
+/* Flex counter: one very large real total. statHero() builds it and
+   counterTo() eases the digits from the previous real value to the next.
+   The digits are aria-hidden while they move; the exact value sits in a
+   visually hidden twin and in the title, so nothing is announced per frame.
+   The value shrinks to fit its own width (--ds-stat-hero-chars, set by
+   counterTo), so a long exact total never overflows a phone. */
+.ds-stat-hero { --ds-stat-hero-size: clamp(2.25rem, 4.4vw, 3.5rem); position: relative; container-type: inline-size; display: grid; align-content: start; gap: var(--ds-space-2); min-width: 0; }
+.ds-stat-hero[data-emphasis='primary'] { --ds-stat-hero-size: clamp(3.5rem, 9vw, 6.5rem); gap: var(--ds-space-3); }
+.ds-stat-hero-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-2) var(--ds-space-3); color: var(--ds-muted); font-size: var(--ds-text-sm); line-height: 1.4; }
+.ds-stat-hero[data-emphasis='primary'] .ds-stat-hero-head { font-size: var(--ds-text-base); }
+.ds-stat-hero-label { color: inherit; font-weight: 500; }
+.ds-stat-hero-value { display: block; min-width: 0; color: var(--ds-ink); font-size: min(var(--ds-stat-hero-size), calc(100cqi / (var(--ds-stat-hero-chars, 5) * .64))); font-weight: 600; line-height: .95; font-variant-numeric: tabular-nums; font-feature-settings: 'tnum' 1; white-space: nowrap; overflow-wrap: normal; }
+.ds-stat-hero[data-emphasis='primary'] .ds-stat-hero-value { background: linear-gradient(180deg, var(--ds-ink) 30%, color-mix(in srgb, var(--ds-accent) 70%, var(--ds-ink))); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.ds-stat-hero-sub { min-height: 1.5em; color: var(--ds-muted); font-size: var(--ds-text-sm); line-height: 1.5; font-variant-numeric: tabular-nums; }
+.ds-stat-hero-sub:empty { display: none; }
+.ds-stat-hero-sub strong { color: var(--ds-accent); font-weight: 600; }
+.ds-stat-hero[data-unavailable='true'] .ds-stat-hero-value { color: var(--ds-muted); background: none; }
+
+/* Live dot: solid while a real signal is fresh, with one ring that pulses.
+   Off, it is a quiet muted dot. Words beside it say what is live. */
+.ds-live-dot { position: relative; display: inline-block; flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--ds-muted); }
+.ds-live-dot[data-active='true'] { background: var(--ds-accent); box-shadow: 0 0 10px -1px var(--ds-glow); }
+.ds-live-dot[data-active='true']::after { content: ''; position: absolute; inset: -4px; border: 1px solid var(--ds-accent); border-radius: 50%; animation: ds-live-ring 1.8s var(--ds-ease-out) infinite; }
+@keyframes ds-live-ring { from { opacity: .9; transform: scale(.55); } to { opacity: 0; transform: scale(1.7); } }
+.ds-live-tag { display: inline-flex; align-items: center; gap: var(--ds-space-2); min-height: 24px; padding: 0 var(--ds-space-3) 0 var(--ds-space-2); color: var(--ds-muted); border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-pill); font-size: var(--ds-text-xs); font-weight: 500; white-space: nowrap; }
+.ds-live-tag[hidden] { display: none; }
+.ds-live-tag:has(.ds-live-dot[data-active='true']) { color: var(--ds-ink); border-color: color-mix(in srgb, var(--ds-accent) 45%, transparent); }
+@media (prefers-reduced-motion: reduce) { .ds-live-dot[data-active='true']::after { animation: none; opacity: 0; } }
+[data-motion='reduced'] .ds-live-dot[data-active='true']::after { animation: none; opacity: 0; }
+@media (forced-colors: active) { .ds-live-dot { background: CanvasText; } .ds-stat-hero[data-emphasis='primary'] .ds-stat-hero-value { color: CanvasText; background: none; } }
+
 /* Hairline accordion for questions. */
 .ds-accordion { border-top: 1px solid var(--ds-hairline); }
 .ds-accordion > details { border-bottom: 1px solid var(--ds-hairline); }
@@ -1015,10 +1046,12 @@ html.ds-js [data-reveal].is-visible { opacity: 1; transform: none; }
 .ds-gallery-kit-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ds-space-8); }
 .ds-gallery-kit-words { max-width: 30ch; margin: 0; padding: var(--ds-space-8); font-size: var(--ds-text-xl); font-weight: 500; text-align: center; }
 .ds-gallery-slide-examples { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-8); }
-.ds-gallery-segmented { display: inline-flex; padding: 2px; background: var(--ds-surface-raised); border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-control); }
-html[data-design-system] .ds-gallery-segmented > button { min-height: 28px; padding: 0 10px; color: var(--ds-muted); background: transparent; border: 0; border-radius: 4px; box-shadow: none; font-size: var(--ds-text-sm); }
-html[data-design-system] .ds-gallery-segmented > button[aria-pressed='true'] { color: var(--ds-ink); }
-.ds-gallery-segmented > .ds-slide-indicator { background: var(--ds-paper); border-radius: 4px; box-shadow: 0 0 0 1px var(--ds-hairline-strong); }
+.ds-gallery-flex { display: grid; gap: var(--ds-space-5); padding: var(--ds-space-6); border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-panel); background: var(--ds-surface-raised); }
+.ds-gallery-flex > h3 { margin: 0; }
+.ds-gallery-flex-grid { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); align-items: end; gap: var(--ds-space-8); }
+.ds-gallery-flex-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ds-space-5); }
+.ds-gallery-flex-reduced { max-width: 320px; }
+@media (max-width: 700px) { .ds-gallery-flex-grid { grid-template-columns: minmax(0, 1fr); } }
 .ds-gallery-kit-glow { display: grid; place-items: center; min-height: 160px; color: var(--ds-muted); border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-panel); overflow: hidden; }
 @media (max-width: 700px) { .ds-gallery-kit-grid, .ds-gallery-kit-stats { grid-template-columns: 1fr; } }
 
@@ -1095,6 +1128,16 @@ img.brand-icon[data-tone='mono'], .ds-product-logo[data-tone='mono'] { filter: i
 html[data-design-system] .ds-slide-host[data-slide='underline'] > .ds-tab { border-bottom-color: transparent; }
 .ds-slide-host[data-slide='pill'] > :is([aria-pressed='true'], [aria-selected='true'], [aria-current='page'], [data-active='true']) { background: transparent; }
 .ds-slide-indicator:not([data-ready]) { transition: none; }
+
+/* Segmented control: a few aria-pressed buttons in one hairline frame. Pair
+   with slidingIndicator(group) so the pressed fill glides; without it the
+   pressed button keeps its own fill. */
+.ds-segmented { display: inline-flex; flex-wrap: nowrap; gap: 0; padding: 2px; background: var(--ds-surface-raised); border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-control); }
+html[data-design-system] .ds-segmented > button { min-height: 28px; padding: 0 10px; color: var(--ds-muted); background: transparent; border: 0; border-radius: 4px; box-shadow: none; font-size: var(--ds-text-sm); white-space: nowrap; }
+html[data-design-system] .ds-segmented > button[aria-pressed='true'] { color: var(--ds-ink); background: var(--ds-paper); }
+html[data-design-system] .ds-segmented.ds-slide-host > button[aria-pressed='true'] { background: transparent; }
+.ds-segmented > .ds-slide-indicator { background: var(--ds-paper); border-radius: 4px; box-shadow: 0 0 0 1px var(--ds-hairline-strong); }
+html[data-design-system] .ds-segmented > button:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 1px; }
 
 /* Text or icon swap: swapContent() replays a 150ms rise and blur on change. */
 .ds-swap { display: inline-block; animation: ds-swap 150ms var(--ds-ease-out); }
