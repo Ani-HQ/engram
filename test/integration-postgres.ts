@@ -304,7 +304,7 @@ try {
   await updateShowcaseSettings(ownerA, { slug: "integration-a", displayName: "Public A", bio: "Only aggregates", published: true, photo: null }, "https://integration.example");
   equal((await getPublicActivity("integration-a"))?.profile.photoUrl, null, "Explicit image removal is immediately reflected in public projection");
   equal((await handlePublicShowcase(new Request("https://integration.example" + photoPath)))?.status, 404, "An old digest URL stops serving after removal");
-  equal(publicA.stats, { totalActions: 4, completedActions: 3, failedActions: 1, runningActions: 0, activeAgents: 2, activeDays: 1 }, "Public totals aggregate only tenant A's actions");
+  equal(publicA.stats, { totalActions: 4, completedActions: 3, failedActions: 1, runningActions: 0, activeAgents: 2, activeDays: 1, completedTasks: 0 }, "Public totals aggregate only tenant A's actions");
   equal(publicB.stats.totalActions, 3, "Public tenant B totals stay separate");
   equal(publicA.tools, [{ category: "memory", count: 2 }, { category: "code", count: 1 }, { category: "email", count: 1 }], "Public categories execute in PostgreSQL and reveal generic tool groups only");
   equal(publicA.daily.length, 84, "Public activity projects exactly 12 weeks of daily totals");
