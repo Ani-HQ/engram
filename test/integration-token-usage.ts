@@ -33,7 +33,7 @@ export async function checkTokenUsage(db: postgres.Sql): Promise<number> {
     { hour: "09:00", input: "1000", output: "200", cache_read: "50000", cache_write: "300" },
     { hour: "10:00", input: "500", output: "60", cache_read: "10000", cache_write: "0" },
   ], "Deltas land in the UTC receipt hour");
-  await assert.rejects(() => recordTokenUsage(agent, parseTokenUsage({ ...base, session: "c".repeat(64), input: 2e9, output: 1 })), (error: any) => error.code === "invalid_usage"); checks++;
+  await assert.rejects(() => recordTokenUsage(agent, parseTokenUsage({ ...base, session: "c".repeat(64), input: 5e10, output: 1 })), (error: any) => error.code === "invalid_usage"); checks++;
   equal(Number((await db`SELECT count(*) AS n FROM token_usage_sessions WHERE session_hash = ${"c".repeat(64)}`)[0].n), 0, "A rejected over-cap report stores no session row");
 
   // Concurrent deliveries of overlapping totals must not double count.

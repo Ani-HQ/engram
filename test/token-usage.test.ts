@@ -111,12 +111,12 @@ describe("token usage reports", () => {
 
   test("rejects a report whose total growth exceeds the cap without storing anything", async () => {
     const store = usageDatabase();
-    await expect(recordTokenUsage(agent, parseTokenUsage({ ...report, input: 1e9, output: 1e9, cacheRead: 1, cacheWrite: 0 }, now), { db: store.db, now })).rejects.toThrow("invalid_usage");
+    await expect(recordTokenUsage(agent, parseTokenUsage({ ...report, input: 25e9, output: 25e9, cacheRead: 1, cacheWrite: 0 }, now), { db: store.db, now })).rejects.toThrow("invalid_usage");
     expect(store.sessions().size).toBe(0);
     expect(store.hourly().size).toBe(0);
-    await recordTokenUsage(agent, parseTokenUsage({ ...report, input: 1e9, output: 1e9, cacheRead: 0, cacheWrite: 0 }, now), { db: store.db, now });
-    await expect(recordTokenUsage(agent, parseTokenUsage({ ...report, input: 3e9 + 1, output: 1e9, cacheRead: 0, cacheWrite: 0 }, now), { db: store.db, now })).rejects.toThrow("invalid_usage");
-    expect([...store.sessions().values()][0].input).toBe(1e9);
+    await recordTokenUsage(agent, parseTokenUsage({ ...report, input: 25e9, output: 25e9, cacheRead: 0, cacheWrite: 0 }, now), { db: store.db, now });
+    await expect(recordTokenUsage(agent, parseTokenUsage({ ...report, input: 75e9 + 1, output: 25e9, cacheRead: 0, cacheWrite: 0 }, now), { db: store.db, now })).rejects.toThrow("invalid_usage");
+    expect([...store.sessions().values()][0].input).toBe(25e9);
   });
 
   test("limits new sessions per credential per hour while known sessions keep reporting", async () => {
@@ -184,7 +184,7 @@ describe("POST /api/usage", () => {
 
   test("rejects malformed, oversized and over-cap reports as invalid_usage", async () => {
     const big = JSON.stringify({ ...report, model: "x" }) + " ".repeat(TOKEN_USAGE_BODY_LIMIT);
-    for (const options of [{ raw: "not json" }, { raw: big }, { raw: JSON.stringify({ ...report, input: -5 }) }, { raw: JSON.stringify({ ...report, input: 2e9 + 1, output: 0, cacheRead: 0, cacheWrite: 0 }) }]) {
+    for (const options of [{ raw: "not json" }, { raw: big }, { raw: JSON.stringify({ ...report, input: -5 }) }, { raw: JSON.stringify({ ...report, input: 5e10 + 1, output: 0, cacheRead: 0, cacheWrite: 0 }) }]) {
       const result = await call(null, options).response;
       expect([result.status, await result.json()]).toEqual([400, { ok: false, error: "invalid_usage" }]);
     }

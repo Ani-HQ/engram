@@ -14,7 +14,8 @@ export const TOKEN_USAGE_BODY_LIMIT = 2048;
 export const TOKEN_USAGE_MAX_COUNT = 1e12;
 // One report may add at most this many tokens across all four counters, so a
 // single corrupt or hostile report cannot dominate a public profile.
-export const TOKEN_USAGE_MAX_DELTA = 2e9;
+// Generous: a long session's first report after an upgrade can carry billions of cache reads.
+export const TOKEN_USAGE_MAX_DELTA = 5e10;
 // New sessions per credential per hour. Retries of known sessions are free.
 export const TOKEN_USAGE_NEW_SESSIONS_PER_HOUR = 240;
 // Hourly buckets feed the 84-day public series; all-time totals live on sessions.
