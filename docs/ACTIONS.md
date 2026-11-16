@@ -312,7 +312,10 @@ grid, broad tool categories, and the latest activity timestamp. With explicit
 `showActivity: true`, it also includes up to 20 latest logical actions represented
 by canonical agent products, services, fixed action labels, status, evidence,
 and receipt times. It never returns personal agent aliases, original action
-summaries, resource names/paths/URLs, details, runs, or transcripts.
+summaries, resource names/paths/URLs, details, runs, or transcripts. Token totals
+come from connected agents' local session logs, where the connector reads only
+token-count numbers; never prompts, responses, tool inputs/outputs or file
+contents.
 Counts combine agent reports and directly observed Engram operations. They are
 activity counts, not a productivity or success score.
 

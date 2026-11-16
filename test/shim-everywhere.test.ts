@@ -31,7 +31,7 @@ test("one computer-wide install covers every repository with its own topic and s
   expect(config.bindings).toEqual([expect.objectContaining({ project: "*", runtime: "claude" })]);
   expect(config.bindings[0].topic).toBeUndefined();
   const settings = JSON.parse(readFileSync(path.join(root, ".claude", "settings.json"), "utf8"));
-  expect(Object.keys(settings.hooks).sort()).toEqual(["SessionStart", "Stop", "UserPromptSubmit"]);
+  expect(Object.keys(settings.hooks).sort()).toEqual(["PostToolUse", "SessionStart", "Stop", "UserPromptSubmit"]);
 
   const a = repo("pricing-site"), b = repo("billing-api");
   const inA = memory.bindingFor(path.join(a, "src", "deep"), "claude");

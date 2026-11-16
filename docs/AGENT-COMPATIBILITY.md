@@ -50,6 +50,9 @@ across restarts. Tool reports travel outside injected model context. Memory
 updates are explicit decisions, corrections, constraints or handoffs; uncertain
 saves are not automatically replayed. No adapter uploads transcripts or derives
 successful task completion from Stop, idle, stream exhaustion or cancellation.
+The Claude Code and Codex hooks read only token-count numbers from the local
+session log (never prompts, responses, tool inputs/outputs or file contents) and
+send nothing but those counts.
 
 ## Explicit workflow checks
 

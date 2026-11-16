@@ -35,6 +35,12 @@ async function nativeHook(runtime, input, eventName, dependencies = {}) {
   try { binding = dependencies.binding || memory.bindingFor(normalized.cwd, normalized.runtime); } catch { return {}; }
   const file = sessionFile(binding, normalized.sessionId, normalized.runtime);
   const active = readPrivate(file, {});
+  // Codex: token counts from its local session log (numbers only), on every
+  // turn end and, throttled, after tool calls. Its PostToolUse does nothing else.
+  if (normalized.runtime === 'codex' && ['tool-result', 'stop', 'session-end'].includes(normalized.event)) {
+    await memory.reportTokenUsage(binding, 'codex', normalized.sessionId, input.transcript_path, normalized.event === 'tool-result' ? 'tool' : 'stop', active.runId, dependencies);
+    if (normalized.event === 'tool-result') return {};
+  }
   if (normalized.event === 'stop') return {};
   if (normalized.event === 'session-end') {
     if (active.runId) removeFile(activeFile(binding, active.runId));
