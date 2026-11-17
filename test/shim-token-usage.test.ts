@@ -113,6 +113,17 @@ describe("reading token counts from a Claude Code session log", () => {
     expect(totals(state)).toMatchObject({ input: 20, model: "claude-sonnet-5" });
   });
 
+  test("a log replaced in place with the same inode and a longer body starts over", () => {
+    const file = logFile();
+    writeFileSync(file, assistant("a", 10, 10));
+    let state = usage.readUsage("claude-code", file, null);
+    expect(totals(state).input).toBe(10);
+    // writeFileSync truncates and rewrites the same inode, as Linux may when a deleted log is recreated.
+    writeFileSync(file, assistant("x", 1, 1) + assistant("y", 1, 1) + assistant("z", 1, 1));
+    state = usage.readUsage("claude-code", file, state);
+    expect(totals(state).input).toBe(3);
+  });
+
   test("old message IDs fold into a bounded settled total", () => {
     const file = logFile();
     writeFileSync(file, Array.from({ length: 200 }, (_, i) => assistant(`m${i}`, 1, 2)).join(""));

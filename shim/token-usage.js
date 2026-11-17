@@ -58,7 +58,20 @@ function openLog(file, home = homeDir()) {
   }
 }
 
-function freshFile(file, ino) { return { path: file, ino, offset: 0, skip: false, base: zero(), recent: [], model: null }; }
+function freshFile(file, ino) { return { path: file, ino, head: null, offset: 0, skip: false, base: zero(), recent: [], model: null }; }
+
+// A one-way hash of a log's first bytes, kept only locally. Some filesystems
+// reuse the inode of a deleted file, so a replaced log can keep its inode and
+// outgrow the old offset; a changed head shows it is a different file.
+const HEAD_BYTES = 128;
+function headHash(descriptor, size) {
+  const length = Math.min(size, HEAD_BYTES);
+  if (length < HEAD_BYTES) return null;
+  const buffer = Buffer.alloc(length);
+  let read = 0;
+  while (read < length) { const got = fs.readSync(descriptor, buffer, read, length - read, read); if (!got) break; read += got; }
+  return read === length ? createHash('sha256').update(buffer).digest('hex').slice(0, 32) : null;
+}
 
 function normalizeState(value) {
   const numbers = list => Array.isArray(list) && list.length === 4 ? list.map(count) : zero();
@@ -66,7 +79,7 @@ function normalizeState(value) {
   const file = value?.file;
   if (file && typeof file.path === 'string') {
     state.file = {
-      path: file.path, ino: Number.isSafeInteger(file.ino) ? file.ino : null,
+      path: file.path, ino: Number.isSafeInteger(file.ino) ? file.ino : null, head: typeof file.head === 'string' && /^[a-f0-9]{32}$/.test(file.head) ? file.head : null,
       offset: Number.isSafeInteger(file.offset) && file.offset >= 0 ? file.offset : 0, skip: file.skip === true,
       base: numbers(file.base), model: modelName(file.model),
       recent: Array.isArray(file.recent) ? file.recent.filter(item => Array.isArray(item) && typeof item[0] === 'string' && /^[a-f0-9]{16}$/.test(item[0])).slice(-RECENT_IDS).map(item => [item[0], ...numbers(item.slice(1))]) : [],
@@ -146,7 +159,9 @@ function readUsage(harness, file, prior, options = {}) {
       if (state.file) { state.carried = add(state.carried, fileTotals(state.file)); state.model = state.file.model || state.model; }
       state.file = freshFile(file, stat.ino);
     } else if (stat.ino !== state.file.ino || stat.size < state.file.offset) state.file = freshFile(file, stat.ino);
+    else if (state.file.head && headHash(descriptor, stat.size) !== state.file.head) state.file = freshFile(file, stat.ino);
     const current = state.file;
+    if (!current.head) current.head = headHash(descriptor, stat.size);
     const maxBytes = Math.max(1024, options.maxBytes || READ_BYTES.stop);
     const length = Math.min(stat.size - current.offset, maxBytes);
     if (length <= 0) return state;
