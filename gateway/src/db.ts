@@ -14,6 +14,7 @@ import { ensureConnectionClientSchema } from "./connection-client-schema";
 import { ensureAgentIdentitySchema } from "./agent-identity-schema";
 import { ensureWorkspaceAccessSchema } from "./workspace-access-schema";
 import { ensureShareRuleExpirySchema } from "./share-rule-expiry-schema";
+import { ensureTokenUsageSchema } from "./token-usage-schema";
 import { ensureSiteAnalyticsSchema } from "./site-analytics-schema";
 import { ensureDeviceAuthSchema } from "./device-auth-schema";
 import { assertRuntimeSchema, ensureProvisioningSchema, markSchemaReady } from "./provisioning-schema";
@@ -557,6 +558,7 @@ export async function migrate() {
   await ensureContextSharingSchema(sql);
   await ensureWorkspaceAccessSchema(sql);
   await ensureShareRuleExpirySchema(sql);
+  await ensureTokenUsageSchema(sql);
   await ensureSiteAnalyticsSchema(sql);
   await ensureDeviceAuthSchema(sql);
   await protectGatewayMetadata(sql);

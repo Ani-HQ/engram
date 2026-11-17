@@ -41,19 +41,70 @@
 
 /* Cards */
 /* Live state and categories share the narrow column beside the 12-week chart. */
-.profile-main { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); grid-template-areas: "desk overview" "categories overview" "agents agents" "pins pins"; grid-template-rows: auto 1fr auto auto; gap: var(--ds-space-5); align-items: stretch; }
-.public-profile[data-profile-layout='field-notes'] .profile-main { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); grid-template-areas: "pins pins" "overview desk" "overview categories" "agents agents"; grid-template-rows: auto auto 1fr auto; }
+.profile-main { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); grid-template-areas: "flex flex" "desk overview" "categories overview" "tokens tokens" "agents agents" "pins pins"; grid-template-rows: auto auto 1fr auto auto auto; gap: var(--ds-space-5); align-items: stretch; }
+.public-profile[data-profile-layout='field-notes'] .profile-main { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); grid-template-areas: "pins pins" "flex flex" "overview desk" "overview categories" "tokens tokens" "agents agents"; grid-template-rows: auto auto auto 1fr auto auto; }
+/* Without token counts the token row is removed, not left as an empty gap. */
+.public-profile:has(.profile-tokens[hidden]) .profile-main { grid-template-areas: "flex flex" "desk overview" "categories overview" "agents agents" "pins pins"; grid-template-rows: auto auto 1fr auto auto; }
+.public-profile[data-profile-layout='field-notes']:has(.profile-tokens[hidden]) .profile-main { grid-template-areas: "pins pins" "flex flex" "overview desk" "overview categories" "agents agents"; grid-template-rows: auto auto auto 1fr auto; }
 .profile-main > * { min-width: 0; }
 .profile-desk { grid-area: desk; }
 .profile-overview { grid-area: overview; }
 .profile-highlights { grid-area: pins; }
 .profile-category-summary { grid-area: categories; }
 .profile-agents { grid-area: agents; }
-.profile-agents[hidden] { display: none; }
-:is(.profile-desk, .profile-overview, .profile-category-summary, .profile-agents, .profile-highlight, .profile-receipts, .profile-history) { padding: var(--profile-card-pad); background: var(--ds-surface-raised); border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-panel); }
+.profile-agents[hidden], .profile-tokens[hidden] { display: none; }
+.profile-flex { grid-area: flex; }
+.profile-tokens { grid-area: tokens; }
+:is(.profile-desk, .profile-overview, .profile-category-summary, .profile-agents, .profile-tokens, .profile-highlight, .profile-receipts, .profile-history) { padding: var(--profile-card-pad); background: var(--ds-surface-raised); border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-panel); }
 .profile-section-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--ds-space-2) var(--ds-space-3); margin-bottom: var(--ds-space-5); }
 .profile-section-heading :is(h2, h3) { font-size: var(--ds-text-base); font-weight: 600; line-height: 1.4; }
 .profile-section-heading > span { font-size: var(--ds-text-sm); color: var(--ds-muted); }
+
+/* The flex band: the token total is the hero, all-time counts beside it.
+   Numbers come from statHero() in the design system; this only lays them out. */
+.profile-flex { position: relative; isolation: isolate; display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); align-items: end; gap: var(--ds-space-8) var(--ds-space-10); padding: var(--ds-space-8); overflow: hidden; background: var(--ds-surface-raised); border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-panel); }
+.profile-flex::before { content: ''; position: absolute; inset: -40% auto auto -10%; z-index: -1; width: 70%; height: 140%; background: radial-gradient(ellipse at 30% 40%, var(--ds-glow), transparent 62%); pointer-events: none; }
+.profile-flex[data-tokens='false'] { grid-template-columns: minmax(0, 1fr); }
+.profile-flex[data-tokens='false']::before { display: none; }
+.profile-flex-hero[hidden], .profile-flex-stat[hidden] { display: none; }
+.profile-flex-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ds-space-6) var(--ds-space-5); }
+.profile-flex[data-tokens='false'] .profile-flex-stats { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.profile-flex-stat { --ds-stat-hero-size: clamp(1.75rem, 3vw, 2.5rem); padding-top: var(--ds-space-4); border-top: 1px solid var(--ds-hairline-strong); }
+.profile-flex-stat .ds-stat-hero-head { order: 2; }
+.profile-flex-stat .ds-stat-hero-value { order: 1; }
+
+/* Token burn */
+.profile-token-body { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: var(--ds-space-8); }
+.profile-token-mix { display: grid; align-content: start; gap: var(--ds-space-5); min-width: 0; }
+.profile-token-moments { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ds-space-3); }
+.profile-token-moment { --ds-stat-hero-size: clamp(1.5rem, 2.6vw, 2.125rem); padding: var(--ds-space-4); border-radius: var(--ds-radius-card); background: var(--ds-paper); }
+.profile-token-bar { display: flex; gap: 2px; height: 10px; overflow: hidden; border-radius: 999px; background: var(--ds-paper); }
+.profile-token-segment { flex: 0 0 auto; width: var(--share, 0%); min-width: 0; height: 100%; transition: width var(--ds-duration-slow) var(--ds-ease-out); }
+/* One accent at four strengths; the legend words carry the meaning. */
+:is(.profile-token-segment, .profile-token-legend li)[data-part='input'] { --part: var(--ds-accent); }
+:is(.profile-token-segment, .profile-token-legend li)[data-part='output'] { --part: color-mix(in srgb, var(--ds-accent) 68%, var(--ds-paper)); }
+:is(.profile-token-segment, .profile-token-legend li)[data-part='cacheWrite'] { --part: color-mix(in srgb, var(--ds-accent) 44%, var(--ds-paper)); }
+:is(.profile-token-segment, .profile-token-legend li)[data-part='cacheRead'] { --part: color-mix(in srgb, var(--ds-accent) 24%, var(--ds-paper)); }
+.profile-token-segment { background: var(--part); }
+.profile-token-legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ds-space-3) var(--ds-space-5); margin: 0; padding: 0; list-style: none; }
+.profile-token-legend li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; align-items: baseline; gap: 2px var(--ds-space-2); min-width: 0; }
+.profile-token-swatch { width: 10px; height: 10px; border-radius: 3px; background: var(--part); align-self: center; }
+.profile-token-part { color: var(--ds-muted); font-size: var(--ds-text-sm); }
+.profile-token-value { grid-column: 2; font-size: var(--ds-text-lg); font-weight: 600; font-variant-numeric: tabular-nums; }
+.profile-token-share { grid-column: 3; grid-row: 1 / span 2; align-self: center; color: var(--ds-muted); font-size: var(--ds-text-sm); font-variant-numeric: tabular-nums; }
+.profile-token-board { display: grid; align-content: start; gap: var(--ds-space-3); min-width: 0; }
+.profile-token-board-title { color: var(--ds-muted); font-size: var(--ds-text-sm); font-weight: 500; }
+.profile-token-agents { display: grid; gap: var(--ds-space-2); margin: 0; padding: 0; list-style: none; }
+.profile-token-agent { display: flex; align-items: center; gap: var(--ds-space-3); min-width: 0; padding: var(--ds-space-2) var(--ds-space-3); border-radius: var(--ds-radius-card); background: var(--ds-paper); }
+.profile-token-agent-copy { display: grid; flex: 1; gap: 6px; min-width: 0; }
+.profile-token-agent-copy > strong { overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.profile-token-agent-bar { display: block; height: 4px; overflow: hidden; border-radius: 999px; background: var(--ds-surface-raised); }
+.profile-token-agent-fill { display: block; width: var(--share, 0%); height: 100%; border-radius: inherit; background: var(--ds-accent); transition: width var(--ds-duration-slow) var(--ds-ease-out); }
+.profile-token-agent[data-rank='1'] .ds-mark { border-color: color-mix(in srgb, var(--ds-accent) 45%, transparent); box-shadow: 0 0 14px -4px var(--ds-glow); }
+.profile-token-agent-count { font-size: var(--ds-text-lg); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.profile-token-agents-empty[hidden] { display: none; }
+.profile-token-note { padding-top: var(--ds-space-5); color: var(--ds-muted); font-size: var(--ds-text-xs); line-height: 1.6; }
+.contributions .profile-section-heading { align-items: center; }
 
 /* Right now */
 .profile-desk { display: flex; flex-direction: column; }
@@ -76,9 +127,6 @@ html[data-design-system] .public-profile .ds-focus-row { align-items: center; ga
 
 /* Totals and the 12-week rhythm */
 .profile-overview { display: grid; gap: var(--ds-space-8); }
-.profile-statistics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--ds-space-5); }
-.profile-statistics > .ds-stat { min-width: 0; padding-top: var(--ds-space-4); }
-.profile-statistics .ds-stat-value { font-size: clamp(26px, 3vw, 36px); font-weight: 600; }
 .profile-rhythm { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--ds-space-3); margin: 0 0 var(--ds-space-5); padding: 0; list-style: none; }
 .profile-rhythm-fact { display: flex; align-items: center; gap: var(--ds-space-3); min-width: 0; padding: var(--ds-space-3); border-radius: var(--ds-radius-card); background: var(--ds-paper); }
 .profile-rhythm-icon { display: inline-grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; border: 1px solid var(--ds-hairline-strong); border-radius: var(--ds-radius-control); color: var(--ds-muted); background: var(--ds-surface-raised); }
@@ -218,10 +266,14 @@ html[data-design-system] .public-links button { display: inline-flex; align-item
 .compact.public-profile { --profile-card-pad: var(--ds-space-4); padding: var(--ds-space-6); border-radius: var(--ds-radius-card); background: var(--ds-surface); }
 .compact .profile-identity { margin: 0 0 var(--ds-space-6); padding: 0; gap: var(--ds-space-4); }
 .compact .profile-identity :is(h1, h2) { font-size: var(--ds-text-2xl); }
-.compact .profile-main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "desk" "overview" "categories" "agents" "pins"; grid-template-rows: none; gap: var(--ds-space-4); }
-.public-profile.compact[data-profile-layout='field-notes'] .profile-main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "pins" "overview" "desk" "categories" "agents"; grid-template-rows: none; }
+/* One column follows the DOM, which updatePresentation() keeps in reading order. */
+.public-profile.compact .profile-main, .public-profile.compact[data-profile-layout] .profile-main { grid-template-columns: minmax(0, 1fr); grid-template-areas: none; grid-template-rows: none; gap: var(--ds-space-4); }
+.compact .profile-main > * { grid-area: auto; }
+.compact .profile-flex, .compact .profile-token-body { grid-template-columns: minmax(0, 1fr); gap: var(--ds-space-5); padding: var(--profile-card-pad); }
+.compact .profile-token-body { padding: 0; }
+.compact .profile-flex .ds-stat-hero[data-emphasis='primary'] { --ds-stat-hero-size: 3rem; }
 .compact .profile-highlight-list { grid-template-columns: minmax(0, 1fr); }
-.compact .profile-statistics .ds-stat-value, .compact .live-metrics strong { font-size: var(--ds-text-xl); }
+.compact .live-metrics strong { font-size: var(--ds-text-xl); }
 .compact .profile-rhythm { grid-template-columns: minmax(0, 1fr); }
 .compact .contribution-grid, .compact .contribution-months, .compact .contribution-weekdays { gap: 3px; }
 html[data-design-system] .compact.public-profile .ds-profile-avatar { background: var(--ds-surface-soft); }
@@ -260,8 +312,9 @@ html[data-design-system] :is(.public-profile, .profile-photo-editor) .ds-profile
   html[data-design-system] .public-profile .contribution-grid .contribution-cell:hover { outline: 1px solid var(--ds-ink); outline-offset: 1px; transform: scale(1.15); }
 }
 @media (max-width: 900px) {
-  .profile-main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "desk" "overview" "categories" "agents" "pins"; grid-template-rows: none; }
-  .public-profile[data-profile-layout='field-notes'] .profile-main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "pins" "overview" "desk" "categories" "agents"; grid-template-rows: none; }
+  .public-profile .profile-main, .public-profile[data-profile-layout] .profile-main { grid-template-columns: minmax(0, 1fr); grid-template-areas: none; grid-template-rows: none; }
+  .profile-main > * { grid-area: auto; }
+  .profile-flex, .profile-token-body { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 600px) {
   .public-header { padding: var(--ds-space-4); }
@@ -273,7 +326,10 @@ html[data-design-system] :is(.public-profile, .profile-photo-editor) .ds-profile
   .profile-identity > p { font-size: var(--ds-text-base); }
   .profile-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
   .profile-actions .ds-button { justify-content: center; min-height: 44px; }
-  .profile-statistics { gap: var(--ds-space-3); }
+  .profile-flex { gap: var(--ds-space-6); padding: var(--ds-space-6) var(--profile-card-pad); }
+  .profile-flex-stats { gap: var(--ds-space-5) var(--ds-space-4); }
+  .profile-flex[data-tokens='false'] .profile-flex-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .profile-token-legend { gap: var(--ds-space-3); }
   .profile-rhythm { gap: var(--ds-space-2); }
   .profile-rhythm-value { font-size: var(--ds-text-sm); }
   .profile-rhythm-fact { flex-direction: column; align-items: flex-start; gap: var(--ds-space-2); padding: var(--ds-space-3); }
@@ -295,7 +351,7 @@ html[data-design-system] :is(.public-profile, .profile-photo-editor) .ds-profile
 }
 @media (prefers-reduced-motion: reduce) {
   .profile-presence[data-state='working'] .profile-presence-dot::after { animation: none; opacity: 0; }
-  html[data-design-system] .public-profile .contribution-cell, .profile-highlight-link::after { transition: none; }
+  html[data-design-system] .public-profile .contribution-cell, .profile-highlight-link::after, .profile-token-segment, .profile-token-agent-fill { transition: none; }
 }
 
 /* Public profile editor (app): settings cards on the left, a bordered live

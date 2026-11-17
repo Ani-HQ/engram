@@ -19,6 +19,7 @@ test("expired hosted workspaces reject direct and indirect writes while retainin
       if (query.includes("FROM action_profiles")) return [];
       if (query.includes("INSERT INTO action_profiles") || query.includes("INSERT INTO audit_log")) return [];
       if (query.includes("WITH ledger")) return [{}];
+      if (query.includes("FROM token_usage_sessions")) return [{}];
       // SQL fragments for the public aggregate used by a permitted unpublish.
       if (!query.trim() || query.includes("AS action_version") || query.includes("SELECT agent, lower(tool) AS tool")) return [];
       if (query.includes("UPDATE tokens")) return Object.assign([], { count: 1 });

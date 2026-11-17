@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { renderAsync } from "@resvg/resvg-js";
 import { publicActivityEvents, PRODUCTS, type PublicActivityEvent } from "./public-activity";
 import { designColor } from "./design-tokens";
+import { compactNumber } from "./compact-number";
 import { brandCatalog } from "../../web/brand-catalog.js";
 import { sourceBrands } from "../../web/tooling.js";
 
@@ -15,6 +16,8 @@ export interface ShowcaseProfile {
   bio: string;
   published: boolean;
   showActivity?: boolean;
+  /** Public token counters; defaults to true, including for existing profiles. */
+  showTokens?: boolean;
   layout?: ShowcaseLayout;
   highlights?: ShowcaseHighlight[];
   photo?: string | null;
@@ -29,12 +32,15 @@ export interface PublicActivity {
     runningActions: number;
     activeAgents: number;
     activeDays: number;
+    /** Latest agent.task reports whose status is completed. */
+    completedTasks: number;
   };
   daily: { date: string; count: number }[];
   tools: { category: string; count: number }[];
   agents: { product: string; label: string; agents: number; actions: number }[];
   updatedAt: string | null;
   activity: { enabled: boolean; events: PublicActivityEvent[] };
+  tokens: PublicTokens;
   live: {
     workingAgents: number;
     recentlyActiveAgents: number;
@@ -48,11 +54,28 @@ export interface PublicActivity {
   };
 }
 
+// Token counts come from agents' local session logs, sent by the connector.
+// Engram does not observe them. When the owner hides them, every number is 0.
+export interface PublicTokens {
+  enabled: boolean;
+  total: number;
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  today: number;
+  lastHour: number;
+  daily: { date: string; count: number }[];
+  agents: { product: string; label: string; tokens: number }[];
+  updatedAt: string | null;
+  source: "local-session-logs";
+}
+
 export class ShowcaseError extends Error {
   constructor(message: string, public status = 400) { super(message); }
 }
 
-const PROFILE_FIELDS = new Set(["slug", "displayName", "bio", "published", "showActivity", "layout", "highlights", "photo"]);
+const PROFILE_FIELDS = new Set(["slug", "displayName", "bio", "published", "showActivity", "showTokens", "layout", "highlights", "photo"]);
 const HIGHLIGHT_FIELDS = new Set(["title", "body", "url"]);
 // Text/presentation budget plus one bounded 512 KiB PNG encoded as base64.
 export const SHOWCASE_PAYLOAD_LIMIT = 32_768 + Math.ceil(512 * 1024 / 3) * 4 + 64;
@@ -116,10 +139,11 @@ export function parseShowcaseInput(value: unknown): ShowcaseProfile {
   if (typeof input.bio !== "string" || input.bio.trim().length > 160) throw new ShowcaseError("Bio must be at most 160 characters");
   if (typeof input.published !== "boolean") throw new ShowcaseError("published must be true or false");
   if (input.showActivity !== undefined && typeof input.showActivity !== "boolean") throw new ShowcaseError("showActivity must be true or false");
+  if (input.showTokens !== undefined && typeof input.showTokens !== "boolean") throw new ShowcaseError("showTokens must be true or false");
   if (Object.hasOwn(input, "layout") && !["studio", "field-notes"].includes(input.layout as string)) throw new ShowcaseError("Choose the Studio or Field notes profile layout");
   const highlights = Object.hasOwn(input, "highlights") ? parseHighlights(input.highlights) : [];
   if (Object.hasOwn(input, "photo") && input.photo !== null && (typeof input.photo !== "string" || !input.photo.startsWith("data:image/png;base64,") || input.photo.length > Math.ceil(512 * 1024 / 3) * 4 + 22)) throw new ShowcaseError("Choose a PNG profile photo, up to 512 KB");
-  return { slug: input.slug, displayName: input.displayName.trim(), bio: input.bio.trim(), published: input.published, showActivity: input.showActivity === true, layout: input.layout === "field-notes" ? "field-notes" : "studio", highlights, ...(Object.hasOwn(input, "photo") ? { photo: input.photo as string | null } : {}) };
+  return { slug: input.slug, displayName: input.displayName.trim(), bio: input.bio.trim(), published: input.published, showActivity: input.showActivity === true, ...(Object.hasOwn(input, "showTokens") ? { showTokens: input.showTokens as boolean } : {}), layout: input.layout === "field-notes" ? "field-notes" : "studio", highlights, ...(Object.hasOwn(input, "photo") ? { photo: input.photo as string | null } : {}) };
 }
 
 export function showcaseUrls(profile: ShowcaseProfile, origin: string) {
@@ -137,16 +161,52 @@ function count(value: unknown): number {
   return Number.isSafeInteger(number) && number >= 0 ? number : 0;
 }
 
-export function publicActivitySnapshot(profile: ShowcaseProfile, row: any = {}, now = new Date(), eventSource: { rows?: unknown; scope?: string; key?: string; preview?: boolean; photoUrl?: string | null } = {}): PublicActivity {
-  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+// Token sums can exceed what count() accepts; clamp instead of zeroing.
+function tokenCount(value: unknown): number {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.min(Math.floor(number), Number.MAX_SAFE_INTEGER) : 0;
+}
+
+function dailySeries(rows: unknown, today: Date, parse: (value: unknown) => number): { date: string; count: number }[] {
   const counts = new Map<string, number>();
-  for (const day of Array.isArray(row.daily) ? row.daily : []) {
-    if (typeof day?.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(day.date)) counts.set(day.date, count(day.count));
+  for (const day of Array.isArray(rows) ? rows : []) {
+    if (typeof day?.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(day.date)) counts.set(day.date, parse(day.count));
   }
-  const daily = Array.from({ length: 84 }, (_, index) => {
+  return Array.from({ length: 84 }, (_, index) => {
     const date = new Date(today.getTime() - (83 - index) * 86_400_000).toISOString().slice(0, 10);
     return { date, count: counts.get(date) ?? 0 };
   });
+}
+
+// `row` is the aggregate from token-usage.ts. Pass null to publish nothing.
+export function publicTokens(enabled: boolean, row: any, today: Date): PublicTokens {
+  const source = row && typeof row === "object" ? row : {};
+  const counts = { input: tokenCount(source.input), output: tokenCount(source.output), cacheRead: tokenCount(source.cache_read), cacheWrite: tokenCount(source.cache_write) };
+  // Known product keys only; anything else is grouped as "other", never named.
+  const products = new Map<string, number>();
+  for (const item of Array.isArray(source.products) ? source.products : []) {
+    const key = typeof item?.product === "string" && item.product !== "other" && Object.hasOwn(PRODUCTS, item.product) ? item.product : "other";
+    products.set(key, (products.get(key) ?? 0) + tokenCount(item?.tokens));
+  }
+  const updated = source.updated_at ? new Date(source.updated_at) : null;
+  return {
+    enabled,
+    total: Math.min(Number.MAX_SAFE_INTEGER, counts.input + counts.output + counts.cacheRead + counts.cacheWrite),
+    ...counts,
+    today: tokenCount(source.today), lastHour: tokenCount(source.last_hour),
+    daily: row ? dailySeries(source.daily, today, tokenCount) : [],
+    agents: [...products].filter(([, tokens]) => tokens > 0).map(([product, tokens]) => ({ product, label: PRODUCTS[product], tokens }))
+      .sort((a, b) => Number(a.product === "other") - Number(b.product === "other") || b.tokens - a.tokens || a.product.localeCompare(b.product)),
+    updatedAt: updated && Number.isFinite(updated.getTime()) ? updated.toISOString() : null,
+    source: "local-session-logs",
+  };
+}
+
+export function publicActivitySnapshot(profile: ShowcaseProfile, row: any = {}, now = new Date(), eventSource: { rows?: unknown; scope?: string; key?: string; preview?: boolean; photoUrl?: string | null; tokens?: unknown } = {}): PublicActivity {
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const daily = dailySeries(row.daily, today, count);
+  // Like activity events, the owner's private preview shows what would publish.
+  const showTokens = profile.showTokens !== false;
   const categories = new Map<string, number>();
   for (const tool of Array.isArray(row.tools) ? row.tools : []) {
     const category = CATEGORY_SET.has(tool?.category) ? tool.category : "other";
@@ -168,6 +228,7 @@ export function publicActivitySnapshot(profile: ShowcaseProfile, row: any = {}, 
       totalActions: count(row.total_actions), completedActions: count(row.completed_actions),
       failedActions: count(row.failed_actions), runningActions: count(row.running_actions),
       activeAgents: count(row.active_agents), activeDays: count(row.active_days),
+      completedTasks: count(row.completed_tasks),
     },
     daily,
     tools: [...categories].filter(([, total]) => total > 0).map(([category, total]) => ({ category, count: total }))
@@ -177,6 +238,7 @@ export function publicActivitySnapshot(profile: ShowcaseProfile, row: any = {}, 
       .sort((a, b) => Number(a.product === "other") - Number(b.product === "other") || b.agents - a.agents || b.actions - a.actions || a.product.localeCompare(b.product)),
     updatedAt: last && Number.isFinite(last.getTime()) ? last.toISOString() : null,
     activity: { enabled: profile.showActivity === true, events: publicActivityEvents(eventSource.rows, { enabled: profile.showActivity === true || eventSource.preview === true, scope: eventSource.scope || "", key: eventSource.key || "", now }) },
+    tokens: publicTokens(showTokens, showTokens || eventSource.preview === true ? eventSource.tokens ?? {} : null, today),
     live: {
       workingAgents: count(row.working_agents), recentlyActiveAgents: count(row.recently_active_agents),
       completedAgents: count(row.completed_agents), failedAgents: count(row.failed_agents),
@@ -191,11 +253,22 @@ export function escapeShowcaseHtml(value: string): string {
   return value.replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]!));
 }
 
+// Only a published, enabled, non-zero total appears in page text and cards.
+function publishedTokenTotal(activity: PublicActivity): number {
+  return activity.tokens?.enabled === true && activity.tokens.total > 0 ? activity.tokens.total : 0;
+}
+
 export function renderShowcasePage(activity: PublicActivity, origin: string): string {
   const { profile } = activity;
   const urls = showcaseUrls({ ...profile, published: true }, origin);
   const title = `${profile.displayName || profile.slug} · Agent activity`;
-  const description = profile.bio || `${activity.stats.totalActions.toLocaleString("en-US")} agent actions, connected through Engram.`;
+  const tokens = publishedTokenTotal(activity);
+  const actions = activity.stats.totalActions.toLocaleString("en-US");
+  // Token totals are agent-reported, so the description names their source.
+  const description = profile.bio || (tokens
+    ? `${compactNumber(tokens)} tokens from agents' local session logs and ${actions} agent actions, connected through Engram.`
+    : `${actions} agent actions, connected through Engram.`);
+  const summary = [...(tokens ? [`${compactNumber(tokens)} tokens`] : []), `${actions} actions`, `${activity.stats.activeAgents.toLocaleString("en-US")} agents`].join(" · ");
   const escape = escapeShowcaseHtml;
   return `<!doctype html>
 <html lang="en" data-design-system="signal"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -207,7 +280,7 @@ export function renderShowcasePage(activity: PublicActivity, origin: string): st
 <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${escape(title)}">
 <meta name="twitter:description" content="${escape(description)}"><meta name="twitter:image" content="${escape(urls.card!)}">
 <link rel="stylesheet" href="/design-system.css"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/showcase.css"><link rel="stylesheet" href="/app-theme.css"><script type="module" src="/showcase.js"></script>
-</head><body><div id="public-showcase" data-slug="${escape(profile.slug)}"><main class="public-showcase-fallback"><p>engram</p><h1>${escape(profile.displayName || profile.slug)}</h1><p>${escape(description)}</p><p>${activity.stats.totalActions.toLocaleString("en-US")} actions · ${activity.stats.activeAgents.toLocaleString("en-US")} agents</p></main></div></body></html>`;
+</head><body><div id="public-showcase" data-slug="${escape(profile.slug)}"><main class="public-showcase-fallback"><p>engram</p><h1>${escape(profile.displayName || profile.slug)}</h1><p>${escape(description)}</p><p>${escape(summary)}</p></main></div></body></html>`;
 }
 
 export function renderUnavailableShowcasePage(): string {
@@ -293,8 +366,14 @@ export function renderShowcaseCard(activity: PublicActivity, options: { origin?:
   const address = clip(`${host}/u/${profile.slug}`, 420 / 18);
 
   // Headline stats mirror the page's .ds-stat row: accent tick on a hairline.
-  const statRow = [[stats.totalActions, stats.totalActions === 1 ? "Action" : "Actions"], [stats.activeAgents, stats.activeAgents === 1 ? "Agent" : "Agents"], [stats.activeDays, stats.activeDays === 1 ? "Active day" : "Active days"]] as const;
-  const statValues = statRow.map(([value]) => n(value));
+  // With published token counts, tokens lead: "1.2B Tokens · 3,400 Actions · 12 Agents".
+  const tokens = publishedTokenTotal(activity);
+  const statRow: [string, string][] = [
+    ...(tokens ? [[compactNumber(tokens), "Tokens"] as [string, string]] : []),
+    [n(stats.totalActions), stats.totalActions === 1 ? "Action" : "Actions"], [n(stats.activeAgents), stats.activeAgents === 1 ? "Agent" : "Agents"],
+    ...(tokens ? [] : [[n(stats.activeDays), stats.activeDays === 1 ? "Active day" : "Active days"] as [string, string]]),
+  ];
+  const statValues = statRow.map(([value]) => value);
   const statSize = Math.min(48, 158 / Math.max(...statValues.map(textUnits)));
   const statsSvg = statRow.map(([, label], index) => {
     const x = 64 + index * 184;

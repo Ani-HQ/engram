@@ -58,6 +58,9 @@ const forgotten = new Map<string, any>();
 const showcaseProfiles = new Map<number, ShowcaseProfile>();
 const showcasePhotos = new Map<number, Awaited<ReturnType<typeof normalizeProfilePhoto>>>();
 const showcaseRevisions = new Map<number, number>();
+// Owner "Show token usage" switch (showTokens), default on. Kept beside the
+// profile so the local preview works whether or not the gateway parser knows it.
+const showcaseTokens = new Map<number, boolean>();
 const demoEvents = new Map<string, { fingerprint: string; action: any }>();
 const insightJobs = new Map<string, { workspaceId: number; job: { id: string; status: string; createdAt: string; updatedAt: string }; request: ReturnType<typeof parseInsightRequest>; result: ReturnType<typeof analyzeActions> | null; readyAt: number }>();
 const reviewEntries = new Map([
@@ -74,7 +77,7 @@ const reviewWorkspaces = new Map(demoReviews.map(item => [item.id, session.org.i
 function publicDemoProfile(slug: string) { return [...showcaseProfiles.entries()].find(([, profile]) => profile.slug === slug && profile.published); }
 function demoPublication(slug: string) {
   const entry = publicDemoProfile(slug);
-  return entry ? `${entry[0]}:${showcaseRevisions.get(entry[0]) || 0}:${entry[1].showActivity === true}` : null;
+  return entry ? `${entry[0]}:${showcaseRevisions.get(entry[0]) || 0}:${entry[1].showActivity === true}:${showcaseTokens.get(entry[0]) !== false}` : null;
 }
 const demoStreams = createShowcaseStreamManager({
   publication: async slug => demoPublication(slug),
@@ -462,6 +465,12 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
         if (new TextEncoder().encode(raw).byteLength > SHOWCASE_PAYLOAD_LIMIT) throw new ShowcaseError("Profile payload is too large", 413);
         let input: unknown;
         try { input = JSON.parse(raw); } catch { throw new ShowcaseError("Expected a profile object"); }
+        let showTokens: boolean | undefined;
+        if (input && typeof input === "object" && !Array.isArray(input) && Object.hasOwn(input, "showTokens")) {
+          const { showTokens: value, ...rest } = input as Record<string, unknown>;
+          if (typeof value !== "boolean") throw new ShowcaseError("showTokens must be true or false");
+          showTokens = value; input = rest;
+        }
         const profile = parseShowcaseInput(input), previous = showcaseProfiles.get(workspaceId);
         if (!Object.hasOwn(input as object, "layout")) profile.layout = previous?.layout ?? "studio";
         if (!Object.hasOwn(input as object, "highlights")) profile.highlights = previous?.highlights ?? [];
@@ -472,11 +481,13 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
           return json({ error: "That showcase address is already taken" }, 409);
         }
         showcaseProfiles.set(workspaceId, profile);
+        if (showTokens !== undefined) showcaseTokens.set(workspaceId, showTokens);
         if (photo) showcasePhotos.set(workspaceId, photo); else showcasePhotos.delete(workspaceId);
         showcaseRevisions.set(workspaceId, (showcaseRevisions.get(workspaceId) || 0) + 1);
         await demoStreams.refresh();
       }
-      const profile = showcaseProfiles.get(workspaceId) ?? { slug: "", displayName: "", bio: "", published: false, showActivity: false, layout: "studio", highlights: [], photo: null };
+      const stored = showcaseProfiles.get(workspaceId) ?? { slug: "", displayName: "", bio: "", published: false, showActivity: false, layout: "studio", highlights: [], photo: null };
+      const profile = { ...stored, showTokens: showcaseTokens.get(workspaceId) !== false };
       return json({ profile, urls: showcaseUrls(profile, url.origin), preview: showcaseActivity(profile, workspaceId, true) }, 200, { "Cache-Control": "no-store" });
     } catch (error) {
       if (error instanceof ShowcaseError) return json({ error: error.message }, error.status);
@@ -753,7 +764,43 @@ function demoAgentProducts(rows: any[]) {
   return [...products].map(([product, total]) => ({ product, ...total }));
 }
 
+// Local preview only: sample token counts in the contract's shape, so the
+// profile flex can be reviewed without a connector. A fixed base plus a steady
+// sample burn that steps on each 5-second stream poll, so counters visibly move.
+// Real profiles get these numbers from the gateway, never from this code.
+const demoTokenEpoch = Date.now();
+const demoTokenShare = { input: .05, output: .03, cacheRead: .82, cacheWrite: .1 } as const;
+const demoTokenBase = { input: 61_204_118, output: 23_940_552, cacheRead: 1_612_877_903, cacheWrite: 143_519_224 };
+const demoTokenDays = [0.62, 1.1, 0.94, 1.38, 0.71, 0, 0.18, 0.88, 1.27, 1.04, 1.52, 0.9, 0.12, 0, 0.74, 1.18, 1.41, 0.97, 1.63, 0.3, 0.08];
+function demoTokens(enabled: boolean, now = new Date()) {
+  if (!enabled) return { enabled: false, total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, today: 0, lastHour: 0, daily: [], agents: [], updatedAt: null, source: "local-session-logs" };
+  const step = Math.floor(Math.max(0, now.getTime() - demoTokenEpoch) / 5000);
+  const burn = step * 38_400 + (step % 4) * 9_150;
+  const parts = Object.fromEntries(Object.entries(demoTokenBase).map(([key, value]) => [key, value + Math.floor(burn * demoTokenShare[key as keyof typeof demoTokenShare])])) as typeof demoTokenBase;
+  const total = parts.input + parts.output + parts.cacheRead + parts.cacheWrite;
+  const today = 18_420_331 + burn;
+  const midnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const daily = Array.from({ length: 84 }, (_, index) => {
+    const date = new Date(midnight - (83 - index) * 86_400_000).toISOString().slice(0, 10);
+    return { date, count: index === 83 ? today : Math.round(13_900_000 * demoTokenDays[index % demoTokenDays.length] * (0.55 + index / 160)) };
+  });
+  const agents = [["claude-code", "Claude Code", .61], ["codex", "Codex", .27], ["cursor", "Cursor", .09], ["other", "Agent", .03]] as const;
+  return {
+    enabled: true, total, ...parts, today, lastHour: 1_284_550 + burn, daily,
+    agents: agents.map(([product, label, share]) => ({ product, label, tokens: Math.floor(total * share) })),
+    updatedAt: now.toISOString(), source: "local-session-logs",
+  };
+}
+
 function showcaseActivity(profile: ShowcaseProfile, workspaceId = session.org.id, preview = false) {
+  const snapshot = demoShowcaseActivity(profile, workspaceId, preview);
+  const rows = latestDemoActions(workspaceId).filter((row: any) => row.tool === "agent.task" || row.evidence === "reported");
+  return { ...snapshot, stats: { ...snapshot.stats, completedTasks: rows.filter((row: any) => row.status === "completed").length },
+    // The owner preview always carries counts so the draft switch can show them; the public view follows the saved switch.
+    tokens: demoTokens(preview || showcaseTokens.get(workspaceId) !== false) };
+}
+
+function demoShowcaseActivity(profile: ShowcaseProfile, workspaceId = session.org.id, preview = false) {
   const rows = latestDemoActions(workspaceId).filter((row: any) => !["list_actions", "record_action", "whoami"].includes(row.tool));
   const now = new Date();
   const cutoff = now.getTime() - 15 * 60_000;

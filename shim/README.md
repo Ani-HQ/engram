@@ -56,7 +56,9 @@ written into a linked dotfiles repository.
 
 Hook code is copied into a private versioned runtime under
 `$XDG_DATA_HOME/engram-mcp/runtimes` (default `~/.local/share/engram-mcp/runtimes`).
-It keeps working if `npx` clears its cache. No transcript capture is enabled.
+It keeps working if `npx` clears its cache. No transcript capture is enabled; for
+Claude Code and Codex the hooks read only token-count numbers from the local
+session log and send just those counts.
 Native guidance points to that exact executable with a quoted absolute command;
 decision, no-change and known-outcome reporting do not require a global
 `engram-mcp` binary in `PATH`.
@@ -135,7 +137,8 @@ Claude Code command hooks. It retrieves targeted context for the first substanti
 prompt per session, deduplicates calls across restart/compaction, and limits returned memory
 to 4096 UTF-8 bytes per task by default (configurable up to 16384). Decisions and
 handoffs are saved only through explicit structured `memory decision` events.
-There is no transcript capture, second model call, or per-message recall. A Stop
+There is no transcript capture, second model call, or per-message recall. Token
+counts are the only thing read from the session log. A Stop
 notification never marks a task completed. Operational failures do not block work.
 Later task boundaries need an explicit `Engram task: <name>` prompt or a recorded
 task-end; arbitrary natural-language task changes are not reliably inferred.

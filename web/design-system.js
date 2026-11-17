@@ -602,6 +602,120 @@ export function slidingIndicator(container, { variant = 'pill', selector = ':sco
   return () => { watch.disconnect(); resize?.disconnect(); indicator.remove(); container.classList.remove('ds-slide-host'); container.removeAttribute('data-slide'); };
 }
 
+/**
+ * Flex counter numbers. 'exact' groups digits (1,284,113); 'compact' shortens
+ * values of 10,000 and up (12K, 340K, 1.2M, 1.84B). Invalid or negative
+ * input is 0: a counter never shows a number the data did not contain.
+ */
+const exactFormat = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+const compactFormat = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
+const compactWide = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 });
+const counterValue = value => { const number = Number(value); return Number.isFinite(number) && number > 0 ? Math.floor(number) : 0; };
+export function formatCount(value, format = 'exact') {
+  const number = counterValue(value);
+  if (format !== 'compact' || number < 10_000) return exactFormat.format(number);
+  // Two decimals between 1 and 10 of a unit (1.84B) keep big totals moving visibly.
+  const unit = [1e12, 1e9, 1e6, 1e3].find(size => number >= size) || 1;
+  return (number / unit < 10 ? compactWide : compactFormat).format(number);
+}
+
+/** True when this element (or its page) asked for no motion. */
+export function prefersReducedMotion(element) {
+  if (element?.closest?.("[data-motion='reduced']")) return true;
+  try { return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+}
+
+const counters = new WeakMap();
+/**
+ * Ease a .ds-stat-hero-value (or any element with a [data-counter-digits]
+ * child) from the previous real value to the next real value in ~1.2s.
+ * Only the two real endpoints are ever reached; nothing is extrapolated, and
+ * the final frame always shows the exact target. Instant under reduced motion,
+ * on hidden pages, without requestAnimationFrame, or when `animate` is false.
+ * The exact value goes to the title and a visually hidden twin at once.
+ */
+export function counterTo(element, value, { format = 'exact', duration = 1200, animate = true, from, unit = '' } = {}) {
+  if (!element) return;
+  const target = counterValue(value);
+  const state = counters.get(element) || { value: undefined, frame: 0 };
+  const digits = element.querySelector?.('[data-counter-digits]') || element;
+  const exact = element.querySelector?.('[data-counter-exact]');
+  const exactText = `${exactFormat.format(target)}${unit ? ` ${unit}` : ''}`;
+  element.setAttribute('title', exactText);
+  element.setAttribute('data-value', String(target));
+  element.style?.setProperty?.('--ds-stat-hero-chars', String(Math.max(3, formatCount(target, format).length)));
+  if (exact && exact.textContent !== exactText) exact.textContent = exactText;
+  const start = from !== undefined && state.value === undefined ? counterValue(from) : state.value;
+  if (state.frame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(state.frame);
+  state.frame = 0;
+  const show = number => { const text = formatCount(number, format); if (digits.textContent !== text) digits.textContent = text; };
+  const still = !animate || start === undefined || start === target || typeof requestAnimationFrame !== 'function'
+    || (typeof document !== 'undefined' && document.hidden) || prefersReducedMotion(element);
+  state.value = target;
+  counters.set(element, state);
+  if (still) { show(target); element.removeAttribute('data-counting'); return; }
+  const began = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  element.setAttribute('data-counting', 'true');
+  const step = now => {
+    const progress = Math.min(1, Math.max(0, (now - began) / Math.max(1, duration)));
+    const eased = 1 - Math.pow(1 - progress, 3);
+    show(progress >= 1 ? target : Math.round(start + (target - start) * eased));
+    if (progress < 1) state.frame = requestAnimationFrame(step);
+    else { state.frame = 0; element.removeAttribute('data-counting'); }
+  };
+  state.frame = requestAnimationFrame(step);
+}
+
+/**
+ * A large real total: label (with an optional live tag), the counter and a
+ * sublabel. emphasis 'primary' is the single hero number on a surface.
+ * Returns the element; update it with updateStatHero().
+ */
+export function statHero({ label = '', value = 0, format = 'exact', unit = '', sublabel = '', emphasis = '', live = null, className = '', countFrom } = {}) {
+  const root = document.createElement('div');
+  root.setAttribute('class', ['ds-stat-hero', className].filter(Boolean).join(' '));
+  if (emphasis) root.setAttribute('data-emphasis', emphasis);
+  const head = document.createElement('div'); head.setAttribute('class', 'ds-stat-hero-head');
+  const name = document.createElement('span'); name.setAttribute('class', 'ds-stat-hero-label'); name.textContent = String(label);
+  head.append(name);
+  if (live !== null) {
+    const tag = document.createElement('span'); tag.setAttribute('class', 'ds-live-tag');
+    const dot = document.createElement('span'); dot.setAttribute('class', 'ds-live-dot'); dot.setAttribute('aria-hidden', 'true');
+    const words = document.createElement('span'); words.setAttribute('class', 'ds-live-words');
+    tag.append(dot, words); head.append(tag);
+  }
+  const number = document.createElement('strong'); number.setAttribute('class', 'ds-stat-hero-value');
+  const digits = document.createElement('span'); digits.setAttribute('data-counter-digits', ''); digits.setAttribute('aria-hidden', 'true');
+  const exact = document.createElement('span'); exact.setAttribute('class', 'ds-sr-only'); exact.setAttribute('data-counter-exact', '');
+  number.append(digits, exact);
+  const sub = document.createElement('span'); sub.setAttribute('class', 'ds-stat-hero-sub');
+  root.append(head, number, sub);
+  root.setAttribute('data-format', format);
+  if (unit) root.setAttribute('data-unit', unit);
+  updateStatHero(root, { value, sublabel, live, animate: countFrom !== undefined, from: countFrom });
+  return root;
+}
+
+/** Update a statHero() in place. live: null hides the tag, { active, text } sets it. */
+export function updateStatHero(root, { value, label, sublabel, live, animate = true, from } = {}) {
+  if (!root) return;
+  if (label !== undefined) { const name = root.querySelector('.ds-stat-hero-label'); if (name && name.textContent !== String(label)) name.textContent = String(label); }
+  if (value !== undefined) counterTo(root.querySelector('.ds-stat-hero-value'), value, { format: root.getAttribute('data-format') || 'exact', unit: root.getAttribute('data-unit') || '', animate, from });
+  if (sublabel !== undefined) {
+    const sub = root.querySelector('.ds-stat-hero-sub');
+    if (sub) { if (typeof sublabel === 'string') { if (sub.textContent !== sublabel) sub.textContent = sublabel; } else sub.replaceChildren(...[sublabel].flat().filter(Boolean)); }
+  }
+  const tag = root.querySelector('.ds-live-tag');
+  if (tag && live !== undefined) {
+    const active = live?.active === true;
+    tag.hidden = !live || !live.text;
+    if (live?.title) tag.setAttribute('title', live.title); else tag.removeAttribute('title');
+    tag.querySelector('.ds-live-dot')?.setAttribute('data-active', String(active));
+    const words = tag.querySelector('.ds-live-words');
+    if (words && words.textContent !== String(live?.text || '')) words.textContent = String(live?.text || '');
+  }
+}
+
 /** Replace an element's text with a short rise and blur, only when it changes. */
 export function swapContent(element, value) {
   if (!(element instanceof Element)) return;

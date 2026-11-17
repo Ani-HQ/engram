@@ -375,7 +375,7 @@ describe("local activity demo", () => {
 
   test("previews real aggregate counts privately before explicit publication", async () => {
     const settings = await (await request("/api/showcase")).json();
-    expect(settings.profile).toEqual({ slug: "", displayName: "", bio: "", published: false, showActivity: false, layout: "studio", highlights: [], photo: null });
+    expect(settings.profile).toEqual({ slug: "", displayName: "", bio: "", published: false, showActivity: false, showTokens: true, layout: "studio", highlights: [], photo: null });
     expect(settings.urls.page).toBeNull();
     const data = await (await request("/api/actions?limit=100")).json();
     const expected = data.actions.filter((row: any) => !["list_actions", "record_action", "whoami"].includes(row.tool));
@@ -392,7 +392,7 @@ describe("local activity demo", () => {
     const invalid = await request("/api/showcase", { method: "PUT", body: JSON.stringify({ ...profile, slug: "../private" }) });
     expect(invalid.status).toBe(400);
     const saved = await (await request("/api/showcase", { method: "PUT", body: JSON.stringify(profile) })).json();
-    expect(saved.profile).toEqual({ ...profile, showActivity: false, layout: "studio", highlights: [], photo: null });
+    expect(saved.profile).toEqual({ ...profile, showActivity: false, showTokens: true, layout: "studio", highlights: [], photo: null });
     expect(saved.urls.card).toBe("http://localhost:8099/api/public/activity/demo-agents/card.png");
     const dataResponse = await request("/api/public/activity/demo-agents", { headers: { Cookie: "engram_dev=0" } });
     expect(dataResponse.status).toBe(200);
@@ -431,7 +431,7 @@ describe("local activity demo", () => {
     const put = (value: unknown) => request("/api/showcase", { method: "PUT", body: JSON.stringify(value) });
     try {
       const result = await (await put(profile)).json();
-      expect(result.profile).toEqual({ ...profile, showActivity: false, photo: null });
+      expect(result.profile).toEqual({ ...profile, showActivity: false, showTokens: true, photo: null });
       expect((await (await request("/api/public/activity/layout-demo")).json()).profile).toEqual({ slug: profile.slug, displayName: profile.displayName, bio: profile.bio, layout: profile.layout, highlights: profile.highlights, photoUrl: null });
       const stream = await request("/api/public/activity/layout-demo/stream"), reader = stream.body!.getReader();
       try { expect(JSON.parse(new TextDecoder().decode((await reader.read()).value).split("data: ")[1].trim()).profile.highlights).toEqual(profile.highlights); }
@@ -829,5 +829,28 @@ describe("local reviewed-sharing lifecycle", () => {
       for (const id of created) await request("/api/sharing/" + id, { method: "DELETE", headers });
       await use(1);
     }
+  });
+});
+
+describe("local token flex sample", () => {
+  test("serves sample token counts in the contract shape and hides them when the owner turns them off", async () => {
+    const profile = { slug: "token-flex", displayName: "Ada", bio: "Sample", published: true };
+    const saved = await (await request("/api/showcase", { method: "PUT", body: JSON.stringify(profile) })).json();
+    expect(saved.profile.showTokens).toBe(true);
+    const data = await (await request("/api/public/activity/token-flex")).json();
+    expect(data.tokens.enabled).toBe(true);
+    expect(data.tokens.source).toBe("local-session-logs");
+    expect(data.tokens.total).toBe(data.tokens.input + data.tokens.output + data.tokens.cacheRead + data.tokens.cacheWrite);
+    expect(data.tokens.daily).toHaveLength(84);
+    expect(data.tokens.daily.at(-1).count).toBe(data.tokens.today);
+    expect(Number.isInteger(data.stats.completedTasks)).toBe(true);
+    expect((await request("/api/showcase", { method: "PUT", body: JSON.stringify({ ...profile, showTokens: "yes" }) })).status).toBe(400);
+    const off = await (await request("/api/showcase", { method: "PUT", body: JSON.stringify({ ...profile, showTokens: false }) })).json();
+    expect(off.profile.showTokens).toBe(false);
+    const hidden = await (await request("/api/public/activity/token-flex")).json();
+    expect(hidden.tokens).toMatchObject({ enabled: false, total: 0, today: 0, lastHour: 0, daily: [], agents: [] });
+    // Saving without the field keeps the owner's choice.
+    expect((await (await request("/api/showcase", { method: "PUT", body: JSON.stringify(profile) })).json()).profile.showTokens).toBe(false);
+    await request("/api/showcase", { method: "PUT", body: JSON.stringify({ ...profile, published: false, showTokens: true }) });
   });
 });

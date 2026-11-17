@@ -1421,7 +1421,9 @@ function showcaseView() {
   if (!state.showcase) return [heading("Public profile", "A live window into your agents’ work, with private details left out."), state.error ? notice(state.error, loadShowcase) : profileSkeleton()];
   const draft = state.showcaseDraft;
   const saved = state.showcase.profile;
-  const hasChanges = value => ["slug", "displayName", "bio"].some(key => value[key] !== saved[key]) || Boolean(value.showActivity) !== Boolean(saved.showActivity) || profilePhotoChanged(value, saved) || profilePresentationChanged(value, saved);
+  // Older servers neither return nor accept showTokens; the switch appears only when this one does.
+  const tokensSupported = showcaseTokensSupported();
+  const hasChanges = value => ["slug", "displayName", "bio"].some(key => value[key] !== saved[key]) || Boolean(value.showActivity) !== Boolean(saved.showActivity) || (tokensSupported && showsTokens(value) !== showsTokens(saved)) || profilePhotoChanged(value, saved) || profilePresentationChanged(value, saved);
   const workspaceId = state.session.org.id, epoch = authEpoch;
   const publicUrl = saved.published ? state.showcase.urls.page : `${location.origin}/u/${draft.slug || "your-name"}`;
   const nameError = el("p", { id: "showcase-name-error", class: "ds-field-error", hidden: true });
@@ -1431,6 +1433,7 @@ function showcaseView() {
   const slug = el("input", { name: "slug", value: draft.slug, autocomplete: "off", autocapitalize: "none", spellcheck: "false", placeholder: "your-name", required: true, minlength: 3, maxlength: 48, pattern: "(?=.{3,48}$)[a-z0-9]+(?:-[a-z0-9]+)*", "aria-describedby": "slug-hint showcase-slug-error" });
   const bio = el("textarea", { name: "bio", maxlength: 160, rows: 3, placeholder: "A line about you and the work your agents do.", "aria-describedby": "bio-hint showcase-bio-error" }, draft.bio);
   const showActivity = el("input", { type: "checkbox", class: "ds-switch", role: "switch", id: "showcase-show-activity", name: "showActivity", checked: Boolean(draft.showActivity), "aria-describedby": "activity-sharing-note" });
+  const showTokens = el("input", { type: "checkbox", class: "ds-switch", role: "switch", id: "showcase-show-tokens", name: "showTokens", checked: showsTokens(draft), "aria-describedby": "token-sharing-note" });
   const feedback = el("p", { id: "showcase-feedback", role: "status", "aria-live": "polite", tabindex: -1, class: "ds-settings-note form-feedback" });
   const save = el("button", { type: "submit", class: "primary small", "data-showcase-focus": "save", "aria-describedby": "showcase-feedback" }, "Save changes");
   const cancel = button("Cancel", () => { if (pending || !isCurrent()) return; state.showcaseDraft = { ...saved }; render(); }, { class: "small", disabled: true });
@@ -1476,7 +1479,7 @@ function showcaseView() {
   const photo = profilePhotoEditor = createProfilePhotoEditor({ photo: draft.photo ?? null, isCurrent, onChange: () => { setFeedback(""); update(); } });
   const update = () => {
     if (!isCurrent() || pending) return;
-    state.showcaseDraft = { ...draft, displayName: name.value, slug: slug.value, bio: bio.value, showActivity: showActivity.checked, photo: photo.read(), ...presentation.read() };
+    state.showcaseDraft = { ...draft, displayName: name.value, slug: slug.value, bio: bio.value, showActivity: showActivity.checked, ...(tokensSupported ? { showTokens: showTokens.checked } : {}), photo: photo.read(), ...presentation.read() };
     const card = preview.querySelector('.public-profile');
     if (card && state.showcase?.preview) updateProfileCard(card, showcasePreviewData(state.showcase.preview));
     else preview.replaceChildren(showcasePreview());
@@ -1488,11 +1491,11 @@ function showcaseView() {
     cancel.disabled = !hasChanges(state.showcaseDraft);
   };
   for (const [control, errorNode] of [[name, nameError], [slug, slugError], [bio, bioError]]) control.addEventListener("input", () => { if (!pending && isCurrent()) { setFieldError(control, errorNode); setFeedback(""); } });
-  [name, slug, bio, showActivity].forEach(node => node.addEventListener("input", update));
+  [name, slug, bio, showActivity, showTokens].forEach(node => node.addEventListener("input", update));
   save.disabled = !hasChanges(draft); cancel.disabled = !hasChanges(draft);
   const controller = {
     workspaceId, epoch, isCurrent,
-    setPending(value) { if (pending === value) return; pending = value; form.setAttribute("aria-busy", String(value)); for (const control of [name, slug, bio, showActivity, save, cancel, publish]) control.disabled = value; presentation.setPending(value); photo.setPending(value); if (!value) update(); },
+    setPending(value) { if (pending === value) return; pending = value; form.setAttribute("aria-busy", String(value)); for (const control of [name, slug, bio, showActivity, showTokens, save, cancel, publish]) control.disabled = value; presentation.setPending(value); photo.setPending(value); if (!value) update(); },
     error(message, focus = true) { setFeedback(message, true); if (message === "That showcase address is already taken") { setFieldError(slug, slugError, "This profile address is already taken. Choose another address."); if (focus) slug.focus(); } else if (focus) feedback.focus(); },
   };
   const sectionCard = (id, title, description, ...body) => el("section", { class: "ds-settings-card", "aria-labelledby": id }, el("header", { class: "ds-settings-head" }, el("div", {}, el("h2", { id }, title), el("p", {}, description))), body);
@@ -1510,6 +1513,7 @@ function showcaseView() {
     sectionCard("showcase-activity-title", "Activity sharing", "What the profile shows about your agents’ work.",
       settingRow("Share a redacted activity stream", el("p", { class: "ds-settings-help", id: "activity-sharing-note" }, "Show agent products, services, broad action labels, status, and receipt times. Task text, repository and document names, URLs, and personal agent aliases stay private."), showActivity, "showcase-show-activity"),
       el("div", { class: "ds-settings-row-full" }, el("p", { class: "ds-settings-help" }, "Off hides the activity stream. Counts, broad categories, and any highlights you write can still appear on a published profile. Review the preview before saving; saved changes to a published profile become public.")),
+      tokensSupported && settingRow("Show token usage", el("p", { class: "ds-settings-help", id: "token-sharing-note" }, "Show the all-time token total, today’s count, the input, output and cache mix, and totals per agent product. Counts come from each agent’s local session log, sent by the Engram connector. Only counts are shared."), showTokens, "showcase-show-tokens"),
       el("div", { class: "ds-settings-foot" }, feedback, el("span", { class: "ds-settings-note showcase-save-hint" }, saved.published ? "Changes update your public page." : "Saving keeps your profile private."), cancel, save)));
   const urls = state.showcase.urls;
   return [
@@ -1580,10 +1584,15 @@ function showcasePreview() {
   if (!snapshot) return profileSkeleton();
   return profileCard(showcasePreviewData(snapshot), { compact: true });
 }
+// showTokens defaults on: a profile saved before the setting existed shares token counts.
+const showsTokens = profile => profile?.showTokens !== false;
+const showcaseTokensSupported = () => Object.hasOwn(state.showcase?.profile || {}, "showTokens") || Boolean(state.showcase?.preview?.tokens);
 function showcasePreviewData(snapshot) {
   const enabled = Boolean(state.showcaseDraft?.showActivity);
   const draft = state.showcaseDraft;
-  return { ...snapshot, profile: { ...snapshot.profile, ...draft, photoUrl: draft ? draft.photo ?? null : snapshot.profile.photoUrl }, activity: { enabled, events: enabled ? snapshot.activity?.events || [] : [] } };
+  // The draft switch can hide token counts in the preview. It never adds numbers the snapshot lacks.
+  const tokens = snapshot.tokens ? { tokens: { ...snapshot.tokens, enabled: snapshot.tokens.enabled === true && showsTokens(draft) } } : {};
+  return { ...snapshot, ...tokens, profile: { ...snapshot.profile, ...draft, photoUrl: draft ? draft.photo ?? null : snapshot.profile.photoUrl }, activity: { enabled, events: enabled ? snapshot.activity?.events || [] : [] } };
 }
 async function loadShowcase() {
   if (state.session.role !== "owner") return;
@@ -1604,14 +1613,14 @@ async function persistShowcase(published, submit, feedback, profile, controller)
   const focusKey = submit.dataset.showcaseFocus;
   // Revoking publication never saves an unreviewed draft or discards its edits.
   const revoking = !published && state.showcase.profile.published;
-  const retainedDraft = revoking && (["slug", "displayName", "bio", "showActivity"].some(key => state.showcaseDraft[key] !== state.showcase.profile[key]) || profilePhotoChanged(state.showcaseDraft, state.showcase.profile) || profilePresentationChanged(state.showcaseDraft, state.showcase.profile)) ? { ...state.showcaseDraft, published: false } : null;
+  const retainedDraft = revoking && (["slug", "displayName", "bio", "showActivity"].some(key => state.showcaseDraft[key] !== state.showcase.profile[key]) || (showcaseTokensSupported() && showsTokens(state.showcaseDraft) !== showsTokens(state.showcase.profile)) || profilePhotoChanged(state.showcaseDraft, state.showcase.profile) || profilePresentationChanged(state.showcaseDraft, state.showcase.profile)) ? { ...state.showcaseDraft, published: false } : null;
   controller.setPending(true);
   busy(submit, published ? "Saving…" : "Updating…", true);
   feedback.setAttribute("role", "status"); feedback.setAttribute("aria-live", "polite");
   feedback.textContent = published ? "Saving public profile…" : "Saving private profile…";
   try {
     const presentation = profilePresentationValue(profile);
-    const data = await api.saveShowcase({ slug: profile.slug, displayName: profile.displayName.trim(), bio: profile.bio.trim(), showActivity: profile.showActivity === true, layout: presentation.layout, highlights: presentation.highlights.map(item => ({ title: item.title.trim(), body: item.body.trim(), url: item.url.trim() })), ...profilePhotoUpdate(profile, state.showcase.profile), published }, currentOrg);
+    const data = await api.saveShowcase({ slug: profile.slug, displayName: profile.displayName.trim(), bio: profile.bio.trim(), showActivity: profile.showActivity === true, layout: presentation.layout, highlights: presentation.highlights.map(item => ({ title: item.title.trim(), body: item.body.trim(), url: item.url.trim() })), ...(showcaseTokensSupported() ? { showTokens: showsTokens(profile) } : {}), ...profilePhotoUpdate(profile, state.showcase.profile), published }, currentOrg);
     if (!controller.isCurrent() || showcaseSaving !== request) return;
     const restoreFocus = document.activeElement === submit || document.activeElement === document.body;
     state.showcase = data; state.showcaseDraft = retainedDraft || { ...data.profile };

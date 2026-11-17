@@ -18,6 +18,7 @@ function managedCommand(entry, runtime) {
 const HOOK_LABELS = {
   SessionStart: 'Engram: loading project context', UserPromptSubmit: 'Engram: checking shared memory',
   Stop: 'Engram: checking for a handoff save', SessionEnd: 'Engram: closing the session record',
+  PostToolUse: 'Engram: updating token counts',
 };
 function hookLabel(event) { return HOOK_LABELS[event] || 'Engram'; }
 

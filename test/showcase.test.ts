@@ -10,11 +10,11 @@ import { DEFAULT_POLICIES, normalizeToken } from "../gateway/src/policies";
 
 const owner = normalizeToken({ name: "private-owner@example.com", role: "owner", orgId: 7 });
 const now = new Date("2026-10-22T00:03:00Z");
-const profile: ShowcaseProfile = { slug: "my-agents", displayName: "Ada", bio: "Building with agents", published: true, showActivity: false, layout: "studio", highlights: [], photo: null };
+const profile: ShowcaseProfile = { slug: "my-agents", displayName: "Ada", bio: "Building with agents", published: true, showActivity: false, showTokens: true, layout: "studio", highlights: [], photo: null };
 // Use the driver's real typed JSON helper without executing a connection.
 const jsonParameter = postgres().json;
 const aggregate = {
-  total_actions: "17", completed_actions: "13", failed_actions: "2", running_actions: "2",
+  total_actions: "17", completed_actions: "13", failed_actions: "2", running_actions: "2", completed_tasks: "5",
   active_agents: "3", active_days: "4", updated_at: "2026-10-21T21:00:00Z",
   working_agents: "1", recently_active_agents: "2", completed_agents: "3", failed_agents: "1", working_actions: "1", stale_actions: "1", last_activity_at: "2026-10-22T00:02:00Z",
   daily: [{ date: "2026-10-21", count: "8" }, { date: "2026-10-22", count: 2 }],
@@ -31,6 +31,8 @@ function database(initial: ShowcaseProfile | null = profile) {
   let unavailable = false;
   let aggregateHook: (() => void) | undefined;
   let eventRows: any[] = [];
+  let tokenRow: any = {};
+  let tokenHook: (() => void) | undefined;
   function execute(query: string, values: any[]) {
     calls.push({ query, values });
     if (unavailable) throw new Error("private connection details");
@@ -41,13 +43,13 @@ function database(initial: ShowcaseProfile | null = profile) {
       // jsonb. Require the typed array binding that the real constraint accepts.
       if (highlights?.type !== 3802 || !Array.isArray(highlights.value)) throw Object.assign(new Error("highlights must be a JSON array"), { code: "23514" });
       const existing = profiles.get(values[0]);
-      const saved = { slug: values[1], displayName: values[2], bio: values[3], published: values[4], showActivity: values[5] === true, layout: existing && !values[10] ? existing.layout : values[6], highlights: existing && !values[11] ? existing.highlights : structuredClone(highlights.value), photo: existing && !values[12] ? existing.photo ?? null : values[8] ? "data:image/png;base64," + Buffer.from(values[8]).toString("base64") : null };
-      if (!existing || values[12]) {
+      const saved = { slug: values[1], displayName: values[2], bio: values[3], published: values[4], showActivity: values[5] === true, showTokens: existing && !values[15] ? existing.showTokens !== false : values[10] !== false, layout: existing && !values[11] ? existing.layout : values[6], highlights: existing && !values[12] ? existing.highlights : structuredClone(highlights.value), photo: existing && !values[13] ? existing.photo ?? null : values[8] ? "data:image/png;base64," + Buffer.from(values[8]).toString("base64") : null };
+      if (!existing || values[13]) {
         if (values[8]) photos.set(values[0], { bytes: values[8], digest: values[9] });
         else photos.delete(values[0]);
       }
       profiles.set(values[0], saved);
-      return [{ slug: saved.slug, display_name: saved.displayName, bio: saved.bio, published: saved.published, show_activity: saved.showActivity, layout: saved.layout, highlights: saved.highlights, photo_png: photos.get(values[0])?.bytes ?? null }];
+      return [{ slug: saved.slug, display_name: saved.displayName, bio: saved.bio, published: saved.published, show_activity: saved.showActivity, show_tokens: saved.showTokens, layout: saved.layout, highlights: saved.highlights, photo_png: photos.get(values[0])?.bytes ?? null }];
     }
     if (query.includes("FROM action_profiles")) {
       const entry = query.includes("published = true")
@@ -61,9 +63,10 @@ function database(initial: ShowcaseProfile | null = profile) {
         photoHook?.();
         return [{ photo_png: photo.bytes }];
       }
-      return [{ org_id: orgId, slug: value.slug, display_name: value.displayName, bio: value.bio, published: value.published, show_activity: value.showActivity === true, layout: value.layout, highlights: value.highlights, photo_digest: photos.get(orgId)?.digest ?? null, ...(query.includes("photo_png") ? { photo_png: photos.get(orgId)?.bytes ?? null } : {}), email: "private@example.com" }];
+      return [{ org_id: orgId, slug: value.slug, display_name: value.displayName, bio: value.bio, published: value.published, show_activity: value.showActivity === true, show_tokens: value.showTokens !== false, layout: value.layout, highlights: value.highlights, photo_digest: photos.get(orgId)?.digest ?? null, ...(query.includes("photo_png") ? { photo_png: photos.get(orgId)?.bytes ?? null } : {}), email: "private@example.com" }];
     }
     if (query.includes("WITH latest_reports")) return eventRows;
+    if (query.includes("FROM token_usage_sessions")) { tokenHook?.(); return [tokenRow]; }
     if (query.includes("WITH ledger")) { aggregateHook?.(); return [aggregate]; }
     throw new Error("Unexpected test query");
   }
@@ -79,14 +82,14 @@ function database(initial: ShowcaseProfile | null = profile) {
     return { fragment: true, query, values, then(resolve: any, reject: any) { return Promise.resolve().then(() => execute(query, values)).then(resolve, reject); } };
   }) as unknown as postgres.Sql;
   db.json = jsonParameter;
-  return { db, calls, profiles, photos, onPhoto: (callback: () => void) => { photoHook = callback; }, events: (rows: any[]) => { eventRows = rows; }, fail: () => { unavailable = true; }, onAggregate: (callback: () => void) => { aggregateHook = callback; } };
+  return { db, calls, profiles, photos, onPhoto: (callback: () => void) => { photoHook = callback; }, events: (rows: any[]) => { eventRows = rows; }, fail: () => { unavailable = true; }, onAggregate: (callback: () => void) => { aggregateHook = callback; }, tokens: (row: any) => { tokenRow = row; }, onTokens: (callback: () => void) => { tokenHook = callback; } };
 }
 
 describe("showcase control", () => {
   test("starts private with no implicit identity, but gives the owner an aggregate preview", async () => {
     const { db, calls } = database(null);
     const settings = await getShowcaseSettings(owner, "https://engram.example", db);
-    expect(settings.profile).toEqual({ slug: "", displayName: "", bio: "", published: false, showActivity: false, layout: "studio", highlights: [], photo: null });
+    expect(settings.profile).toEqual({ slug: "", displayName: "", bio: "", published: false, showActivity: false, showTokens: true, layout: "studio", highlights: [], photo: null });
     expect(settings.urls).toEqual({ page: null, json: null, card: null, stream: null });
     expect(settings.preview.stats.totalActions).toBe(17);
     expect(calls[0].values).toEqual([7]);
@@ -125,7 +128,7 @@ describe("showcase control", () => {
     expect(result.profile).toEqual(profile);
     expect(result.urls).toEqual({ page: "https://engram.example/u/my-agents", json: "https://engram.example/api/public/activity/my-agents", card: "https://engram.example/api/public/activity/my-agents/card.png", stream: "https://engram.example/api/public/activity/my-agents/stream" });
     expect(calls[0].query).toContain("ON CONFLICT (org_id)");
-    expect(calls[0].values).toEqual([7, profile.slug, profile.displayName, profile.bio, true, false, "studio", expect.objectContaining({ type: 3802, value: [] }), null, null, true, true, true, true]);
+    expect(calls[0].values).toEqual([7, profile.slug, profile.displayName, profile.bio, true, false, "studio", expect.objectContaining({ type: 3802, value: [] }), null, null, true, true, true, true, true, true]);
     expect(result.preview.stats.totalActions).toBe(17);
     await expect(updateShowcaseSettings(normalizeToken({ ...owner, orgId: 8 }), profile, "https://engram.example", db)).rejects.toMatchObject({ status: 409 });
   });
@@ -168,7 +171,7 @@ describe("owner-written profile presentation", () => {
   test("defaults old rows and preserves presentation on legacy updates while permitting explicit clearing", async () => {
     const legacy = { slug: profile.slug, displayName: profile.displayName, bio: profile.bio, published: true, showActivity: false };
     const old = database(legacy);
-    expect((await getShowcaseSettings(owner, "https://engram.example", old.db)).profile).toEqual({ ...legacy, layout: "studio", highlights: [], photo: null });
+    expect((await getShowcaseSettings(owner, "https://engram.example", old.db)).profile).toEqual({ ...legacy, showTokens: true, layout: "studio", highlights: [], photo: null });
     const store = database({ ...profile, layout: "field-notes", highlights });
     const saved = await updateShowcaseSettings(owner, { ...legacy, bio: "Updated by an old client" }, "https://engram.example", store.db);
     expect(saved.profile).toMatchObject({ layout: "field-notes", highlights });
@@ -415,7 +418,7 @@ describe("public activity projection", () => {
   test("uses both action sources, exact organization bindings, aggregate-only SQL and UTC dates", async () => {
     const { db, calls } = database();
     const result = await getPublicActivity(profile.slug, db, now);
-    expect(result?.stats).toEqual({ totalActions: 17, completedActions: 13, failedActions: 2, runningActions: 2, activeAgents: 3, activeDays: 4 });
+    expect(result?.stats).toEqual({ totalActions: 17, completedActions: 13, failedActions: 2, runningActions: 2, activeAgents: 3, activeDays: 4, completedTasks: 5 });
     expect(result?.tools).toEqual([{ category: "code", count: 10 }, { category: "email", count: 7 }]);
     const query = calls[1];
     expect(query.query).toContain("UNION ALL");
@@ -423,6 +426,7 @@ describe("public activity projection", () => {
     expect(query.query).toContain("FROM audit_log LEFT JOIN tokens registered_source");
     expect(query.query).toContain("WHERE audit_log.org_id");
     expect(query.query).toContain("'list_actions', 'record_action', 'whoami'");
+    expect(query.query).toContain("count(*) FILTER (WHERE tool = 'agent.task' AND status = 'completed') AS completed_tasks");
     expect(query.query).toContain("AT TIME ZONE 'UTC'");
     expect(query.values).toEqual([7, 7, "2026-10-21T23:48:00.000Z", "2026-07-31T00:00:00.000Z", "2026-10-23T00:00:00.000Z"]);
     expect(query.query).toContain("row_number() OVER");
@@ -495,8 +499,12 @@ describe("public activity projection", () => {
         expect(body).not.toContain("totalActions");
         const aggregateIndex = store.calls.findIndex(call => call.query.includes("WITH ledger"));
         expect(aggregateIndex).toBeGreaterThan(0);
-        expect(store.calls[aggregateIndex + 1].query).toContain("FROM action_profiles");
-        expect(store.calls[aggregateIndex + 1].query).toContain("published = true");
+        // The token aggregate also runs before the publication recheck.
+        const recheck = store.calls.slice(aggregateIndex + 1).find(call => call.query.includes("FROM action_profiles"));
+        expect(recheck?.query).toContain("published = true");
+        const tokenIndex = store.calls.findIndex(call => call.query.includes("FROM token_usage_sessions"));
+        expect(tokenIndex).toBeGreaterThan(aggregateIndex);
+        expect(tokenIndex).toBeLessThan(store.calls.indexOf(recheck!));
       }
     }
   });
@@ -573,5 +581,43 @@ describe("public activity projection", () => {
     expect(png.readUInt32BE(16)).toBe(1200);
     expect(png.readUInt32BE(20)).toBe(630);
     expect(png.length).toBeGreaterThan(10_000);
+  });
+});
+
+describe("owner token counter switch", () => {
+  const tokenRow = { input: "900", output: "100", cache_read: "0", cache_write: "0", today: "1000", last_hour: "10", updated_at: "2026-10-21T23:00:00Z", products: [{ product: "codex", tokens: "1000" }], daily: [{ date: "2026-10-21", count: "1000" }] };
+
+  test("accepts showTokens, preserves it for legacy clients, and allows explicit changes", async () => {
+    for (const showTokens of ["true", 1, null]) expect(() => parseShowcaseInput({ ...profile, showTokens })).toThrow();
+    const store = database({ ...profile, showTokens: false });
+    const { showTokens: _, ...legacy } = profile;
+    const saved = await updateShowcaseSettings(owner, { ...legacy, bio: "Updated by an old client" }, "https://engram.example", store.db);
+    expect(saved.profile.showTokens).toBe(false);
+    expect(store.calls[0].query).toContain("ELSE action_profiles.show_tokens END");
+    expect(store.calls[0].values.at(-1)).toBe(false);
+    expect((await updateShowcaseSettings(owner, { ...profile, showTokens: true }, "https://engram.example", store.db)).profile.showTokens).toBe(true);
+    expect((await getShowcaseSettings(owner, "https://engram.example", database(null).db)).profile.showTokens).toBe(true);
+  });
+
+  test("hidden counters skip the token query publicly while the owner preview still computes them", async () => {
+    const store = database({ ...profile, showTokens: false });
+    store.tokens(tokenRow);
+    const publicValue = await getPublicActivity(profile.slug, store.db, now);
+    expect(publicValue?.tokens).toMatchObject({ enabled: false, total: 0, daily: [], agents: [] });
+    expect(store.calls.some(call => call.query.includes("token_usage"))).toBe(false);
+    const settings = await getShowcaseSettings(owner, "https://engram.example", store.db);
+    expect(settings.preview.tokens).toMatchObject({ enabled: false, total: 1000, today: 1000, lastHour: 10, source: "local-session-logs" });
+    const token = store.calls.find(call => call.query.includes("FROM token_usage_sessions"))!;
+    expect(token.values.slice(0, 2)).toEqual([7, 7]);
+  });
+
+  test("shown counters reach JSON and a toggle retires an in-flight projection", async () => {
+    const store = database(profile);
+    store.tokens(tokenRow);
+    const token = (await getPublicActivity(profile.slug, store.db, now))?.tokens;
+    expect(token).toMatchObject({ enabled: true, total: 1000, agents: [{ product: "codex", label: "Codex", tokens: 1000 }] });
+    expect(store.calls.find(call => call.query.includes("FROM token_usage_sessions"))?.values).toEqual([7, 7, "2026-07-31T00:00:00.000Z", "2026-10-23T00:00:00.000Z", "2026-10-22T00:00:00.000Z", "2026-10-21T23:00:00.000Z"]);
+    store.onTokens(() => store.profiles.set(7, { ...profile, showTokens: false }));
+    expect(await getPublicActivity(profile.slug, store.db, now)).toBeNull();
   });
 });

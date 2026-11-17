@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 import { PROFILE_PHOTO_SCHEMA_VERSION, PROFILE_PRESENTATION_SCHEMA_VERSION } from "../gateway/src/showcase-schema";
 import { MEMORY_USAGE_SCHEMA_VERSION } from "../gateway/src/memory-usage-schema";
 import { CONNECTION_CLIENT_SCHEMA_VERSION } from "../gateway/src/connection-client-schema";
+import { TOKEN_USAGE_SCHEMA_VERSION } from "../gateway/src/token-usage-schema";
 
 const template = process.env.ENGRAM_TEST_DB_URL_TEMPLATE;
 if (!template) throw new Error("Set ENGRAM_TEST_DB_URL_TEMPLATE to a disposable local PostgreSQL test cluster");
@@ -125,6 +126,18 @@ try {
   await migrate();
   equal((await sql`SELECT client_identity_version FROM engram_schema_state WHERE id=true`)[0].client_identity_version, CONNECTION_CLIENT_SCHEMA_VERSION, "Client metadata migration is idempotent");
   await sql`DELETE FROM tokens WHERE name='client-upgrade-fixture'`;
+  // Token usage is additive too: simulate its predecessor schema on a saved profile.
+  const beforeTokenMarkers = (await sql`SELECT to_jsonb(s) - 'token_usage_version' AS markers FROM engram_schema_state s WHERE id=true`)[0].markers;
+  await sql`DROP TABLE token_usage_hourly`;
+  await sql`DROP TABLE token_usage_sessions`;
+  await sql`ALTER TABLE action_profiles DROP COLUMN show_tokens`;
+  await sql`ALTER TABLE engram_schema_state DROP COLUMN token_usage_version`;
+  await migrate();
+  equal((await sql`SELECT token_usage_version FROM engram_schema_state WHERE id=true`)[0].token_usage_version, TOKEN_USAGE_SCHEMA_VERSION, "Token usage gets its own exact additive readiness marker");
+  equal((await sql`SELECT to_jsonb(s) - 'token_usage_version' AS markers FROM engram_schema_state s WHERE id=true`)[0].markers, beforeTokenMarkers, "Token usage migration preserves every predecessor readiness marker");
+  equal((await sql`SELECT show_tokens, published FROM action_profiles WHERE org_id = 1`)[0], { show_tokens: true, published: true }, "Existing profiles keep publication and show token counters by default");
+  await migrate();
+  equal((await sql`SELECT token_usage_version FROM engram_schema_state WHERE id=true`)[0].token_usage_version, TOKEN_USAGE_SCHEMA_VERSION, "Token usage migration is repeatable");
   await sql`DELETE FROM action_profiles WHERE org_id = 1 AND slug = 'legacy-presentation-row'`;
   equal(Number((await sql`SELECT count(*) AS n FROM orgs`)[0].n), 1, "Central migrations are repeatable without duplicating the legacy workspace");
   equal(Number((await sql`SELECT count(*) AS n FROM pg_indexes WHERE schemaname = 'public' AND indexname IN ('tokens_org_name_idx', 'action_events_org_time_idx')`)[0].n), 2, "Tenant identity and action indexes exist on PostgreSQL");
@@ -291,7 +304,7 @@ try {
   await updateShowcaseSettings(ownerA, { slug: "integration-a", displayName: "Public A", bio: "Only aggregates", published: true, photo: null }, "https://integration.example");
   equal((await getPublicActivity("integration-a"))?.profile.photoUrl, null, "Explicit image removal is immediately reflected in public projection");
   equal((await handlePublicShowcase(new Request("https://integration.example" + photoPath)))?.status, 404, "An old digest URL stops serving after removal");
-  equal(publicA.stats, { totalActions: 4, completedActions: 3, failedActions: 1, runningActions: 0, activeAgents: 2, activeDays: 1 }, "Public totals aggregate only tenant A's actions");
+  equal(publicA.stats, { totalActions: 4, completedActions: 3, failedActions: 1, runningActions: 0, activeAgents: 2, activeDays: 1, completedTasks: 0 }, "Public totals aggregate only tenant A's actions");
   equal(publicB.stats.totalActions, 3, "Public tenant B totals stay separate");
   equal(publicA.tools, [{ category: "memory", count: 2 }, { category: "code", count: 1 }, { category: "email", count: 1 }], "Public categories execute in PostgreSQL and reveal generic tool groups only");
   equal(publicA.daily.length, 84, "Public activity projects exactly 12 weeks of daily totals");
@@ -489,6 +502,8 @@ try {
   checks += await checkConnectionClients(sql);
   const { checkMemoryUsage } = await import("./integration-memory-usage");
   checks += await checkMemoryUsage(sql);
+  const { checkTokenUsage } = await import("./integration-token-usage");
+  checks += await checkTokenUsage(sql);
   const { checkConnectionLifecycle } = await import("./integration-connection-lifecycle");
   checks += await checkConnectionLifecycle(sql);
   const { checkComplimentaryAccess } = await import("./integration-complimentary");

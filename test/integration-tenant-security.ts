@@ -82,6 +82,7 @@ try {
   await denied(() => sql`UPDATE engram_schema_state SET agent_identity_version = 1`, "Runtime cannot forge additive agent-identity readiness");
   await denied(() => sql`UPDATE engram_schema_state SET workspace_access_version = 1`, "Runtime cannot forge additive workspace-access readiness");
   await denied(() => sql`UPDATE engram_schema_state SET share_rule_expiry_version = 1`, "Runtime cannot forge additive share-rule-expiry readiness");
+  await denied(() => sql`UPDATE engram_schema_state SET token_usage_version = 1`, "Runtime cannot forge additive token-usage readiness");
   // The mail worker runs as this role. It may read but not lock operator rows.
   const noInvite = "00000000-0000-4000-8000-000000000000";
   await denied(() => sql`SELECT i.id FROM hosted_signup_invites i JOIN hosted_signup_operators op ON op.member_id = i.created_by_member_id WHERE i.id = ${noInvite} FOR SHARE OF i, op`, "Runtime cannot lock operator-only rows");

@@ -118,15 +118,18 @@ does not replay it. Run status exposes a bounded failure code and attempt time,
 without saving the memory text in diagnostics. Older unconfirmed attempts may
 have no recorded failure cause.
 
-The installed hooks do not read `transcript_path` or enable the older conversation
-capture feature:
+The installed hooks never enable the older conversation capture feature. From the
+session log at `transcript_path` they read only token-count numbers; never prompts,
+responses, tool inputs/outputs or file contents, and nothing but the counts is
+sent (see [Token counts for your profile](#token-counts-for-your-profile)):
 
 | Event | Behavior |
 | --- | --- |
 | SessionStart (startup/resume/compact/clear) | Brief workflow guidance, no memory request. |
 | UserPromptSubmit | The first substantive prompt per session in a bound project gets one targeted recall and a factual running report. Ordinary follow-up messages do not recall again. A recorded task-end allows a later substantive prompt to begin a fresh run. |
 | Explicit `Engram task: <name>` or `/engram-task <name>` | Starts a distinct named task in the current session. Reusing a running name reuses its stable run; after an explicit task-end, the same name starts a fresh run. |
-| Stop | At most one request to save a meaningful delta or record no-change, only after retrieval and a live access check. `stop_hook_active` suppresses recursion. Offline/denied checks fail open. **Never marks work completed.** |
+| PostToolUse | Runs in the background and returns nothing to the agent. At most once per 20 seconds per session, sends the session's token counts if they changed. |
+| Stop | At most one request to save a meaningful delta or record no-change, only after retrieval and a live access check. `stop_hook_active` suppresses recursion. Offline/denied checks fail open. Also sends changed token counts. **Never marks work completed.** |
 
 An explicitly named task should describe the project decision or task, not contain
 secrets. The automatic first-task heuristic queries only the installed topic; it
@@ -139,6 +142,33 @@ cannot infer completion from a response stopping, or reliably infer every new
 task from arbitrary follow-up language. Later task boundaries need an explicit
 name or a recorded task-end; the initial prompt heuristic is not an all-task
 guarantee.
+
+## Token counts for your profile
+
+The Claude Code and Codex hooks send the number of tokens each session used, so
+a published profile can show how much work your agents do. The counts come from
+the agent's own local session log (`transcript_path` in the hook input). The
+connector reads only the token-count numbers and the model name from it: never
+prompts, responses, tool inputs/outputs or file contents, and nothing but the
+counts is sent.
+
+- **Claude Code:** sums `message.usage` (`input_tokens`, `output_tokens`,
+  `cache_read_input_tokens`, `cache_creation_input_tokens`) on assistant lines.
+  Several lines written for one message ID count once.
+- **Codex:** takes the latest cumulative `token_count` total. Cached input is
+  reported as cache reads and removed from input; reasoning tokens are already
+  part of Codex's output count.
+- **When:** on Stop, and from a background PostToolUse hook at most once per 20
+  seconds per session, only when the totals changed. Codex also sends on
+  SessionEnd. Each request carries cumulative totals for one session, identified
+  by a hash of the runtime and session ID, to `/api/usage` on your Engram host.
+- **Limits:** only `.jsonl` files under your home folder, never through symbolic
+  links. Each call reads only new bytes (at most a few MB). Failures are silent
+  and wait for the next hook; a rejected credential stops sending for that
+  session. Nothing is sent where the folder has no memory binding.
+- Installs from before 0.8.3 have no PostToolUse hook and still send on Stop.
+  Rerun `memory install` to add it. The workspace owner can hide token totals
+  on the public profile.
 
 ## Other native runtime adapters
 
@@ -170,6 +200,8 @@ hooks cannot inject context directly; later recall waits for a documented
 post-tool output. Only a run marker is held for up to two minutes; no retrieved
 memory text is stored for delayed delivery. Cursor startup is fire-and-forget. Windsurf reports factual starts only;
 it never injects unsupported context, reads transcripts, or uploads responses.
+Only the Claude Code and Codex adapters read their local session log, and only
+for token-count numbers.
 OpenCode appends reference data to the actual message text; OpenClaw reads only
 explicit `currentUserMessage`, never reconstructed history. OpenClaw installation
 explicitly enables conversation-access/prompt-injection grants for this plugin.
@@ -362,6 +394,8 @@ observation of tool execution. A bridge must only call its hooks for real events
   calls return `busy` instead of duplicating reports; stale dead-process locks can
   be reclaimed. State survives restart and compaction. It stores hashes/receipts
   and bounded pending factual report payloads, not transcripts or recalled text.
+  Token counting adds a per-session `usage-*.json` with a byte offset, numeric
+  totals, the model name and truncated hashes of recent message IDs.
 - Read-only connections can retrieve bounded memory. A denied write disables
   further writes for that run without blocking reads; authentication revocation
   blocks the credential-bound run and drops queued writes.

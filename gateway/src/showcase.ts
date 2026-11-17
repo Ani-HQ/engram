@@ -9,6 +9,7 @@ import { BillingError, requireHostedWriteAccess } from "./billing";
 import { actionLedger } from "./actions";
 import { createShowcaseStreamManager } from "./showcase-stream";
 import { publicActivityLedger } from "./public-activity";
+import { tokenUsageRow } from "./token-usage";
 import { normalizeProfilePhoto, PROFILE_PHOTO_DATA_PREFIX, showcasePhotoUrl } from "./showcase-photo";
 export { normalizeProfilePhoto, PROFILE_PHOTO_MAX_BYTES, PROFILE_PHOTO_SIZE, showcasePhotoUrl } from "./showcase-photo";
 
@@ -26,13 +27,13 @@ function owner(token: TokenRecord, write = false): TokenRecord {
 
 function mapProfile(row: any): ShowcaseProfile {
   // Avoid publishing the workspace name or token identity as implicit defaults.
-  if (!row) return { slug: "", displayName: "", bio: "", published: false, showActivity: false, layout: "studio", highlights: [], photo: null };
-  return { slug: String(row.slug), displayName: String(row.display_name), bio: String(row.bio), photo: row.photo_png ? PROFILE_PHOTO_DATA_PREFIX + Buffer.from(row.photo_png).toString("base64") : null, published: row.published === true, showActivity: row.show_activity === true, ...showcasePresentation({ layout: row.layout, highlights: row.highlights }) };
+  if (!row) return { slug: "", displayName: "", bio: "", published: false, showActivity: false, showTokens: true, layout: "studio", highlights: [], photo: null };
+  return { slug: String(row.slug), displayName: String(row.display_name), bio: String(row.bio), photo: row.photo_png ? PROFILE_PHOTO_DATA_PREFIX + Buffer.from(row.photo_png).toString("base64") : null, published: row.published === true, showActivity: row.show_activity === true, showTokens: row.show_tokens !== false, ...showcasePresentation({ layout: row.layout, highlights: row.highlights }) };
 }
 
 export async function getShowcaseSettings(token: TokenRecord, origin: string, db: postgres.Sql = sql) {
   const actor = owner(token);
-  const rows = await db`SELECT slug, display_name, bio, published, show_activity, layout, highlights, photo_png FROM action_profiles WHERE org_id = ${actor.orgId}`;
+  const rows = await db`SELECT slug, display_name, bio, published, show_activity, show_tokens, layout, highlights, photo_png FROM action_profiles WHERE org_id = ${actor.orgId}`;
   const profile = mapProfile(rows[0]);
   return { profile, urls: showcaseUrls(profile, config.publicUrl || origin), preview: await getOrgActivitySnapshot(profile, actor.orgId, db, undefined, true) };
 }
@@ -45,16 +46,17 @@ export async function updateShowcaseSettings(token: TokenRecord, raw: unknown, o
   const photo = typeof profile.photo === "string" ? await normalizeProfilePhoto(profile.photo) : null;
   try {
     const rows = await db`
-      INSERT INTO action_profiles (org_id, slug, display_name, bio, published, show_activity, layout, highlights, photo_png, photo_digest)
-      VALUES (${actor.orgId}, ${profile.slug}, ${profile.displayName}, ${profile.bio}, ${profile.published}, ${profile.showActivity === true}, ${profile.layout}, ${db.json(profile.highlights as postgres.JSONValue)}, ${photo?.bytes ?? null}, ${photo?.digest ?? null})
+      INSERT INTO action_profiles (org_id, slug, display_name, bio, published, show_activity, layout, highlights, photo_png, photo_digest, show_tokens)
+      VALUES (${actor.orgId}, ${profile.slug}, ${profile.displayName}, ${profile.bio}, ${profile.published}, ${profile.showActivity === true}, ${profile.layout}, ${db.json(profile.highlights as postgres.JSONValue)}, ${photo?.bytes ?? null}, ${photo?.digest ?? null}, ${profile.showTokens !== false})
       ON CONFLICT (org_id) DO UPDATE SET slug = EXCLUDED.slug, display_name = EXCLUDED.display_name,
         bio = EXCLUDED.bio, published = EXCLUDED.published, show_activity = EXCLUDED.show_activity,
         layout = CASE WHEN ${Object.hasOwn(input, "layout")} THEN EXCLUDED.layout ELSE action_profiles.layout END,
         highlights = CASE WHEN ${Object.hasOwn(input, "highlights")} THEN EXCLUDED.highlights ELSE action_profiles.highlights END,
         photo_png = CASE WHEN ${Object.hasOwn(input, "photo")} THEN EXCLUDED.photo_png ELSE action_profiles.photo_png END,
         photo_digest = CASE WHEN ${Object.hasOwn(input, "photo")} THEN EXCLUDED.photo_digest ELSE action_profiles.photo_digest END,
+        show_tokens = CASE WHEN ${Object.hasOwn(input, "showTokens")} THEN EXCLUDED.show_tokens ELSE action_profiles.show_tokens END,
         updated_at = now()
-      RETURNING slug, display_name, bio, published, show_activity, layout, highlights, photo_png`;
+      RETURNING slug, display_name, bio, published, show_activity, show_tokens, layout, highlights, photo_png`;
     if (rows[0]) profile = mapProfile(rows[0]);
   } catch (error: any) {
     if (error?.code === "23505") throw new ShowcaseError("That showcase address is already taken", 409);
@@ -82,7 +84,7 @@ async function publishedSnapshot(slug: string, db: postgres.Sql, now?: Date, exp
 
 async function publishedProfile(slug: string, db: postgres.Sql) {
   const profiles = await db`
-    SELECT org_id, slug, display_name, bio, published, show_activity, layout, highlights, photo_digest, updated_at::text AS publication_revision FROM action_profiles
+    SELECT org_id, slug, display_name, bio, published, show_activity, show_tokens, layout, highlights, photo_digest, updated_at::text AS publication_revision FROM action_profiles
     WHERE slug = ${slug} AND published = true`;
   return profiles[0] ?? null;
 }
@@ -91,7 +93,7 @@ const streamManagers = new WeakMap<postgres.Sql, ReturnType<typeof createShowcas
 function publicationKey(row: any): string {
   // This internal binding never enters the public projection or SSE frames.
   // Keep PostgreSQL's full timestamp precision instead of truncating to JS ms.
-  return JSON.stringify([row.org_id, row.publication_revision, row.slug, row.display_name, row.bio, row.photo_digest ?? null, row.show_activity === true, showcasePresentation({ layout: row.layout, highlights: row.highlights })]);
+  return JSON.stringify([row.org_id, row.publication_revision, row.slug, row.display_name, row.bio, row.photo_digest ?? null, row.show_activity === true, showcasePresentation({ layout: row.layout, highlights: row.highlights }), row.show_tokens !== false]);
 }
 function streams(db: postgres.Sql) {
   let manager = streamManagers.get(db);
@@ -147,6 +149,7 @@ async function getOrgActivitySnapshot(profile: ShowcaseProfile, orgId: number, d
       count(*) FILTER (WHERE status = 'completed') AS completed_actions,
       count(*) FILTER (WHERE status = 'failed') AS failed_actions,
       count(*) FILTER (WHERE status = 'running') AS running_actions,
+      count(*) FILTER (WHERE tool = 'agent.task' AND status = 'completed') AS completed_tasks,
       count(DISTINCT agent) AS active_agents,
       count(DISTINCT (occurred_at AT TIME ZONE 'UTC')::date) AS active_days,
       max(occurred_at) AS updated_at,
@@ -162,13 +165,15 @@ async function getOrgActivitySnapshot(profile: ShowcaseProfile, orgId: number, d
       (SELECT coalesce(json_agg(products), '[]'::json) FROM products) AS products
     FROM ledger CROSS JOIN bounds`;
   const events = profile.showActivity === true || preview ? await publicActivityLedger(db, orgId) : [];
+  // Hidden token counters are never read for a public snapshot.
+  const tokens = profile.showTokens !== false || preview ? await tokenUsageRow(db, orgId, queryAt) : null;
   // Receipts may arrive while these reads are pending. Observe after the reads
   // so a newly received running event is not mistaken for a future timestamp.
   // An explicitly supplied clock remains fixed for deterministic callers.
   const observedAt = now ?? new Date();
   // A stable deployment secret keeps public IDs opaque across polls/restarts.
   // Legacy self-hosted installs use their existing server-only database URL.
-  return publicActivitySnapshot(profile, rows[0], observedAt, { rows: events, scope: `${orgId}:${profile.slug}`, key: databaseSecurity.tenantCredentialKey || dbUrl("engram_gateway"), preview, photoUrl: preview ? profile.photo ?? null : showcasePhotoUrl(profile.slug, photoDigest) });
+  return publicActivitySnapshot(profile, rows[0], observedAt, { rows: events, scope: `${orgId}:${profile.slug}`, key: databaseSecurity.tenantCredentialKey || dbUrl("engram_gateway"), preview, tokens, photoUrl: preview ? profile.photo ?? null : showcasePhotoUrl(profile.slug, photoDigest) });
 }
 
 async function readProfileBody(req: Request): Promise<string> {

@@ -29,7 +29,13 @@ in [PRIVACY.md](PRIVACY.md).
   hold identifiers and triggers only. Local pending copies are not created by
   the gateway; erasure must also cover any adapter queue on the agent host.
 - `action_events` is append-only in normal operation. Neither it nor `audit_log`
-  has an age-based retention job. An expired session/token/grant is unusable;
+  has an age-based retention job.
+- Token usage reports keep one row per reporting credential and agent session in
+  `token_usage_sessions` (hashed session id, product, model name, cumulative
+  counts) with no age-based deletion, since public all-time totals read it.
+  `token_usage_hourly` holds hourly sums per product; the ingest path deletes a
+  workspace's hourly rows older than 120 days. Neither table holds prompts,
+  outputs or file content. An expired session/token/grant is unusable;
   expiry does not prove the database row was deleted.
 - Subscription cancellation/trial expiry leaves existing information readable
   and exportable. Revoking credentials, removing a member, and unpublishing a
@@ -40,7 +46,8 @@ in [PRIVACY.md](PRIVACY.md).
 
 Source checkpoints: `gateway/src/web.ts` page delete/restore routes,
 `gateway/src/memory-entries.ts`, `gateway/src/db.ts`,
-`gateway/src/actions.ts`, and `gateway/src/orgs.ts` membership revocation.
+`gateway/src/actions.ts`, `gateway/src/token-usage.ts`, and
+`gateway/src/orgs.ts` membership revocation.
 
 ## Operating policy
 
@@ -100,7 +107,8 @@ credentials, exports, or support correspondence to this repository.
    erasure plan. Check foreign keys and the current schema before changing data.
    Remove the approved tenant memory/derived data and engine-home artifacts, then
    remove or minimize matching central rows according to the approved scope.
-   Review `audit_log`, `action_events`, member/credential/invite/OAuth records,
+   Review `audit_log`, `action_events`, `token_usage_sessions`,
+   `token_usage_hourly`, member/credential/invite/OAuth records,
    `action_profiles`, insight jobs/cursors/budgets, sharing rules/copies, billing,
    and complimentary-access records. The runtime identity intentionally lacks
    database/role administration authority.
